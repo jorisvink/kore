@@ -23,6 +23,9 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#include <openssl/err.h>
+#include <openssl/ssl.h>
+
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -35,12 +38,16 @@
 #define EPOLL_EVENTS	500
 
 static int	efd = -1;
+static SSL_CTX	*ssl_ctx = NULL;
 
+static int	kore_server_sslstart(void);
 static int	kore_server_bind(struct listener *, const char *, int);
 static int	kore_server_accept(struct listener *);
 static int	kore_connection_handle(struct connection *, int);
 static int	kore_socket_nonblock(int);
 static void	kore_event(int, int, void *);
+static int	kore_ssl_npn_cb(SSL *, const unsigned char **,
+		    unsigned int *, void *);
 
 int
 main(int argc, char *argv[])
@@ -55,6 +62,8 @@ main(int argc, char *argv[])
 
 	if (!kore_server_bind(&server, argv[1], atoi(argv[2])))
 		fatal("cannot bind to %s:%s", argv[1], argv[2]);
+	if (!kore_server_sslstart())
+		fatal("cannot initiate SSL");
 
 	if ((efd = epoll_create(1000)) == -1)
 		fatal("epoll_create(): %s", errno_s);
@@ -82,7 +91,8 @@ main(int argc, char *argv[])
 				kore_server_accept(&server);
 			} else {
 				c = (struct connection *)events[i].data.ptr;
-				if (!kore_connection_handle(c, events[i].events))
+				if (!kore_connection_handle(c,
+				    events[i].events))
 					/* Disconnect. */;
 			}
 		}
@@ -90,6 +100,37 @@ main(int argc, char *argv[])
 
 	close(server.fd);
 	return (0);
+}
+
+static int
+kore_server_sslstart(void)
+{
+	SSL_library_init();
+	SSL_load_error_strings();
+	ssl_ctx = SSL_CTX_new(SSLv23_server_method());
+	if (ssl_ctx == NULL) {
+		kore_log("SSL_ctx_new(): %s", ssl_errno_s);
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (!SSL_CTX_use_certificate_file(ssl_ctx, "cert/server.crt",
+	    SSL_FILETYPE_PEM)) {
+		kore_log("SSL_CTX_use_certificate_file(): %s", ssl_errno_s);
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (!SSL_CTX_use_PrivateKey_file(ssl_ctx, "cert/server.key",
+	    SSL_FILETYPE_PEM)) {
+		kore_log("SSL_CTX_use_PrivateKey_file(): %s", ssl_errno_s);
+		return (KORE_RESULT_ERROR);
+	}
+
+	SSL_CTX_set_mode(ssl_ctx, SSL_MODE_AUTO_RETRY);
+	SSL_CTX_set_mode(ssl_ctx, SSL_MODE_ENABLE_PARTIAL_WRITE);
+	SSL_CTX_set_options(ssl_ctx, SSL_OP_NO_SSLv2);
+	SSL_CTX_set_next_protos_advertised_cb(ssl_ctx, kore_ssl_npn_cb, NULL);
+
+	return (KORE_RESULT_OK);
 }
 
 static int
@@ -146,6 +187,8 @@ kore_server_accept(struct listener *l)
 	}
 
 	c->owner = l;
+	c->ssl = NULL;
+	c->state = CONN_STATE_SSL_SHAKE;
 	TAILQ_INIT(&(c->send_queue));
 	TAILQ_INIT(&(c->recv_queue));
 	kore_event(c->fd, EPOLLIN | EPOLLET, c);
@@ -157,6 +200,49 @@ kore_server_accept(struct listener *l)
 static int
 kore_connection_handle(struct connection *c, int flags)
 {
+	int		r;
+
+	switch (c->state) {
+	case CONN_STATE_SSL_SHAKE:
+		if (c->ssl == NULL) {
+			c->ssl = SSL_new(ssl_ctx);
+			if (c->ssl == NULL) {
+				kore_log("SSL_new(): %s", ssl_errno_s);
+				return (KORE_RESULT_ERROR);
+			}
+
+			SSL_set_fd(c->ssl, c->fd);
+		}
+
+		r = SSL_accept(c->ssl);
+		if (r <= 0) {
+			r = SSL_get_error(c->ssl, r);
+			switch (r) {
+			case SSL_ERROR_WANT_READ:
+			case SSL_ERROR_WANT_WRITE:
+				return (KORE_RESULT_OK);
+			default:
+				kore_log("SSL_accept(): %s", ssl_errno_s);
+				return (KORE_RESULT_ERROR);
+			}
+		}
+
+		r = SSL_get_verify_result(c->ssl);
+		if (r != X509_V_OK) {
+			kore_log("SSL_get_verify_result(): %s", ssl_errno_s);
+			return (KORE_RESULT_ERROR);
+		}
+
+		c->state = CONN_STATE_ESTABLISHED;
+		break;
+	case CONN_STATE_ESTABLISHED:
+		kore_log("got bytes on established");
+		break;
+	default:
+		kore_log("unknown state on %d (%d)", c->fd, c->state);
+		break;
+	}
+
 	return (KORE_RESULT_OK);
 }
 
@@ -188,4 +274,16 @@ kore_event(int fd, int flags, void *udata)
 	evt.data.ptr = udata;
 	if (epoll_ctl(efd, EPOLL_CTL_ADD, fd, &evt) == -1)
 		fatal("epoll_ctl(): %s", errno_s);
+}
+
+static int
+kore_ssl_npn_cb(SSL *ssl, const unsigned char **data,
+    unsigned int *len, void *arg)
+{
+	kore_log("npn callback: sending protocols");
+
+	*data = (const unsigned char *)KORE_SSL_PROTO_STRING;
+	*len = strlen(KORE_SSL_PROTO_STRING);
+
+	return (SSL_TLSEXT_ERR_OK);
 }

@@ -21,8 +21,11 @@
 #define KORE_RESULT_OK		1
 
 #define errno_s			strerror(errno)
+#define ssl_errno_s		ERR_error_string(ERR_get_error(), NULL)
 #define kore_log(fmt, ...)	\
 	kore_log_internal(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
+
+#define KORE_SSL_PROTO_STRING	"\x06spdy/3\x08http/1.1"
 
 struct netbuf {
 	u_int8_t		*data;
@@ -39,10 +42,16 @@ struct listener {
 	struct sockaddr_in	sin;
 };
 
+#define CONN_STATE_UNKNOWN	0
+#define CONN_STATE_SSL_SHAKE	1
+#define CONN_STATE_ESTABLISHED	2
+
 struct connection {
 	int			fd;
+	int			state;
 	struct sockaddr_in	sin;
 	void			*owner;
+	SSL			*ssl;
 
 	TAILQ_HEAD(, netbuf)	send_queue;
 	TAILQ_HEAD(, netbuf)	recv_queue;
