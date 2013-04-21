@@ -40,14 +40,13 @@
 static int	efd = -1;
 static SSL_CTX	*ssl_ctx = NULL;
 
+static int	kore_socket_nonblock(int);
 static int	kore_server_sslstart(void);
-static int	kore_server_bind(struct listener *, const char *, int);
+static void	kore_event(int, int, void *);
 static int	kore_server_accept(struct listener *);
 static int	kore_connection_handle(struct connection *, int);
-static int	kore_socket_nonblock(int);
-static void	kore_event(int, int, void *);
-static int	kore_ssl_npn_cb(SSL *, const unsigned char **,
-		    unsigned int *, void *);
+static int	kore_server_bind(struct listener *, const char *, int);
+static int	kore_ssl_npn_cb(SSL *, const u_char **, unsigned int *, void *);
 
 int
 main(int argc, char *argv[])
@@ -188,7 +187,9 @@ kore_server_accept(struct listener *l)
 
 	c->owner = l;
 	c->ssl = NULL;
+	c->proto = CONN_PROTO_UNKNOWN;
 	c->state = CONN_STATE_SSL_SHAKE;
+
 	TAILQ_INIT(&(c->send_queue));
 	TAILQ_INIT(&(c->recv_queue));
 	kore_event(c->fd, EPOLLIN | EPOLLET, c);
@@ -200,7 +201,9 @@ kore_server_accept(struct listener *l)
 static int
 kore_connection_handle(struct connection *c, int flags)
 {
-	int		r;
+	int			r;
+	u_int32_t		len;
+	const u_char		*data;
 
 	switch (c->state) {
 	case CONN_STATE_SSL_SHAKE:
@@ -231,6 +234,16 @@ kore_connection_handle(struct connection *c, int flags)
 		if (r != X509_V_OK) {
 			kore_log("SSL_get_verify_result(): %s", ssl_errno_s);
 			return (KORE_RESULT_ERROR);
+		}
+
+		SSL_get0_next_proto_negotiated(c->ssl, &data, &len);
+		if (data) {
+			if (!memcmp(data, "spdy/3", 6))
+				kore_log("using SPDY/3");
+			c->proto = CONN_PROTO_SPDY;
+		} else {
+			kore_log("using HTTP/1.1");
+			c->proto = CONN_PROTO_HTTP;
 		}
 
 		c->state = CONN_STATE_ESTABLISHED;
@@ -277,8 +290,7 @@ kore_event(int fd, int flags, void *udata)
 }
 
 static int
-kore_ssl_npn_cb(SSL *ssl, const unsigned char **data,
-    unsigned int *len, void *arg)
+kore_ssl_npn_cb(SSL *ssl, const u_char **data, unsigned int *len, void *arg)
 {
 	kore_log("npn callback: sending protocols");
 

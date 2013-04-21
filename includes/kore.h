@@ -46,9 +46,14 @@ struct listener {
 #define CONN_STATE_SSL_SHAKE	1
 #define CONN_STATE_ESTABLISHED	2
 
+#define CONN_PROTO_UNKNOWN	0
+#define CONN_PROTO_SPDY		1
+#define CONN_PROTO_HTTP		2
+
 struct connection {
 	int			fd;
 	int			state;
+	int			proto;
 	struct sockaddr_in	sin;
 	void			*owner;
 	SSL			*ssl;
