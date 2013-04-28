@@ -32,6 +32,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "spdy.h"
 #include "kore.h"
 
 void *

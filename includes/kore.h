@@ -28,9 +28,9 @@
 #define KORE_SSL_PROTO_STRING	"\x06spdy/3\x08http/1.1"
 
 struct netbuf {
-	u_int8_t		*data;
+	u_int8_t		*buf;
 	u_int32_t		offset;
-	u_int32_t		length;
+	u_int32_t		len;
 	void			*owner;
 	int			(*cb)(struct netbuf *);
 
@@ -58,6 +58,8 @@ struct connection {
 	void			*owner;
 	SSL			*ssl;
 
+	struct spdy_frame	spdy_cur_frame;
+
 	TAILQ_HEAD(, netbuf)	send_queue;
 	TAILQ_HEAD(, netbuf)	recv_queue;
 };
@@ -69,5 +71,14 @@ char		*kore_strdup(const char *);
 
 void		fatal(const char *, ...);
 void		kore_log_internal(char *, int, const char *, ...);
+
+int		net_recv(struct connection *);
+int		net_send(struct connection *);
+void		net_recv_queue(struct connection *, size_t,
+		    int (*cb)(struct netbuf *));
+void		net_send_queue(struct connection *, u_int8_t *, size_t,
+		    int (*cb)(struct netbuf *));
+
+int		spdy_frame_recv(struct netbuf *);
 
 #endif /* !__H_KORE_H */

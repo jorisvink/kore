@@ -3,7 +3,7 @@
 CC=gcc
 BIN=kore
 
-S_SRC=	src/kore.c src/utils.c
+S_SRC=	src/kore.c src/net.c src/spdy.c src/utils.c
 S_OBJS=	$(S_SRC:.c=.o)
 
 CFLAGS+=-I/usr/local/ssl/include

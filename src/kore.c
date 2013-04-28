@@ -33,6 +33,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "spdy.h"
 #include "kore.h"
 
 #define EPOLL_EVENTS	500
@@ -44,6 +45,7 @@ static int	kore_socket_nonblock(int);
 static int	kore_server_sslstart(void);
 static void	kore_event(int, int, void *);
 static int	kore_server_accept(struct listener *);
+static void	kore_server_disconnect(struct connection *);
 static int	kore_connection_handle(struct connection *, int);
 static int	kore_server_bind(struct listener *, const char *, int);
 static int	kore_ssl_npn_cb(SSL *, const u_char **, unsigned int *, void *);
@@ -70,10 +72,12 @@ main(int argc, char *argv[])
 	kore_event(server.fd, EPOLLIN, &server);
 	events = kore_calloc(EPOLL_EVENTS, sizeof(struct epoll_event));
 	for (;;) {
+		kore_log("main(): epoll_wait()");
 		n = epoll_wait(efd, events, EPOLL_EVENTS, -1);
 		if (n == -1)
 			fatal("epoll_wait(): %s", errno_s);
 
+		kore_log("main(): %d sockets available", n);
 		for (i = 0; i < n; i++) {
 			fd = (int *)events[i].data.ptr;
 
@@ -83,6 +87,7 @@ main(int argc, char *argv[])
 					fatal("error on server socket");
 
 				c = (struct connection *)events[i].data.ptr;
+				kore_server_disconnect(c);
 				continue;
 			}
 
@@ -92,7 +97,7 @@ main(int argc, char *argv[])
 				c = (struct connection *)events[i].data.ptr;
 				if (!kore_connection_handle(c,
 				    events[i].events))
-					/* Disconnect. */;
+					kore_server_disconnect(c);
 			}
 		}
 	}
@@ -104,6 +109,8 @@ main(int argc, char *argv[])
 static int
 kore_server_sslstart(void)
 {
+	kore_log("kore_server_sslstart()");
+
 	SSL_library_init();
 	SSL_load_error_strings();
 	ssl_ctx = SSL_CTX_new(SSLv23_server_method());
@@ -135,6 +142,8 @@ kore_server_sslstart(void)
 static int
 kore_server_bind(struct listener *l, const char *ip, int port)
 {
+	kore_log("kore_server_bind(%p, %s, %d)", l, ip, port);
+
 	if ((l->fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
 		kore_log("socket(): %s", errno_s);
 		return (KORE_RESULT_ERROR);
@@ -171,6 +180,8 @@ kore_server_accept(struct listener *l)
 	socklen_t		len;
 	struct connection	*c;
 
+	kore_log("kore_server_accept(%p)", l);
+
 	len = sizeof(struct sockaddr_in);
 	c = (struct connection *)kore_malloc(sizeof(*c));
 	if ((c->fd = accept(l->fd, (struct sockaddr *)&(c->sin), &len)) == -1) {
@@ -198,12 +209,43 @@ kore_server_accept(struct listener *l)
 	return (KORE_RESULT_OK);
 }
 
+static void
+kore_server_disconnect(struct connection *c)
+{
+	struct netbuf		*nb, *next;
+
+	kore_log("kore_server_disconnect(%p)", c);
+
+	close(c->fd);
+	if (c->ssl != NULL)
+		SSL_free(c->ssl);
+
+	for (nb = TAILQ_FIRST(&(c->send_queue)); nb != NULL; nb = next) {
+		next = TAILQ_NEXT(nb, list);
+		TAILQ_REMOVE(&(c->send_queue), nb, list);
+		free(nb->buf);
+		free(nb);
+	}
+
+	for (nb = TAILQ_FIRST(&(c->recv_queue)); nb != NULL; nb = next) {
+		next = TAILQ_NEXT(nb, list);
+		TAILQ_REMOVE(&(c->recv_queue), nb, list);
+		free(nb->buf);
+		free(nb);
+	}
+
+	kore_log("disconnect connection from %s", inet_ntoa(c->sin.sin_addr));
+	free(c);
+}
+
 static int
 kore_connection_handle(struct connection *c, int flags)
 {
 	int			r;
 	u_int32_t		len;
 	const u_char		*data;
+
+	kore_log("kore_connection_handle(%p, %d)", c, flags);
 
 	switch (c->state) {
 	case CONN_STATE_SSL_SHAKE:
@@ -222,7 +264,10 @@ kore_connection_handle(struct connection *c, int flags)
 			r = SSL_get_error(c->ssl, r);
 			switch (r) {
 			case SSL_ERROR_WANT_READ:
+				kore_log("ssl_want_read on handshake");
+				return (KORE_RESULT_OK);
 			case SSL_ERROR_WANT_WRITE:
+				kore_log("ssl_want_write on handshake");
 				return (KORE_RESULT_OK);
 			default:
 				kore_log("SSL_accept(): %s", ssl_errno_s);
@@ -241,6 +286,7 @@ kore_connection_handle(struct connection *c, int flags)
 			if (!memcmp(data, "spdy/3", 6))
 				kore_log("using SPDY/3");
 			c->proto = CONN_PROTO_SPDY;
+			net_recv_queue(c, SPDY_FRAME_SIZE, spdy_frame_recv);
 		} else {
 			kore_log("using HTTP/1.1");
 			c->proto = CONN_PROTO_HTTP;
@@ -249,7 +295,12 @@ kore_connection_handle(struct connection *c, int flags)
 		c->state = CONN_STATE_ESTABLISHED;
 		break;
 	case CONN_STATE_ESTABLISHED:
-		kore_log("got bytes on established");
+		if (flags & EPOLLIN) {
+			if (!net_recv(c))
+				return (KORE_RESULT_ERROR);
+		} else {
+			kore_log("got unhandled client event");
+		}
 		break;
 	default:
 		kore_log("unknown state on %d (%d)", c->fd, c->state);
@@ -263,6 +314,8 @@ static int
 kore_socket_nonblock(int fd)
 {
 	int		flags;
+
+	kore_log("kore_socket_nonblock(%d)", fd);
 
 	if ((flags = fcntl(fd, F_GETFL, 0)) == -1) {
 		kore_log("fcntl(): F_GETFL %s", errno_s);
@@ -278,24 +331,32 @@ kore_socket_nonblock(int fd)
 	return (KORE_RESULT_OK);
 }
 
-static void
-kore_event(int fd, int flags, void *udata)
-{
-	struct epoll_event	evt;
-
-	evt.events = flags;
-	evt.data.ptr = udata;
-	if (epoll_ctl(efd, EPOLL_CTL_ADD, fd, &evt) == -1)
-		fatal("epoll_ctl(): %s", errno_s);
-}
-
 static int
 kore_ssl_npn_cb(SSL *ssl, const u_char **data, unsigned int *len, void *arg)
 {
-	kore_log("npn callback: sending protocols");
+	kore_log("kore_ssl_npn_cb(): sending protocols");
 
 	*data = (const unsigned char *)KORE_SSL_PROTO_STRING;
 	*len = strlen(KORE_SSL_PROTO_STRING);
 
 	return (SSL_TLSEXT_ERR_OK);
+}
+
+static void
+kore_event(int fd, int flags, void *udata)
+{
+	struct epoll_event	evt;
+
+	kore_log("kore_event(%d, %d, %p)", fd, flags, udata);
+
+	evt.events = flags;
+	evt.data.ptr = udata;
+	if (epoll_ctl(efd, EPOLL_CTL_ADD, fd, &evt) == -1) {
+		if (errno == EEXIST) {
+			if (epoll_ctl(efd, EPOLL_CTL_MOD, fd, &evt) == -1)
+				fatal("epoll_ctl() MOD: %s", errno_s);
+		} else {
+			fatal("epoll_ctl() ADD: %s", errno_s);
+		}
+	}
 }
