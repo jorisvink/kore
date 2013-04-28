@@ -286,7 +286,9 @@ kore_connection_handle(struct connection *c, int flags)
 			if (!memcmp(data, "spdy/3", 6))
 				kore_log("using SPDY/3");
 			c->proto = CONN_PROTO_SPDY;
-			net_recv_queue(c, SPDY_FRAME_SIZE, spdy_frame_recv);
+			if (!net_recv_queue(c,
+			    SPDY_FRAME_SIZE, spdy_frame_recv))
+				return (KORE_RESULT_ERROR);
 		} else {
 			kore_log("using HTTP/1.1");
 			c->proto = CONN_PROTO_HTTP;

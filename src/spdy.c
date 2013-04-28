@@ -34,6 +34,7 @@
 
 #include "spdy.h"
 #include "kore.h"
+
 static int		spdy_ctrl_frame_syn_stream(struct netbuf *);
 static int		spdy_ctrl_frame_settings(struct netbuf *);
 
@@ -41,14 +42,13 @@ int
 spdy_frame_recv(struct netbuf *nb)
 {
 	struct spdy_ctrl_frame	*ctrl;
-	int			(*cb)(struct netbuf *);
+	int			(*cb)(struct netbuf *), r;
 	struct connection	*c = (struct connection *)nb->owner;
 	struct spdy_frame	*frame = (struct spdy_frame *)nb->buf;
 
 	frame->frame_1 = ntohl(frame->frame_1);
 	frame->frame_2 = ntohl(frame->frame_2);
 
-	c->spdy_cur_frame = *frame;
 	if (SPDY_CONTROL_FRAME(frame)) {
 		kore_log("received control frame");
 
@@ -70,20 +70,39 @@ spdy_frame_recv(struct netbuf *nb)
 		}
 
 		if (cb != NULL) {
-			net_recv_queue(c, ctrl->length, cb);
+			r = net_recv_expand(c, nb, ctrl->length, cb);
 		} else {
 			kore_log("no callback for type %d", ctrl->type);
+			r = KORE_RESULT_ERROR;
 		}
 	} else {
+		r = KORE_RESULT_OK;
 		kore_log("received data frame");
 	}
 
-	return (KORE_RESULT_OK);
+	return (r);
 }
 
 static int
 spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 {
+	u_int16_t			*b;
+	struct spdy_ctrl_frame		*ctrl;
+	struct spdy_syn_stream		*syn;
+
+	ctrl = (struct spdy_ctrl_frame *)nb->buf;
+	syn = (struct spdy_syn_stream *)(nb->buf + SPDY_FRAME_SIZE);
+
+	syn->stream_id = ntohl(syn->stream_id);
+	syn->assoc_stream_id = ntohl(syn->assoc_stream_id);
+	b = (u_int16_t *)&(syn->slot);
+	*b = ntohl(*b);
+
+	kore_log("stream id is %d", syn->stream_id);
+	kore_log("assoc stream id is %d", syn->assoc_stream_id);
+	kore_log("slot is %d", syn->slot);
+	kore_log("priority is %d", syn->prio);
+
 	kore_log("-- SPDY_SYN_STREAM");
 	return (KORE_RESULT_OK);
 }
@@ -91,10 +110,11 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 static int
 spdy_ctrl_frame_settings(struct netbuf *nb)
 {
+	int			r;
 	struct connection	*c = (struct connection *)nb->owner;
 
 	kore_log("-- SPDY_SETTINGS");
-	net_recv_queue(c, SPDY_FRAME_SIZE, spdy_frame_recv);
+	r = net_recv_queue(c, SPDY_FRAME_SIZE, spdy_frame_recv);
 
-	return (KORE_RESULT_OK);
+	return (r);
 }

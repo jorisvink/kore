@@ -54,7 +54,7 @@ kore_realloc(void *ptr, size_t len)
 	if ((nptr = realloc(ptr, len)) == NULL)
 		fatal("kore_realloc(%p, %d): %d", ptr, len, errno);
 
-	return (ptr);
+	return (nptr);
 }
 
 void *

@@ -36,7 +36,7 @@
 #include "spdy.h"
 #include "kore.h"
 
-void
+int
 net_send_queue(struct connection *c, u_int8_t *data, size_t len,
     int (*cb)(struct netbuf *))
 {
@@ -49,14 +49,16 @@ net_send_queue(struct connection *c, u_int8_t *data, size_t len,
 	nb->len = len;
 	nb->owner = c;
 	nb->offset = 0;
+	nb->retain = 0;
+	nb->type = NETBUF_SEND;
 	nb->buf = (u_int8_t *)kore_malloc(nb->len);
 	memcpy(nb->buf, data, nb->len);
 
 	TAILQ_INSERT_TAIL(&(c->send_queue), nb, list);
-	net_send(c);
+	return (net_send(c));
 }
 
-void
+int
 net_recv_queue(struct connection *c, size_t len, int (*cb)(struct netbuf *))
 {
 	struct netbuf		*nb;
@@ -68,10 +70,31 @@ net_recv_queue(struct connection *c, size_t len, int (*cb)(struct netbuf *))
 	nb->len = len;
 	nb->owner = c;
 	nb->offset = 0;
+	nb->retain = 0;
+	nb->type = NETBUF_RECV;
 	nb->buf = (u_int8_t *)kore_malloc(nb->len);
 
 	TAILQ_INSERT_TAIL(&(c->recv_queue), nb, list);
-	net_recv(c);
+	return (net_recv(c));
+}
+
+int
+net_recv_expand(struct connection *c, struct netbuf *nb, size_t len,
+    int (*cb)(struct netbuf *))
+{
+	kore_log("net_recv_expand(%p, %p, %d, %p)", c, nb, len, cb);
+
+	if (nb->type != NETBUF_RECV) {
+		kore_log("net_recv_expand(): wrong netbuf type");
+		return (KORE_RESULT_ERROR);
+	}
+
+	nb->cb = cb;
+	nb->len += len;
+	nb->buf = (u_int8_t *)kore_realloc(nb->buf, nb->len);
+	TAILQ_INSERT_HEAD(&(c->recv_queue), nb, list);
+
+	return (net_recv(c));
 }
 
 int
@@ -87,7 +110,6 @@ net_send(struct connection *c)
 
 	nb = TAILQ_FIRST(&(c->send_queue));
 	r = SSL_write(c->ssl, (nb->buf + nb->offset), (nb->len - nb->offset));
-	kore_log("SSL_write(): %d bytes", r);
 	if (r <= 0) {
 		r = SSL_get_error(c->ssl, r);
 		switch (r) {
@@ -159,10 +181,15 @@ net_recv(struct connection *c)
 			return (KORE_RESULT_ERROR);
 		}
 
+		nb->retain++;
 		TAILQ_REMOVE(&(c->recv_queue), nb, list);
 		r = nb->cb(nb);
-		free(nb->buf);
-		free(nb);
+		nb->retain--;
+
+		if (nb->retain == 0) {
+			free(nb->buf);
+			free(nb);
+		}
 	} else {
 		r = KORE_RESULT_OK;
 	}

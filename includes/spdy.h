@@ -17,6 +17,8 @@
 #ifndef __H_SPDY_H
 #define __H_SPDY_H
 
+#define KORE_SSL_PROTO_STRING	"\x06spdy/3\x08http/1.1"
+
 struct spdy_frame {
 	u_int32_t	frame_1;
 	u_int32_t	frame_2;
@@ -37,11 +39,23 @@ struct spdy_data_frame {
 	int		flags:8;
 };
 
+struct spdy_syn_stream {
+	u_int32_t	stream_id;
+	u_int32_t	assoc_stream_id;
+	u_int8_t	slot;
+	int		reserved:5;
+	int		prio:3;
+};
+
 #define SPDY_CONTROL_FRAME(x)		((x->frame_1 & (1 << 31)))
 #define SPDY_FRAME_SIZE			8
 
 /* control frames. */
 #define SPDY_CTRL_FRAME_SYN_STREAM	1
 #define SPDY_CTRL_FRAME_SETTINGS	4
+
+/* flags. */
+#define FLAG_FIN			0x01
+#define FLAG_UNIDIRECTIONAL		0x02
 
 #endif /* !__H_SPDY_H */

@@ -25,12 +25,16 @@
 #define kore_log(fmt, ...)	\
 	kore_log_internal(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
 
-#define KORE_SSL_PROTO_STRING	"\x06spdy/3\x08http/1.1"
+#define NETBUF_RECV		0
+#define NETBUF_SEND		1
 
 struct netbuf {
 	u_int8_t		*buf;
 	u_int32_t		offset;
 	u_int32_t		len;
+	u_int8_t		type;
+	u_int8_t		retain;
+
 	void			*owner;
 	int			(*cb)(struct netbuf *);
 
@@ -58,8 +62,6 @@ struct connection {
 	void			*owner;
 	SSL			*ssl;
 
-	struct spdy_frame	spdy_cur_frame;
-
 	TAILQ_HEAD(, netbuf)	send_queue;
 	TAILQ_HEAD(, netbuf)	recv_queue;
 };
@@ -74,9 +76,11 @@ void		kore_log_internal(char *, int, const char *, ...);
 
 int		net_recv(struct connection *);
 int		net_send(struct connection *);
-void		net_recv_queue(struct connection *, size_t,
+int		net_recv_queue(struct connection *, size_t,
 		    int (*cb)(struct netbuf *));
-void		net_send_queue(struct connection *, u_int8_t *, size_t,
+int		net_recv_expand(struct connection *c, struct netbuf *, size_t,
+		    int (*cb)(struct netbuf *));
+int		net_send_queue(struct connection *, u_int8_t *, size_t,
 		    int (*cb)(struct netbuf *));
 
 int		spdy_frame_recv(struct netbuf *);
