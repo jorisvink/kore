@@ -186,7 +186,7 @@ net_recv(struct connection *c)
 		r = nb->cb(nb);
 		nb->retain--;
 
-		if (nb->retain == 0) {
+		if (nb->retain == 0 && nb->offset == nb->len) {
 			free(nb->buf);
 			free(nb);
 		}
