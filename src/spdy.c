@@ -31,6 +31,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <zlib.h>
 
 #include "spdy.h"
 #include "kore.h"
@@ -83,12 +84,31 @@ spdy_frame_recv(struct netbuf *nb)
 	return (r);
 }
 
+struct spdy_stream *
+spdy_stream_lookup(struct connection *c, u_int32_t id)
+{
+	struct spdy_stream	*s;
+
+	TAILQ_FOREACH(s, &(c->spdy_streams), list) {
+		if (s->stream_id == id)
+			return (s);
+	}
+
+	return (NULL);
+}
+
 static int
 spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 {
 	u_int16_t			*b;
-	struct spdy_ctrl_frame		*ctrl;
+	struct spdy_stream		*s;
+	z_stream			zlib;
 	struct spdy_syn_stream		*syn;
+	size_t				have;
+	struct spdy_ctrl_frame		*ctrl;
+	int				r, len;
+	u_char				inflate_buffer[SPDY_ZLIB_CHUNK];
+	struct connection		*c = (struct connection *)nb->owner;
 
 	ctrl = (struct spdy_ctrl_frame *)nb->buf;
 	syn = (struct spdy_syn_stream *)(nb->buf + SPDY_FRAME_SIZE);
@@ -98,12 +118,84 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 	b = (u_int16_t *)&(syn->slot);
 	*b = ntohl(*b);
 
-	kore_log("stream id is %d", syn->stream_id);
-	kore_log("assoc stream id is %d", syn->assoc_stream_id);
-	kore_log("slot is %d", syn->slot);
-	kore_log("priority is %d", syn->prio);
+	if ((syn->stream_id % 2) == 0 || syn->stream_id == 0) {
+		kore_log("client sent incorrect id for SPDY_SYN_STREAM (%d)",
+		    syn->stream_id);
+		return (KORE_RESULT_ERROR);
+	}
 
-	kore_log("-- SPDY_SYN_STREAM");
+	if ((s = spdy_stream_lookup(c, syn->stream_id)) != NULL) {
+		kore_log("duplicate SPDY_SYN_STREAM (%d)", syn->stream_id);
+		return (KORE_RESULT_ERROR);
+	}
+
+	kore_log("compressed headers are %d bytes long", ctrl->length - 10);
+	zlib.avail_in = 0;
+	zlib.next_in = Z_NULL;
+	zlib.zalloc = Z_NULL;
+	zlib.zfree = Z_NULL;
+	if ((r = inflateInit(&zlib)) != Z_OK) {
+		kore_log("inflateInit() failed: %d", r);
+		return (KORE_RESULT_ERROR);
+	}
+
+	s = (struct spdy_stream *)kore_malloc(sizeof(*s));
+	s->prio = syn->prio;
+	s->flags = ctrl->flags;
+	s->stream_id = syn->stream_id;
+	s->header_block_len = ctrl->length;
+	s->header_block = (u_int8_t *)kore_malloc(ctrl->length);
+
+	have = 0;
+	len = ctrl->length - 10;
+	do {
+		if (len > SPDY_ZLIB_CHUNK) {
+			zlib.avail_in = SPDY_ZLIB_CHUNK;
+			len -= SPDY_ZLIB_CHUNK;
+		} else {
+			zlib.avail_in = len;
+			len = 0;
+		}
+
+		if (zlib.avail_in == 0)
+			break;
+
+		zlib.next_in = (u_char *)(syn + sizeof(struct spdy_syn_stream));
+		do {
+			zlib.avail_out = SPDY_ZLIB_CHUNK;
+			zlib.next_out = inflate_buffer;
+
+			r = inflate(&zlib, Z_SYNC_FLUSH);
+			switch (r) {
+			case Z_NEED_DICT:
+				kore_log("I need a dict");
+				break;
+			case Z_DATA_ERROR:
+			case Z_MEM_ERROR:
+				inflateEnd(&zlib);
+				free(s->header_block);
+				free(s);
+				kore_log("inflate(): %d", r);
+				return (KORE_RESULT_ERROR);
+			}
+
+			have += SPDY_ZLIB_CHUNK - zlib.avail_out;
+			if (have > s->header_block_len) {
+				s->header_block_len += ctrl->length;
+				s->header_block =
+				    (u_int8_t *)kore_realloc(s->header_block,
+				    s->header_block_len);
+			}
+
+			memcpy((s->header_block + have), inflate_buffer,
+			    SPDY_ZLIB_CHUNK - zlib.avail_out);
+		} while (zlib.avail_out == 0);
+	} while (r != Z_STREAM_END);
+
+	inflateEnd(&zlib);
+	TAILQ_INSERT_TAIL(&(c->spdy_streams), s, list);
+
+	kore_log("SPDY_SYN_STREAM: %d:%d:%d", s->stream_id, s->flags, s->prio);
 	return (KORE_RESULT_OK);
 }
 
@@ -113,7 +205,7 @@ spdy_ctrl_frame_settings(struct netbuf *nb)
 	int			r;
 	struct connection	*c = (struct connection *)nb->owner;
 
-	kore_log("-- SPDY_SETTINGS");
+	kore_log("SPDY_SETTINGS");
 	r = net_recv_queue(c, SPDY_FRAME_SIZE, spdy_frame_recv);
 
 	return (r);

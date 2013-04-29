@@ -203,6 +203,7 @@ kore_server_accept(struct listener *l)
 
 	TAILQ_INIT(&(c->send_queue));
 	TAILQ_INIT(&(c->recv_queue));
+	TAILQ_INIT(&(c->spdy_streams));;
 	kore_event(c->fd, EPOLLIN | EPOLLET, c);
 	kore_log("new connection from %s", inet_ntoa(c->sin.sin_addr));
 

@@ -47,8 +47,20 @@ struct spdy_syn_stream {
 	int		prio:3;
 };
 
+struct spdy_stream {
+	u_int32_t	stream_id;
+	u_int8_t	flags;
+	u_int8_t	prio;
+
+	u_int8_t	*header_block;
+	u_int32_t	header_block_len;
+
+	TAILQ_ENTRY(spdy_stream)	list;
+};
+
 #define SPDY_CONTROL_FRAME(x)		((x->frame_1 & (1 << 31)))
 #define SPDY_FRAME_SIZE			8
+#define SPDY_ZLIB_CHUNK			16348
 
 /* control frames. */
 #define SPDY_CTRL_FRAME_SYN_STREAM	1

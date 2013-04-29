@@ -64,6 +64,8 @@ struct connection {
 
 	TAILQ_HEAD(, netbuf)	send_queue;
 	TAILQ_HEAD(, netbuf)	recv_queue;
+
+	TAILQ_HEAD(, spdy_stream)	spdy_streams;
 };
 
 void		*kore_malloc(size_t);
@@ -83,6 +85,7 @@ int		net_recv_expand(struct connection *c, struct netbuf *, size_t,
 int		net_send_queue(struct connection *, u_int8_t *, size_t,
 		    int (*cb)(struct netbuf *));
 
-int		spdy_frame_recv(struct netbuf *);
+int			spdy_frame_recv(struct netbuf *);
+struct spdy_stream	*spdy_stream_lookup(struct connection *, u_int32_t);
 
 #endif /* !__H_KORE_H */
