@@ -17,34 +17,25 @@
 #ifndef __H_SPDY_H
 #define __H_SPDY_H
 
-#define KORE_SSL_PROTO_STRING	"\x06spdy/3\x08http/1.1"
-
-struct spdy_frame {
-	u_int32_t	frame_1;
-	u_int32_t	frame_2;
-};
-
 struct spdy_ctrl_frame {
-	int		type:16;
-	int		version:15;
-	int		control_bit:1;
-	int		length:24;
-	int		flags:8;
+	u_int16_t	version;
+	u_int16_t	type;
+	u_int8_t	flags;
+	u_int32_t	length;
 };
 
 struct spdy_data_frame {
-	int		stream_id:31;
-	int		control_bit:1;
-	int		length:24;
-	int		flags:8;
+	u_int32_t	stream_id;
+	u_int8_t	flags;
+	u_int32_t	length;
 };
 
 struct spdy_syn_stream {
 	u_int32_t	stream_id;
 	u_int32_t	assoc_stream_id;
 	u_int8_t	slot;
-	int		reserved:5;
-	int		prio:3;
+	u_int8_t	reserved;
+	u_int8_t	prio;
 };
 
 struct spdy_stream {
@@ -54,19 +45,26 @@ struct spdy_stream {
 
 	u_int8_t	*header_block;
 	u_int32_t	header_block_len;
+	u_int32_t	header_pairs;
 
 	TAILQ_ENTRY(spdy_stream)	list;
 };
 
-#define SPDY_CONTROL_FRAME(x)		((x->frame_1 & (1 << 31)))
+extern const unsigned char SPDY_dictionary_txt[];
+
+#define KORE_SSL_PROTO_STRING		"\x06spdy/3\x08http/1.1"
+#define SPDY_CONTROL_FRAME(x)		((x & (1 << 31)))
+
 #define SPDY_FRAME_SIZE			8
+#define SPDY_SYNFRAME_SIZE		10
+#define SPDY_ZLIB_DICT_SIZE		1423
 #define SPDY_ZLIB_CHUNK			16348
 
-/* control frames. */
+/* control frames */
 #define SPDY_CTRL_FRAME_SYN_STREAM	1
 #define SPDY_CTRL_FRAME_SETTINGS	4
 
-/* flags. */
+/* flags */
 #define FLAG_FIN			0x01
 #define FLAG_UNIDIRECTIONAL		0x02
 

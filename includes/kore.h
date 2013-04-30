@@ -72,10 +72,13 @@ void		*kore_malloc(size_t);
 void		*kore_calloc(size_t, size_t);
 void		*kore_realloc(void *, size_t);
 char		*kore_strdup(const char *);
+void		kore_strlcpy(char *, const char *, size_t);
 
 void		fatal(const char *, ...);
 void		kore_log_internal(char *, int, const char *, ...);
 
+u_int16_t	net_read16(u_int8_t *);
+u_int32_t	net_read32(u_int8_t *);
 int		net_recv(struct connection *);
 int		net_send(struct connection *);
 int		net_recv_queue(struct connection *, size_t,
@@ -84,6 +87,9 @@ int		net_recv_expand(struct connection *c, struct netbuf *, size_t,
 		    int (*cb)(struct netbuf *));
 int		net_send_queue(struct connection *, u_int8_t *, size_t,
 		    int (*cb)(struct netbuf *));
+
+int		http_new_request(struct connection *, struct spdy_stream *,
+		    char *, char *, char *);
 
 int			spdy_frame_recv(struct netbuf *);
 struct spdy_stream	*spdy_stream_lookup(struct connection *, u_int32_t);

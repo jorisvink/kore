@@ -196,3 +196,21 @@ net_recv(struct connection *c)
 
 	return (r);
 }
+
+u_int16_t
+net_read16(u_int8_t *b)
+{
+	u_int16_t	r;
+
+	r = *(u_int16_t *)b;
+	return (ntohs(r));
+}
+
+u_int32_t
+net_read32(u_int8_t *b)
+{
+	u_int32_t	r;
+
+	r = *(u_int32_t *)b;
+	return (ntohl(r));
+}
