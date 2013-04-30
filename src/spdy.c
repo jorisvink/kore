@@ -157,11 +157,21 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 	s->header_pairs = net_read32(s->header_block);
 	kore_log("got %d headers", s->header_pairs);
 
+	path = NULL;
+	host = NULL;
+	method = NULL;
+
 #define GET_HEADER(n, r)				\
-	if (!spdy_stream_get_header(s, n, r)) {	\
+	if (!spdy_stream_get_header(s, n, r)) {		\
 		free(s->header_block);			\
 		free(s);				\
 		kore_log("no such header: %s", n);	\
+		if (path != NULL)			\
+			free(path);			\
+		if (host != NULL)			\
+			free(host);			\
+		if (method != NULL)			\
+			free(method);			\
 		return (KORE_RESULT_ERROR);		\
 	}
 
