@@ -103,7 +103,7 @@ spdy_frame_recv(struct netbuf *nb)
 	}
 
 	if (r == KORE_RESULT_OK)
-		r = net_recv_queue(c, SPDY_FRAME_SIZE, spdy_frame_recv);
+		r = net_recv_queue(c, SPDY_FRAME_SIZE, NULL, spdy_frame_recv);
 
 	return (r);
 }
@@ -146,7 +146,7 @@ spdy_frame_send(struct connection *c, u_int16_t type, u_int8_t flags,
 		break;
 	}
 
-	return (net_send_queue(c, nb, length, NULL));
+	return (net_send_queue(c, nb, length, NULL, NULL));
 }
 
 struct spdy_stream *

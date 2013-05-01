@@ -87,7 +87,7 @@ http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 
 	kore_log("http_response(%p, %d, %p, %d)", req, status, d, len);
 
-	if (req->stream != NULL) {
+	if (req->owner->proto == CONN_PROTO_SPDY) {
 		snprintf(sbuf, sizeof(sbuf), "%d", status);
 		hblock = spdy_header_block_create(SPDY_HBLOCK_NORMAL);
 		spdy_header_block_add(hblock, ":status", sbuf);
@@ -101,14 +101,14 @@ http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 		    0, hlen, req->stream->stream_id))
 			return (KORE_RESULT_ERROR);
 
-		if (!net_send_queue(req->owner, htext, hlen, NULL))
+		if (!net_send_queue(req->owner, htext, hlen, NULL, NULL))
 			return (KORE_RESULT_ERROR);
 
 		if (len > 0) {
 			if (!spdy_frame_send(req->owner, SPDY_DATA_FRAME,
 			    0, len, req->stream->stream_id))
 				return (KORE_RESULT_ERROR);
-			if (!net_send_queue(req->owner, d, len, NULL))
+			if (!net_send_queue(req->owner, d, len, NULL, NULL))
 				return (KORE_RESULT_ERROR);
 		}
 
@@ -143,6 +143,7 @@ http_process(void)
 				kore_server_disconnect(req->owner);
 		}
 
+		net_send_flush(req->owner);
 		TAILQ_REMOVE(&http_requests, req, list);
 		http_request_free(req);
 	}

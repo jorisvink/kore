@@ -54,6 +54,9 @@ struct listener {
 #define CONN_PROTO_SPDY		1
 #define CONN_PROTO_HTTP		2
 
+#define CONN_READ_POSSIBLE	0x01
+#define CONN_WRITE_POSSIBLE	0x02
+
 struct connection {
 	int			fd;
 	int			state;
@@ -61,6 +64,7 @@ struct connection {
 	struct sockaddr_in	sin;
 	void			*owner;
 	SSL			*ssl;
+	int			flags;
 
 	u_int8_t		inflate_started;
 	z_stream		z_inflate;
@@ -90,12 +94,14 @@ void		net_write16(u_int8_t *, u_int16_t);
 void		net_write32(u_int8_t *, u_int32_t);
 int		net_recv(struct connection *);
 int		net_send(struct connection *);
+int		net_send_flush(struct connection *);
+int		net_recv_flush(struct connection *);
 int		net_recv_queue(struct connection *, size_t,
-		    int (*cb)(struct netbuf *));
+		    struct netbuf **, int (*cb)(struct netbuf *));
 int		net_recv_expand(struct connection *c, struct netbuf *, size_t,
 		    int (*cb)(struct netbuf *));
 int		net_send_queue(struct connection *, u_int8_t *, size_t,
-		    int (*cb)(struct netbuf *));
+		    struct netbuf **, int (*cb)(struct netbuf *));
 
 struct spdy_stream	*spdy_stream_lookup(struct connection *, u_int32_t);
 struct spdy_header_block	*spdy_header_block_create(int);

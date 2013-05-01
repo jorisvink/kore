@@ -205,13 +205,17 @@ kore_server_accept(struct listener *l)
 
 	c->owner = l;
 	c->ssl = NULL;
+	c->flags = 0;
+	c->inflate_started = 0;
+	c->deflate_started = 0;
+	c->client_stream_id = 0;
 	c->proto = CONN_PROTO_UNKNOWN;
 	c->state = CONN_STATE_SSL_SHAKE;
 
 	TAILQ_INIT(&(c->send_queue));
 	TAILQ_INIT(&(c->recv_queue));
 	TAILQ_INIT(&(c->spdy_streams));;
-	kore_event(c->fd, EPOLLIN | EPOLLET, c);
+	kore_event(c->fd, EPOLLIN | EPOLLOUT | EPOLLET, c);
 	kore_log("new connection from %s", inet_ntoa(c->sin.sin_addr));
 
 	return (KORE_RESULT_OK);
@@ -221,6 +225,7 @@ void
 kore_server_disconnect(struct connection *c)
 {
 	struct netbuf		*nb, *next;
+	struct spdy_stream	*s, *snext;
 
 	kore_log("kore_server_disconnect(%p)", c);
 
@@ -242,6 +247,19 @@ kore_server_disconnect(struct connection *c)
 		free(nb);
 	}
 
+	for (s = TAILQ_FIRST(&(c->spdy_streams)); s != NULL; s = snext) {
+		snext = TAILQ_NEXT(s, list);
+		TAILQ_REMOVE(&(c->spdy_streams), s, list);
+
+		if (s->hblock != NULL) {
+			if (s->hblock->header_block != NULL)
+				free(s->hblock->header_block);
+			free(s->hblock);
+		}
+
+		free(s);
+	}
+
 	kore_log("disconnect connection from %s", inet_ntoa(c->sin.sin_addr));
 	free(c);
 }
@@ -254,6 +272,11 @@ kore_connection_handle(struct connection *c, int flags)
 	const u_char		*data;
 
 	kore_log("kore_connection_handle(%p, %d)", c, flags);
+
+	if (flags & EPOLLIN)
+		c->flags |= CONN_READ_POSSIBLE;
+	if (flags & EPOLLOUT)
+		c->flags |= CONN_WRITE_POSSIBLE;
 
 	switch (c->state) {
 	case CONN_STATE_SSL_SHAKE:
@@ -272,10 +295,7 @@ kore_connection_handle(struct connection *c, int flags)
 			r = SSL_get_error(c->ssl, r);
 			switch (r) {
 			case SSL_ERROR_WANT_READ:
-				kore_log("ssl_want_read on handshake");
-				return (KORE_RESULT_OK);
 			case SSL_ERROR_WANT_WRITE:
-				kore_log("ssl_want_write on handshake");
 				return (KORE_RESULT_OK);
 			default:
 				kore_log("SSL_accept(): %s", ssl_errno_s);
@@ -294,8 +314,8 @@ kore_connection_handle(struct connection *c, int flags)
 			if (!memcmp(data, "spdy/3", 6))
 				kore_log("using SPDY/3");
 			c->proto = CONN_PROTO_SPDY;
-			if (!net_recv_queue(c,
-			    SPDY_FRAME_SIZE, spdy_frame_recv))
+			if (!net_recv_queue(c, SPDY_FRAME_SIZE,
+			    NULL, spdy_frame_recv))
 				return (KORE_RESULT_ERROR);
 		} else {
 			kore_log("using HTTP/1.1");
@@ -303,13 +323,16 @@ kore_connection_handle(struct connection *c, int flags)
 		}
 
 		c->state = CONN_STATE_ESTABLISHED;
-		break;
+		/* FALLTHROUGH */
 	case CONN_STATE_ESTABLISHED:
-		if (flags & EPOLLIN) {
-			if (!net_recv(c))
+		if (c->flags & CONN_READ_POSSIBLE) {
+			if (!net_recv_flush(c))
 				return (KORE_RESULT_ERROR);
-		} else {
-			kore_log("got unhandled client event");
+		}
+
+		if (c->flags & CONN_WRITE_POSSIBLE) {
+			if (!net_send_flush(c))
+				return (KORE_RESULT_ERROR);
 		}
 		break;
 	default:
