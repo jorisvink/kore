@@ -97,5 +97,12 @@ kore_module_handler_new(char *uri, char *func, int type)
 void *
 kore_module_handler_find(char *uri)
 {
+	struct kore_module_handle	*hdlr;
+
+	TAILQ_FOREACH(hdlr, &handlers, list) {
+		if (!strcmp(hdlr->uri, uri))
+			return (hdlr->func);
+	}
+
 	return (NULL);
 }
