@@ -60,7 +60,7 @@ kore_module_load(char *module_name)
 	mod_last_mtime = st.st_mtime;
 	mod_handle = dlopen(module_name, RTLD_NOW);
 	if (mod_handle == NULL)
-		fatal("dlopen(%s) failed", module_name);
+		fatal("%s", dlerror());
 
 	TAILQ_INIT(&handlers);
 }
