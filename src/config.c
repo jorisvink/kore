@@ -1,0 +1,156 @@
+/*
+ * Copyright (c) 2013 Joris Vink <joris@coders.se>
+ *
+ * Permission to use, copy, modify, and distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+
+#include <sys/param.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/queue.h>
+
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+#include <openssl/err.h>
+#include <openssl/ssl.h>
+
+#include <ctype.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <zlib.h>
+
+#include "spdy.h"
+#include "kore.h"
+
+static int			configure_bind(char **);
+static int			configure_load(char **);
+static int			configure_handler(char **);
+
+static struct {
+	const char		*name;
+	int			(*configure)(char **);
+} config_names[] = {
+	{ "bind",		configure_bind },
+	{ "load",		configure_load },
+	{ "static",		configure_handler },
+	{ "dynamic",		configure_handler },
+	{ NULL,			NULL },
+};
+
+void
+kore_parse_config(const char *config_path)
+{
+	FILE		*fp;
+	int		i, lineno;
+	char		buf[BUFSIZ], *p, *t, **ap, *argv[5];
+
+	if ((fp = fopen(config_path, "r")) == NULL)
+		fatal("configuration given cannot be opened: %s", config_path);
+
+	lineno = 1;
+	while (fgets(buf, sizeof(buf), fp) != NULL) {
+		p = buf;
+		buf[strcspn(buf, "\n")] = '\0';
+
+		while (isspace(*p))
+			p++;
+		if (p[0] == '#' || p[0] == '\0') {
+			lineno++;
+			continue;
+		}
+
+		for (t = p; *t != '\0'; t++) {
+			if (*t == '\t')
+				*t = ' ';
+		}
+
+		for (ap = argv; ap < &argv[4] &&
+		    (*ap = strsep(&p, " ")) != NULL;) {
+			if (**ap != '\0')
+				ap++;
+		}
+		*ap = NULL;
+
+		for (i = 0; config_names[i].name != NULL; i++) {
+			if (!strcmp(config_names[i].name, argv[0])) {
+				if (!config_names[i].configure(argv)) {
+					fatal("configuration error on line %d",
+					    lineno);
+				}
+				break;
+			}
+		}
+
+		lineno++;
+	}
+}
+
+static int
+configure_bind(char **argv)
+{
+	int		err;
+
+	if (argv[1] == NULL || argv[2] == NULL)
+		return (KORE_RESULT_ERROR);
+	if (server_ip != NULL || server_port != 0) {
+		kore_log("duplicate bind directive seen");
+		return (KORE_RESULT_ERROR);
+	}
+
+	server_ip = kore_strdup(argv[1]);
+	server_port = kore_strtonum(argv[2], 1, 65535, &err);
+	if (err != KORE_RESULT_OK) {
+		kore_log("%s is an invalid port number", argv[2]);
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_load(char **argv)
+{
+	if (argv[1] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	kore_module_load(argv[1]);
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_handler(char **argv)
+{
+	int		type;
+
+	if (argv[1] == NULL || argv[2] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	if (!strcmp(argv[0], "static"))
+		type = HANDLER_TYPE_STATIC;
+	else if (!strcmp(argv[0], "dynamic"))
+		type = HANDLER_TYPE_DYNAMIC;
+	else
+		return (KORE_RESULT_ERROR);
+
+	if (!kore_module_handler_new(argv[1], argv[2], type)) {
+		kore_log("cannot create handler for %s", argv[1]);
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
