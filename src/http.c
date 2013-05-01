@@ -49,12 +49,12 @@ http_init(void)
 }
 
 int
-http_new_request(struct connection *c, struct spdy_stream *s, char *host,
+http_request_new(struct connection *c, struct spdy_stream *s, char *host,
     char *method, char *path)
 {
 	struct http_request		*req;
 
-	kore_log("http_new_request(%p, %p, %s, %s, %s)", c, s,
+	kore_log("http_request_new(%p, %p, %s, %s, %s)", c, s,
 	    host, method, path);
 
 	req = (struct http_request *)kore_malloc(sizeof(*req));
@@ -63,14 +63,39 @@ http_new_request(struct connection *c, struct spdy_stream *s, char *host,
 	req->host = kore_strdup(host);
 	req->path = kore_strdup(path);
 	req->method = kore_strdup(method);
+	TAILQ_INIT(&(req->headers));
 	TAILQ_INSERT_TAIL(&http_requests, req, list);
 
 	return (KORE_RESULT_OK);
 }
 
 void
+http_response_header_add(struct http_request *req, char *header, char *value)
+{
+	struct http_header	*hdr;
+
+	kore_log("http_response_header_add(%p, %s, %s)", req, header, value);
+
+	hdr = (struct http_header *)kore_malloc(sizeof(*hdr));
+	hdr->header = kore_strdup(header);
+	hdr->value = kore_strdup(value);
+	TAILQ_INSERT_TAIL(&(req->headers), hdr, list);
+}
+
+void
 http_request_free(struct http_request *req)
 {
+	struct http_header	*hdr, *next;
+
+	for (hdr = TAILQ_FIRST(&(req->headers)); hdr != NULL; hdr = next) {
+		next = TAILQ_NEXT(hdr, list);
+
+		TAILQ_REMOVE(&(req->headers), hdr, list);
+		free(hdr->header);
+		free(hdr->value);
+		free(hdr);
+	}
+
 	free(req->method);
 	free(req->path);
 	free(req->host);
@@ -78,25 +103,25 @@ http_request_free(struct http_request *req)
 }
 
 int
-http_response(struct http_request *req, int status, u_int8_t *d,
-    u_int32_t len, char *content_type)
+http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 {
 	u_int32_t			hlen;
+	struct http_header		*hdr;
 	u_int8_t			*htext;
-	char				sbuf[4];
 	struct spdy_header_block	*hblock;
+	char				sbuf[4];
 
 	kore_log("http_response(%p, %d, %p, %d)", req, status, d, len);
 
 	if (req->owner->proto == CONN_PROTO_SPDY) {
 		snprintf(sbuf, sizeof(sbuf), "%d", status);
+
 		hblock = spdy_header_block_create(SPDY_HBLOCK_NORMAL);
 		spdy_header_block_add(hblock, ":status", sbuf);
 		spdy_header_block_add(hblock, ":version", "HTTP/1.1");
-		if (content_type != NULL) {
-			spdy_header_block_add(hblock,
-			    "content-type", content_type);
-		}
+		TAILQ_FOREACH(hdr, &(req->headers), list)
+			spdy_header_block_add(hblock, hdr->header, hdr->value);
+
 		htext = spdy_header_block_release(req->owner, hblock, &hlen);
 		if (htext == NULL)
 			return (KORE_RESULT_ERROR);
@@ -124,6 +149,21 @@ http_response(struct http_request *req, int status, u_int8_t *d,
 	}
 
 	return (KORE_RESULT_OK);
+}
+
+int
+http_request_header_get(struct http_request *req, char *header, char **out)
+{
+	int		r;
+
+	if (req->owner->proto == CONN_PROTO_SPDY) {
+		r = spdy_stream_get_header(req->stream->hblock, header, out);
+	} else {
+		kore_log("http not supported yet");
+		r = KORE_RESULT_ERROR;
+	}
+
+	return (r);
 }
 
 void
@@ -160,5 +200,5 @@ http_generic_404(struct http_request *req)
 	kore_log("http_generic_404(%s, %s, %s)",
 	    req->host, req->method, req->path);
 
-	return (http_response(req, 404, NULL, 0, NULL));
+	return (http_response(req, 404, NULL, 0));
 }

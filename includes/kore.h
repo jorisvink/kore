@@ -96,6 +96,7 @@ void		*kore_malloc(size_t);
 void		*kore_calloc(size_t, size_t);
 void		*kore_realloc(void *, size_t);
 time_t		kore_date_to_time(char *);
+char		*kore_time_to_date(time_t);
 char		*kore_strdup(const char *);
 void		kore_parse_config(const char *);
 void		kore_strlcpy(char *, const char *, size_t);
@@ -126,8 +127,10 @@ int		net_recv_expand(struct connection *c, struct netbuf *, size_t,
 int		net_send_queue(struct connection *, u_int8_t *, size_t,
 		    struct netbuf **, int (*cb)(struct netbuf *));
 
-struct spdy_stream	*spdy_stream_lookup(struct connection *, u_int32_t);
 struct spdy_header_block	*spdy_header_block_create(int);
+struct spdy_stream	*spdy_stream_lookup(struct connection *, u_int32_t);
+int			spdy_stream_get_header(struct spdy_header_block *,
+			    char *, char **);
 
 int		spdy_frame_recv(struct netbuf *);
 int		spdy_frame_send(struct connection *, u_int16_t,

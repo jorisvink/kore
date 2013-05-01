@@ -40,8 +40,6 @@
 static int		spdy_ctrl_frame_syn_stream(struct netbuf *);
 static int		spdy_ctrl_frame_settings(struct netbuf *);
 static int		spdy_ctrl_frame_ping(struct netbuf *);
-static int		spdy_stream_get_header(struct spdy_header_block *,
-			    char *, char **);
 
 static int		spdy_zlib_inflate(struct connection *, u_int8_t *,
 			    size_t, u_int8_t **, u_int32_t *);
@@ -237,6 +235,59 @@ spdy_header_block_release(struct connection *c,
 	return (deflated);
 }
 
+int
+spdy_stream_get_header(struct spdy_header_block *s, char *header, char **out)
+{
+	char			*cmp, t[128];
+	u_int8_t		*p, *end;
+	u_int32_t		i, nlen, vlen;
+
+	kore_log("spdy_stream_get_header(%p, %s) <%d>", s, header,
+	    s->header_pairs);
+
+	p = s->header_block + 4;
+	end = s->header_block + s->header_block_len;
+
+	if (p >= end) {
+		kore_log("p >= end when looking for headers");
+		return (KORE_RESULT_ERROR);
+	}
+
+	for (i = 0; i < s->header_pairs; i++) {
+		nlen = net_read32(p);
+		if ((p + nlen + 4) > end) {
+			kore_log("nlen out of bounds on %d (%d)", i, nlen);
+			return (KORE_RESULT_ERROR);
+		}
+
+		vlen = net_read32(p + nlen + 4);
+		if ((p + nlen + vlen + 8) > end) {
+			kore_log("vlen out of bounds on %d (%d)", i, vlen);
+			return (KORE_RESULT_ERROR);
+		}
+
+		cmp = (char *)(p + 4);
+		memcpy(t, cmp, nlen);
+		t[nlen] = '\0';
+		kore_log("header %s", t);
+
+		if (!strncasecmp(cmp, header, nlen)) {
+			kore_log("found %s header", header);
+
+			cmp = (char *)(p + nlen + 8);
+			*out = (char *)kore_malloc(vlen + 1);
+			kore_strlcpy(*out, cmp, vlen + 1);
+			return (KORE_RESULT_OK);
+		}
+
+		kore_log("pair name %d bytes, value %d bytes", nlen, vlen);
+
+		p += nlen + vlen + 8;
+	}
+
+	return (KORE_RESULT_ERROR);
+}
+
 static int
 spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 {
@@ -321,7 +372,7 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 	GET_HEADER(":path", &path);
 	GET_HEADER(":method", &method);
 	GET_HEADER(":host", &host);
-	if (!http_new_request(c, s, host, method, path)) {
+	if (!http_request_new(c, s, host, method, path)) {
 		free(s->hblock->header_block);
 		free(s->hblock);
 		free(s);
@@ -363,52 +414,6 @@ spdy_ctrl_frame_ping(struct netbuf *nb)
 	}
 
 	return (spdy_frame_send(c, SPDY_CTRL_FRAME_PING, 0, 4, id));
-}
-
-static int
-spdy_stream_get_header(struct spdy_header_block *s, char *header, char **out)
-{
-	char			*cmp;
-	u_int8_t		*p, *end;
-	u_int32_t		i, nlen, vlen;
-
-	p = s->header_block + 4;
-	end = s->header_block + s->header_block_len;
-
-	if (p >= end) {
-		kore_log("p >= end when looking for headers");
-		return (KORE_RESULT_ERROR);
-	}
-
-	for (i = 0; i < s->header_pairs; i++) {
-		nlen = net_read32(p);
-		if ((p + nlen + 4) >= end) {
-			kore_log("nlen out of bounds (%d)", nlen);
-			return (KORE_RESULT_ERROR);
-		}
-
-		vlen = net_read32(p + nlen + 4);
-		if ((p + nlen + vlen + 8) >= end) {
-			kore_log("vlen out of bounds (%d)", vlen);
-			return (KORE_RESULT_ERROR);
-		}
-
-		cmp = (char *)(p + 4);
-		if (!strncasecmp(cmp, header, nlen)) {
-			kore_log("found %s header", header);
-
-			cmp = (char *)(p + nlen + 8);
-			*out = (char *)kore_malloc(vlen + 1);
-			kore_strlcpy(*out, cmp, vlen + 1);
-			return (KORE_RESULT_OK);
-		}
-
-		kore_log("pair name %d bytes, value %d bytes", nlen, vlen);
-
-		p += nlen + vlen + 8;
-	}
-
-	return (KORE_RESULT_ERROR);
 }
 
 static int

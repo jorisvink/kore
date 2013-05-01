@@ -255,6 +255,26 @@ out:
 	return (t);
 }
 
+char *
+kore_time_to_date(time_t now)
+{
+	struct tm		*tm;
+	static time_t		last = 0;
+	static char		tbuf[32];
+
+	if (now != last) {
+		last = now;
+
+		tm = gmtime(&now);
+		if (!strftime(tbuf, sizeof(tbuf), "%a, %d %b %Y %T GMT", tm)) {
+			kore_log("strftime() gave us NULL (%ld)", now);
+			return (NULL);
+		}
+	}
+
+	return (tbuf);
+}
+
 void
 fatal(const char *fmt, ...)
 {
