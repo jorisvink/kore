@@ -38,7 +38,7 @@
 #include "kore.h"
 
 int
-net_send_queue(struct connection *c, u_int8_t *data, size_t len,
+net_send_queue(struct connection *c, u_int8_t *data, size_t len, int flags,
     struct netbuf **out, int (*cb)(struct netbuf *))
 {
 	struct netbuf		*nb;
@@ -51,6 +51,7 @@ net_send_queue(struct connection *c, u_int8_t *data, size_t len,
 	nb->owner = c;
 	nb->offset = 0;
 	nb->retain = 0;
+	nb->flags = flags;
 	nb->type = NETBUF_SEND;
 
 	if (len > 0) {
@@ -68,7 +69,7 @@ net_send_queue(struct connection *c, u_int8_t *data, size_t len,
 }
 
 int
-net_recv_queue(struct connection *c, size_t len,
+net_recv_queue(struct connection *c, size_t len, int flags,
     struct netbuf **out, int (*cb)(struct netbuf *))
 {
 	struct netbuf		*nb;
@@ -81,6 +82,7 @@ net_recv_queue(struct connection *c, size_t len,
 	nb->owner = c;
 	nb->offset = 0;
 	nb->retain = 0;
+	nb->flags = flags;
 	nb->type = NETBUF_RECV;
 	nb->buf = (u_int8_t *)kore_malloc(nb->len);
 
@@ -144,16 +146,19 @@ net_send(struct connection *c)
 	}
 
 	nb->offset += (size_t)r;
-	if (nb->offset == nb->len) {
-		TAILQ_REMOVE(&(c->send_queue), nb, list);
+	if (nb->offset == nb->len || (nb->flags & NETBUF_CALL_CB_ALWAYS)) {
+		if (nb->offset == nb->len)
+			TAILQ_REMOVE(&(c->send_queue), nb, list);
 
 		if (nb->cb != NULL)
 			r = nb->cb(nb);
 		else
 			r = KORE_RESULT_OK;
 
-		free(nb->buf);
-		free(nb);
+		if (nb->offset == nb->len) {
+			free(nb->buf);
+			free(nb);
+		}
 	} else {
 		r = KORE_RESULT_OK;
 	}
@@ -202,14 +207,15 @@ net_recv(struct connection *c)
 	}
 
 	nb->offset += (size_t)r;
-	if (nb->offset == nb->len) {
+	if (nb->offset == nb->len || (nb->flags & NETBUF_CALL_CB_ALWAYS)) {
 		if (nb->cb == NULL) {
 			kore_log("kore_read_client(): nb->cb == NULL");
 			return (KORE_RESULT_ERROR);
 		}
 
 		nb->retain++;
-		TAILQ_REMOVE(&(c->recv_queue), nb, list);
+		if (nb->offset == nb->len)
+			TAILQ_REMOVE(&(c->recv_queue), nb, list);
 		r = nb->cb(nb);
 		nb->retain--;
 

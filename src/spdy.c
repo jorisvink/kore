@@ -100,8 +100,10 @@ spdy_frame_recv(struct netbuf *nb)
 		kore_log("received data frame, can't handle that yet.");
 	}
 
-	if (r == KORE_RESULT_OK)
-		r = net_recv_queue(c, SPDY_FRAME_SIZE, NULL, spdy_frame_recv);
+	if (r == KORE_RESULT_OK) {
+		r = net_recv_queue(c, SPDY_FRAME_SIZE,
+		    0, NULL, spdy_frame_recv);
+	}
 
 	return (r);
 }
@@ -144,7 +146,7 @@ spdy_frame_send(struct connection *c, u_int16_t type, u_int8_t flags,
 		break;
 	}
 
-	return (net_send_queue(c, nb, length, NULL, NULL));
+	return (net_send_queue(c, nb, length, 0, NULL, NULL));
 }
 
 struct spdy_stream *
@@ -238,7 +240,7 @@ spdy_header_block_release(struct connection *c,
 int
 spdy_stream_get_header(struct spdy_header_block *s, char *header, char **out)
 {
-	char			*cmp, t[128];
+	char			*cmp;
 	u_int8_t		*p, *end;
 	u_int32_t		i, nlen, vlen;
 
@@ -267,10 +269,6 @@ spdy_stream_get_header(struct spdy_header_block *s, char *header, char **out)
 		}
 
 		cmp = (char *)(p + 4);
-		memcpy(t, cmp, nlen);
-		t[nlen] = '\0';
-		kore_log("header %s", t);
-
 		if (!strncasecmp(cmp, header, nlen)) {
 			kore_log("found %s header", header);
 

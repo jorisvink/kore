@@ -130,14 +130,14 @@ http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 		    0, hlen, req->stream->stream_id))
 			return (KORE_RESULT_ERROR);
 
-		if (!net_send_queue(req->owner, htext, hlen, NULL, NULL))
+		if (!net_send_queue(req->owner, htext, hlen, 0, NULL, NULL))
 			return (KORE_RESULT_ERROR);
 
 		if (len > 0) {
 			if (!spdy_frame_send(req->owner, SPDY_DATA_FRAME,
 			    0, len, req->stream->stream_id))
 				return (KORE_RESULT_ERROR);
-			if (!net_send_queue(req->owner, d, len, NULL, NULL))
+			if (!net_send_queue(req->owner, d, len, 0, NULL, NULL))
 				return (KORE_RESULT_ERROR);
 		}
 

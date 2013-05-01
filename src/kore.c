@@ -323,7 +323,7 @@ kore_connection_handle(struct connection *c, int flags)
 			if (!memcmp(data, "spdy/3", 6))
 				kore_log("using SPDY/3");
 			c->proto = CONN_PROTO_SPDY;
-			if (!net_recv_queue(c, SPDY_FRAME_SIZE,
+			if (!net_recv_queue(c, SPDY_FRAME_SIZE, 0,
 			    NULL, spdy_frame_recv))
 				return (KORE_RESULT_ERROR);
 		} else {

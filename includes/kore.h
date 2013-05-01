@@ -34,6 +34,7 @@ struct netbuf {
 	u_int32_t		len;
 	u_int8_t		type;
 	u_int8_t		retain;
+	u_int8_t		flags;
 
 	void			*owner;
 	int			(*cb)(struct netbuf *);
@@ -56,6 +57,8 @@ struct listener {
 
 #define CONN_READ_POSSIBLE	0x01
 #define CONN_WRITE_POSSIBLE	0x02
+
+#define NETBUF_CALL_CB_ALWAYS	0x01
 
 struct connection {
 	int			fd;
@@ -120,11 +123,11 @@ int		net_recv(struct connection *);
 int		net_send(struct connection *);
 int		net_send_flush(struct connection *);
 int		net_recv_flush(struct connection *);
-int		net_recv_queue(struct connection *, size_t,
+int		net_recv_queue(struct connection *, size_t, int,
 		    struct netbuf **, int (*cb)(struct netbuf *));
 int		net_recv_expand(struct connection *c, struct netbuf *, size_t,
 		    int (*cb)(struct netbuf *));
-int		net_send_queue(struct connection *, u_int8_t *, size_t,
+int		net_send_queue(struct connection *, u_int8_t *, size_t, int,
 		    struct netbuf **, int (*cb)(struct netbuf *));
 
 struct spdy_header_block	*spdy_header_block_create(int);
