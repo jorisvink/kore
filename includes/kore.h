@@ -95,10 +95,12 @@ extern char	*server_ip;
 void		*kore_malloc(size_t);
 void		*kore_calloc(size_t, size_t);
 void		*kore_realloc(void *, size_t);
+time_t		kore_date_to_time(char *);
 char		*kore_strdup(const char *);
 void		kore_parse_config(const char *);
 void		kore_strlcpy(char *, const char *, size_t);
 void		kore_server_disconnect(struct connection *);
+int		kore_split_string(char *, char *, char **, size_t);
 long long	kore_strtonum(const char *, long long, long long, int *);
 
 void		kore_module_load(char *);

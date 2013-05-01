@@ -36,6 +36,25 @@
 #include "spdy.h"
 #include "kore.h"
 
+static struct {
+	char		*name;
+	int		value;
+} month_names[] = {
+	{ "Jan",	0 },
+	{ "Feb",	1 },
+	{ "Mar",	2 },
+	{ "Apr",	3 },
+	{ "May",	4 },
+	{ "Jun",	5 },
+	{ "Jul",	6 },
+	{ "Aug",	7 },
+	{ "Sep",	8 },
+	{ "Oct",	9 },
+	{ "Nov",	10 },
+	{ "Dec",	11 },
+	{ NULL,		0 },
+};
+
 void *
 kore_malloc(size_t len)
 {
@@ -138,6 +157,102 @@ kore_strtonum(const char *str, long long min, long long max, int *err)
 
 	*err = KORE_RESULT_OK;
 	return (l);
+}
+
+int
+kore_split_string(char *input, char *delim, char **out, size_t ele)
+{
+	int		count;
+	char		**ap;
+
+	count = 0;
+	for (ap = out; ap < &out[ele - 1] &&
+	    (*ap = strsep(&input, delim)) != NULL;) {
+		if (**ap != '\0') {
+			ap++;
+			count++;
+		}
+	}
+
+	*ap = NULL;
+	return (count);
+}
+
+time_t
+kore_date_to_time(char *http_date)
+{
+	time_t			t;
+	int			err, i;
+	struct tm		tm, *gtm;
+	char			*args[7], *tbuf[5], *sdup;
+
+	time(&t);
+	gtm = gmtime(&t);
+	sdup = kore_strdup(http_date);
+
+	t = KORE_RESULT_ERROR;
+
+	if (kore_split_string(sdup, " ", args, 7) != 6) {
+		kore_log("misformed http-date: '%s'", http_date);
+		goto out;
+	}
+
+	tm.tm_year = kore_strtonum(args[3], 2013, 2068, &err) - 1900;
+	if (err == KORE_RESULT_ERROR || tm.tm_year < gtm->tm_year) {
+		kore_log("misformed year in http-date: '%s'", http_date);
+		goto out;
+	}
+
+	for (i = 0; month_names[i].name != NULL; i++) {
+		if (!strcmp(month_names[i].name, args[2])) {
+			tm.tm_mon = month_names[i].value;
+			break;
+		}
+	}
+
+	if (month_names[i].name == NULL) {
+		kore_log("misformed month in http-date: '%s'", http_date);
+		goto out;
+	}
+
+	tm.tm_mday = kore_strtonum(args[1], 1, 31, &err);
+	if (err == KORE_RESULT_ERROR) {
+		kore_log("misformed mday in http-date: '%s'", http_date);
+		goto out;
+	}
+
+	if (kore_split_string(args[4], ":", tbuf, 5) != 3) {
+		kore_log("misformed HH:MM:SS in http-date: '%s'", http_date);
+		goto out;
+	}
+
+	tm.tm_hour = kore_strtonum(tbuf[0], 1, 23, &err);
+	if (err == KORE_RESULT_ERROR) {
+		kore_log("misformed hour in http-date: '%s'", http_date);
+		goto out;
+	}
+
+	tm.tm_min = kore_strtonum(tbuf[1], 1, 59, &err);
+	if (err == KORE_RESULT_ERROR) {
+		kore_log("misformed minutes in http-date: '%s'", http_date);
+		goto out;
+	}
+
+	tm.tm_sec = kore_strtonum(tbuf[2], 0, 60, &err);
+	if (err == KORE_RESULT_ERROR) {
+		kore_log("misformed seconds in http-date: '%s'", http_date);
+		goto out;
+	}
+
+	t = mktime(&tm);
+	if (t == -1) {
+		t = 0;
+		kore_log("mktime() on '%s' failed", http_date);
+	}
+
+out:
+	free(sdup);
+	return (t);
 }
 
 void

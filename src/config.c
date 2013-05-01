@@ -57,7 +57,7 @@ kore_parse_config(const char *config_path)
 {
 	FILE		*fp;
 	int		i, lineno;
-	char		buf[BUFSIZ], *p, *t, **ap, *argv[5];
+	char		buf[BUFSIZ], *p, *t, *argv[5];
 
 	if ((fp = fopen(config_path, "r")) == NULL)
 		fatal("configuration given cannot be opened: %s", config_path);
@@ -79,13 +79,7 @@ kore_parse_config(const char *config_path)
 				*t = ' ';
 		}
 
-		for (ap = argv; ap < &argv[4] &&
-		    (*ap = strsep(&p, " ")) != NULL;) {
-			if (**ap != '\0')
-				ap++;
-		}
-		*ap = NULL;
-
+		kore_split_string(p, " ", argv, 5);
 		for (i = 0; config_names[i].name != NULL; i++) {
 			if (!strcmp(config_names[i].name, argv[0])) {
 				if (!config_names[i].configure(argv)) {
