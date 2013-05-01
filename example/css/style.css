@@ -1,0 +1,16 @@
+body {
+	width: 100%;
+	margin: 0px;
+	color: #000;
+	overflow: hidden;
+	background-color: #fff;
+}
+
+.content {
+	width: 800px;
+	margin-left: auto;
+	margin-right: auto;
+	margin-top: 100px;
+	font-size: 60px;
+	text-align: center;
+}
