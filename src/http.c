@@ -77,7 +77,8 @@ http_request_free(struct http_request *req)
 }
 
 int
-http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
+http_response(struct http_request *req, int status, u_int8_t *d,
+    u_int32_t len, char *content_type)
 {
 	u_int32_t			hlen;
 	u_int8_t			*htext;
@@ -91,7 +92,10 @@ http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 		hblock = spdy_header_block_create(SPDY_HBLOCK_NORMAL);
 		spdy_header_block_add(hblock, ":status", sbuf);
 		spdy_header_block_add(hblock, ":version", "HTTP/1.1");
-		spdy_header_block_add(hblock, "content-type", "text/plain");
+		if (content_type != NULL) {
+			spdy_header_block_add(hblock,
+			    "content-type", content_type);
+		}
 		htext = spdy_header_block_release(req->owner, hblock, &hlen);
 		if (htext == NULL)
 			return (KORE_RESULT_ERROR);
@@ -155,5 +159,5 @@ http_generic_404(struct http_request *req)
 	kore_log("http_generic_404(%s, %s, %s)",
 	    req->host, req->method, req->path);
 
-	return (http_response(req, 404, NULL, 0));
+	return (http_response(req, 404, NULL, 0, NULL));
 }

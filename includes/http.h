@@ -32,7 +32,7 @@ void		http_init(void);
 void		http_process(void);
 void		http_request_free(struct http_request *);
 int		http_response(struct http_request *, int,
-		    u_int8_t *, u_int32_t);
+		    u_int8_t *, u_int32_t, char *);
 int		http_new_request(struct connection *, struct spdy_stream *,
 		    char *, char *, char *);
 
