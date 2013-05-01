@@ -76,7 +76,7 @@ main(int argc, char *argv[])
 
 	fprintf(hdr, "extern u_int8_t *static_%s_%s;\n", ext, argv[2]);
 	fprintf(hdr, "extern u_int32_t static_len_%s_%s;\n", ext, argv[2]);
-	fprintf(hdr, "extern u_int32_t static_mtime_%s_%s;\n", ext, argv[2]);
+	fprintf(hdr, "extern time_t static_mtime_%s_%s;\n", ext, argv[2]);
 	fclose(hdr);
 
 	return (0);
