@@ -39,13 +39,14 @@
 
 static int		spdy_ctrl_frame_syn_stream(struct netbuf *);
 static int		spdy_ctrl_frame_settings(struct netbuf *);
+static int		spdy_ctrl_frame_ping(struct netbuf *);
 static int		spdy_stream_get_header(struct spdy_header_block *,
 			    char *, char **);
 
-static int		spdy_zlib_inflate(u_int8_t *, size_t,
-			    u_int8_t **, u_int32_t *);
-static int		spdy_zlib_deflate(u_int8_t *, size_t,
-			    u_int8_t **, u_int32_t *);
+static int		spdy_zlib_inflate(struct connection *, u_int8_t *,
+			    size_t, u_int8_t **, u_int32_t *);
+static int		spdy_zlib_deflate(struct connection *, u_int8_t *,
+			    size_t, u_int8_t **, u_int32_t *);
 
 int
 spdy_frame_recv(struct netbuf *nb)
@@ -53,6 +54,8 @@ spdy_frame_recv(struct netbuf *nb)
 	struct spdy_ctrl_frame	ctrl;
 	int			(*cb)(struct netbuf *), r;
 	struct connection	*c = (struct connection *)nb->owner;
+
+	kore_log("spdy_frame_recv(%p)", nb);
 
 	if (SPDY_CONTROL_FRAME(net_read32(nb->buf))) {
 		kore_log("received control frame");
@@ -67,12 +70,21 @@ spdy_frame_recv(struct netbuf *nb)
 		kore_log("length is %d", ctrl.length);
 		kore_log("flags are %d", ctrl.flags);
 
+		if (ctrl.version != 3) {
+			kore_log("protocol mismatch (recv version %d)",
+			    ctrl.version);
+			return (KORE_RESULT_ERROR);
+		}
+
 		switch (ctrl.type) {
 		case SPDY_CTRL_FRAME_SYN_STREAM:
 			cb = spdy_ctrl_frame_syn_stream;
 			break;
 		case SPDY_CTRL_FRAME_SETTINGS:
 			cb = spdy_ctrl_frame_settings;
+			break;
+		case SPDY_CTRL_FRAME_PING:
+			cb = spdy_ctrl_frame_ping;
 			break;
 		default:
 			cb = NULL;
@@ -86,36 +98,51 @@ spdy_frame_recv(struct netbuf *nb)
 			r = KORE_RESULT_ERROR;
 		}
 	} else {
-		r = KORE_RESULT_OK;
-		kore_log("received data frame");
+		r = KORE_RESULT_ERROR;
+		kore_log("received data frame, can't handle that yet.");
 	}
+
+	if (r == KORE_RESULT_OK)
+		r = net_recv_queue(c, SPDY_FRAME_SIZE, spdy_frame_recv);
 
 	return (r);
 }
 
 int
 spdy_frame_send(struct connection *c, u_int16_t type, u_int8_t flags,
-    u_int32_t len, u_int32_t stream_id, u_int8_t *data)
+    u_int32_t len, u_int32_t stream_id)
 {
 	u_int8_t	nb[12];
 	u_int32_t	length;
 
-	kore_log("spdy_frame_send(%p, %d, %d, %d, %d, %p)", c, type, flags,
-	    len, stream_id, data);
+	kore_log("spdy_frame_send(%p, %d, %d, %d, %d)", c, type, flags,
+	    len, stream_id);
 
 	length = 0;
 	memset(nb, 0, sizeof(nb));
 	switch (type) {
+	case SPDY_CTRL_FRAME_PING:
 	case SPDY_CTRL_FRAME_SYN_REPLY:
 		net_write16(&nb[0], 3);
 		nb[0] |= (1 << 7);
 		net_write16(&nb[2], type);
-		net_write32(&nb[4], len + 4);
+
+		if (type != SPDY_CTRL_FRAME_PING)
+			net_write32(&nb[4], len + 4);
+		else
+			net_write32(&nb[4], len);
+
 		nb[4] = flags;
 		net_write32(&nb[8], stream_id);
 		length = 12;
 		break;
+		break;
 	case SPDY_DATA_FRAME:
+		net_write32(&nb[0], stream_id);
+		nb[0] &= ~(1 << 7);
+		net_write32(&nb[4], len);
+		nb[4] = flags;
+		length = 8;
 		break;
 	}
 
@@ -146,13 +173,14 @@ spdy_header_block_create(int delayed_alloc)
 	if (delayed_alloc == SPDY_HBLOCK_NORMAL) {
 		hblock->header_block = (u_int8_t *)kore_malloc(128);
 		hblock->header_block_len = 128;
+		hblock->header_offset = 4;
 	} else {
 		hblock->header_block = NULL;
 		hblock->header_block_len = 0;
+		hblock->header_offset = 0;
 	}
 
 	hblock->header_pairs = 0;
-	hblock->header_offset = 0;
 
 	return (hblock);
 }
@@ -161,7 +189,6 @@ void
 spdy_header_block_add(struct spdy_header_block *hblock, char *name, char *value)
 {
 	u_int8_t		*p;
-	char			*out;
 	u_int32_t		nlen, vlen;
 
 	kore_log("spdy_header_block_add(%p, %s, %s)", hblock, name, value);
@@ -186,23 +213,18 @@ spdy_header_block_add(struct spdy_header_block *hblock, char *name, char *value)
 	hblock->header_offset += 4 + vlen;
 
 	hblock->header_pairs++;
-
-	if (!spdy_stream_get_header(hblock, name, &out)) {
-		kore_log("cannot find newly inserted header %s", name);
-	} else {
-		kore_log("found header (%s, %s) as %s", name, value, out);
-		free(out);
-	}
 }
 
 u_int8_t *
-spdy_header_block_release(struct spdy_header_block *hblock, u_int32_t *len)
+spdy_header_block_release(struct connection *c,
+    struct spdy_header_block *hblock, u_int32_t *len)
 {
 	u_int8_t	*deflated;
 
 	kore_log("spdy_header_block_release(%p, %p)", hblock, len);
 
-	if (!spdy_zlib_deflate(hblock->header_block, hblock->header_offset,
+	net_write32(hblock->header_block, hblock->header_pairs);
+	if (!spdy_zlib_deflate(c, hblock->header_block, hblock->header_offset,
 	    &deflated, len)) {
 		free(hblock->header_block);
 		free(hblock);
@@ -235,6 +257,10 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 	syn.prio = net_read16(nb->buf + 16) & 0xe000;
 	syn.slot = net_read16(nb->buf + 16) & 0x7;
 
+	kore_log("spdy_ctrl_frame_syn_stream()");
+	kore_log("stream_id: %d", syn.stream_id);
+	kore_log("length   : %d", ctrl.length);
+
 	/* XXX need to send protocol error. */
 	if ((syn.stream_id % 2) == 0 || syn.stream_id == 0) {
 		kore_log("client sent incorrect id for SPDY_SYN_STREAM (%d)",
@@ -262,7 +288,7 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 
 	src = (nb->buf + SPDY_FRAME_SIZE + SPDY_SYNFRAME_SIZE);
 	kore_log("compressed headers are %d bytes long", ctrl.length - 10);
-	if (!spdy_zlib_inflate(src, (ctrl.length - SPDY_SYNFRAME_SIZE),
+	if (!spdy_zlib_inflate(c, src, (ctrl.length - SPDY_SYNFRAME_SIZE),
 	    &(s->hblock->header_block), &(s->hblock->header_block_len))) {
 		free(s->hblock->header_block);
 		free(s->hblock);
@@ -316,13 +342,27 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 static int
 spdy_ctrl_frame_settings(struct netbuf *nb)
 {
-	int			r;
+	kore_log("SPDY_SETTINGS (to be implemented)");
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+spdy_ctrl_frame_ping(struct netbuf *nb)
+{
+	u_int32_t		id;
 	struct connection	*c = (struct connection *)nb->owner;
 
-	kore_log("SPDY_SETTINGS");
-	r = net_recv_queue(c, SPDY_FRAME_SIZE, spdy_frame_recv);
+	id = ntohl(*(u_int32_t *)(nb->buf + SPDY_FRAME_SIZE));
+	kore_log("SPDY_PING: %d", id);
 
-	return (r);
+	/* XXX todo - check if we sent the ping. */
+	if ((id % 2) == 0) {
+		kore_log("received malformed client PING (%d)", id);
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (spdy_frame_send(c, SPDY_CTRL_FRAME_PING, 0, 4, id));
 }
 
 static int
@@ -332,9 +372,14 @@ spdy_stream_get_header(struct spdy_header_block *s, char *header, char **out)
 	u_int8_t		*p, *end;
 	u_int32_t		i, nlen, vlen;
 
+	p = s->header_block + 4;
 	end = s->header_block + s->header_block_len;
 
-	p = s->header_block + 4;
+	if (p >= end) {
+		kore_log("p >= end when looking for headers");
+		return (KORE_RESULT_ERROR);
+	}
+
 	for (i = 0; i < s->header_pairs; i++) {
 		nlen = net_read32(p);
 		if ((p + nlen + 4) >= end) {
@@ -367,41 +412,45 @@ spdy_stream_get_header(struct spdy_header_block *s, char *header, char **out)
 }
 
 static int
-spdy_zlib_inflate(u_int8_t *src, size_t len, u_int8_t **dst, u_int32_t *olen)
+spdy_zlib_inflate(struct connection *c, u_int8_t *src, size_t len,
+    u_int8_t **dst, u_int32_t *olen)
 {
-	z_stream		zlib;
 	size_t			have;
 	int			r, ret;
 	u_char			inflate_buffer[SPDY_ZLIB_CHUNK];
 
-	kore_log("spdy_zlib_inflate(%p, %d)", src, len);
+	kore_log("spdy_zlib_inflate(%p, %p, %d)", c, src, len);
 
-	zlib.avail_in = 0;
-	zlib.next_in = Z_NULL;
-	zlib.zalloc = Z_NULL;
-	zlib.zfree = Z_NULL;
-	if ((r = inflateInit(&zlib)) != Z_OK) {
-		kore_log("inflateInit() failed: %d", r);
-		return (KORE_RESULT_ERROR);
+	if (c->inflate_started == 0) {
+		c->z_inflate.avail_in = 0;
+		c->z_inflate.next_in = Z_NULL;
+		c->z_inflate.zalloc = Z_NULL;
+		c->z_inflate.zfree = Z_NULL;
+		if ((r = inflateInit(&(c->z_inflate))) != Z_OK) {
+			kore_log("inflateInit() failed: %d", r);
+			return (KORE_RESULT_ERROR);
+		}
+
+		c->inflate_started = 1;
 	}
 
 	*olen = 0;
 	*dst = NULL;
 
 	ret = -1;
-	zlib.avail_in = len;
-	zlib.next_in = src;
+	c->z_inflate.avail_in = len;
+	c->z_inflate.next_in = src;
 	while (ret == -1) {
-		zlib.avail_out = SPDY_ZLIB_CHUNK;
-		zlib.next_out = inflate_buffer;
+		c->z_inflate.avail_out = SPDY_ZLIB_CHUNK;
+		c->z_inflate.next_out = inflate_buffer;
 
-		r = inflate(&zlib, Z_SYNC_FLUSH);
+		r = inflate(&(c->z_inflate), Z_SYNC_FLUSH);
 		switch (r) {
 		case Z_NEED_DICT:
-			r = inflateSetDictionary(&zlib, SPDY_dictionary_txt,
-			    SPDY_ZLIB_DICT_SIZE);
+			r = inflateSetDictionary(&(c->z_inflate),
+			    SPDY_dictionary_txt, SPDY_ZLIB_DICT_SIZE);
 			if (r != Z_OK) {
-				inflateEnd(&zlib);
+				inflateEnd(&(c->z_inflate));
 				kore_log("inflateSetDictionary(): %d", r);
 					return (KORE_RESULT_ERROR);
 			}
@@ -414,12 +463,13 @@ spdy_zlib_inflate(u_int8_t *src, size_t len, u_int8_t **dst, u_int32_t *olen)
 			kore_log("inflate(): %d", r);
 			break;
 		case Z_OK:
-			have = SPDY_ZLIB_CHUNK - zlib.avail_out;
+			have = SPDY_ZLIB_CHUNK - c->z_inflate.avail_out;
 			*olen += have;
 			*dst = (u_int8_t *)kore_realloc(*dst, *olen);
 			memcpy((*dst) + (*olen - have), inflate_buffer, have);
 
-			if (zlib.avail_in != 0 || zlib.avail_out == 0)
+			if (c->z_inflate.avail_in != 0 ||
+			    c->z_inflate.avail_out == 0)
 				break;
 			/* FALLTHROUGH */
 		case Z_STREAM_END:
@@ -428,48 +478,51 @@ spdy_zlib_inflate(u_int8_t *src, size_t len, u_int8_t **dst, u_int32_t *olen)
 		}
 	}
 
-	inflateEnd(&zlib);
 	return (ret);
 }
 
 static int
-spdy_zlib_deflate(u_int8_t *src, size_t len, u_int8_t **dst, u_int32_t *olen)
+spdy_zlib_deflate(struct connection *c, u_int8_t *src, size_t len,
+    u_int8_t **dst, u_int32_t *olen)
 {
-	z_stream		zlib;
 	size_t			have;
 	int			r, ret;
 	u_char			deflate_buffer[SPDY_ZLIB_CHUNK];
 
-	kore_log("spdy_zlib_deflate(%p, %d)", src, len);
+	kore_log("spdy_zlib_deflate(%p, %p, %d)", c, src, len);
 
-	zlib.avail_in = 0;
-	zlib.next_in = Z_NULL;
-	zlib.zalloc = Z_NULL;
-	zlib.zfree = Z_NULL;
-	if ((r = deflateInit(&zlib, -1)) != Z_OK) {
-		kore_log("deflateInit() failed: %d", r);
-		return (KORE_RESULT_ERROR);
-	}
+	if (c->deflate_started == 0) {
+		c->z_deflate.avail_in = 0;
+		c->z_deflate.next_in = Z_NULL;
+		c->z_deflate.zalloc = Z_NULL;
+		c->z_deflate.zfree = Z_NULL;
+		if ((r = deflateInit(&(c->z_deflate), -1)) != Z_OK) {
+			kore_log("deflateInit() failed: %d", r);
+			return (KORE_RESULT_ERROR);
+		}
 
-	r = deflateSetDictionary(&zlib, SPDY_dictionary_txt,
-	    SPDY_ZLIB_DICT_SIZE);
-	if (r != Z_OK) {
-		deflateEnd(&zlib);
-		kore_log("delfateSetDictionary(): %d", r);
-		return (KORE_RESULT_ERROR);
+		r = deflateSetDictionary(&(c->z_deflate), SPDY_dictionary_txt,
+		    SPDY_ZLIB_DICT_SIZE);
+		if (r != Z_OK) {
+			deflateEnd(&(c->z_deflate));
+			kore_log("delfateSetDictionary(): %d", r);
+			return (KORE_RESULT_ERROR);
+		}
+
+		c->deflate_started = 1;
 	}
 
 	*olen = 0;
 	*dst = NULL;
 
 	ret = -1;
-	zlib.avail_in = len;
-	zlib.next_in = src;
+	c->z_deflate.avail_in = len;
+	c->z_deflate.next_in = src;
 	while (ret == -1) {
-		zlib.avail_out = SPDY_ZLIB_CHUNK;
-		zlib.next_out = deflate_buffer;
+		c->z_deflate.avail_out = SPDY_ZLIB_CHUNK;
+		c->z_deflate.next_out = deflate_buffer;
 
-		r = deflate(&zlib, Z_SYNC_FLUSH);
+		r = deflate(&(c->z_deflate), Z_SYNC_FLUSH);
 		switch (r) {
 		case Z_BUF_ERROR:
 		case Z_DATA_ERROR:
@@ -478,17 +531,17 @@ spdy_zlib_deflate(u_int8_t *src, size_t len, u_int8_t **dst, u_int32_t *olen)
 			kore_log("deflate(): %d", r);
 			break;
 		case Z_OK:
-			have = SPDY_ZLIB_CHUNK - zlib.avail_out;
+			have = SPDY_ZLIB_CHUNK - c->z_deflate.avail_out;
 			*olen += have;
 			*dst = (u_int8_t *)kore_realloc(*dst, *olen);
 			memcpy((*dst) + (*olen - have), deflate_buffer, have);
 
-			if (zlib.avail_in == 0 && zlib.avail_out != 0)
+			if (c->z_deflate.avail_in == 0 &&
+			    c->z_deflate.avail_out != 0)
 				ret = KORE_RESULT_OK;
 			break;
 		}
 	}
 
-	deflateEnd(&zlib);
 	return (ret);
 }

@@ -31,6 +31,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <zlib.h>
 
 #include "spdy.h"
 #include "kore.h"
@@ -39,6 +40,7 @@
 TAILQ_HEAD(, http_request)	http_requests;
 
 static int		http_generic_cb(struct http_request *);
+static int		http_generic_404(struct http_request *);
 
 void
 http_init(void)
@@ -80,32 +82,39 @@ http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 {
 	u_int32_t			hlen;
 	u_int8_t			*htext;
+	char				sbuf[4];
 	struct spdy_header_block	*hblock;
 
 	kore_log("http_response(%p, %d, %p, %d)", req, status, d, len);
 
 	if (req->stream != NULL) {
+		snprintf(sbuf, sizeof(sbuf), "%d", status);
 		hblock = spdy_header_block_create(SPDY_HBLOCK_NORMAL);
-		spdy_header_block_add(hblock, ":status", "200");
+		spdy_header_block_add(hblock, ":status", sbuf);
 		spdy_header_block_add(hblock, ":version", "HTTP/1.1");
 		spdy_header_block_add(hblock, "content-type", "text/plain");
-		if ((htext = spdy_header_block_release(hblock, &hlen)) == NULL)
+		htext = spdy_header_block_release(req->owner, hblock, &hlen);
+		if (htext == NULL)
 			return (KORE_RESULT_ERROR);
 
-		kore_log("deflated is %d bytes", hlen);
-
 		if (!spdy_frame_send(req->owner, SPDY_CTRL_FRAME_SYN_REPLY,
-		    0, hlen, req->stream->stream_id, NULL))
+		    0, hlen, req->stream->stream_id))
 			return (KORE_RESULT_ERROR);
 
 		if (!net_send_queue(req->owner, htext, hlen, NULL))
 			return (KORE_RESULT_ERROR);
 
-#if 0
-		if (!spdy_frame_send(req->owner, SPDY_DATA_FRAME, 0, len,
-		    req->stream->stream_id, d))
+		if (len > 0) {
+			if (!spdy_frame_send(req->owner, SPDY_DATA_FRAME,
+			    0, len, req->stream->stream_id))
+				return (KORE_RESULT_ERROR);
+			if (!net_send_queue(req->owner, d, len, NULL))
+				return (KORE_RESULT_ERROR);
+		}
+
+		if (!spdy_frame_send(req->owner, SPDY_DATA_FRAME,
+		    FLAG_FIN, 0, req->stream->stream_id))
 			return (KORE_RESULT_ERROR);
-#endif
 	} else {
 		kore_log("normal http not functional yet");
 	}
@@ -126,8 +135,13 @@ http_process(void)
 		next = TAILQ_NEXT(req, list);
 
 		/* XXX - add module hooks here */
-		if (!http_generic_cb(req))
-			kore_server_disconnect(req->owner);
+		if (!strcmp(req->path, "/favicon.ico")) {
+			if (!http_generic_404(req))
+				kore_server_disconnect(req->owner);
+		} else {
+			if (!http_generic_cb(req))
+				kore_server_disconnect(req->owner);
+		}
 
 		TAILQ_REMOVE(&http_requests, req, list);
 		http_request_free(req);
@@ -144,4 +158,13 @@ http_generic_cb(struct http_request *req)
 
 	len = strlen("<p>Hello world</p>");
 	return (http_response(req, 200, (u_int8_t *)"<p>Hello world</p>", len));
+}
+
+static int
+http_generic_404(struct http_request *req)
+{
+	kore_log("http_generic_404(%s, %s, %s)",
+	    req->host, req->method, req->path);
+
+	return (http_response(req, 404, NULL, 0));
 }

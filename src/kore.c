@@ -32,6 +32,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <zlib.h>
 
 #include "spdy.h"
 #include "kore.h"
@@ -89,6 +90,7 @@ main(int argc, char *argv[])
 				if (*fd == server.fd)
 					fatal("error on server socket");
 
+				kore_log("client EPOLLERR | EPOLLHUP");
 				c = (struct connection *)events[i].data.ptr;
 				kore_server_disconnect(c);
 				continue;

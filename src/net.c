@@ -32,6 +32,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <zlib.h>
 
 #include "spdy.h"
 #include "kore.h"
@@ -42,7 +43,7 @@ net_send_queue(struct connection *c, u_int8_t *data, size_t len,
 {
 	struct netbuf		*nb;
 
-	kore_log("net_send_queue(%p, %p, %d, %p)", c, data, len, cb);
+	//kore_log("net_send_queue(%p, %p, %d, %p)", c, data, len, cb);
 
 	nb = (struct netbuf *)kore_malloc(sizeof(*nb));
 	nb->cb = cb;
@@ -63,7 +64,7 @@ net_recv_queue(struct connection *c, size_t len, int (*cb)(struct netbuf *))
 {
 	struct netbuf		*nb;
 
-	kore_log("net_recv_queue(%p, %d, %p)", c, len, cb);
+	//kore_log("net_recv_queue(%p, %d, %p)", c, len, cb);
 
 	nb = (struct netbuf *)kore_malloc(sizeof(*nb));
 	nb->cb = cb;
@@ -82,7 +83,7 @@ int
 net_recv_expand(struct connection *c, struct netbuf *nb, size_t len,
     int (*cb)(struct netbuf *))
 {
-	kore_log("net_recv_expand(%p, %p, %d, %p)", c, nb, len, cb);
+	//kore_log("net_recv_expand(%p, %p, %d, %p)", c, nb, len, cb);
 
 	if (nb->type != NETBUF_RECV) {
 		kore_log("net_recv_expand(): wrong netbuf type");
@@ -103,15 +104,15 @@ net_send(struct connection *c)
 	int			r;
 	struct netbuf		*nb;
 
-	kore_log("net_send(%p)", c);
-
 	if (TAILQ_EMPTY(&(c->send_queue)))
 		return (KORE_RESULT_OK);
 
 	nb = TAILQ_FIRST(&(c->send_queue));
-	kore_log("nb is %p (%d/%d bytes)", nb, nb->offset, nb->len);
 	r = SSL_write(c->ssl, (nb->buf + nb->offset), (nb->len - nb->offset));
-	kore_log("SSL_write(): %d bytes", r);
+
+	//kore_log("net_send(%ld/%ld bytes), progress with %d",
+	//    nb->offset, nb->len, r);
+
 	if (r <= 0) {
 		r = SSL_get_error(c->ssl, r);
 		switch (r) {
@@ -151,15 +152,15 @@ net_recv(struct connection *c)
 	int			r;
 	struct netbuf		*nb;
 
-	kore_log("net_recv(%p)", c);
-
 	if (TAILQ_EMPTY(&(c->recv_queue)))
 		return (KORE_RESULT_ERROR);
 
 	nb = TAILQ_FIRST(&(c->recv_queue));
-	kore_log("nb is %p (%d/%d bytes)", nb, nb->offset, nb->len);
 	r = SSL_read(c->ssl, (nb->buf + nb->offset), (nb->len - nb->offset));
-	kore_log("SSL_read(): %d bytes", r);
+
+	//kore_log("net_recv(%ld/%ld bytes), progress with %d",
+	//    nb->offset, nb->len, r);
+
 	if (r <= 0) {
 		r = SSL_get_error(c->ssl, r);
 		switch (r) {
@@ -176,7 +177,6 @@ net_recv(struct connection *c)
 	}
 
 	nb->offset += (size_t)r;
-	kore_log("read %d out of %d bytes", nb->offset, nb->len);
 	if (nb->offset == nb->len) {
 		if (nb->cb == NULL) {
 			kore_log("kore_read_client(): nb->cb == NULL");
@@ -220,11 +220,17 @@ net_read32(u_int8_t *b)
 void
 net_write16(u_int8_t *p, u_int16_t n)
 {
-	*p = htons(n);
+	u_int16_t	r;
+
+	r = htons(n);
+	memcpy(p, &r, sizeof(r));
 }
 
 void
 net_write32(u_int8_t *p, u_int32_t n)
 {
-	*p = htonl(n);
+	u_int32_t	r;
+
+	r = htonl(n);
+	memcpy(p, &r, sizeof(r));
 }

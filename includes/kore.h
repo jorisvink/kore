@@ -62,6 +62,11 @@ struct connection {
 	void			*owner;
 	SSL			*ssl;
 
+	u_int8_t		inflate_started;
+	z_stream		z_inflate;
+	u_int8_t		deflate_started;
+	z_stream		z_deflate;
+
 	TAILQ_HEAD(, netbuf)	send_queue;
 	TAILQ_HEAD(, netbuf)	recv_queue;
 
@@ -92,9 +97,15 @@ int		net_recv_expand(struct connection *c, struct netbuf *, size_t,
 int		net_send_queue(struct connection *, u_int8_t *, size_t,
 		    int (*cb)(struct netbuf *));
 
+struct spdy_stream	*spdy_stream_lookup(struct connection *, u_int32_t);
+struct spdy_header_block	*spdy_header_block_create(int);
+
 int		spdy_frame_recv(struct netbuf *);
 int		spdy_frame_send(struct connection *, u_int16_t,
-		    u_int8_t, u_int32_t, u_int32_t, u_int8_t *);
-struct spdy_stream	*spdy_stream_lookup(struct connection *, u_int32_t);
+		    u_int8_t, u_int32_t, u_int32_t);
+void		spdy_header_block_add(struct spdy_header_block *,
+		    char *, char *);
+u_int8_t	*spdy_header_block_release(struct connection *,
+		    struct spdy_header_block *, u_int32_t *);
 
 #endif /* !__H_KORE_H */

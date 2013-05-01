@@ -68,7 +68,7 @@ extern const unsigned char SPDY_dictionary_txt[];
 #define SPDY_CTRL_FRAME_SYN_STREAM	1
 #define SPDY_CTRL_FRAME_SYN_REPLY	2
 #define SPDY_CTRL_FRAME_SETTINGS	4
-
+#define SPDY_CTRL_FRAME_PING		6
 #define SPDY_DATA_FRAME			99
 
 /* flags */
@@ -77,9 +77,5 @@ extern const unsigned char SPDY_dictionary_txt[];
 
 #define SPDY_HBLOCK_NORMAL		0
 #define SPDY_HBLOCK_DELAYED_ALLOC	1
-
-struct spdy_header_block *spdy_header_block_create(int);
-void spdy_header_block_add(struct spdy_header_block *, char *, char *);
-u_int8_t *spdy_header_block_release(struct spdy_header_block *, u_int32_t *);
 
 #endif /* !__H_SPDY_H */
