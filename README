@@ -1,0 +1,13 @@
+Hi.
+
+Kore is a SPDY based web server that handles dynamic content via loadable
+modules. Inside the examples/ directory you will find a complete example
+on how such modules are built (and some tools to help you get started).
+
+Take a look at example.conf as well for an overview of the way a site
+is configured and setup.
+
+Right now Kore development is a moving process, so expect bugs.
+If you run into said bugs, please contact me at joris@coders.se.
+
+I should add a TODO list.
