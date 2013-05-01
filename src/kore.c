@@ -42,6 +42,8 @@
 
 static int	efd = -1;
 static SSL_CTX	*ssl_ctx = NULL;
+int		server_port = 0;
+char		*server_ip = NULL;
 
 static int	kore_socket_nonblock(int);
 static int	kore_server_sslstart(void);
@@ -59,11 +61,17 @@ main(int argc, char *argv[])
 	struct epoll_event	*events;
 	int			n, i, *fd;
 
-	if (argc != 3)
-		fatal("Usage: kore [ip] [port]");
+	if (argc != 2)
+		fatal("Usage: kore [config file]");
 
-	if (!kore_server_bind(&server, argv[1], atoi(argv[2])))
-		fatal("cannot bind to %s:%s", argv[1], argv[2]);
+	kore_parse_config(argv[1]);
+	if (!kore_module_loaded())
+		fatal("no site module was loaded");
+
+	if (server_ip == NULL || server_port == 0)
+		fatal("missing a correct bind directive in configuration");
+	if (!kore_server_bind(&server, server_ip, server_port))
+		fatal("cannot bind to %s:%d", server_ip, server_port);
 	if (!kore_server_sslstart())
 		fatal("cannot initiate SSL");
 

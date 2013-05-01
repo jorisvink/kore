@@ -107,6 +107,39 @@ kore_strlcpy(char *dst, const char *src, size_t len)
 	}
 }
 
+long long
+kore_strtonum(const char *str, long long min, long long max, int *err)
+{
+	long long	l;
+	char		*ep;
+
+	if (min > max) {
+		*err = KORE_RESULT_ERROR;
+		return (0);
+	}
+
+	l = 0;
+	errno = 0;
+	l = strtoll(str, &ep, 10);
+	if (errno != 0 || str == ep || *ep != '\0') {
+		*err = KORE_RESULT_ERROR;
+		return (0);
+	}
+
+	if (l < min) {
+		*err = KORE_RESULT_ERROR;
+		return (0);
+	}
+
+	if (l > max) {
+		*err = KORE_RESULT_ERROR;
+		return (0);
+	}
+
+	*err = KORE_RESULT_OK;
+	return (l);
+}
+
 void
 fatal(const char *fmt, ...)
 {

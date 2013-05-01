@@ -39,7 +39,6 @@
 
 TAILQ_HEAD(, http_request)	http_requests;
 
-static int		http_generic_cb(struct http_request *);
 static int		http_generic_404(struct http_request *);
 
 void
@@ -125,7 +124,8 @@ http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 void
 http_process(void)
 {
-	struct http_request		*req, *next;
+	struct http_request	*req, *next;
+	int			(*handler)(struct http_request *);
 
 	if (TAILQ_EMPTY(&http_requests))
 		return;
@@ -134,12 +134,12 @@ http_process(void)
 	for (req = TAILQ_FIRST(&http_requests); req != NULL; req = next) {
 		next = TAILQ_NEXT(req, list);
 
-		/* XXX - add module hooks here */
-		if (!strcmp(req->path, "/favicon.ico")) {
+		handler = kore_module_handler_find(req->path);
+		if (handler == NULL) {
 			if (!http_generic_404(req))
 				kore_server_disconnect(req->owner);
 		} else {
-			if (!http_generic_cb(req))
+			if (!handler(req))
 				kore_server_disconnect(req->owner);
 		}
 
@@ -147,18 +147,6 @@ http_process(void)
 		TAILQ_REMOVE(&http_requests, req, list);
 		http_request_free(req);
 	}
-}
-
-static int
-http_generic_cb(struct http_request *req)
-{
-	u_int32_t		len;
-
-	kore_log("http_generic_cb(%s, %s, %s)",
-	    req->host, req->method, req->path);
-
-	len = strlen("<p>Hello world</p>");
-	return (http_response(req, 200, (u_int8_t *)"<p>Hello world</p>", len));
 }
 
 static int

@@ -78,12 +78,33 @@ struct connection {
 	TAILQ_HEAD(, spdy_stream)	spdy_streams;
 };
 
+#define HANDLER_TYPE_STATIC	1
+#define HANDLER_TYPE_DYNAMIC	2
+
+struct kore_module_handle {
+	char			*uri;
+	void			*func;
+	int			type;
+
+	TAILQ_ENTRY(kore_module_handle)		list;
+};
+
+extern int	server_port;
+extern char	*server_ip;
+
 void		*kore_malloc(size_t);
 void		*kore_calloc(size_t, size_t);
 void		*kore_realloc(void *, size_t);
 char		*kore_strdup(const char *);
+void		kore_parse_config(const char *);
 void		kore_strlcpy(char *, const char *, size_t);
 void		kore_server_disconnect(struct connection *);
+long long	kore_strtonum(const char *, long long, long long, int *);
+
+void		kore_module_load(char *);
+int		kore_module_loaded(void);
+void		*kore_module_handler_find(char *);
+int		kore_module_handler_new(char *, char *, int);
 
 void		fatal(const char *, ...);
 void		kore_log_internal(char *, int, const char *, ...);
