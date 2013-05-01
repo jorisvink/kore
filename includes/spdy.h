@@ -38,15 +38,19 @@ struct spdy_syn_stream {
 	u_int8_t	prio;
 };
 
+struct spdy_header_block {
+	u_int8_t	*header_block;
+	u_int32_t	header_block_len;
+	u_int32_t	header_offset;
+	u_int32_t	header_pairs;
+};
+
 struct spdy_stream {
 	u_int32_t	stream_id;
 	u_int8_t	flags;
 	u_int8_t	prio;
 
-	u_int8_t	*header_block;
-	u_int32_t	header_block_len;
-	u_int32_t	header_pairs;
-
+	struct spdy_header_block	*hblock;
 	TAILQ_ENTRY(spdy_stream)	list;
 };
 
@@ -62,10 +66,20 @@ extern const unsigned char SPDY_dictionary_txt[];
 
 /* control frames */
 #define SPDY_CTRL_FRAME_SYN_STREAM	1
+#define SPDY_CTRL_FRAME_SYN_REPLY	2
 #define SPDY_CTRL_FRAME_SETTINGS	4
+
+#define SPDY_DATA_FRAME			99
 
 /* flags */
 #define FLAG_FIN			0x01
 #define FLAG_UNIDIRECTIONAL		0x02
+
+#define SPDY_HBLOCK_NORMAL		0
+#define SPDY_HBLOCK_DELAYED_ALLOC	1
+
+struct spdy_header_block *spdy_header_block_create(int);
+void spdy_header_block_add(struct spdy_header_block *, char *, char *);
+u_int8_t *spdy_header_block_release(struct spdy_header_block *, u_int32_t *);
 
 #endif /* !__H_SPDY_H */

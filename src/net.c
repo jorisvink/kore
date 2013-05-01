@@ -109,7 +109,9 @@ net_send(struct connection *c)
 		return (KORE_RESULT_OK);
 
 	nb = TAILQ_FIRST(&(c->send_queue));
+	kore_log("nb is %p (%d/%d bytes)", nb, nb->offset, nb->len);
 	r = SSL_write(c->ssl, (nb->buf + nb->offset), (nb->len - nb->offset));
+	kore_log("SSL_write(): %d bytes", r);
 	if (r <= 0) {
 		r = SSL_get_error(c->ssl, r);
 		switch (r) {
@@ -213,4 +215,16 @@ net_read32(u_int8_t *b)
 
 	r = *(u_int32_t *)b;
 	return (ntohl(r));
+}
+
+void
+net_write16(u_int8_t *p, u_int16_t n)
+{
+	*p = htons(n);
+}
+
+void
+net_write32(u_int8_t *p, u_int32_t n)
+{
+	*p = htonl(n);
 }

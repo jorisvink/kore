@@ -10,7 +10,7 @@ CFLAGS+=-I/usr/local/ssl/include
 CFLAGS+=-Wall -Wstrict-prototypes -Wmissing-prototypes
 CFLAGS+=-Wmissing-declarations -Wshadow -Wpointer-arith -Wcast-qual
 CFLAGS+=-Wsign-compare -Iincludes -g
-LDFLAGS=-static -Llibs -lssl -lcrypto -ldl -lz
+LDFLAGS=-Llibs -lssl -lcrypto -ldl -lz
 
 light: $(S_OBJS)
 	$(CC) $(CFLAGS) $(S_OBJS) $(LDFLAGS) -o $(BIN)

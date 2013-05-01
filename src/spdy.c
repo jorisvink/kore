@@ -39,7 +39,7 @@
 
 static int		spdy_ctrl_frame_syn_stream(struct netbuf *);
 static int		spdy_ctrl_frame_settings(struct netbuf *);
-static int		spdy_stream_get_header(struct spdy_stream *,
+static int		spdy_stream_get_header(struct spdy_header_block *,
 			    char *, char **);
 
 static int		spdy_zlib_inflate(u_int8_t *, size_t,
@@ -93,6 +93,35 @@ spdy_frame_recv(struct netbuf *nb)
 	return (r);
 }
 
+int
+spdy_frame_send(struct connection *c, u_int16_t type, u_int8_t flags,
+    u_int32_t len, u_int32_t stream_id, u_int8_t *data)
+{
+	u_int8_t	nb[12];
+	u_int32_t	length;
+
+	kore_log("spdy_frame_send(%p, %d, %d, %d, %d, %p)", c, type, flags,
+	    len, stream_id, data);
+
+	length = 0;
+	memset(nb, 0, sizeof(nb));
+	switch (type) {
+	case SPDY_CTRL_FRAME_SYN_REPLY:
+		net_write16(&nb[0], 3);
+		nb[0] |= (1 << 7);
+		net_write16(&nb[2], type);
+		net_write32(&nb[4], len + 4);
+		nb[4] = flags;
+		net_write32(&nb[8], stream_id);
+		length = 12;
+		break;
+	case SPDY_DATA_FRAME:
+		break;
+	}
+
+	return (net_send_queue(c, nb, length, NULL));
+}
+
 struct spdy_stream *
 spdy_stream_lookup(struct connection *c, u_int32_t id)
 {
@@ -104,6 +133,86 @@ spdy_stream_lookup(struct connection *c, u_int32_t id)
 	}
 
 	return (NULL);
+}
+
+struct spdy_header_block *
+spdy_header_block_create(int delayed_alloc)
+{
+	struct spdy_header_block	*hblock;
+
+	kore_log("spdy_header_block_create()");
+
+	hblock = (struct spdy_header_block *)kore_malloc(sizeof(*hblock));
+	if (delayed_alloc == SPDY_HBLOCK_NORMAL) {
+		hblock->header_block = (u_int8_t *)kore_malloc(128);
+		hblock->header_block_len = 128;
+	} else {
+		hblock->header_block = NULL;
+		hblock->header_block_len = 0;
+	}
+
+	hblock->header_pairs = 0;
+	hblock->header_offset = 0;
+
+	return (hblock);
+}
+
+void
+spdy_header_block_add(struct spdy_header_block *hblock, char *name, char *value)
+{
+	u_int8_t		*p;
+	char			*out;
+	u_int32_t		nlen, vlen;
+
+	kore_log("spdy_header_block_add(%p, %s, %s)", hblock, name, value);
+
+	nlen = strlen(name);
+	vlen = strlen(value);
+	if ((nlen + vlen + hblock->header_offset) > hblock->header_block_len) {
+		hblock->header_block_len += nlen + vlen + 128;
+		hblock->header_block =
+		    (u_int8_t *)kore_realloc(hblock->header_block,
+		    hblock->header_block_len);
+	}
+
+	p = hblock->header_block + hblock->header_offset;
+	net_write32(p, nlen);
+	memcpy((p + 4), (u_int8_t *)name, nlen);
+	hblock->header_offset += 4 + nlen;
+
+	p = hblock->header_block + hblock->header_offset;
+	net_write32(p, vlen);
+	memcpy((p + 4), (u_int8_t *)value, vlen);
+	hblock->header_offset += 4 + vlen;
+
+	hblock->header_pairs++;
+
+	if (!spdy_stream_get_header(hblock, name, &out)) {
+		kore_log("cannot find newly inserted header %s", name);
+	} else {
+		kore_log("found header (%s, %s) as %s", name, value, out);
+		free(out);
+	}
+}
+
+u_int8_t *
+spdy_header_block_release(struct spdy_header_block *hblock, u_int32_t *len)
+{
+	u_int8_t	*deflated;
+
+	kore_log("spdy_header_block_release(%p, %p)", hblock, len);
+
+	if (!spdy_zlib_deflate(hblock->header_block, hblock->header_offset,
+	    &deflated, len)) {
+		free(hblock->header_block);
+		free(hblock);
+		return (NULL);
+	}
+
+	free(hblock->header_block);
+	free(hblock);
+
+	return (deflated);
 }
 
 static int
@@ -126,10 +235,17 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 	syn.prio = net_read16(nb->buf + 16) & 0xe000;
 	syn.slot = net_read16(nb->buf + 16) & 0x7;
 
-	/* XXX need to send protocol errors here? */
+	/* XXX need to send protocol error. */
 	if ((syn.stream_id % 2) == 0 || syn.stream_id == 0) {
 		kore_log("client sent incorrect id for SPDY_SYN_STREAM (%d)",
 		    syn.stream_id);
+		return (KORE_RESULT_ERROR);
+	}
+
+	/* XXX need to send protocol error. */
+	if (syn.stream_id < c->client_stream_id) {
+		kore_log("client sent incorrect id SPDY_SYN_STREAM (%d < %d)",
+		    syn.stream_id, c->client_stream_id);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -142,28 +258,29 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 	s->prio = syn.prio;
 	s->flags = ctrl.flags;
 	s->stream_id = syn.stream_id;
-	s->header_block_len = 0;
-	s->header_block = NULL;
+	s->hblock = spdy_header_block_create(SPDY_HBLOCK_DELAYED_ALLOC);
 
 	src = (nb->buf + SPDY_FRAME_SIZE + SPDY_SYNFRAME_SIZE);
 	kore_log("compressed headers are %d bytes long", ctrl.length - 10);
 	if (!spdy_zlib_inflate(src, (ctrl.length - SPDY_SYNFRAME_SIZE),
-	    &(s->header_block), &(s->header_block_len))) {
-		free(s->header_block);
+	    &(s->hblock->header_block), &(s->hblock->header_block_len))) {
+		free(s->hblock->header_block);
+		free(s->hblock);
 		free(s);
 		return (KORE_RESULT_ERROR);
 	}
 
-	s->header_pairs = net_read32(s->header_block);
-	kore_log("got %d headers", s->header_pairs);
+	s->hblock->header_pairs = net_read32(s->hblock->header_block);
+	kore_log("got %d headers", s->hblock->header_pairs);
 
 	path = NULL;
 	host = NULL;
 	method = NULL;
 
 #define GET_HEADER(n, r)				\
-	if (!spdy_stream_get_header(s, n, r)) {		\
-		free(s->header_block);			\
+	if (!spdy_stream_get_header(s->hblock, n, r)) {	\
+		free(s->hblock->header_block);		\
+		free(s->hblock);			\
 		free(s);				\
 		kore_log("no such header: %s", n);	\
 		if (path != NULL)			\
@@ -179,7 +296,8 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 	GET_HEADER(":method", &method);
 	GET_HEADER(":host", &host);
 	if (!http_new_request(c, s, host, method, path)) {
-		free(s->header_block);
+		free(s->hblock->header_block);
+		free(s->hblock);
 		free(s);
 		return (KORE_RESULT_ERROR);
 	}
@@ -188,6 +306,7 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 	free(method);
 	free(host);
 
+	c->client_stream_id = s->stream_id;
 	TAILQ_INSERT_TAIL(&(c->spdy_streams), s, list);
 	kore_log("SPDY_SYN_STREAM: %d:%d:%d", s->stream_id, s->flags, s->prio);
 
@@ -207,16 +326,27 @@ spdy_ctrl_frame_settings(struct netbuf *nb)
 }
 
 static int
-spdy_stream_get_header(struct spdy_stream *s, char *header, char **out)
+spdy_stream_get_header(struct spdy_header_block *s, char *header, char **out)
 {
-	u_int8_t		*p;
 	char			*cmp;
+	u_int8_t		*p, *end;
 	u_int32_t		i, nlen, vlen;
+
+	end = s->header_block + s->header_block_len;
 
 	p = s->header_block + 4;
 	for (i = 0; i < s->header_pairs; i++) {
 		nlen = net_read32(p);
+		if ((p + nlen + 4) >= end) {
+			kore_log("nlen out of bounds (%d)", nlen);
+			return (KORE_RESULT_ERROR);
+		}
+
 		vlen = net_read32(p + nlen + 4);
+		if ((p + nlen + vlen + 8) >= end) {
+			kore_log("vlen out of bounds (%d)", vlen);
+			return (KORE_RESULT_ERROR);
+		}
 
 		cmp = (char *)(p + 4);
 		if (!strncasecmp(cmp, header, nlen)) {

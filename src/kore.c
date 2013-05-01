@@ -35,6 +35,7 @@
 
 #include "spdy.h"
 #include "kore.h"
+#include "http.h"
 
 #define EPOLL_EVENTS	500
 
@@ -45,7 +46,6 @@ static int	kore_socket_nonblock(int);
 static int	kore_server_sslstart(void);
 static void	kore_event(int, int, void *);
 static int	kore_server_accept(struct listener *);
-static void	kore_server_disconnect(struct connection *);
 static int	kore_connection_handle(struct connection *, int);
 static int	kore_server_bind(struct listener *, const char *, int);
 static int	kore_ssl_npn_cb(SSL *, const u_char **, unsigned int *, void *);
@@ -69,15 +69,18 @@ main(int argc, char *argv[])
 	if ((efd = epoll_create(1000)) == -1)
 		fatal("epoll_create(): %s", errno_s);
 
+	http_init();
+
 	kore_event(server.fd, EPOLLIN, &server);
 	events = kore_calloc(EPOLL_EVENTS, sizeof(struct epoll_event));
 	for (;;) {
-		kore_log("main(): epoll_wait()");
-		n = epoll_wait(efd, events, EPOLL_EVENTS, -1);
+		n = epoll_wait(efd, events, EPOLL_EVENTS, 10);
 		if (n == -1)
 			fatal("epoll_wait(): %s", errno_s);
 
-		kore_log("main(): %d sockets available", n);
+		if (n > 0)
+			kore_log("main(): %d sockets available", n);
+
 		for (i = 0; i < n; i++) {
 			fd = (int *)events[i].data.ptr;
 
@@ -100,6 +103,8 @@ main(int argc, char *argv[])
 					kore_server_disconnect(c);
 			}
 		}
+
+		http_process();
 	}
 
 	close(server.fd);
@@ -210,7 +215,7 @@ kore_server_accept(struct listener *l)
 	return (KORE_RESULT_OK);
 }
 
-static void
+void
 kore_server_disconnect(struct connection *c)
 {
 	struct netbuf		*nb, *next;

@@ -65,6 +65,7 @@ struct connection {
 	TAILQ_HEAD(, netbuf)	send_queue;
 	TAILQ_HEAD(, netbuf)	recv_queue;
 
+	u_int32_t		client_stream_id;
 	TAILQ_HEAD(, spdy_stream)	spdy_streams;
 };
 
@@ -73,12 +74,15 @@ void		*kore_calloc(size_t, size_t);
 void		*kore_realloc(void *, size_t);
 char		*kore_strdup(const char *);
 void		kore_strlcpy(char *, const char *, size_t);
+void		kore_server_disconnect(struct connection *);
 
 void		fatal(const char *, ...);
 void		kore_log_internal(char *, int, const char *, ...);
 
 u_int16_t	net_read16(u_int8_t *);
 u_int32_t	net_read32(u_int8_t *);
+void		net_write16(u_int8_t *, u_int16_t);
+void		net_write32(u_int8_t *, u_int32_t);
 int		net_recv(struct connection *);
 int		net_send(struct connection *);
 int		net_recv_queue(struct connection *, size_t,
@@ -88,10 +92,9 @@ int		net_recv_expand(struct connection *c, struct netbuf *, size_t,
 int		net_send_queue(struct connection *, u_int8_t *, size_t,
 		    int (*cb)(struct netbuf *));
 
-int		http_new_request(struct connection *, struct spdy_stream *,
-		    char *, char *, char *);
-
-int			spdy_frame_recv(struct netbuf *);
+int		spdy_frame_recv(struct netbuf *);
+int		spdy_frame_send(struct connection *, u_int16_t,
+		    u_int8_t, u_int32_t, u_int32_t, u_int8_t *);
 struct spdy_stream	*spdy_stream_lookup(struct connection *, u_int32_t);
 
 #endif /* !__H_KORE_H */
