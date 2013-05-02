@@ -110,7 +110,7 @@ kore_module_handler_find(char *domain, char *path)
 	TAILQ_FOREACH(hdlr, &handlers, list) {
 		if (hdlr->uri[0] != '.' && !strcmp(hdlr->uri, uri))
 			return (hdlr->func);
-		if (hdlr->uri[0] == '.' && !strcmp(hdlr->uri, p))
+		if (p != NULL && hdlr->uri[0] == '.' && !strcmp(hdlr->uri, p))
 			return (hdlr->func);
 	}
 
