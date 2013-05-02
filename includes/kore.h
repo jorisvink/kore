@@ -155,7 +155,7 @@ int			spdy_stream_get_header(struct spdy_header_block *,
 
 int		spdy_frame_recv(struct netbuf *);
 void		spdy_frame_send(struct connection *, u_int16_t,
-		    u_int8_t, u_int32_t, u_int32_t);
+		    u_int8_t, u_int32_t, struct spdy_stream *, u_int32_t);
 void		spdy_header_block_add(struct spdy_header_block *,
 		    char *, char *);
 u_int8_t	*spdy_header_block_release(struct connection *,

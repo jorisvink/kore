@@ -42,6 +42,8 @@ static int		spdy_ctrl_frame_settings(struct netbuf *);
 static int		spdy_ctrl_frame_ping(struct netbuf *);
 static int		spdy_ctrl_frame_window(struct netbuf *);
 static int		spdy_data_frame_recv(struct netbuf *);
+static void		spdy_stream_close(struct connection *,
+			    struct spdy_stream *);
 
 static int		spdy_zlib_inflate(struct connection *, u_int8_t *,
 			    size_t, u_int8_t **, u_int32_t *);
@@ -129,13 +131,13 @@ spdy_frame_recv(struct netbuf *nb)
 
 void
 spdy_frame_send(struct connection *c, u_int16_t type, u_int8_t flags,
-    u_int32_t len, u_int32_t stream_id)
+    u_int32_t len, struct spdy_stream *s, u_int32_t misc)
 {
 	u_int8_t	nb[12];
 	u_int32_t	length;
 
-	kore_log("spdy_frame_send(%p, %d, %d, %d, %d)", c, type, flags,
-	    len, stream_id);
+	kore_log("spdy_frame_send(%p, %d, %d, %d, %p, %d)",
+	    c, type, flags, len, s, misc);
 
 	length = 0;
 	memset(nb, 0, sizeof(nb));
@@ -146,17 +148,20 @@ spdy_frame_send(struct connection *c, u_int16_t type, u_int8_t flags,
 		nb[0] |= (1 << 7);
 		net_write16(&nb[2], type);
 
-		if (type != SPDY_CTRL_FRAME_PING)
+		if (type != SPDY_CTRL_FRAME_PING) {
 			net_write32(&nb[4], len + 4);
-		else
+			nb[4] = flags;
+			net_write32(&nb[8], s->stream_id);
+		} else {
 			net_write32(&nb[4], len);
+			nb[4] = flags;
+			net_write32(&nb[8], misc);
+		}
 
-		nb[4] = flags;
-		net_write32(&nb[8], stream_id);
 		length = 12;
 		break;
 	case SPDY_DATA_FRAME:
-		net_write32(&nb[0], stream_id);
+		net_write32(&nb[0], s->stream_id);
 		nb[0] &= ~(1 << 7);
 		net_write32(&nb[4], len);
 		nb[4] = flags;
@@ -165,6 +170,9 @@ spdy_frame_send(struct connection *c, u_int16_t type, u_int8_t flags,
 	}
 
 	net_send_queue(c, nb, length, 0, NULL, NULL);
+
+	if ((flags & FLAG_FIN) && (s->flags & FLAG_FIN))
+		spdy_stream_close(c, s);
 }
 
 struct spdy_stream *
@@ -434,7 +442,7 @@ spdy_ctrl_frame_ping(struct netbuf *nb)
 		return (KORE_RESULT_ERROR);
 	}
 
-	spdy_frame_send(c, SPDY_CTRL_FRAME_PING, 0, 4, id);
+	spdy_frame_send(c, SPDY_CTRL_FRAME_PING, 0, 4, NULL, id);
 	return (KORE_RESULT_OK);
 }
 
@@ -481,11 +489,27 @@ spdy_data_frame_recv(struct netbuf *nb)
 	    data.length);
 
 	if (data.flags & FLAG_FIN) {
+		s->flags |= FLAG_FIN;
 		req->flags |= HTTP_REQUEST_COMPLETE;
 		kore_log("POST request completed");
 	}
 
 	return (KORE_RESULT_OK);
+}
+
+static void
+spdy_stream_close(struct connection *c, struct spdy_stream *s)
+{
+	kore_log("spdy_stream_close(%p, %p) <%d>", c, s, s->stream_id);
+
+	TAILQ_REMOVE(&(c->spdy_streams), s, list);
+	if (s->hblock != NULL) {
+		if (s->hblock->header_block != NULL)
+			free(s->hblock->header_block);
+		free(s->hblock);
+	}
+
+	free(s);
 }
 
 static int

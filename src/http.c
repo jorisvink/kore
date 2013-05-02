@@ -153,18 +153,18 @@ http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 			return (KORE_RESULT_ERROR);
 
 		spdy_frame_send(req->owner, SPDY_CTRL_FRAME_SYN_REPLY,
-		    0, hlen, req->stream->stream_id);
+		    0, hlen, req->stream, 0);
 		net_send_queue(req->owner, htext, hlen, 0, NULL, NULL);
 		free(htext);
 
 		if (len > 0) {
 			spdy_frame_send(req->owner, SPDY_DATA_FRAME,
-			    0, len, req->stream->stream_id);
+			    0, len, req->stream, 0);
 			net_send_queue(req->owner, d, len, 0, NULL, NULL);
 		}
 
 		spdy_frame_send(req->owner, SPDY_DATA_FRAME,
-		    FLAG_FIN, 0, req->stream->stream_id);
+		    FLAG_FIN, 0, req->stream, 0);
 	} else {
 		buf = kore_buf_create(KORE_BUF_INITIAL);
 
