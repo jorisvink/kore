@@ -34,7 +34,6 @@
 #include <string.h>
 #include <zlib.h>
 
-#include "buf.h"
 #include "spdy.h"
 #include "kore.h"
 
