@@ -63,6 +63,7 @@ kore_malloc(size_t len)
 	if ((ptr = malloc(len)) == NULL)
 		fatal("kore_malloc(%d): %d", len, errno);
 
+	memset(ptr, 0, len);
 	return (ptr);
 }
 
@@ -85,6 +86,7 @@ kore_calloc(size_t memb, size_t len)
 	if ((ptr = calloc(memb, len)) == NULL)
 		fatal("kore_calloc(%d, %d): %d", memb, len, errno);
 
+	memset(ptr, 0, memb * len);
 	return (ptr);
 }
 

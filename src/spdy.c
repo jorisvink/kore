@@ -136,7 +136,6 @@ spdy_frame_send(struct connection *c, u_int16_t type, u_int8_t flags,
 		net_write32(&nb[8], stream_id);
 		length = 12;
 		break;
-		break;
 	case SPDY_DATA_FRAME:
 		net_write32(&nb[0], stream_id);
 		nb[0] &= ~(1 << 7);
@@ -370,7 +369,7 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 	GET_HEADER(":path", &path);
 	GET_HEADER(":method", &method);
 	GET_HEADER(":host", &host);
-	if (!http_request_new(c, s, host, method, path)) {
+	if (!http_request_new(c, s, host, method, path, NULL)) {
 		free(s->hblock->header_block);
 		free(s->hblock);
 		free(s);

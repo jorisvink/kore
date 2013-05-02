@@ -329,6 +329,10 @@ kore_connection_handle(struct connection *c, int flags)
 		} else {
 			kore_log("using HTTP/1.1");
 			c->proto = CONN_PROTO_HTTP;
+			if (!net_recv_queue(c, HTTP_HEADER_MAX_LEN,
+			    NETBUF_CALL_CB_ALWAYS, NULL,
+			    http_header_recv))
+				return (KORE_RESULT_ERROR);
 		}
 
 		c->state = CONN_STATE_ESTABLISHED;

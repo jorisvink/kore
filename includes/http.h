@@ -17,6 +17,9 @@
 #ifndef __H_HTTP_H
 #define __H_HTTP_H
 
+#define HTTP_HEADER_MAX_LEN	8192
+#define HTTP_REQ_HEADER_MAX	25
+
 struct http_header {
 	char			*header;
 	char			*value;
@@ -28,11 +31,11 @@ struct http_request {
 	char			*host;
 	char			*method;
 	char			*path;
-
 	struct connection	*owner;
 	struct spdy_stream	*stream;
 
-	TAILQ_HEAD(, http_header)	headers;
+	TAILQ_HEAD(, http_header)	req_headers;
+	TAILQ_HEAD(, http_header)	resp_headers;
 	TAILQ_ENTRY(http_request)	list;
 };
 
@@ -45,6 +48,8 @@ int		http_response(struct http_request *, int,
 int		http_request_header_get(struct http_request *, char *, char **);
 void		http_response_header_add(struct http_request *, char *, char *);
 int		http_request_new(struct connection *, struct spdy_stream *,
-		    char *, char *, char *);
+		    char *, char *, char *, struct http_request **);
+
+int		http_header_recv(struct netbuf *);
 
 #endif /* !__H_HTTP_H */

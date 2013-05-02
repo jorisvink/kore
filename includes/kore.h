@@ -92,6 +92,15 @@ struct kore_module_handle {
 	TAILQ_ENTRY(kore_module_handle)		list;
 };
 
+#define KORE_BUF_INITIAL	128
+#define KORE_BUF_INCREMENT	KORE_BUF_INITIAL
+
+struct kore_buf {
+	u_int8_t		*data;
+	u_int32_t		length;
+	u_int32_t		offset;
+};
+
 extern int	server_port;
 extern char	*server_ip;
 
@@ -129,6 +138,10 @@ int		net_recv_expand(struct connection *c, struct netbuf *, size_t,
 		    int (*cb)(struct netbuf *));
 int		net_send_queue(struct connection *, u_int8_t *, size_t, int,
 		    struct netbuf **, int (*cb)(struct netbuf *));
+
+struct kore_buf	*kore_buf_create(u_int32_t);
+void		kore_buf_append(struct kore_buf *, u_int8_t *, u_int32_t);
+u_int8_t	*kore_buf_release(struct kore_buf *, u_int32_t *);
 
 struct spdy_header_block	*spdy_header_block_create(int);
 struct spdy_stream	*spdy_stream_lookup(struct connection *, u_int32_t);
