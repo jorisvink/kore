@@ -43,6 +43,9 @@
 
 static int	efd = -1;
 static SSL_CTX	*ssl_ctx = NULL;
+
+static TAILQ_HEAD(, connection)		disconnected;
+
 int		server_port = 0;
 char		*server_ip = NULL;
 
@@ -51,16 +54,17 @@ static int	kore_server_sslstart(void);
 static void	kore_event(int, int, void *);
 static int	kore_server_accept(struct listener *);
 static int	kore_connection_handle(struct connection *, int);
+static void	kore_server_final_disconnect(struct connection *);
 static int	kore_server_bind(struct listener *, const char *, int);
 static int	kore_ssl_npn_cb(SSL *, const u_char **, unsigned int *, void *);
 
 int
 main(int argc, char *argv[])
 {
-	struct connection	*c;
 	struct listener		server;
 	struct epoll_event	*events;
 	int			n, i, *fd;
+	struct connection	*c, *cnext;
 
 	if (argc != 2)
 		fatal("Usage: kore [config file]");
@@ -80,6 +84,7 @@ main(int argc, char *argv[])
 		fatal("epoll_create(): %s", errno_s);
 
 	http_init();
+	TAILQ_INIT(&disconnected);
 
 	kore_event(server.fd, EPOLLIN, &server);
 	events = kore_calloc(EPOLL_EVENTS, sizeof(struct epoll_event));
@@ -116,10 +121,26 @@ main(int argc, char *argv[])
 		}
 
 		http_process();
+
+		for (c = TAILQ_FIRST(&disconnected); c != NULL; c = cnext) {
+			cnext = TAILQ_NEXT(c, list);
+			TAILQ_REMOVE(&disconnected, c, list);
+			kore_server_final_disconnect(c);
+		}
 	}
 
 	close(server.fd);
 	return (0);
+}
+
+void
+kore_server_disconnect(struct connection *c)
+{
+	if (c->state != CONN_STATE_DISCONNECTING) {
+		kore_log("preparing %p for disconnection", c);
+		c->state = CONN_STATE_DISCONNECTING;
+		TAILQ_INSERT_TAIL(&disconnected, c, list);
+	}
 }
 
 static int
@@ -230,13 +251,13 @@ kore_server_accept(struct listener *l)
 	return (KORE_RESULT_OK);
 }
 
-void
-kore_server_disconnect(struct connection *c)
+static void
+kore_server_final_disconnect(struct connection *c)
 {
 	struct netbuf		*nb, *next;
 	struct spdy_stream	*s, *snext;
 
-	kore_log("kore_server_disconnect(%p)", c);
+	kore_log("kore_server_final_disconnect(%p)", c);
 
 	close(c->fd);
 	if (c->ssl != NULL)

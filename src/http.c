@@ -222,7 +222,7 @@ void
 http_process(void)
 {
 	struct http_request	*req, *next;
-	int			(*handler)(struct http_request *);
+	int			r, (*handler)(struct http_request *);
 
 	if (TAILQ_EMPTY(&http_requests))
 		return;
@@ -232,15 +232,16 @@ http_process(void)
 		next = TAILQ_NEXT(req, list);
 
 		handler = kore_module_handler_find(req->path);
-		if (handler == NULL) {
-			if (!http_generic_404(req))
-				kore_server_disconnect(req->owner);
-		} else {
-			if (!handler(req))
-				kore_server_disconnect(req->owner);
-		}
+		if (handler == NULL)
+			r = http_generic_404(req);
+		else
+			r = handler(req);
 
-		net_send_flush(req->owner);
+		if (r != KORE_RESULT_ERROR)
+			net_send_flush(req->owner);
+		else
+			kore_server_disconnect(req->owner);
+
 		TAILQ_REMOVE(&http_requests, req, list);
 		http_request_free(req);
 	}
@@ -265,6 +266,7 @@ http_header_recv(struct netbuf *nb)
 	if (nb->len > 2 && strncmp((p - 2), "\r\n\r\n", 4))
 		return (KORE_RESULT_OK);
 
+	nb->flags |= NETBUF_FORCE_REMOVE;
 	hbuf = kore_strdup((const char *)nb->buf);
 
 	h = kore_split_string(hbuf, "\r\n", headers, HTTP_REQ_HEADER_MAX);

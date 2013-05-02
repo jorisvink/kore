@@ -33,7 +33,6 @@ struct netbuf {
 	u_int32_t		offset;
 	u_int32_t		len;
 	u_int8_t		type;
-	u_int8_t		retain;
 	u_int8_t		flags;
 
 	void			*owner;
@@ -47,9 +46,10 @@ struct listener {
 	struct sockaddr_in	sin;
 };
 
-#define CONN_STATE_UNKNOWN	0
-#define CONN_STATE_SSL_SHAKE	1
-#define CONN_STATE_ESTABLISHED	2
+#define CONN_STATE_UNKNOWN		0
+#define CONN_STATE_SSL_SHAKE		1
+#define CONN_STATE_ESTABLISHED		2
+#define CONN_STATE_DISCONNECTING	3
 
 #define CONN_PROTO_UNKNOWN	0
 #define CONN_PROTO_SPDY		1
@@ -59,6 +59,7 @@ struct listener {
 #define CONN_WRITE_POSSIBLE	0x02
 
 #define NETBUF_CALL_CB_ALWAYS	0x01
+#define NETBUF_FORCE_REMOVE	0x02
 
 struct connection {
 	int			fd;
@@ -79,6 +80,8 @@ struct connection {
 
 	u_int32_t		client_stream_id;
 	TAILQ_HEAD(, spdy_stream)	spdy_streams;
+
+	TAILQ_ENTRY(connection)	list;
 };
 
 #define HANDLER_TYPE_STATIC	1
