@@ -28,6 +28,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -44,11 +45,13 @@
 static int	efd = -1;
 static SSL_CTX	*ssl_ctx = NULL;
 
+volatile sig_atomic_t			sig_recv;
 static TAILQ_HEAD(, connection)		disconnected;
 
 int		server_port = 0;
 char		*server_ip = NULL;
 
+static void	kore_signal(int);
 static int	kore_socket_nonblock(int);
 static int	kore_server_sslstart(void);
 static void	kore_event(int, int, void *);
@@ -86,12 +89,23 @@ main(int argc, char *argv[])
 	http_init();
 	TAILQ_INIT(&disconnected);
 
+	sig_recv = 0;
+	signal(SIGHUP, kore_signal);
+
 	kore_event(server.fd, EPOLLIN, &server);
 	events = kore_calloc(EPOLL_EVENTS, sizeof(struct epoll_event));
 	for (;;) {
+		if (sig_recv == SIGHUP) {
+			kore_module_reload();
+			sig_recv = 0;
+		}
+
 		n = epoll_wait(efd, events, EPOLL_EVENTS, 10);
-		if (n == -1)
+		if (n == -1) {
+			if (errno == EINTR)
+				continue;
 			fatal("epoll_wait(): %s", errno_s);
+		}
 
 		if (n > 0)
 			kore_log("main(): %d sockets available", n);
@@ -421,4 +435,10 @@ kore_event(int fd, int flags, void *udata)
 			fatal("epoll_ctl() ADD: %s", errno_s);
 		}
 	}
+}
+
+static void
+kore_signal(int sig)
+{
+	sig_recv = sig;
 }

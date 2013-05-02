@@ -91,7 +91,8 @@ struct connection {
 struct kore_module_handle {
 	char			*uri;
 	char			*domain;
-	void			*func;
+	char			*func;
+	void			*addr;
 	int			type;
 
 	TAILQ_ENTRY(kore_module_handle)		list;
@@ -122,6 +123,7 @@ int		kore_split_string(char *, char *, char **, size_t);
 long long	kore_strtonum(const char *, long long, long long, int *);
 
 void		kore_module_load(char *);
+void		kore_module_reload(void);
 int		kore_module_loaded(void);
 void		*kore_module_handler_find(char *, char *);
 int		kore_module_handler_new(char *, char *, char *, int);

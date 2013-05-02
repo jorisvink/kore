@@ -40,6 +40,7 @@
 #include "kore.h"
 
 static void		*mod_handle = NULL;
+static char		*mod_name = NULL;
 static time_t		mod_last_mtime = 0;
 
 static TAILQ_HEAD(, kore_module_handle)		handlers;
@@ -63,6 +64,28 @@ kore_module_load(char *module_name)
 		fatal("%s", dlerror());
 
 	TAILQ_INIT(&handlers);
+	mod_name = kore_strdup(module_name);
+}
+
+void
+kore_module_reload(void)
+{
+	struct kore_module_handle	*hdlr;
+
+	if (dlclose(mod_handle))
+		fatal("cannot close existing module: %s", dlerror());
+
+	mod_handle = dlopen(mod_name, RTLD_NOW);
+	if (mod_handle == NULL)
+		fatal("kore_module_reload(): %s", dlerror());
+
+	TAILQ_FOREACH(hdlr, &handlers, list) {
+		hdlr->addr = dlsym(mod_handle, hdlr->func);
+		if (hdlr->func == NULL)
+			fatal("no function '%s' found", hdlr->func);
+	}
+
+	kore_log("reloaded '%s' module", mod_name);
 }
 
 int
@@ -90,9 +113,10 @@ kore_module_handler_new(char *path, char *domain, char *func, int type)
 	snprintf(uri, sizeof(uri), "%s%s", domain, path);
 
 	hdlr = (struct kore_module_handle *)kore_malloc(sizeof(*hdlr));
-	hdlr->func = addr;
+	hdlr->addr = addr;
 	hdlr->type = type;
 	hdlr->uri = kore_strdup(uri);
+	hdlr->func = kore_strdup(func);
 	TAILQ_INSERT_TAIL(&(handlers), hdlr, list);
 
 	return (KORE_RESULT_OK);
@@ -109,9 +133,9 @@ kore_module_handler_find(char *domain, char *path)
 
 	TAILQ_FOREACH(hdlr, &handlers, list) {
 		if (hdlr->uri[0] != '.' && !strcmp(hdlr->uri, uri))
-			return (hdlr->func);
+			return (hdlr->addr);
 		if (p != NULL && hdlr->uri[0] == '.' && !strcmp(hdlr->uri, p))
-			return (hdlr->func);
+			return (hdlr->addr);
 	}
 
 	return (NULL);
