@@ -179,7 +179,7 @@ http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 			kore_buf_append(buf, (u_int8_t *)sbuf, strlen(sbuf));
 		}
 
-		kore_buf_append(buf, (u_int8_t *)"\r\n\r\n", 4);
+		kore_buf_append(buf, (u_int8_t *)"\r\n", 2);
 		htext = kore_buf_release(buf, &hlen);
 		if (!net_send_queue(req->owner, htext, hlen, 0, NULL, NULL)) {
 			free(htext);
