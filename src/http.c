@@ -255,7 +255,7 @@ http_header_recv(struct netbuf *nb)
 	char			*p;
 	struct http_header	*hdr;
 	struct http_request	*req;
-	int			h, i, v;
+	int			h, i, v, skip;
 	char			*request[4], *host[3], *hbuf;
 	char			*headers[HTTP_REQ_HEADER_MAX];
 	struct connection	*c = (struct connection *)nb->owner;
@@ -288,25 +288,43 @@ http_header_recv(struct netbuf *nb)
 		return (KORE_RESULT_ERROR);
 	}
 
-	v = kore_split_string(headers[1], ":", host, 3);
-	if (v != 2) {
+	host[0] = NULL;
+	for (i = 0; i < h; i++) {
+		if (strncasecmp(headers[i], "host",
+		    MIN(strlen(headers[i]), strlen("host"))))
+			continue;
+
+		v = kore_split_string(headers[i], ":", host, 3);
+		if (v != 2) {
+			free(hbuf);
+			return (KORE_RESULT_ERROR);
+		}
+
+		if (strlen(host[0]) != 4 || strncasecmp(host[0], "host", 4) ||
+		    strlen(host[1]) < 4) {
+			free(hbuf);
+			return (KORE_RESULT_ERROR);
+		}
+
+		host[1]++;
+		skip = i;
+		break;
+	}
+
+	if (host[0] == NULL) {
 		free(hbuf);
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (strlen(host[0]) != 4 || strncasecmp(host[0], "host", 4) ||
-	    strlen(host[1]) < 3) {
-		free(hbuf);
-		return (KORE_RESULT_ERROR);
-	}
-
-	host[1]++;
 	if (!http_request_new(c, NULL, host[1], request[0], request[1], &req)) {
 		free(hbuf);
 		return (KORE_RESULT_ERROR);
 	}
 
-	for (i = 2; i < h; i++) {
+	for (i = 1; i < h; i++) {
+		if (i == skip)
+			continue;
+
 		p = strchr(headers[i], ':');
 		if (p == NULL) {
 			kore_log("malformed header: '%s'", headers[i]);
