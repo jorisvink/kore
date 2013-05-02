@@ -280,6 +280,7 @@ http_header_recv(struct netbuf *nb)
 
 	v = kore_split_string(headers[0], " ", request, 4);
 	if (v != 3) {
+		kore_log("%s -> %s", headers[i], p);
 		free(hbuf);
 		return (KORE_RESULT_ERROR);
 	}
@@ -290,7 +291,7 @@ http_header_recv(struct netbuf *nb)
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (strlen(host[0]) != 4 || strncasecmp(host[0], "host", 5)) {
+	if (strlen(host[0]) != 4 || strncasecmp(host[0], "host", 4)) {
 		free(hbuf);
 		return (KORE_RESULT_ERROR);
 	}
