@@ -231,7 +231,7 @@ http_process(void)
 	for (req = TAILQ_FIRST(&http_requests); req != NULL; req = next) {
 		next = TAILQ_NEXT(req, list);
 
-		handler = kore_module_handler_find(req->path);
+		handler = kore_module_handler_find(req->host, req->path);
 		if (handler == NULL)
 			r = http_generic_404(req);
 		else

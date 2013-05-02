@@ -89,6 +89,7 @@ struct connection {
 
 struct kore_module_handle {
 	char			*uri;
+	char			*domain;
 	void			*func;
 	int			type;
 
@@ -121,8 +122,8 @@ long long	kore_strtonum(const char *, long long, long long, int *);
 
 void		kore_module_load(char *);
 int		kore_module_loaded(void);
-void		*kore_module_handler_find(char *);
-int		kore_module_handler_new(char *, char *, int);
+void		*kore_module_handler_find(char *, char *);
+int		kore_module_handler_new(char *, char *, char *, int);
 
 void		fatal(const char *, ...);
 void		kore_log_internal(char *, int, const char *, ...);

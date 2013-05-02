@@ -40,6 +40,7 @@
 static int			configure_bind(char **);
 static int			configure_load(char **);
 static int			configure_handler(char **);
+static int			configure_domain(char **);
 
 static struct {
 	const char		*name;
@@ -48,9 +49,11 @@ static struct {
 	{ "bind",		configure_bind },
 	{ "load",		configure_load },
 	{ "static",		configure_handler },
-	{ "dynamic",		configure_handler },
+	{ "domain",		configure_domain },
 	{ NULL,			NULL },
 };
+
+static char		*current_domain = NULL;
 
 void
 kore_parse_config(const char *config_path)
@@ -127,9 +130,27 @@ configure_load(char **argv)
 }
 
 static int
+configure_domain(char **argv)
+{
+	if (argv[1] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	if (current_domain != NULL)
+		free(current_domain);
+	current_domain = kore_strdup(argv[1]);
+
+	return (KORE_RESULT_OK);
+}
+
+static int
 configure_handler(char **argv)
 {
 	int		type;
+
+	if (current_domain == NULL) {
+		kore_log("missing domain for page handler");
+		return (KORE_RESULT_ERROR);
+	}
 
 	if (argv[1] == NULL || argv[2] == NULL)
 		return (KORE_RESULT_ERROR);
@@ -141,7 +162,7 @@ configure_handler(char **argv)
 	else
 		return (KORE_RESULT_ERROR);
 
-	if (!kore_module_handler_new(argv[1], argv[2], type)) {
+	if (!kore_module_handler_new(argv[1], current_domain, argv[2], type)) {
 		kore_log("cannot create handler for %s", argv[1]);
 		return (KORE_RESULT_ERROR);
 	}

@@ -72,12 +72,14 @@ kore_module_loaded(void)
 }
 
 int
-kore_module_handler_new(char *uri, char *func, int type)
+kore_module_handler_new(char *path, char *domain, char *func, int type)
 {
 	void				*addr;
 	struct kore_module_handle	*hdlr;
+	char				uri[512];
 
-	kore_log("kore_module_handler_new(%s, %s, %d)", uri, func, type);
+	kore_log("kore_module_handler_new(%s, %s, %s, %d)", path,
+	    domain, func, type);
 
 	addr = dlsym(mod_handle, func);
 	if (addr == NULL) {
@@ -85,22 +87,30 @@ kore_module_handler_new(char *uri, char *func, int type)
 		return (KORE_RESULT_ERROR);
 	}
 
+	snprintf(uri, sizeof(uri), "%s%s", domain, path);
+
 	hdlr = (struct kore_module_handle *)kore_malloc(sizeof(*hdlr));
-	hdlr->uri = kore_strdup(uri);
 	hdlr->func = addr;
 	hdlr->type = type;
+	hdlr->uri = kore_strdup(uri);
 	TAILQ_INSERT_TAIL(&(handlers), hdlr, list);
 
 	return (KORE_RESULT_OK);
 }
 
 void *
-kore_module_handler_find(char *uri)
+kore_module_handler_find(char *domain, char *path)
 {
 	struct kore_module_handle	*hdlr;
+	char				uri[512], *p;
+
+	snprintf(uri, sizeof(uri), "%s%s", domain, path);
+	p = strchr(uri, '.');
 
 	TAILQ_FOREACH(hdlr, &handlers, list) {
-		if (!strcmp(hdlr->uri, uri))
+		if (hdlr->uri[0] != '.' && !strcmp(hdlr->uri, uri))
+			return (hdlr->func);
+		if (hdlr->uri[0] == '.' && !strcmp(hdlr->uri, p))
 			return (hdlr->func);
 	}
 
