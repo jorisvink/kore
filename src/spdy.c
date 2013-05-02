@@ -93,7 +93,7 @@ spdy_frame_recv(struct netbuf *nb)
 			r = net_recv_expand(c, nb, ctrl.length, cb);
 		} else {
 			kore_log("no callback for type %d", ctrl.type);
-			r = KORE_RESULT_ERROR;
+			r = KORE_RESULT_OK;
 		}
 	} else {
 		r = KORE_RESULT_ERROR;
