@@ -41,6 +41,7 @@ static int		spdy_ctrl_frame_syn_stream(struct netbuf *);
 static int		spdy_ctrl_frame_settings(struct netbuf *);
 static int		spdy_ctrl_frame_ping(struct netbuf *);
 static int		spdy_ctrl_frame_window(struct netbuf *);
+static int		spdy_data_frame_recv(struct netbuf *);
 
 static int		spdy_zlib_inflate(struct connection *, u_int8_t *,
 			    size_t, u_int8_t **, u_int32_t *);
@@ -50,7 +51,9 @@ static int		spdy_zlib_deflate(struct connection *, u_int8_t *,
 int
 spdy_frame_recv(struct netbuf *nb)
 {
+	struct spdy_stream	*s;
 	struct spdy_ctrl_frame	ctrl;
+	struct spdy_data_frame	data;
 	int			(*cb)(struct netbuf *), r;
 	struct connection	*c = (struct connection *)nb->owner;
 
@@ -100,8 +103,20 @@ spdy_frame_recv(struct netbuf *nb)
 			r = KORE_RESULT_OK;
 		}
 	} else {
-		r = KORE_RESULT_ERROR;
-		kore_log("received data frame, can't handle that yet.");
+		data.stream_id = net_read32(nb->buf) & ~(1 << 31);
+		if ((s = spdy_stream_lookup(c, data.stream_id)) == NULL) {
+			kore_log("received data frame for non existing stream");
+			r = KORE_RESULT_ERROR;
+		} else if (s->flags & FLAG_FIN) {
+			kore_log("received data frame but FLAG_FIN was set");
+			r = KORE_RESULT_ERROR;
+		} else {
+			data.flags = *(u_int8_t *)(nb->buf + 4);
+			data.length = net_read32(nb->buf + 4) & 0xffffff;
+
+			r = net_recv_expand(c, nb, data.length,
+			    spdy_data_frame_recv);
+		}
 	}
 
 	if (r == KORE_RESULT_OK) {
@@ -373,8 +388,12 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 	GET_HEADER(":path", &path);
 	GET_HEADER(":method", &method);
 	GET_HEADER(":host", &host);
+
 	if (!http_request_new(c, s, host, method, path,
 	    (struct http_request **)&(s->httpreq))) {
+		free(path);
+		free(method);
+		free(host);
 		free(s->hblock->header_block);
 		free(s->hblock);
 		free(s);
@@ -428,6 +447,44 @@ spdy_ctrl_frame_window(struct netbuf *nb)
 	window_size = net_read32(nb->buf + SPDY_FRAME_SIZE + 4);
 
 	kore_log("SPDY_WINDOW_UPDATE: %d:%d", stream_id, window_size);
+	return (KORE_RESULT_OK);
+}
+
+static int
+spdy_data_frame_recv(struct netbuf *nb)
+{
+	struct spdy_stream		*s;
+	struct http_request		*req;
+	struct spdy_data_frame		data;
+	struct connection		*c = (struct connection *)nb->owner;
+
+	data.stream_id = net_read32(nb->buf) & ~(1 << 31);
+	data.flags = *(u_int8_t *)(nb->buf + 4);
+	data.length = net_read32(nb->buf + 4) & 0xffffff;
+	kore_log("SPDY_SESSION_DATA: %d:%d:%d", data.stream_id,
+	    data.flags, data.length);
+
+	if ((s = spdy_stream_lookup(c, data.stream_id)) == NULL) {
+		kore_log("session data for incorrect stream");
+		return (KORE_RESULT_OK);
+	}
+
+	req = (struct http_request *)s->httpreq;
+	if (req->method != HTTP_METHOD_POST) {
+		kore_log("data frame for non post received");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (req->post_data == NULL)
+		req->post_data = kore_buf_create(data.length);
+	kore_buf_append(req->post_data, (nb->buf + SPDY_FRAME_SIZE),
+	    data.length);
+
+	if (data.flags & FLAG_FIN) {
+		req->flags |= HTTP_REQUEST_COMPLETE;
+		kore_log("POST request completed");
+	}
+
 	return (KORE_RESULT_OK);
 }
 

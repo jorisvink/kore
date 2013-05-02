@@ -39,7 +39,7 @@ struct http_request {
 	char			*path;
 	struct connection	*owner;
 	struct spdy_stream	*stream;
-	struct netbuf		*post_data;
+	struct kore_buf		*post_data;
 
 	TAILQ_HEAD(, http_header)	req_headers;
 	TAILQ_HEAD(, http_header)	resp_headers;
