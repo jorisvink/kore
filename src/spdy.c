@@ -40,6 +40,7 @@
 static int		spdy_ctrl_frame_syn_stream(struct netbuf *);
 static int		spdy_ctrl_frame_settings(struct netbuf *);
 static int		spdy_ctrl_frame_ping(struct netbuf *);
+static int		spdy_ctrl_frame_window(struct netbuf *);
 
 static int		spdy_zlib_inflate(struct connection *, u_int8_t *,
 			    size_t, u_int8_t **, u_int32_t *);
@@ -83,6 +84,9 @@ spdy_frame_recv(struct netbuf *nb)
 			break;
 		case SPDY_CTRL_FRAME_PING:
 			cb = spdy_ctrl_frame_ping;
+			break;
+		case SPDY_CTRL_FRAME_WINDOW:
+			cb = spdy_ctrl_frame_window;
 			break;
 		default:
 			cb = NULL;
@@ -411,6 +415,18 @@ spdy_ctrl_frame_ping(struct netbuf *nb)
 	}
 
 	return (spdy_frame_send(c, SPDY_CTRL_FRAME_PING, 0, 4, id));
+}
+
+static int
+spdy_ctrl_frame_window(struct netbuf *nb)
+{
+	u_int32_t	stream_id, window_size;
+
+	stream_id = net_read32(nb->buf + SPDY_FRAME_SIZE);
+	window_size = net_read32(nb->buf + SPDY_FRAME_SIZE + 4);
+
+	kore_log("SPDY_WINDOW_UPDATE: %d:%d", stream_id, window_size);
+	return (KORE_RESULT_OK);
 }
 
 static int

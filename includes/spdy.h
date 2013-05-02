@@ -69,6 +69,7 @@ extern const unsigned char SPDY_dictionary_txt[];
 #define SPDY_CTRL_FRAME_SYN_REPLY	2
 #define SPDY_CTRL_FRAME_SETTINGS	4
 #define SPDY_CTRL_FRAME_PING		6
+#define SPDY_CTRL_FRAME_WINDOW		9
 #define SPDY_DATA_FRAME			99
 
 /* flags */

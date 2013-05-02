@@ -104,7 +104,6 @@ main(int argc, char *argv[])
 				if (*fd == server.fd)
 					fatal("error on server socket");
 
-				kore_log("client EPOLLERR | EPOLLHUP");
 				c = (struct connection *)events[i].data.ptr;
 				kore_server_disconnect(c);
 				continue;
@@ -246,7 +245,6 @@ kore_server_accept(struct listener *l)
 	TAILQ_INIT(&(c->recv_queue));
 	TAILQ_INIT(&(c->spdy_streams));;
 	kore_event(c->fd, EPOLLIN | EPOLLOUT | EPOLLET, c);
-	kore_log("new connection from %s", inet_ntoa(c->sin.sin_addr));
 
 	return (KORE_RESULT_OK);
 }
@@ -290,7 +288,6 @@ kore_server_final_disconnect(struct connection *c)
 		free(s);
 	}
 
-	kore_log("disconnect connection from %s", inet_ntoa(c->sin.sin_addr));
 	free(c);
 }
 
