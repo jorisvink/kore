@@ -50,10 +50,8 @@ struct spdy_stream {
 	u_int8_t	flags;
 	u_int8_t	prio;
 
-	u_int32_t	bytes_expected;
-	u_int32_t	bytes_received;
-
 	struct spdy_header_block	*hblock;
+
 	TAILQ_ENTRY(spdy_stream)	list;
 };
 
