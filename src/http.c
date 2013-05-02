@@ -58,13 +58,26 @@ http_request_new(struct connection *c, struct spdy_stream *s, char *host,
 	    host, method, path);
 
 	req = (struct http_request *)kore_malloc(sizeof(*req));
+	req->flags = 0;
 	req->owner = c;
 	req->stream = s;
+	req->post_data = NULL;
 	req->host = kore_strdup(host);
 	req->path = kore_strdup(path);
-	req->method = kore_strdup(method);
 	TAILQ_INIT(&(req->resp_headers));
 	TAILQ_INIT(&(req->req_headers));
+
+	if (!strcasecmp(method, "get")) {
+		req->method = HTTP_METHOD_GET;
+		req->flags |= HTTP_REQUEST_COMPLETE;
+	} else if (!strcasecmp(method, "post")) {
+		req->method = HTTP_METHOD_POST;
+	} else {
+		kore_log("invalid method specified in request: %s", method);
+		http_request_free(req);
+		return (KORE_RESULT_ERROR);
+	}
+
 	TAILQ_INSERT_TAIL(&http_requests, req, list);
 
 	if (out != NULL)
@@ -109,7 +122,6 @@ http_request_free(struct http_request *req)
 		free(hdr);
 	}
 
-	free(req->method);
 	free(req->path);
 	free(req->host);
 	free(req);
@@ -140,27 +152,19 @@ http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 		if (htext == NULL)
 			return (KORE_RESULT_ERROR);
 
-		if (!spdy_frame_send(req->owner, SPDY_CTRL_FRAME_SYN_REPLY,
-		    0, hlen, req->stream->stream_id))
-			return (KORE_RESULT_ERROR);
-
-		if (!net_send_queue(req->owner, htext, hlen, 0, NULL, NULL)) {
-			free(htext);
-			return (KORE_RESULT_ERROR);
-		}
-
+		spdy_frame_send(req->owner, SPDY_CTRL_FRAME_SYN_REPLY,
+		    0, hlen, req->stream->stream_id);
+		net_send_queue(req->owner, htext, hlen, 0, NULL, NULL);
 		free(htext);
+
 		if (len > 0) {
-			if (!spdy_frame_send(req->owner, SPDY_DATA_FRAME,
-			    0, len, req->stream->stream_id))
-				return (KORE_RESULT_ERROR);
-			if (!net_send_queue(req->owner, d, len, 0, NULL, NULL))
-				return (KORE_RESULT_ERROR);
+			spdy_frame_send(req->owner, SPDY_DATA_FRAME,
+			    0, len, req->stream->stream_id);
+			net_send_queue(req->owner, d, len, 0, NULL, NULL);
 		}
 
-		if (!spdy_frame_send(req->owner, SPDY_DATA_FRAME,
-		    FLAG_FIN, 0, req->stream->stream_id))
-			return (KORE_RESULT_ERROR);
+		spdy_frame_send(req->owner, SPDY_DATA_FRAME,
+		    FLAG_FIN, 0, req->stream->stream_id);
 	} else {
 		buf = kore_buf_create(KORE_BUF_INITIAL);
 
@@ -181,14 +185,10 @@ http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 
 		kore_buf_append(buf, (u_int8_t *)"\r\n", 2);
 		htext = kore_buf_release(buf, &hlen);
-		if (!net_send_queue(req->owner, htext, hlen, 0, NULL, NULL)) {
-			free(htext);
-			return (KORE_RESULT_ERROR);
-		}
-
+		net_send_queue(req->owner, htext, hlen, 0, NULL, NULL);
 		free(htext);
-		if (!net_send_queue(req->owner, d, len, 0, NULL, NULL))
-			return (KORE_RESULT_ERROR);
+
+		net_send_queue(req->owner, d, len, 0, NULL, NULL);
 	}
 
 	return (KORE_RESULT_OK);
@@ -222,7 +222,7 @@ void
 http_process(void)
 {
 	struct http_request	*req, *next;
-	int			r, (*handler)(struct http_request *);
+	int			r, (*hdlr)(struct http_request *);
 
 	if (TAILQ_EMPTY(&http_requests))
 		return;
@@ -230,12 +230,14 @@ http_process(void)
 	kore_log("http_process()");
 	for (req = TAILQ_FIRST(&http_requests); req != NULL; req = next) {
 		next = TAILQ_NEXT(req, list);
+		if (!(req->flags & HTTP_REQUEST_COMPLETE))
+			continue;
 
-		handler = kore_module_handler_find(req->host, req->path);
-		if (handler == NULL)
+		hdlr = kore_module_handler_find(req->host, req->path);
+		if (hdlr == NULL)
 			r = http_generic_404(req);
 		else
-			r = handler(req);
+			r = hdlr(req);
 
 		if (r != KORE_RESULT_ERROR)
 			net_send_flush(req->owner);

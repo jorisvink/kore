@@ -105,14 +105,14 @@ spdy_frame_recv(struct netbuf *nb)
 	}
 
 	if (r == KORE_RESULT_OK) {
-		r = net_recv_queue(c, SPDY_FRAME_SIZE,
+		net_recv_queue(c, SPDY_FRAME_SIZE,
 		    0, NULL, spdy_frame_recv);
 	}
 
 	return (r);
 }
 
-int
+void
 spdy_frame_send(struct connection *c, u_int16_t type, u_int8_t flags,
     u_int32_t len, u_int32_t stream_id)
 {
@@ -149,7 +149,7 @@ spdy_frame_send(struct connection *c, u_int16_t type, u_int8_t flags,
 		break;
 	}
 
-	return (net_send_queue(c, nb, length, 0, NULL, NULL));
+	net_send_queue(c, nb, length, 0, NULL, NULL);
 }
 
 struct spdy_stream *
@@ -414,7 +414,8 @@ spdy_ctrl_frame_ping(struct netbuf *nb)
 		return (KORE_RESULT_ERROR);
 	}
 
-	return (spdy_frame_send(c, SPDY_CTRL_FRAME_PING, 0, 4, id));
+	spdy_frame_send(c, SPDY_CTRL_FRAME_PING, 0, 4, id);
+	return (KORE_RESULT_OK);
 }
 
 static int

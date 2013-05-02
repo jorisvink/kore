@@ -341,16 +341,14 @@ kore_connection_handle(struct connection *c, int flags)
 			if (!memcmp(data, "spdy/3", 6))
 				kore_log("using SPDY/3");
 			c->proto = CONN_PROTO_SPDY;
-			if (!net_recv_queue(c, SPDY_FRAME_SIZE, 0,
-			    NULL, spdy_frame_recv))
-				return (KORE_RESULT_ERROR);
+			net_recv_queue(c, SPDY_FRAME_SIZE, 0,
+			    NULL, spdy_frame_recv);
 		} else {
 			kore_log("using HTTP/1.1");
 			c->proto = CONN_PROTO_HTTP;
-			if (!net_recv_queue(c, HTTP_HEADER_MAX_LEN,
+			net_recv_queue(c, HTTP_HEADER_MAX_LEN,
 			    NETBUF_CALL_CB_ALWAYS, NULL,
-			    http_header_recv))
-				return (KORE_RESULT_ERROR);
+			    http_header_recv);
 		}
 
 		c->state = CONN_STATE_ESTABLISHED;

@@ -28,6 +28,10 @@
 #define NETBUF_RECV		0
 #define NETBUF_SEND		1
 
+#define NETBUF_CALL_CB_ALWAYS	0x01
+#define NETBUF_FORCE_REMOVE	0x02
+#define NETBUF_RETAIN		0x04
+
 struct netbuf {
 	u_int8_t		*buf;
 	u_int32_t		offset;
@@ -57,9 +61,6 @@ struct listener {
 
 #define CONN_READ_POSSIBLE	0x01
 #define CONN_WRITE_POSSIBLE	0x02
-
-#define NETBUF_CALL_CB_ALWAYS	0x01
-#define NETBUF_FORCE_REMOVE	0x02
 
 struct connection {
 	int			fd;
@@ -136,11 +137,11 @@ int		net_recv(struct connection *);
 int		net_send(struct connection *);
 int		net_send_flush(struct connection *);
 int		net_recv_flush(struct connection *);
-int		net_recv_queue(struct connection *, size_t, int,
+void		net_recv_queue(struct connection *, size_t, int,
 		    struct netbuf **, int (*cb)(struct netbuf *));
 int		net_recv_expand(struct connection *c, struct netbuf *, size_t,
 		    int (*cb)(struct netbuf *));
-int		net_send_queue(struct connection *, u_int8_t *, size_t, int,
+void		net_send_queue(struct connection *, u_int8_t *, size_t, int,
 		    struct netbuf **, int (*cb)(struct netbuf *));
 
 struct kore_buf	*kore_buf_create(u_int32_t);
@@ -153,7 +154,7 @@ int			spdy_stream_get_header(struct spdy_header_block *,
 			    char *, char **);
 
 int		spdy_frame_recv(struct netbuf *);
-int		spdy_frame_send(struct connection *, u_int16_t,
+void		spdy_frame_send(struct connection *, u_int16_t,
 		    u_int8_t, u_int32_t, u_int32_t);
 void		spdy_header_block_add(struct spdy_header_block *,
 		    char *, char *);

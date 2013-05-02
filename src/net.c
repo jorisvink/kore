@@ -37,7 +37,7 @@
 #include "spdy.h"
 #include "kore.h"
 
-int
+void
 net_send_queue(struct connection *c, u_int8_t *data, size_t len, int flags,
     struct netbuf **out, int (*cb)(struct netbuf *))
 {
@@ -63,11 +63,9 @@ net_send_queue(struct connection *c, u_int8_t *data, size_t len, int flags,
 	TAILQ_INSERT_TAIL(&(c->send_queue), nb, list);
 	if (out != NULL)
 		*out = nb;
-
-	return (KORE_RESULT_OK);
 }
 
-int
+void
 net_recv_queue(struct connection *c, size_t len, int flags,
     struct netbuf **out, int (*cb)(struct netbuf *))
 {
@@ -87,8 +85,6 @@ net_recv_queue(struct connection *c, size_t len, int flags,
 	TAILQ_INSERT_TAIL(&(c->recv_queue), nb, list);
 	if (out != NULL)
 		*out = nb;
-
-	return (KORE_RESULT_OK);
 }
 
 int
@@ -217,8 +213,11 @@ net_recv(struct connection *c)
 		if (nb->offset == nb->len ||
 		    (nb->flags & NETBUF_FORCE_REMOVE)) {
 			TAILQ_REMOVE(&(c->recv_queue), nb, list);
-			free(nb->buf);
-			free(nb);
+
+			if (!(nb->flags & NETBUF_RETAIN)) {
+				free(nb->buf);
+				free(nb);
+			}
 		}
 	} else {
 		r = KORE_RESULT_OK;

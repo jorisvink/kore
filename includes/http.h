@@ -27,12 +27,19 @@ struct http_header {
 	TAILQ_ENTRY(http_header)	list;
 };
 
+#define HTTP_METHOD_GET		0
+#define HTTP_METHOD_POST	1
+
+#define HTTP_REQUEST_COMPLETE	0x01
+
 struct http_request {
+	u_int8_t		method;
+	u_int8_t		flags;
 	char			*host;
-	char			*method;
 	char			*path;
 	struct connection	*owner;
 	struct spdy_stream	*stream;
+	struct netbuf		*post_data;
 
 	TAILQ_HEAD(, http_header)	req_headers;
 	TAILQ_HEAD(, http_header)	resp_headers;
