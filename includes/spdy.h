@@ -50,6 +50,7 @@ struct spdy_stream {
 	u_int8_t	flags;
 	u_int8_t	prio;
 
+	void				*httpreq;
 	struct spdy_header_block	*hblock;
 
 	TAILQ_ENTRY(spdy_stream)	list;

@@ -374,7 +374,8 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 	GET_HEADER(":path", &path);
 	GET_HEADER(":method", &method);
 	GET_HEADER(":host", &host);
-	if (!http_request_new(c, s, host, method, path, NULL)) {
+	if (!http_request_new(c, s, host, method, path,
+	    (struct http_request **)&(s->httpreq))) {
 		free(s->hblock->header_block);
 		free(s->hblock);
 		free(s);
