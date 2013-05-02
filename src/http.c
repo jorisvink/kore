@@ -345,7 +345,7 @@ http_header_recv(struct netbuf *nb)
 static int
 http_generic_404(struct http_request *req)
 {
-	kore_log("http_generic_404(%s, %s, %s)",
+	kore_log("http_generic_404(%s, %d, %s)",
 	    req->host, req->method, req->path);
 
 	return (http_response(req, 404, NULL, 0));
