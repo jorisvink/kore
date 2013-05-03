@@ -489,11 +489,8 @@ spdy_data_frame_recv(struct netbuf *nb)
 	    data.length);
 
 	if (data.flags & FLAG_FIN) {
-		kore_buf_append(req->post_data, (u_int8_t *)"\0", 1);
-
 		s->flags |= FLAG_FIN;
 		req->flags |= HTTP_REQUEST_COMPLETE;
-		kore_log("%s", req->post_data->data);
 	}
 
 	return (KORE_RESULT_OK);

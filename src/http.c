@@ -402,7 +402,6 @@ http_post_data_recv(struct netbuf *nb)
 	struct http_request	*req = (struct http_request *)nb->extra;
 
 	kore_buf_append(req->post_data, nb->buf, nb->offset);
-	kore_log("%s", req->post_data->data);
 	req->flags |= HTTP_REQUEST_COMPLETE;
 
 	return (KORE_RESULT_OK);
