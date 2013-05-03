@@ -19,12 +19,20 @@
 
 #define HTTP_HEADER_MAX_LEN	8192
 #define HTTP_REQ_HEADER_MAX	25
+#define HTTP_MAX_QUERY_ARGS	10
 
 struct http_header {
 	char			*header;
 	char			*value;
 
 	TAILQ_ENTRY(http_header)	list;
+};
+
+struct http_arg {
+	char			*name;
+	char			*value;
+
+	TAILQ_ENTRY(http_arg)	list;
 };
 
 #define HTTP_METHOD_GET		0
@@ -43,6 +51,7 @@ struct http_request {
 
 	TAILQ_HEAD(, http_header)	req_headers;
 	TAILQ_HEAD(, http_header)	resp_headers;
+	TAILQ_HEAD(, http_arg)		arguments;
 	TAILQ_ENTRY(http_request)	list;
 };
 
@@ -59,5 +68,8 @@ int		http_request_new(struct connection *, struct spdy_stream *,
 
 int		http_header_recv(struct netbuf *);
 char		*http_post_data_text(struct http_request *);
+int		http_populate_arguments(struct http_request *);
+int		http_argument_lookup(struct http_request *,
+		    const char *, char **);
 
 #endif /* !__H_HTTP_H */

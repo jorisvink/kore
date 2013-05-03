@@ -66,6 +66,7 @@ http_request_new(struct connection *c, struct spdy_stream *s, char *host,
 	req->path = kore_strdup(path);
 	TAILQ_INIT(&(req->resp_headers));
 	TAILQ_INIT(&(req->req_headers));
+	TAILQ_INIT(&(req->arguments));
 
 	if (!strcasecmp(method, "get")) {
 		req->method = HTTP_METHOD_GET;
@@ -102,6 +103,7 @@ http_response_header_add(struct http_request *req, char *header, char *value)
 void
 http_request_free(struct http_request *req)
 {
+	struct http_arg		*q, *qnext;
 	struct http_header	*hdr, *next;
 
 	for (hdr = TAILQ_FIRST(&(req->resp_headers)); hdr != NULL; hdr = next) {
@@ -120,6 +122,15 @@ http_request_free(struct http_request *req)
 		free(hdr->header);
 		free(hdr->value);
 		free(hdr);
+	}
+
+	for (q = TAILQ_FIRST(&(req->arguments)); q != NULL; q = qnext) {
+		qnext = TAILQ_NEXT(q, list);
+
+		TAILQ_REMOVE(&(req->arguments), q, list);
+		free(q->name);
+		free(q->value);
+		free(q);
 	}
 
 	free(req->path);
@@ -387,6 +398,55 @@ http_header_recv(struct netbuf *nb)
 	return (KORE_RESULT_OK);
 }
 
+int
+http_populate_arguments(struct http_request *req)
+{
+	struct http_arg		*q;
+	int			i, v, c, count;
+	char			*query, *args[HTTP_MAX_QUERY_ARGS], *val[3];
+
+	if (req->method == HTTP_METHOD_POST) {
+		query = http_post_data_text(req);
+	} else {
+		kore_log("HTTP_METHOD_GET not supported for arguments");
+		return (0);
+	}
+
+	count = 0;
+	v = kore_split_string(query, "&", args, HTTP_MAX_QUERY_ARGS);
+	for (i = 0; i < v; i++) {
+		c = kore_split_string(args[i], "=", val, 3);
+		if (c != 2) {
+			kore_log("malformed query argument");
+			continue;
+		}
+
+		q = (struct http_arg *)kore_malloc(sizeof(*q));
+		q->name = kore_strdup(val[0]);
+		q->value = kore_strdup(val[1]);
+		TAILQ_INSERT_TAIL(&(req->arguments), q, list);
+		count++;
+	}
+
+	free(query);
+	return (count);
+}
+
+int
+http_argument_lookup(struct http_request *req, const char *name, char **out)
+{
+	struct http_arg		*q;
+
+	TAILQ_FOREACH(q, &(req->arguments), list) {
+		if (!strcmp(q->name, name)) {
+			*out = kore_strdup(q->value);
+			return (KORE_RESULT_OK);
+		}
+	}
+
+	return (KORE_RESULT_ERROR);
+}
+
 char *
 http_post_data_text(struct http_request *req)
 {
@@ -399,6 +459,7 @@ http_post_data_text(struct http_request *req)
 
 	text = (char *)kore_malloc(len);
 	kore_strlcpy(text, (char *)data, len);
+	free(data);
 
 	return (text);
 }
