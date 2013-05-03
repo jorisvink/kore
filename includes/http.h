@@ -58,5 +58,6 @@ int		http_request_new(struct connection *, struct spdy_stream *,
 		    char *, char *, char *, struct http_request **);
 
 int		http_header_recv(struct netbuf *);
+char		*http_post_data_text(struct http_request *);
 
 #endif /* !__H_HTTP_H */

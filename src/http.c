@@ -387,6 +387,22 @@ http_header_recv(struct netbuf *nb)
 	return (KORE_RESULT_OK);
 }
 
+char *
+http_post_data_text(struct http_request *req)
+{
+	u_int32_t	len;
+	u_int8_t	*data;
+	char		*text;
+
+	data = kore_buf_release(req->post_data, &len);
+	len++;
+
+	text = (char *)kore_malloc(len);
+	kore_strlcpy(text, (char *)data, len);
+
+	return (text);
+}
+
 static int
 http_generic_404(struct http_request *req)
 {
