@@ -41,7 +41,7 @@
 TAILQ_HEAD(, http_request)	http_requests;
 
 static int		http_generic_404(struct http_request *);
-
+static int		http_post_data_recv(struct netbuf *);
 void
 http_init(void)
 {
@@ -252,39 +252,52 @@ http_process(void)
 int
 http_header_recv(struct netbuf *nb)
 {
-	char			*p;
 	struct http_header	*hdr;
 	struct http_request	*req;
+	struct netbuf		*nnb;
 	int			h, i, v, skip;
+	u_int8_t		*end_headers, ch;
+	size_t			clen, len, bytes_left;
 	char			*request[4], *host[3], *hbuf;
-	char			*headers[HTTP_REQ_HEADER_MAX];
+	char			*p, *headers[HTTP_REQ_HEADER_MAX];
 	struct connection	*c = (struct connection *)nb->owner;
 
 	kore_log("http_header_recv(%p)", nb);
 
+	ch = nb->buf[nb->len];
 	nb->buf[nb->len] = '\0';
-	if ((p = strrchr((char *)nb->buf, '\r')) == NULL)
+
+	if ((end_headers = (u_int8_t *)strrchr((char *)nb->buf, '\r')) == NULL)
 		return (KORE_RESULT_OK);
-	if (nb->len > 2 && strncmp((p - 2), "\r\n\r\n", 4))
+	if (nb->len > 2 && strncmp(((char *)end_headers - 2), "\r\n\r\n", 4))
 		return (KORE_RESULT_OK);
 
+	nb->buf[nb->len] = ch;
 	nb->flags |= NETBUF_FORCE_REMOVE;
-	hbuf = kore_strdup((const char *)nb->buf);
+	end_headers += 2;
+
+	len = end_headers - nb->buf;
+	hbuf = (char *)kore_malloc(len + 1);
+	kore_strlcpy(hbuf, (char *)nb->buf, len + 1);
 
 	h = kore_split_string(hbuf, "\r\n", headers, HTTP_REQ_HEADER_MAX);
 	if (h < 2) {
 		free(hbuf);
+		kore_log("err 1");
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (strlen(headers[0]) > 3 && strncasecmp(headers[0], "get", 3)) {
+	if ((strlen(headers[0]) > 3 && strncasecmp(headers[0], "get", 3)) &&
+	    (strlen(headers[0]) > 4 && strncasecmp(headers[0], "post", 4))) {
 		free(hbuf);
+		kore_log("err 2");
 		return (KORE_RESULT_ERROR);
 	}
 
 	v = kore_split_string(headers[0], " ", request, 4);
 	if (v != 3) {
 		free(hbuf);
+		kore_log("err 3");
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -297,12 +310,14 @@ http_header_recv(struct netbuf *nb)
 		v = kore_split_string(headers[i], ":", host, 3);
 		if (v != 2) {
 			free(hbuf);
+			kore_log("err 4");
 			return (KORE_RESULT_ERROR);
 		}
 
 		if (strlen(host[0]) != 4 || strncasecmp(host[0], "host", 4) ||
 		    strlen(host[1]) < 4) {
 			free(hbuf);
+			kore_log("err 5");
 			return (KORE_RESULT_ERROR);
 		}
 
@@ -313,11 +328,13 @@ http_header_recv(struct netbuf *nb)
 
 	if (host[0] == NULL) {
 		free(hbuf);
+		kore_log("err 6");
 		return (KORE_RESULT_ERROR);
 	}
 
 	if (!http_request_new(c, NULL, host[1], request[0], request[1], &req)) {
 		free(hbuf);
+		kore_log("err 7");
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -339,6 +356,34 @@ http_header_recv(struct netbuf *nb)
 	}
 
 	free(hbuf);
+
+	if (req->method == HTTP_METHOD_POST) {
+		if (!http_request_header_get(req, "content-length", &p)) {
+			kore_log("POST but no content-length");
+			TAILQ_REMOVE(&http_requests, req, list);
+			http_request_free(req);
+			return (KORE_RESULT_ERROR);
+		}
+
+		clen = kore_strtonum(p, 0, UINT_MAX, &v);
+		if (v == KORE_RESULT_ERROR) {
+			free(p);
+			kore_log("content-length invalid: %s", p);
+			TAILQ_REMOVE(&http_requests, req, list);
+			http_request_free(req);
+			return (KORE_RESULT_ERROR);
+		}
+
+		req->post_data = kore_buf_create(clen);
+		kore_buf_append(req->post_data, end_headers,
+		    (nb->offset - len));
+
+		bytes_left = clen - (nb->offset - len);
+		kore_log("need %ld more bytes for POST", bytes_left);
+		net_recv_queue(c, bytes_left, 0, &nnb, http_post_data_recv);
+		nnb->extra = req;
+	}
+
 	return (KORE_RESULT_OK);
 }
 
@@ -349,4 +394,16 @@ http_generic_404(struct http_request *req)
 	    req->host, req->method, req->path);
 
 	return (http_response(req, 404, NULL, 0));
+}
+
+static int
+http_post_data_recv(struct netbuf *nb)
+{
+	struct http_request	*req = (struct http_request *)nb->extra;
+
+	kore_buf_append(req->post_data, nb->buf, nb->offset);
+	kore_log("%s", req->post_data->data);
+	req->flags |= HTTP_REQUEST_COMPLETE;
+
+	return (KORE_RESULT_OK);
 }

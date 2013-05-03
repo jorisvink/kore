@@ -40,6 +40,7 @@ struct netbuf {
 	u_int8_t		flags;
 
 	void			*owner;
+	void			*extra;
 	int			(*cb)(struct netbuf *);
 
 	TAILQ_ENTRY(netbuf)	list;
