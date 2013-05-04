@@ -57,6 +57,7 @@ betrippin_serve_style_css(struct http_request *req)
 		kore_log("header was present with %ld", tstamp);
 	}
 
+	tstamp = 0;
 	if (tstamp != 0 && tstamp <= static_mtime_css_style) {
 		ret = http_response(req, 304, NULL, 0);
 	} else {
