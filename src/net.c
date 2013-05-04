@@ -151,7 +151,8 @@ net_send(struct connection *c)
 			r = KORE_RESULT_OK;
 
 		if (nb->offset == nb->len) {
-			free(nb->buf);
+			if (nb->buf != NULL)
+				free(nb->buf);
 			free(nb);
 		}
 	} else {

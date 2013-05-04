@@ -275,6 +275,11 @@ kore_server_final_disconnect(struct connection *c)
 	if (c->ssl != NULL)
 		SSL_free(c->ssl);
 
+	if (c->inflate_started)
+		inflateEnd(&(c->z_inflate));
+	if (c->deflate_started)
+		deflateEnd(&(c->z_deflate));
+
 	for (nb = TAILQ_FIRST(&(c->send_queue)); nb != NULL; nb = next) {
 		next = TAILQ_NEXT(nb, list);
 		TAILQ_REMOVE(&(c->send_queue), nb, list);

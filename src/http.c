@@ -181,19 +181,13 @@ http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 	} else {
 		buf = kore_buf_create(KORE_BUF_INITIAL);
 
-		snprintf(sbuf, sizeof(sbuf), "HTTP/1.1 %d\r\n", status);
-		kore_buf_append(buf, (u_int8_t *)sbuf, strlen(sbuf));
-
-		snprintf(sbuf, sizeof(sbuf), "Content-length: %d\r\n", len);
-		kore_buf_append(buf, (u_int8_t *)sbuf, strlen(sbuf));
-
-		snprintf(sbuf, sizeof(sbuf), "Connection: close\r\n");
-		kore_buf_append(buf, (u_int8_t *)sbuf, strlen(sbuf));
+		kore_buf_appendf(buf, "HTTP/1.1 %d\r\n", status);
+		kore_buf_appendf(buf, "Content-length: %d\r\n", len);
+		kore_buf_appendf(buf, "Connection: close\r\n");
 
 		TAILQ_FOREACH(hdr, &(req->resp_headers), list) {
-			snprintf(sbuf, sizeof(sbuf), "%s: %s\r\n",
+			kore_buf_appendf(buf, "%s: %s\r\n",
 			    hdr->header, hdr->value);
-			kore_buf_append(buf, (u_int8_t *)sbuf, strlen(sbuf));
 		}
 
 		kore_buf_append(buf, (u_int8_t *)"\r\n", 2);
@@ -296,21 +290,18 @@ http_header_recv(struct netbuf *nb)
 	h = kore_split_string(hbuf, "\r\n", headers, HTTP_REQ_HEADER_MAX);
 	if (h < 2) {
 		free(hbuf);
-		kore_log("err 1");
 		return (KORE_RESULT_ERROR);
 	}
 
 	if ((strlen(headers[0]) > 3 && strncasecmp(headers[0], "get", 3)) &&
 	    (strlen(headers[0]) > 4 && strncasecmp(headers[0], "post", 4))) {
 		free(hbuf);
-		kore_log("err 2");
 		return (KORE_RESULT_ERROR);
 	}
 
 	v = kore_split_string(headers[0], " ", request, 4);
 	if (v != 3) {
 		free(hbuf);
-		kore_log("err 3");
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -323,14 +314,12 @@ http_header_recv(struct netbuf *nb)
 		v = kore_split_string(headers[i], ":", host, 3);
 		if (v != 2) {
 			free(hbuf);
-			kore_log("err 4");
 			return (KORE_RESULT_ERROR);
 		}
 
 		if (strlen(host[0]) != 4 || strncasecmp(host[0], "host", 4) ||
 		    strlen(host[1]) < 4) {
 			free(hbuf);
-			kore_log("err 5");
 			return (KORE_RESULT_ERROR);
 		}
 
@@ -341,13 +330,11 @@ http_header_recv(struct netbuf *nb)
 
 	if (host[0] == NULL) {
 		free(hbuf);
-		kore_log("err 6");
 		return (KORE_RESULT_ERROR);
 	}
 
 	if (!http_request_new(c, NULL, host[1], request[0], request[1], &req)) {
 		free(hbuf);
-		kore_log("err 7");
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -387,6 +374,7 @@ http_header_recv(struct netbuf *nb)
 			return (KORE_RESULT_ERROR);
 		}
 
+		free(p);
 		req->post_data = kore_buf_create(clen);
 		kore_buf_append(req->post_data, end_headers,
 		    (nb->offset - len));
