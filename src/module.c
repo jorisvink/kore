@@ -127,7 +127,6 @@ kore_module_handler_new(char *path, char *domain, char *func, int type)
 	void				*addr;
 	struct module_domain		*dom;
 	struct kore_module_handle	*hdlr;
-	char				uri[512];
 
 	kore_log("kore_module_handler_new(%s, %s, %s, %d)", path,
 	    domain, func, type);
@@ -164,7 +163,6 @@ kore_module_handler_new(char *path, char *domain, char *func, int type)
 void *
 kore_module_handler_find(char *domain, char *path)
 {
-	size_t				len;
 	struct module_domain		*dom;
 	struct kore_module_handle	*hdlr;
 
