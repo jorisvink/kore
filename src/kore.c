@@ -26,7 +26,9 @@
 #include <openssl/err.h>
 #include <openssl/ssl.h>
 
+#include <pwd.h>
 #include <errno.h>
+#include <grp.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
@@ -36,6 +38,7 @@
 #include <time.h>
 #include <regex.h>
 #include <zlib.h>
+#include <unistd.h>
 
 #include "spdy.h"
 #include "kore.h"
@@ -51,6 +54,8 @@ static TAILQ_HEAD(, connection)		disconnected;
 
 int		server_port = 0;
 char		*server_ip = NULL;
+char		*chroot_path = NULL;
+char		*runas_user = NULL;
 
 static void	kore_signal(int);
 static int	kore_socket_nonblock(int);
@@ -65,6 +70,7 @@ static int	kore_ssl_npn_cb(SSL *, const u_char **, unsigned int *, void *);
 int
 main(int argc, char *argv[])
 {
+	struct passwd		*pw;
 	struct listener		server;
 	struct epoll_event	*events;
 	int			n, i, *fd;
@@ -79,6 +85,13 @@ main(int argc, char *argv[])
 
 	if (server_ip == NULL || server_port == 0)
 		fatal("missing a correct bind directive in configuration");
+	if (chroot_path == NULL)
+		fatal("missing a chroot path");
+	if (runas_user == NULL)
+		fatal("missing a username to run as");
+	if ((pw = getpwnam(runas_user)) == NULL)
+		fatal("user '%s' does not exist");
+
 	if (!kore_server_bind(&server, server_ip, server_port))
 		fatal("cannot bind to %s:%d", server_ip, server_port);
 	if (!kore_server_sslstart())
@@ -86,6 +99,14 @@ main(int argc, char *argv[])
 
 	if ((efd = epoll_create(1000)) == -1)
 		fatal("epoll_create(): %s", errno_s);
+
+	if (chroot(chroot_path) == -1)
+		fatal("chroot(%s): %s", chroot_path, errno_s);
+	if (chdir("/") == -1)
+		fatal("chdir(/): %s", errno_s);
+	if (setgroups(1, &pw->pw_gid) || setresgid(pw->pw_gid, pw->pw_gid,
+	    pw->pw_gid) || setresuid(pw->pw_uid, pw->pw_uid, pw->pw_uid))
+		fatal("unable to drop privileges");
 
 	http_init();
 	TAILQ_INIT(&disconnected);

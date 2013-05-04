@@ -115,6 +115,8 @@ struct buf_vec {
 
 extern int	server_port;
 extern char	*server_ip;
+extern char	*chroot_path;
+extern char	*runas_user;
 
 void		*kore_malloc(size_t);
 void		*kore_calloc(size_t, size_t);

@@ -42,6 +42,8 @@ static int			configure_bind(char **);
 static int			configure_load(char **);
 static int			configure_handler(char **);
 static int			configure_domain(char **);
+static int			configure_chroot(char **);
+static int			configure_runas(char **);
 
 static struct {
 	const char		*name;
@@ -52,6 +54,8 @@ static struct {
 	{ "static",		configure_handler },
 	{ "dynamic",		configure_handler },
 	{ "domain",		configure_domain },
+	{ "chroot",		configure_chroot },
+	{ "runas",		configure_runas },
 	{ NULL,			NULL },
 };
 
@@ -173,5 +177,35 @@ configure_handler(char **argv)
 		return (KORE_RESULT_ERROR);
 	}
 
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_chroot(char **argv)
+{
+	if (chroot_path != NULL) {
+		kore_log("duplicate chroot path specified");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (argv[1] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	chroot_path = kore_strdup(argv[1]);
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_runas(char **argv)
+{
+	if (runas_user != NULL) {
+		kore_log("duplicate runas user specified");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (argv[1] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	runas_user = kore_strdup(argv[1]);
 	return (KORE_RESULT_OK);
 }

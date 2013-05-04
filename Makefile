@@ -10,7 +10,7 @@ S_OBJS=	$(S_SRC:.c=.o)
 CFLAGS+=-I/usr/local/ssl/include
 CFLAGS+=-Wall -Wstrict-prototypes -Wmissing-prototypes
 CFLAGS+=-Wmissing-declarations -Wshadow -Wpointer-arith -Wcast-qual
-CFLAGS+=-Wsign-compare -Iincludes -g
+CFLAGS+=-D_GNU_SOURCE=1 -Wsign-compare -Iincludes -g
 LDFLAGS=-rdynamic -Llibs -lssl -lcrypto -ldl -lz
 
 light: $(S_OBJS)
