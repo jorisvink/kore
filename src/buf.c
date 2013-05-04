@@ -62,6 +62,32 @@ kore_buf_append(struct kore_buf *buf, u_int8_t *d, u_int32_t len)
 	buf->offset += len;
 }
 
+void
+kore_buf_appendv(struct kore_buf *buf, struct buf_vec *v, u_int16_t count)
+{
+	u_int16_t		i;
+	struct buf_vec		*p;
+
+	p = v;
+	for (i = 0; i < count; i++) {
+		kore_buf_append(buf, p->data, p->length);
+		p++;
+	}
+}
+
+void
+kore_buf_appendf(struct kore_buf *buf, const char *fmt, ...)
+{
+	va_list		args;
+	char		b[2048];
+
+	va_start(args, fmt);
+	vsnprintf(b, sizeof(b), fmt, args);
+	va_end(args);
+
+	kore_buf_append(buf, (u_int8_t *)b, strlen(b));
+}
+
 u_int8_t *
 kore_buf_release(struct kore_buf *buf, u_int32_t *len)
 {

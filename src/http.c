@@ -130,7 +130,8 @@ http_request_free(struct http_request *req)
 
 		TAILQ_REMOVE(&(req->arguments), q, list);
 		free(q->name);
-		free(q->value);
+		if (q->value != NULL)
+			free(q->value);
 		free(q);
 	}
 
@@ -417,14 +418,17 @@ http_populate_arguments(struct http_request *req)
 	v = kore_split_string(query, "&", args, HTTP_MAX_QUERY_ARGS);
 	for (i = 0; i < v; i++) {
 		c = kore_split_string(args[i], "=", val, 3);
-		if (c != 2) {
+		if (c != 1 && c != 2) {
 			kore_log("malformed query argument");
 			continue;
 		}
 
 		q = (struct http_arg *)kore_malloc(sizeof(*q));
 		q->name = kore_strdup(val[0]);
-		q->value = kore_strdup(val[1]);
+		if (c == 2)
+			q->value = kore_strdup(val[1]);
+		else
+			q->value = NULL;
 		TAILQ_INSERT_TAIL(&(req->arguments), q, list);
 		count++;
 	}
@@ -440,6 +444,8 @@ http_argument_lookup(struct http_request *req, const char *name, char **out)
 
 	TAILQ_FOREACH(q, &(req->arguments), list) {
 		if (!strcmp(q->name, name)) {
+			if (q->value == NULL)
+				return (KORE_RESULT_ERROR);
 			*out = kore_strdup(q->value);
 			return (KORE_RESULT_OK);
 		}
