@@ -246,10 +246,13 @@ http_process(void)
 		else
 			r = hdlr(req);
 
-		if (r != KORE_RESULT_ERROR)
+		if (r != KORE_RESULT_ERROR) {
 			net_send_flush(req->owner);
-		else
+			if (req->owner->proto == CONN_PROTO_HTTP)
+				kore_server_disconnect(req->owner);
+		} else {
 			kore_server_disconnect(req->owner);
+		}
 
 		TAILQ_REMOVE(&http_requests, req, list);
 		http_request_free(req);
