@@ -146,7 +146,7 @@ http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 	struct kore_buf			*buf;
 	u_int8_t			*htext;
 	struct spdy_header_block	*hblock;
-	char				sbuf[64];
+	char				sbuf[512];
 
 	kore_log("http_response(%p, %d, %p, %d)", req, status, d, len);
 
