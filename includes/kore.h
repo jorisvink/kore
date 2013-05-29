@@ -90,11 +90,11 @@ struct connection {
 #define HANDLER_TYPE_DYNAMIC	2
 
 struct kore_module_handle {
-	char			*uri;
-	char			*domain;
+	char			*path;
 	char			*func;
 	void			*addr;
 	int			type;
+	regex_t			rctx;
 
 	TAILQ_ENTRY(kore_module_handle)		list;
 };
@@ -126,6 +126,7 @@ long long	kore_strtonum(const char *, long long, long long, int *);
 void		kore_module_load(char *);
 void		kore_module_reload(void);
 int		kore_module_loaded(void);
+int		kore_module_domain_new(char *);
 void		*kore_module_handler_find(char *, char *);
 int		kore_module_handler_new(char *, char *, char *, int);
 

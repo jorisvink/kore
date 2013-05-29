@@ -34,6 +34,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <regex.h>
 #include <zlib.h>
 
 #include "spdy.h"
@@ -43,7 +44,14 @@ static void		*mod_handle = NULL;
 static char		*mod_name = NULL;
 static time_t		mod_last_mtime = 0;
 
-static TAILQ_HEAD(, kore_module_handle)		handlers;
+struct module_domain {
+	char					*domain;
+	TAILQ_HEAD(, kore_module_handle)	handlers;
+	TAILQ_ENTRY(module_domain)		list;
+};
+
+static TAILQ_HEAD(, module_domain)	domains;
+static struct module_domain		*kore_module_domain_lookup(char *);
 
 void
 kore_module_load(char *module_name)
@@ -63,13 +71,14 @@ kore_module_load(char *module_name)
 	if (mod_handle == NULL)
 		fatal("%s", dlerror());
 
-	TAILQ_INIT(&handlers);
+	TAILQ_INIT(&domains);
 	mod_name = kore_strdup(module_name);
 }
 
 void
 kore_module_reload(void)
 {
+	struct module_domain		*dom;
 	struct kore_module_handle	*hdlr;
 
 	if (dlclose(mod_handle))
@@ -79,10 +88,12 @@ kore_module_reload(void)
 	if (mod_handle == NULL)
 		fatal("kore_module_reload(): %s", dlerror());
 
-	TAILQ_FOREACH(hdlr, &handlers, list) {
-		hdlr->addr = dlsym(mod_handle, hdlr->func);
-		if (hdlr->func == NULL)
-			fatal("no function '%s' found", hdlr->func);
+	TAILQ_FOREACH(dom, &domains, list) {
+		TAILQ_FOREACH(hdlr, &(dom->handlers), list) {
+			hdlr->addr = dlsym(mod_handle, hdlr->func);
+			if (hdlr->func == NULL)
+				fatal("no function '%s' found", hdlr->func);
+		}
 	}
 
 	kore_log("reloaded '%s' module", mod_name);
@@ -95,9 +106,26 @@ kore_module_loaded(void)
 }
 
 int
+kore_module_domain_new(char *domain)
+{
+	struct module_domain	*dom;
+
+	if (kore_module_domain_lookup(domain) != NULL)
+		return (KORE_RESULT_ERROR);
+
+	dom = (struct module_domain *)kore_malloc(sizeof(*dom));
+	dom->domain = kore_strdup(domain);
+	TAILQ_INIT(&(dom->handlers));
+	TAILQ_INSERT_TAIL(&domains, dom, list);
+
+	return (KORE_RESULT_OK);
+}
+
+int
 kore_module_handler_new(char *path, char *domain, char *func, int type)
 {
 	void				*addr;
+	struct module_domain		*dom;
 	struct kore_module_handle	*hdlr;
 	char				uri[512];
 
@@ -110,15 +138,26 @@ kore_module_handler_new(char *path, char *domain, char *func, int type)
 		return (KORE_RESULT_ERROR);
 	}
 
-	snprintf(uri, sizeof(uri), "%s%s", domain, path);
+	if ((dom = kore_module_domain_lookup(domain)) == NULL)
+		return (KORE_RESULT_ERROR);
 
 	hdlr = (struct kore_module_handle *)kore_malloc(sizeof(*hdlr));
 	hdlr->addr = addr;
 	hdlr->type = type;
-	hdlr->uri = kore_strdup(uri);
+	hdlr->path = kore_strdup(path);
 	hdlr->func = kore_strdup(func);
-	TAILQ_INSERT_TAIL(&(handlers), hdlr, list);
 
+	if (hdlr->type == HANDLER_TYPE_DYNAMIC) {
+		if (regcomp(&(hdlr->rctx), hdlr->path, REG_NOSUB)) {
+			free(hdlr->func);
+			free(hdlr->path);
+			free(hdlr);
+			kore_log("regcomp() on %s failed", path);
+			return (KORE_RESULT_ERROR);
+		}
+	}
+
+	TAILQ_INSERT_TAIL(&(dom->handlers), hdlr, list);
 	return (KORE_RESULT_OK);
 }
 
@@ -126,28 +165,33 @@ void *
 kore_module_handler_find(char *domain, char *path)
 {
 	size_t				len;
+	struct module_domain		*dom;
 	struct kore_module_handle	*hdlr;
-	char				uri[512], *p;
 
-	snprintf(uri, sizeof(uri), "%s%s", domain, path);
-	p = strchr(uri, '.');
+	if ((dom = kore_module_domain_lookup(domain)) == NULL)
+		return (NULL);
 
-	TAILQ_FOREACH(hdlr, &handlers, list) {
+	TAILQ_FOREACH(hdlr, &(dom->handlers), list) {
 		if (hdlr->type == HANDLER_TYPE_STATIC) {
-			if (hdlr->uri[0] != '.' && !strcmp(hdlr->uri, uri))
-				return (hdlr->addr);
-			if (p != NULL && hdlr->uri[0] == '.' &&
-			    !strcmp(hdlr->uri, p))
+			if (!strcmp(hdlr->path, path))
 				return (hdlr->addr);
 		} else {
-			len = strlen(hdlr->uri);
-			if (hdlr->uri[0] != '.' &&
-			    !strncmp(hdlr->uri, uri, len))
-				return (hdlr->addr);
-			if (p != NULL && hdlr->uri[0] == '.' &&
-			    !strncmp(hdlr->uri, p, len))
+			if (!regexec(&(hdlr->rctx), path, 0, NULL, 0))
 				return (hdlr->addr);
 		}
+	}
+
+	return (NULL);
+}
+
+static struct module_domain *
+kore_module_domain_lookup(char *domain)
+{
+	struct module_domain	*dom;
+
+	TAILQ_FOREACH(dom, &domains, list) {
+		if (!strcmp(dom->domain, domain))
+			return (dom);
 	}
 
 	return (NULL);

@@ -32,6 +32,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <regex.h>
 #include <zlib.h>
 
 #include "spdy.h"
@@ -139,6 +140,10 @@ configure_domain(char **argv)
 	if (current_domain != NULL)
 		free(current_domain);
 	current_domain = kore_strdup(argv[1]);
+	if (!kore_module_domain_new(current_domain)) {
+		kore_log("could not create new domain %s", current_domain);
+		return (KORE_RESULT_ERROR);
+	}
 
 	return (KORE_RESULT_OK);
 }
