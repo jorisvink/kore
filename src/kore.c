@@ -169,8 +169,7 @@ kore_server_sslstart(void)
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (!SSL_CTX_use_certificate_file(ssl_ctx, "cert/server.crt",
-	    SSL_FILETYPE_PEM)) {
+	if (!SSL_CTX_use_certificate_chain_file(ssl_ctx, "cert/server.crt")) {
 		kore_log("SSL_CTX_use_certificate_file(): %s", ssl_errno_s);
 		return (KORE_RESULT_ERROR);
 	}
