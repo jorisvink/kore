@@ -49,6 +49,7 @@ static struct {
 	{ "bind",		configure_bind },
 	{ "load",		configure_load },
 	{ "static",		configure_handler },
+	{ "dynamic",		configure_handler },
 	{ "domain",		configure_domain },
 	{ NULL,			NULL },
 };

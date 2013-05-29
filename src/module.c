@@ -125,6 +125,7 @@ kore_module_handler_new(char *path, char *domain, char *func, int type)
 void *
 kore_module_handler_find(char *domain, char *path)
 {
+	size_t				len;
 	struct kore_module_handle	*hdlr;
 	char				uri[512], *p;
 
@@ -132,10 +133,21 @@ kore_module_handler_find(char *domain, char *path)
 	p = strchr(uri, '.');
 
 	TAILQ_FOREACH(hdlr, &handlers, list) {
-		if (hdlr->uri[0] != '.' && !strcmp(hdlr->uri, uri))
-			return (hdlr->addr);
-		if (p != NULL && hdlr->uri[0] == '.' && !strcmp(hdlr->uri, p))
-			return (hdlr->addr);
+		if (hdlr->type == HANDLER_TYPE_STATIC) {
+			if (hdlr->uri[0] != '.' && !strcmp(hdlr->uri, uri))
+				return (hdlr->addr);
+			if (p != NULL && hdlr->uri[0] == '.' &&
+			    !strcmp(hdlr->uri, p))
+				return (hdlr->addr);
+		} else {
+			len = strlen(hdlr->uri);
+			if (hdlr->uri[0] != '.' &&
+			    !strncmp(hdlr->uri, uri, len))
+				return (hdlr->addr);
+			if (p != NULL && hdlr->uri[0] == '.' &&
+			    !strncmp(hdlr->uri, p, len))
+				return (hdlr->addr);
+		}
 	}
 
 	return (NULL);
