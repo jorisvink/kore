@@ -5,7 +5,7 @@
 CC=gcc
 BIN=example.module
 
-HTML=	html/index.html
+HTML=	html/index.html html/profile.html
 H_SRCS=	$(HTML:.html=.c)
 
 CSS=	css/style.css

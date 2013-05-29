@@ -31,6 +31,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <regex.h>
 #include <unistd.h>
 #include <zlib.h>
 
@@ -40,11 +41,12 @@
 
 #include "static.h"
 
-int		betrippin_serve_style_css(struct http_request *);
-int		betrippin_serve_index(struct http_request *);
+int		serve_style_css(struct http_request *);
+int		serve_index(struct http_request *);
+int		serve_profile(struct http_request *);
 
 int
-betrippin_serve_style_css(struct http_request *req)
+serve_style_css(struct http_request *req)
 {
 	int		ret;
 	char		*date;
@@ -74,13 +76,25 @@ betrippin_serve_style_css(struct http_request *req)
 }
 
 int
-betrippin_serve_index(struct http_request *req)
+serve_index(struct http_request *req)
 {
 	int		ret;
 
 	http_response_header_add(req, "content-type", "text/html");
 	ret = http_response(req, 200, static_html_index,
 	    static_len_html_index);
+
+	return (ret);
+}
+
+int
+serve_profile(struct http_request *req)
+{
+	int		ret;
+
+	http_response_header_add(req, "content-type", "text/html");
+	ret = http_response(req, 200, static_html_profile,
+	    static_len_html_profile);
 
 	return (ret);
 }
