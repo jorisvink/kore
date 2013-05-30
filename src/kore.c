@@ -90,6 +90,7 @@ int
 main(int argc, char *argv[])
 {
 	struct passwd		*pw;
+	struct kore_worker	*kw;
 	struct listener		server;
 	struct epoll_event	*events;
 	int			n, i, *fd;
@@ -145,11 +146,18 @@ main(int argc, char *argv[])
 			sig_recv = 0;
 		}
 
-		n = epoll_wait(efd, events, EPOLL_EVENTS, 10);
+		n = epoll_wait(efd, events, EPOLL_EVENTS, 1000);
 		if (n == -1) {
 			if (errno == EINTR)
 				continue;
 			fatal("epoll_wait(): %s", errno_s);
+		}
+
+		TAILQ_FOREACH(kw, &kore_workers, list) {
+			if (pthread_mutex_trylock(&(kw->lock)))
+				continue;
+			pthread_cond_signal(&(kw->cond));
+			pthread_mutex_unlock(&(kw->lock));
 		}
 
 		if (n > 0)
@@ -259,8 +267,8 @@ kore_worker_delegate(struct http_request *req)
 	kore_log("assigning request %p to worker %d:%d", req, kw->id, kw->load);
 	kw->load++;
 	TAILQ_INSERT_TAIL(&(kw->requests), req, list);
-	pthread_mutex_unlock(&(kw->lock));
 	pthread_cond_signal(&(kw->cond));
+	pthread_mutex_unlock(&(kw->lock));
 }
 
 static int
@@ -550,12 +558,8 @@ kore_worker_entry(void *arg)
 
 	pthread_mutex_lock(&(kw->lock));
 	for (;;) {
-		if (retry == 0) {
-			kore_log("worker %d going to sleep", kw->id);
+		if (retry == 0)
 			pthread_cond_wait(&(kw->cond), &(kw->lock));
-			kore_log("worker %d woke up with %d reqs",
-			    kw->id, kw->load);
-		}
 
 		retry = 0;
 		for (req = TAILQ_FIRST(&(kw->requests)); req != NULL;

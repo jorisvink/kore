@@ -435,5 +435,7 @@ http_post_data_recv(struct netbuf *nb)
 	kore_buf_append(req->post_data, nb->buf, nb->offset);
 	req->flags |= HTTP_REQUEST_COMPLETE;
 
+	kore_log("post complete for request %p", req);
+
 	return (KORE_RESULT_OK);
 }
