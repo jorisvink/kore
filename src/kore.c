@@ -388,17 +388,8 @@ kore_server_final_disconnect(struct connection *c)
 		return;
 	}
 
-	if (!TAILQ_EMPTY(&(c->send_queue)))
-		return;
-
-	if (c->ssl != NULL) {
-		if (SSL_shutdown(c->ssl) == 0) {
-			pthread_mutex_unlock(&(c->lock));
-			return;
-		}
-
+	if (c->ssl != NULL)
 		SSL_free(c->ssl);
-	}
 
 	kore_log("kore_server_final_disconnect(%p) succeeded", c);
 	TAILQ_REMOVE(&disconnected, c, list);
@@ -513,10 +504,6 @@ kore_connection_handle(struct connection *c, int flags)
 		}
 		break;
 	case CONN_STATE_DISCONNECTING:
-		if (c->flags & CONN_WRITE_POSSIBLE) {
-			if (!net_send_flush(c))
-				return (KORE_RESULT_ERROR);
-		}
 		break;
 	default:
 		kore_log("unknown state on %d (%d)", c->fd, c->state);
@@ -591,8 +578,7 @@ kore_worker_entry(void *arg)
 
 			if (r != KORE_RESULT_ERROR) {
 				r = net_send_flush(req->owner);
-				if (r == KORE_RESULT_ERROR ||
-				    req->owner->proto == CONN_PROTO_HTTP)
+				if (r == KORE_RESULT_ERROR)
 					kore_server_disconnect(req->owner);
 			} else {
 				kore_server_disconnect(req->owner);

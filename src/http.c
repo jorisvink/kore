@@ -40,6 +40,7 @@
 #include "http.h"
 
 static int		http_post_data_recv(struct netbuf *);
+static int		http_send_done(struct netbuf *);
 
 int
 http_request_new(struct connection *c, struct spdy_stream *s, char *host,
@@ -187,7 +188,7 @@ http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 		net_send_queue(req->owner, htext, hlen, 0, NULL, NULL);
 		free(htext);
 
-		net_send_queue(req->owner, d, len, 0, NULL, NULL);
+		net_send_queue(req->owner, d, len, 0, NULL, http_send_done);
 	}
 
 	return (KORE_RESULT_OK);
@@ -438,4 +439,11 @@ http_post_data_recv(struct netbuf *nb)
 	kore_log("post complete for request %p", req);
 
 	return (KORE_RESULT_OK);
+}
+
+static int
+http_send_done(struct netbuf *nb)
+{
+	/* disconnects. */
+	return (KORE_RESULT_ERROR);
 }
