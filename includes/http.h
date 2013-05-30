@@ -39,6 +39,7 @@ struct http_arg {
 #define HTTP_METHOD_POST	1
 
 #define HTTP_REQUEST_COMPLETE	0x01
+#define HTTP_REQUEST_DELETE	0x02
 
 struct http_request {
 	u_int8_t		method;
@@ -55,8 +56,6 @@ struct http_request {
 	TAILQ_ENTRY(http_request)	list;
 };
 
-void		http_init(void);
-void		http_process(void);
 time_t		http_date_to_time(char *);
 void		http_request_free(struct http_request *);
 int		http_response(struct http_request *, int,
@@ -66,6 +65,7 @@ void		http_response_header_add(struct http_request *, char *, char *);
 int		http_request_new(struct connection *, struct spdy_stream *,
 		    char *, char *, char *, struct http_request **);
 
+int		http_generic_404(struct http_request *);
 int		http_header_recv(struct netbuf *);
 char		*http_post_data_text(struct http_request *);
 int		http_populate_arguments(struct http_request *);

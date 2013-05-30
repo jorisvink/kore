@@ -38,6 +38,7 @@
 #include <time.h>
 #include <regex.h>
 #include <zlib.h>
+#include <pthread.h>
 #include <unistd.h>
 
 #include "spdy.h"
@@ -51,13 +52,19 @@ static SSL_CTX	*ssl_ctx = NULL;
 
 volatile sig_atomic_t			sig_recv;
 static TAILQ_HEAD(, connection)		disconnected;
+static TAILQ_HEAD(, kore_worker)	kore_workers;
+static struct kore_worker		*last_worker = NULL;
 
-int		server_port = 0;
-char		*server_ip = NULL;
-char		*chroot_path = NULL;
-char		*runas_user = NULL;
+int			server_port = 0;
+char			*server_ip = NULL;
+char			*chroot_path = NULL;
+char			*runas_user = NULL;
+u_int8_t		worker_count = 0;
+pthread_mutex_t		disconnect_lock;
 
 static void	kore_signal(int);
+static void	kore_worker_init(void);
+static void	*kore_worker_entry(void *);
 static int	kore_socket_nonblock(int);
 static int	kore_server_sslstart(void);
 static void	kore_event(int, int, void *);
@@ -108,8 +115,10 @@ main(int argc, char *argv[])
 	    pw->pw_gid) || setresuid(pw->pw_uid, pw->pw_uid, pw->pw_uid))
 		fatal("unable to drop privileges");
 
-	http_init();
 	TAILQ_INIT(&disconnected);
+	pthread_mutex_init(&disconnect_lock, NULL);
+
+	kore_worker_init();
 
 	sig_recv = 0;
 	signal(SIGHUP, kore_signal);
@@ -141,7 +150,13 @@ main(int argc, char *argv[])
 					fatal("error on server socket");
 
 				c = (struct connection *)events[i].data.ptr;
-				kore_server_disconnect(c);
+				if (pthread_mutex_trylock(&(c->lock))) {
+					// Reschedule the client.
+					kore_log("resched on error");
+				} else {
+					kore_server_disconnect(c);
+					pthread_mutex_unlock(&(c->lock));
+				}
 				continue;
 			}
 
@@ -149,19 +164,28 @@ main(int argc, char *argv[])
 				kore_server_accept(&server);
 			} else {
 				c = (struct connection *)events[i].data.ptr;
-				if (!kore_connection_handle(c,
-				    events[i].events))
-					kore_server_disconnect(c);
+				if (pthread_mutex_trylock(&(c->lock))) {
+					// Reschedule the client.
+					kore_log("resched on normal");
+				} else {
+					if (!kore_connection_handle(c,
+					    events[i].events))
+						kore_server_disconnect(c);
+					pthread_mutex_unlock(&(c->lock));
+				}
 			}
 		}
 
-		http_process();
+		if (pthread_mutex_trylock(&disconnect_lock))
+			continue;
 
 		for (c = TAILQ_FIRST(&disconnected); c != NULL; c = cnext) {
 			cnext = TAILQ_NEXT(c, list);
 			TAILQ_REMOVE(&disconnected, c, list);
 			kore_server_final_disconnect(c);
 		}
+
+		pthread_mutex_unlock(&disconnect_lock);
 	}
 
 	close(server.fd);
@@ -174,8 +198,34 @@ kore_server_disconnect(struct connection *c)
 	if (c->state != CONN_STATE_DISCONNECTING) {
 		kore_log("preparing %p for disconnection", c);
 		c->state = CONN_STATE_DISCONNECTING;
+
+		pthread_mutex_lock(&disconnect_lock);
 		TAILQ_INSERT_TAIL(&disconnected, c, list);
+		pthread_mutex_unlock(&disconnect_lock);
 	}
+}
+
+void
+kore_worker_delegate(struct http_request *req)
+{
+	struct kore_worker		*kw;
+
+	if (last_worker != NULL) {
+		kw = TAILQ_NEXT(last_worker, list);
+		if (kw == NULL)
+			kw = TAILQ_FIRST(&kore_workers);
+	} else {
+		kw = TAILQ_FIRST(&kore_workers);
+	}
+
+	last_worker = kw;
+
+	pthread_mutex_lock(&(kw->lock));
+	kore_log("assigning request %p to worker %d:%d", req, kw->id, kw->load);
+	kw->load++;
+	TAILQ_INSERT_TAIL(&(kw->requests), req, list);
+	pthread_mutex_unlock(&(kw->lock));
+	pthread_cond_signal(&(kw->cond));
 }
 
 static int
@@ -275,6 +325,7 @@ kore_server_accept(struct listener *l)
 	c->client_stream_id = 0;
 	c->proto = CONN_PROTO_UNKNOWN;
 	c->state = CONN_STATE_SSL_SHAKE;
+	pthread_mutex_init(&(c->lock), NULL);
 
 	TAILQ_INIT(&(c->send_queue));
 	TAILQ_INIT(&(c->recv_queue));
@@ -290,12 +341,23 @@ kore_server_final_disconnect(struct connection *c)
 	struct netbuf		*nb, *next;
 	struct spdy_stream	*s, *snext;
 
+	if (pthread_mutex_trylock(&(c->lock))) {
+		kore_log("delaying disconnection of %p", c);
+		return;
+	}
+
 	kore_log("kore_server_final_disconnect(%p)", c);
 
-	close(c->fd);
-	if (c->ssl != NULL)
-		SSL_free(c->ssl);
+	if (c->ssl != NULL) {
+		if (SSL_shutdown(c->ssl) == 0) {
+			pthread_mutex_unlock(&(c->lock));
+			return;
+		}
 
+		SSL_free(c->ssl);
+	}
+
+	close(c->fd);
 	if (c->inflate_started)
 		inflateEnd(&(c->z_inflate));
 	if (c->deflate_started)
@@ -328,6 +390,7 @@ kore_server_final_disconnect(struct connection *c)
 		free(s);
 	}
 
+	pthread_mutex_destroy(&(c->lock));
 	free(c);
 }
 
@@ -404,12 +467,101 @@ kore_connection_handle(struct connection *c, int flags)
 				return (KORE_RESULT_ERROR);
 		}
 		break;
+	case CONN_STATE_DISCONNECTING:
+		break;
 	default:
 		kore_log("unknown state on %d (%d)", c->fd, c->state);
 		break;
 	}
 
 	return (KORE_RESULT_OK);
+}
+
+static void
+kore_worker_init(void)
+{
+	u_int8_t		i;
+	struct kore_worker	*kw;
+
+	kore_log("kore_worker_init(): starting %d workers", worker_count);
+
+	TAILQ_INIT(&kore_workers);
+	for (i = 0; i < worker_count; i++) {
+		kw = (struct kore_worker *)kore_malloc(sizeof(*kw));
+		kw->id = i;
+		kw->load = 0;
+		pthread_cond_init(&(kw->cond), NULL);
+		pthread_mutex_init(&(kw->lock), NULL);
+		TAILQ_INIT(&(kw->requests));
+		TAILQ_INSERT_TAIL(&kore_workers, kw, list);
+
+		if (pthread_create(&(kw->pctx), NULL, kore_worker_entry, kw))
+			kore_log("failed to spawn worker: %s", errno_s);
+	}
+
+	if (i == 0)
+		fatal("No workers spawned, check logs for errors.");
+}
+
+static void *
+kore_worker_entry(void *arg)
+{
+	u_int8_t		retry;
+	struct http_request	*req, *next;
+	struct kore_worker	*kw = (struct kore_worker *)arg;
+	int			r, (*hdlr)(struct http_request *);
+
+	pthread_mutex_lock(&(kw->lock));
+	for (;;) {
+		if (retry == 0) {
+			pthread_cond_wait(&(kw->cond), &(kw->lock));
+			kore_log("worker %d woke up with %d reqs",
+			    kw->id, kw->load);
+		}
+
+		retry = 0;
+		for (req = TAILQ_FIRST(&(kw->requests)); req != NULL;
+		    req = next) {
+			next = TAILQ_NEXT(req, list);
+			if (req->flags & HTTP_REQUEST_DELETE) {
+				TAILQ_REMOVE(&(kw->requests), req, list);
+				http_request_free(req);
+				continue;
+			}
+
+			if (!(req->flags & HTTP_REQUEST_COMPLETE))
+				continue;
+
+			if (pthread_mutex_trylock(&(req->owner->lock))) {
+				retry = 1;
+				continue;
+			}
+
+			hdlr = kore_module_handler_find(req->host, req->path);
+			if (hdlr == NULL)
+				r = http_generic_404(req);
+			else
+				r = hdlr(req);
+
+			if (r != KORE_RESULT_ERROR) {
+				r = net_send_flush(req->owner);
+				if (r == KORE_RESULT_ERROR ||
+				    req->owner->proto == CONN_PROTO_HTTP)
+					kore_server_disconnect(req->owner);
+			} else {
+				kore_server_disconnect(req->owner);
+			}
+
+			pthread_mutex_unlock(&(req->owner->lock));
+
+			TAILQ_REMOVE(&(kw->requests), req, list);
+			http_request_free(req);
+
+			kw->load--;
+		}
+	}
+
+	pthread_exit(NULL);
 }
 
 static int

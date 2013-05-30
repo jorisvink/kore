@@ -22,8 +22,13 @@
 
 #define errno_s			strerror(errno)
 #define ssl_errno_s		ERR_error_string(ERR_get_error(), NULL)
+
+#if defined(KORE_DEBUG)
 #define kore_log(fmt, ...)	\
 	kore_log_internal(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
+#else
+#define kore_log(fmt, ...)
+#endif
 
 #define NETBUF_RECV		0
 #define NETBUF_SEND		1
@@ -71,6 +76,7 @@ struct connection {
 	void			*owner;
 	SSL			*ssl;
 	int			flags;
+	pthread_mutex_t		lock;
 
 	u_int8_t		inflate_started;
 	z_stream		z_inflate;
@@ -80,7 +86,7 @@ struct connection {
 	TAILQ_HEAD(, netbuf)	send_queue;
 	TAILQ_HEAD(, netbuf)	recv_queue;
 
-	u_int32_t		client_stream_id;
+	u_int32_t			client_stream_id;
 	TAILQ_HEAD(, spdy_stream)	spdy_streams;
 
 	TAILQ_ENTRY(connection)	list;
@@ -97,6 +103,17 @@ struct kore_module_handle {
 	regex_t			rctx;
 
 	TAILQ_ENTRY(kore_module_handle)		list;
+};
+
+struct kore_worker {
+	u_int8_t		id;
+	pthread_t		pctx;
+	pthread_mutex_t		lock;
+	pthread_cond_t		cond;
+	u_int32_t		load;
+
+	TAILQ_HEAD(, http_request)	requests;
+	TAILQ_ENTRY(kore_worker)	list;
 };
 
 #define KORE_BUF_INITIAL	128
@@ -117,6 +134,7 @@ extern int	server_port;
 extern char	*server_ip;
 extern char	*chroot_path;
 extern char	*runas_user;
+extern u_int8_t	worker_count;
 
 void		*kore_malloc(size_t);
 void		*kore_calloc(size_t, size_t);
@@ -136,6 +154,8 @@ int		kore_module_loaded(void);
 int		kore_module_domain_new(char *);
 void		*kore_module_handler_find(char *, char *);
 int		kore_module_handler_new(char *, char *, char *, int);
+
+void		kore_worker_delegate(struct http_request *);
 
 void		fatal(const char *, ...);
 void		kore_log_internal(char *, int, const char *, ...);

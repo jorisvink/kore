@@ -39,15 +39,7 @@
 #include "kore.h"
 #include "http.h"
 
-TAILQ_HEAD(, http_request)	http_requests;
-
-static int		http_generic_404(struct http_request *);
 static int		http_post_data_recv(struct netbuf *);
-void
-http_init(void)
-{
-	TAILQ_INIT(&http_requests);
-}
 
 int
 http_request_new(struct connection *c, struct spdy_stream *s, char *host,
@@ -80,10 +72,10 @@ http_request_new(struct connection *c, struct spdy_stream *s, char *host,
 		return (KORE_RESULT_ERROR);
 	}
 
-	TAILQ_INSERT_TAIL(&http_requests, req, list);
-
 	if (out != NULL)
 		*out = req;
+
+	kore_worker_delegate(req);
 
 	return (KORE_RESULT_OK);
 }
@@ -225,40 +217,6 @@ http_request_header_get(struct http_request *req, char *header, char **out)
 	return (r);
 }
 
-void
-http_process(void)
-{
-	struct http_request	*req, *next;
-	int			r, (*hdlr)(struct http_request *);
-
-	if (TAILQ_EMPTY(&http_requests))
-		return;
-
-	kore_log("http_process()");
-	for (req = TAILQ_FIRST(&http_requests); req != NULL; req = next) {
-		next = TAILQ_NEXT(req, list);
-		if (!(req->flags & HTTP_REQUEST_COMPLETE))
-			continue;
-
-		hdlr = kore_module_handler_find(req->host, req->path);
-		if (hdlr == NULL)
-			r = http_generic_404(req);
-		else
-			r = hdlr(req);
-
-		if (r != KORE_RESULT_ERROR) {
-			net_send_flush(req->owner);
-			if (req->owner->proto == CONN_PROTO_HTTP)
-				kore_server_disconnect(req->owner);
-		} else {
-			kore_server_disconnect(req->owner);
-		}
-
-		TAILQ_REMOVE(&http_requests, req, list);
-		http_request_free(req);
-	}
-}
-
 int
 http_header_recv(struct netbuf *nb)
 {
@@ -363,8 +321,7 @@ http_header_recv(struct netbuf *nb)
 	if (req->method == HTTP_METHOD_POST) {
 		if (!http_request_header_get(req, "content-length", &p)) {
 			kore_log("POST but no content-length");
-			TAILQ_REMOVE(&http_requests, req, list);
-			http_request_free(req);
+			req->flags |= HTTP_REQUEST_DELETE;
 			return (KORE_RESULT_ERROR);
 		}
 
@@ -372,8 +329,7 @@ http_header_recv(struct netbuf *nb)
 		if (v == KORE_RESULT_ERROR) {
 			free(p);
 			kore_log("content-length invalid: %s", p);
-			TAILQ_REMOVE(&http_requests, req, list);
-			http_request_free(req);
+			req->flags |= HTTP_REQUEST_DELETE;
 			return (KORE_RESULT_ERROR);
 		}
 
@@ -462,7 +418,7 @@ http_post_data_text(struct http_request *req)
 	return (text);
 }
 
-static int
+int
 http_generic_404(struct http_request *req)
 {
 	kore_log("http_generic_404(%s, %d, %s)",

@@ -44,6 +44,7 @@ static int			configure_handler(char **);
 static int			configure_domain(char **);
 static int			configure_chroot(char **);
 static int			configure_runas(char **);
+static int			configure_workers(char **);
 
 static struct {
 	const char		*name;
@@ -56,6 +57,7 @@ static struct {
 	{ "domain",		configure_domain },
 	{ "chroot",		configure_chroot },
 	{ "runas",		configure_runas },
+	{ "workers",		configure_workers },
 	{ NULL,			NULL },
 };
 
@@ -207,5 +209,27 @@ configure_runas(char **argv)
 		return (KORE_RESULT_ERROR);
 
 	runas_user = kore_strdup(argv[1]);
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_workers(char **argv)
+{
+	int		err;
+
+	if (worker_count != 0) {
+		kore_log("duplicate worker directive specified");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (argv[1] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	worker_count = kore_strtonum(argv[1], 1, 255, &err);
+	if (err != KORE_RESULT_OK) {
+		kore_log("%s is not a correct worker number", argv[1]);
+		return (KORE_RESULT_ERROR);
+	}
+
 	return (KORE_RESULT_OK);
 }
