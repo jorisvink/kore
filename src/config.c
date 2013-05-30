@@ -40,6 +40,7 @@
 
 static int			configure_bind(char **);
 static int			configure_load(char **);
+static int			configure_onload(char **);
 static int			configure_handler(char **);
 static int			configure_domain(char **);
 static int			configure_chroot(char **);
@@ -52,6 +53,7 @@ static struct {
 } config_names[] = {
 	{ "bind",		configure_bind },
 	{ "load",		configure_load },
+	{ "onload",		configure_onload },
 	{ "static",		configure_handler },
 	{ "dynamic",		configure_handler },
 	{ "domain",		configure_domain },
@@ -134,6 +136,21 @@ configure_load(char **argv)
 		return (KORE_RESULT_ERROR);
 
 	kore_module_load(argv[1]);
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_onload(char **argv)
+{
+	if (argv[1] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	if (kore_module_onload != NULL) {
+		kore_log("duplicate onload directive found");
+		return (KORE_RESULT_ERROR);
+	}
+
+	kore_module_onload = kore_strdup(argv[1]);
 	return (KORE_RESULT_OK);
 }
 

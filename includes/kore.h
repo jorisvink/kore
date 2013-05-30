@@ -135,6 +135,7 @@ extern int	server_port;
 extern char	*server_ip;
 extern char	*chroot_path;
 extern char	*runas_user;
+extern char	*kore_module_onload;
 extern u_int8_t	worker_count;
 
 void		*kore_malloc(size_t);

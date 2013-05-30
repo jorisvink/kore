@@ -43,6 +43,7 @@
 static void		*mod_handle = NULL;
 static char		*mod_name = NULL;
 static time_t		mod_last_mtime = 0;
+char			*kore_module_onload = NULL;
 
 struct module_domain {
 	char					*domain;
@@ -57,6 +58,7 @@ void
 kore_module_load(char *module_name)
 {
 	struct stat		st;
+	void			(*onload)(void);
 
 	kore_log("kore_module_load(%s)", module_name);
 
@@ -73,6 +75,13 @@ kore_module_load(char *module_name)
 
 	TAILQ_INIT(&domains);
 	mod_name = kore_strdup(module_name);
+
+	if (kore_module_onload != NULL) {
+		onload = dlsym(mod_handle, kore_module_onload);
+		if (onload == NULL)
+			fatal("onload '%s' not present", kore_module_onload);
+		onload();
+	}
 }
 
 void
@@ -80,6 +89,7 @@ kore_module_reload(void)
 {
 	struct module_domain		*dom;
 	struct kore_module_handle	*hdlr;
+	void				(*onload)(void);
 
 	if (dlclose(mod_handle))
 		fatal("cannot close existing module: %s", dlerror());
@@ -94,6 +104,13 @@ kore_module_reload(void)
 			if (hdlr->func == NULL)
 				fatal("no function '%s' found", hdlr->func);
 		}
+	}
+
+	if (kore_module_onload != NULL) {
+		onload = dlsym(mod_handle, kore_module_onload);
+		if (onload == NULL)
+			fatal("onload '%s' not present", kore_module_onload);
+		onload();
 	}
 
 	kore_log("reloaded '%s' module", mod_name);
