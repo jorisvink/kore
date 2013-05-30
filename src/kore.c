@@ -181,7 +181,6 @@ main(int argc, char *argv[])
 
 		for (c = TAILQ_FIRST(&disconnected); c != NULL; c = cnext) {
 			cnext = TAILQ_NEXT(c, list);
-			TAILQ_REMOVE(&disconnected, c, list);
 			kore_server_final_disconnect(c);
 		}
 
@@ -357,6 +356,7 @@ kore_server_final_disconnect(struct connection *c)
 		SSL_free(c->ssl);
 	}
 
+	TAILQ_REMOVE(&disconnected, c, list);
 	close(c->fd);
 	if (c->inflate_started)
 		inflateEnd(&(c->z_inflate));
@@ -514,6 +514,7 @@ kore_worker_entry(void *arg)
 	pthread_mutex_lock(&(kw->lock));
 	for (;;) {
 		if (retry == 0) {
+			kore_log("worker %d going to sleep", kw->id);
 			pthread_cond_wait(&(kw->cond), &(kw->lock));
 			kore_log("worker %d woke up with %d reqs",
 			    kw->id, kw->load);

@@ -23,6 +23,7 @@
 #define errno_s			strerror(errno)
 #define ssl_errno_s		ERR_error_string(ERR_get_error(), NULL)
 
+#define KORE_DEBUG		1
 #if defined(KORE_DEBUG)
 #define kore_log(fmt, ...)	\
 	kore_log_internal(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
