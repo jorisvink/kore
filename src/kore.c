@@ -593,19 +593,27 @@ kore_worker_entry(void *arg)
 				r = hdlr(req);
 			pthread_rwlock_unlock(&module_lock);
 
-			if (r != KORE_RESULT_ERROR) {
+			switch (r) {
+			case KORE_RESULT_OK:
 				r = net_send_flush(req->owner);
 				if (r == KORE_RESULT_ERROR)
 					kore_server_disconnect(req->owner);
-			} else {
+				break;
+			case KORE_RESULT_ERROR:
 				kore_server_disconnect(req->owner);
+				break;
+			case KORE_RESULT_RETRY:
+				TAILQ_INSERT_TAIL(&(kw->requests), req, list);
+				break;
 			}
 
 			pthread_mutex_unlock(&(req->owner->lock));
 
-			pthread_mutex_lock(&(kw->lock));
-			http_request_free(req);
-			kw->load--;
+			if (r != KORE_RESULT_RETRY) {
+				pthread_mutex_lock(&(kw->lock));
+				http_request_free(req);
+				kw->load--;
+			}
 		}
 	}
 
