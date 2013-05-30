@@ -65,13 +65,14 @@ static TAILQ_HEAD(, connection)		disconnected;
 static TAILQ_HEAD(, kore_worker)	kore_workers;
 static TAILQ_HEAD(, reschedule)		reschedule_list;
 static struct kore_worker		*last_worker = NULL;
+static pthread_mutex_t			disconnect_lock;
+static pthread_rwlock_t			module_lock;
 
 int			server_port = 0;
 char			*server_ip = NULL;
 char			*chroot_path = NULL;
 char			*runas_user = NULL;
 u_int8_t		worker_count = 0;
-pthread_mutex_t		disconnect_lock;
 
 static void	kore_signal(int);
 static void	kore_worker_init(void);
@@ -132,6 +133,7 @@ main(int argc, char *argv[])
 	TAILQ_INIT(&disconnected);
 	TAILQ_INIT(&reschedule_list);
 	pthread_mutex_init(&disconnect_lock, NULL);
+	pthread_rwlock_init(&module_lock, NULL);
 
 	kore_worker_init();
 
@@ -142,8 +144,11 @@ main(int argc, char *argv[])
 	events = kore_calloc(EPOLL_EVENTS, sizeof(struct epoll_event));
 	for (;;) {
 		if (sig_recv == SIGHUP) {
-			kore_module_reload();
-			sig_recv = 0;
+			if (!pthread_rwlock_trywrlock(&module_lock)) {
+				kore_module_reload();
+				sig_recv = 0;
+				pthread_rwlock_unlock(&module_lock);
+			}
 		}
 
 		n = epoll_wait(efd, events, EPOLL_EVENTS, 1000);
@@ -574,11 +579,19 @@ kore_worker_entry(void *arg)
 				continue;
 			}
 
+			if (pthread_rwlock_tryrdlock(&module_lock)) {
+				pthread_mutex_unlock(&(req->owner->lock));
+				pthread_mutex_lock(&(kw->lock));
+				TAILQ_INSERT_TAIL(&(kw->requests), req, list);
+				continue;
+			}
+
 			hdlr = kore_module_handler_find(req->host, req->path);
 			if (hdlr == NULL)
 				r = http_generic_404(req);
 			else
 				r = hdlr(req);
+			pthread_rwlock_unlock(&module_lock);
 
 			if (r != KORE_RESULT_ERROR) {
 				r = net_send_flush(req->owner);
