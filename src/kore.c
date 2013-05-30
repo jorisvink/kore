@@ -215,7 +215,6 @@ main(int argc, char *argv[])
 
 			pthread_mutex_unlock(&(sched->c->lock));
 
-			kore_log("handled rescheduled %p", sched->c);
 			TAILQ_REMOVE(&reschedule_list, sched, list);
 			free(sched);
 		}
@@ -389,7 +388,8 @@ kore_server_final_disconnect(struct connection *c)
 		return;
 	}
 
-	kore_log("kore_server_final_disconnect(%p)", c);
+	if (!TAILQ_EMPTY(&(c->send_queue)))
+		return;
 
 	if (c->ssl != NULL) {
 		if (SSL_shutdown(c->ssl) == 0) {
@@ -513,6 +513,10 @@ kore_connection_handle(struct connection *c, int flags)
 		}
 		break;
 	case CONN_STATE_DISCONNECTING:
+		if (c->flags & CONN_WRITE_POSSIBLE) {
+			if (!net_send_flush(c))
+				return (KORE_RESULT_ERROR);
+		}
 		break;
 	default:
 		kore_log("unknown state on %d (%d)", c->fd, c->state);
@@ -661,8 +665,6 @@ static void
 kore_reschedule(struct connection *c, int reason, int events)
 {
 	struct reschedule	*sched;
-
-	kore_log("kore_reschedule(%p, %d, %d)", c, reason, events);
 
 	sched = (struct reschedule *)kore_malloc(sizeof(*sched));
 	sched->c = c;
