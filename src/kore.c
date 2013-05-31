@@ -542,32 +542,35 @@ kore_worker_init(void)
 static void *
 kore_worker_entry(void *arg)
 {
-	u_int8_t		retry;
-	struct http_request	*req, *next;
+	struct http_request	*req;
 	struct kore_worker	*kw = (struct kore_worker *)arg;
 	int			r, (*hdlr)(struct http_request *);
 
 	pthread_mutex_lock(&(kw->lock));
 	for (;;) {
-		if (retry == 0)
-			pthread_cond_wait(&(kw->cond), &(kw->lock));
+		pthread_cond_wait(&(kw->cond), &(kw->lock));
 
-		retry = 0;
-		for (req = TAILQ_FIRST(&(kw->requests)); req != NULL;
-		    req = next) {
-			next = TAILQ_NEXT(req, list);
+		while (!TAILQ_EMPTY(&(kw->requests))) {
+			req = TAILQ_FIRST(&(kw->requests));
+			TAILQ_REMOVE(&(kw->requests), req, list);
+			pthread_mutex_unlock(&(kw->lock));
+
 			if (req->flags & HTTP_REQUEST_DELETE) {
+				pthread_mutex_lock(&(kw->lock));
 				kw->load--;
-				TAILQ_REMOVE(&(kw->requests), req, list);
 				http_request_free(req);
 				continue;
 			}
 
-			if (!(req->flags & HTTP_REQUEST_COMPLETE))
+			if (!(req->flags & HTTP_REQUEST_COMPLETE)) {
+				pthread_mutex_lock(&(kw->lock));
+				TAILQ_INSERT_TAIL(&(kw->requests), req, list);
 				continue;
+			}
 
 			if (pthread_mutex_trylock(&(req->owner->lock))) {
-				retry = 1;
+				pthread_mutex_lock(&(kw->lock));
+				TAILQ_INSERT_TAIL(&(kw->requests), req, list);
 				continue;
 			}
 
@@ -587,9 +590,8 @@ kore_worker_entry(void *arg)
 
 			pthread_mutex_unlock(&(req->owner->lock));
 
-			TAILQ_REMOVE(&(kw->requests), req, list);
+			pthread_mutex_lock(&(kw->lock));
 			http_request_free(req);
-
 			kw->load--;
 		}
 	}
