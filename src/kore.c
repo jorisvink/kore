@@ -557,6 +557,7 @@ kore_worker_entry(void *arg)
 		    req = next) {
 			next = TAILQ_NEXT(req, list);
 			if (req->flags & HTTP_REQUEST_DELETE) {
+				kw->load--;
 				TAILQ_REMOVE(&(kw->requests), req, list);
 				http_request_free(req);
 				continue;
