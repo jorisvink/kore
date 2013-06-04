@@ -38,14 +38,15 @@
 #include "spdy.h"
 #include "kore.h"
 
-static int			configure_bind(char **);
-static int			configure_load(char **);
-static int			configure_onload(char **);
-static int			configure_handler(char **);
-static int			configure_domain(char **);
-static int			configure_chroot(char **);
-static int			configure_runas(char **);
-static int			configure_workers(char **);
+static int		configure_bind(char **);
+static int		configure_load(char **);
+static int		configure_onload(char **);
+static int		configure_handler(char **);
+static int		configure_domain(char **);
+static int		configure_chroot(char **);
+static int		configure_runas(char **);
+static int		configure_workers(char **);
+static int		configure_pidfile(char **);
 
 static struct {
 	const char		*name;
@@ -60,6 +61,7 @@ static struct {
 	{ "chroot",		configure_chroot },
 	{ "runas",		configure_runas },
 	{ "workers",		configure_workers },
+	{ "pidfile",		configure_pidfile },
 	{ NULL,			NULL },
 };
 
@@ -248,5 +250,20 @@ configure_workers(char **argv)
 		return (KORE_RESULT_ERROR);
 	}
 
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_pidfile(char **argv)
+{
+	if (argv[1] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	if (strcmp(kore_pidfile, KORE_PIDFILE_DEFAULT)) {
+		kore_debug("duplicate pidfile directive specified");
+		return (KORE_RESULT_ERROR);
+	}
+
+	kore_pidfile = kore_strdup(argv[1]);
 	return (KORE_RESULT_OK);
 }

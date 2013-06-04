@@ -24,6 +24,8 @@
 #define errno_s			strerror(errno)
 #define ssl_errno_s		ERR_error_string(ERR_get_error(), NULL)
 
+#define KORE_PIDFILE_DEFAULT	"/var/run/kore.pid"
+
 //#define KORE_DEBUG		1
 #if defined(KORE_DEBUG)
 #define kore_debug(fmt, ...)	\
@@ -132,6 +134,7 @@ extern char	*server_ip;
 extern char	*chroot_path;
 extern char	*runas_user;
 extern char	*kore_module_onload;
+extern char	*kore_pidfile;
 extern u_int8_t	worker_count;
 extern pid_t	mypid;
 

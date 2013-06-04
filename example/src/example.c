@@ -56,7 +56,7 @@ serve_style_css(struct http_request *req)
 		tstamp = kore_date_to_time(date);
 		free(date);
 
-		kore_log("header was present with %ld", tstamp);
+		kore_debug("header was present with %ld", tstamp);
 	}
 
 	tstamp = 0;

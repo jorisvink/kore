@@ -60,16 +60,18 @@ static struct passwd			*pw = NULL;
 static u_int16_t			workerid = 0;
 static u_int16_t			cpu_count = 1;
 
+pid_t			mypid = -1;
 int			server_port = 0;
+u_int8_t		worker_count = 0;
 char			*server_ip = NULL;
 char			*chroot_path = NULL;
 char			*runas_user = NULL;
-u_int8_t		worker_count = 0;
-pid_t			mypid = -1;
+char			*kore_pidfile = KORE_PIDFILE_DEFAULT;
 
 static void	kore_signal(int);
 static void	kore_worker_wait(int);
 static void	kore_worker_init(void);
+static void	kore_write_mypid(void);
 static int	kore_socket_nonblock(int);
 static int	kore_server_sslstart(void);
 static void	kore_event(int, int, void *);
@@ -88,8 +90,11 @@ main(int argc, char *argv[])
 	struct kore_worker	*kw, *next;
 
 	mypid = getpid();
+
 	if (argc != 2)
 		fatal("Usage: kore [config file]");
+	if (getuid() != 0)
+		fatal("kore must be started as root");
 
 	kore_parse_config(argv[1]);
 	if (!kore_module_loaded())
@@ -114,18 +119,13 @@ main(int argc, char *argv[])
 		fatal("cannot daemon(): %s", errno_s);
 
 	mypid = getpid();
-	if (chroot(chroot_path) == -1)
-		fatal("chroot(%s): %s", chroot_path, errno_s);
-	if (chdir("/") == -1)
-		fatal("chdir(/): %s", errno_s);
+	kore_write_mypid();
 
 	kore_worker_init();
 
 	sig_recv = 0;
 	signal(SIGQUIT, kore_signal);
 	signal(SIGHUP, kore_signal);
-
-	printf("kore has been started\n");
 
 	for (;;) {
 		if (sig_recv != 0) {
@@ -157,6 +157,7 @@ main(int argc, char *argv[])
 		kore_worker_wait(1);
 
 	kore_debug("server shutting down");
+	unlink(kore_pidfile);
 	close(server.fd);
 
 	return (0);
@@ -680,6 +681,19 @@ kore_event(int fd, int flags, void *udata)
 		} else {
 			fatal("epoll_ctl() ADD: %s", errno_s);
 		}
+	}
+}
+
+static void
+kore_write_mypid(void)
+{
+	FILE		*fp;
+
+	if ((fp = fopen(kore_pidfile, "w+")) == NULL) {
+		kore_debug("kore_write_mypid(): fopen() %s", errno_s);
+	} else {
+		fprintf(fp, "%d\n", mypid);
+		fclose(fp);
 	}
 }
 
