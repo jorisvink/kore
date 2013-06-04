@@ -4,16 +4,16 @@ Kore is a SPDY based web server that handles dynamic content via loadable
 modules. Inside the examples/ directory you will find a complete example
 on how such modules are built (and some tools to help you get started).
 
-Kore does support normal HTTP over SSL as well, for the less technological
-advanced browsers.
+Kore does support normal HTTP over SSL as well (for the less technological
+advanced browsers).
 
 Take a look at example.conf as well for an overview of the way a site
 is configured and setup.
 
 Right now Kore development is a moving process, so expect bugs.
-If you run into said bugs, please contact me at joris@coders.se.
+If you run into said bugs please contact me at joris@coders.se.
 
-To get started, put some X.509 certificates in a folder called certs,
+To get started put some X.509 certificates in a folder called certs
 and run a make to get everything compiled. If if doesn't compile out of
 the box there's something you can help me out with.
 
