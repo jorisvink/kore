@@ -112,7 +112,7 @@ kore_log_internal(char *file, int line, const char *fmt, ...)
 	vsnprintf(buf, sizeof(buf), fmt, args);
 	va_end(args);
 
-	printf("%s:%d - %s\n", file, line, buf);
+	printf("[%d] %s:%d - %s\n", mypid, file, line, buf);
 }
 
 void

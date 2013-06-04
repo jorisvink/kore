@@ -42,6 +42,14 @@
 static int		http_post_data_recv(struct netbuf *);
 static int		http_send_done(struct netbuf *);
 
+static TAILQ_HEAD(, http_request)	http_requests;
+
+void
+http_init(void)
+{
+	TAILQ_INIT(&http_requests);
+}
+
 int
 http_request_new(struct connection *c, struct spdy_stream *s, char *host,
     char *method, char *path, struct http_request **out)
@@ -76,9 +84,52 @@ http_request_new(struct connection *c, struct spdy_stream *s, char *host,
 	if (out != NULL)
 		*out = req;
 
-	kore_worker_delegate(req);
-
+	TAILQ_INSERT_TAIL(&http_requests, req, list);
 	return (KORE_RESULT_OK);
+}
+
+void
+http_process(void)
+{
+	struct http_request	*req, *next;
+	int			r, (*hdlr)(struct http_request *);
+
+	for (req = TAILQ_FIRST(&http_requests); req != NULL; req = next) {
+		next = TAILQ_NEXT(req, list);
+
+		if (req->flags & HTTP_REQUEST_DELETE) {
+			TAILQ_REMOVE(&http_requests, req, list);
+			http_request_free(req);
+			continue;
+		}
+
+		if (!(req->flags & HTTP_REQUEST_COMPLETE))
+			continue;
+
+		hdlr = kore_module_handler_find(req->host, req->path);
+		if (hdlr == NULL)
+			r = http_generic_404(req);
+		else
+			r = hdlr(req);
+
+		switch (r) {
+		case KORE_RESULT_OK:
+			r = net_send_flush(req->owner);
+			if (r == KORE_RESULT_ERROR)
+				kore_server_disconnect(req->owner);
+			break;
+		case KORE_RESULT_ERROR:
+			kore_server_disconnect(req->owner);
+			break;
+		case KORE_RESULT_RETRY:
+			break;
+		}
+
+		if (r != KORE_RESULT_RETRY) {
+			TAILQ_REMOVE(&http_requests, req, list);
+			http_request_free(req);
+		}
+	}
 }
 
 void

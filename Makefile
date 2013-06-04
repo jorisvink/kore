@@ -11,7 +11,7 @@ CFLAGS+=-I/usr/local/ssl/include
 CFLAGS+=-Wall -Wstrict-prototypes -Wmissing-prototypes
 CFLAGS+=-Wmissing-declarations -Wshadow -Wpointer-arith -Wcast-qual
 CFLAGS+=-D_GNU_SOURCE=1 -Wsign-compare -Iincludes -g
-LDFLAGS=-rdynamic -Llibs -lssl -lcrypto -lpthread -ldl -lz
+LDFLAGS=-rdynamic -Llibs -lssl -lcrypto -ldl -lz
 
 light: $(S_OBJS)
 	$(CC) $(CFLAGS) $(S_OBJS) $(LDFLAGS) -o $(BIN)

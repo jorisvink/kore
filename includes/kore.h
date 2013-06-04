@@ -78,7 +78,6 @@ struct connection {
 	void			*owner;
 	SSL			*ssl;
 	int			flags;
-	pthread_mutex_t		lock;
 
 	u_int8_t		inflate_started;
 	z_stream		z_inflate;
@@ -108,13 +107,8 @@ struct kore_module_handle {
 };
 
 struct kore_worker {
-	u_int8_t		id;
-	pthread_t		pctx;
-	pthread_mutex_t		lock;
-	pthread_cond_t		cond;
-	u_int32_t		load;
-
-	TAILQ_HEAD(, http_request)	requests;
+	u_int16_t			id;
+	pid_t				pid;
 	TAILQ_ENTRY(kore_worker)	list;
 };
 
@@ -138,6 +132,7 @@ extern char	*chroot_path;
 extern char	*runas_user;
 extern char	*kore_module_onload;
 extern u_int8_t	worker_count;
+extern pid_t	mypid;
 
 void		*kore_malloc(size_t);
 void		*kore_calloc(size_t, size_t);
@@ -157,8 +152,6 @@ int		kore_module_loaded(void);
 int		kore_module_domain_new(char *);
 void		*kore_module_handler_find(char *, char *);
 int		kore_module_handler_new(char *, char *, char *, int);
-
-void		kore_worker_delegate(struct http_request *);
 
 void		fatal(const char *, ...);
 void		kore_log_internal(char *, int, const char *, ...);
