@@ -122,8 +122,14 @@ main(int argc, char *argv[])
 	mypid = getpid();
 	kore_write_mypid();
 
+	if (chroot(chroot_path) == -1)
+		fatal("cannot chroot(): %s", errno_s);
+	if (chdir("/") == -1)
+		fatal("cannot chdir(): %s", errno_s);
+
 	kore_worker_init();
-	prctl(PR_SET_NAME, "[main]");
+	if (prctl(PR_SET_NAME, "[main]"))
+		kore_debug("cannot set process title");
 
 	sig_recv = 0;
 	signal(SIGQUIT, kore_signal);
@@ -537,7 +543,8 @@ kore_worker_entry(struct kore_worker *kw)
 	int			n, i, *fd, quit;
 
 	snprintf(buf, sizeof(buf), "[worker %d]", kw->id);
-	prctl(PR_SET_NAME, buf);
+	if (prctl(PR_SET_NAME, buf) == -1)
+		kore_debug("cannot set process title");
 
 	if (setgroups(1, &pw->pw_gid) || setresgid(pw->pw_gid, pw->pw_gid,
 	    pw->pw_gid) || setresuid(pw->pw_uid, pw->pw_uid, pw->pw_uid))
