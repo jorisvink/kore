@@ -127,7 +127,6 @@ main(int argc, char *argv[])
 
 	for (;;) {
 		if (sig_recv != 0) {
-			kore_log("signal %d received", sig_recv);
 			if (sig_recv == SIGHUP) {
 				TAILQ_FOREACH(kw, &kore_workers, list) {
 					if (kill(kw->pid, SIGHUP) == -1) {
@@ -151,10 +150,9 @@ main(int argc, char *argv[])
 			kore_log("kill(%d, SIGINT): %s", kw->pid, errno_s);
 	}
 
-	while (!TAILQ_EMPTY(&kore_workers)) {
-		kore_log("waiting for workers to drain and finish");
+	kore_log("waiting for workers to drain and finish");
+	while (!TAILQ_EMPTY(&kore_workers))
 		kore_worker_wait(1);
-	}
 
 	kore_log("server shutting down");
 	close(server.fd);
