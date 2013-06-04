@@ -103,7 +103,7 @@ kore_strdup(const char *str)
 }
 
 void
-kore_log_internal(char *file, int line, const char *fmt, ...)
+kore_debug_internal(char *file, int line, const char *fmt, ...)
 {
 	va_list		args;
 	char		buf[2048];
@@ -196,13 +196,13 @@ kore_date_to_time(char *http_date)
 	t = KORE_RESULT_ERROR;
 
 	if (kore_split_string(sdup, " ", args, 7) != 6) {
-		kore_log("misformed http-date: '%s'", http_date);
+		kore_debug("misformed http-date: '%s'", http_date);
 		goto out;
 	}
 
 	tm.tm_year = kore_strtonum(args[3], 2013, 2068, &err) - 1900;
 	if (err == KORE_RESULT_ERROR || tm.tm_year < gtm->tm_year) {
-		kore_log("misformed year in http-date: '%s'", http_date);
+		kore_debug("misformed year in http-date: '%s'", http_date);
 		goto out;
 	}
 
@@ -214,43 +214,43 @@ kore_date_to_time(char *http_date)
 	}
 
 	if (month_names[i].name == NULL) {
-		kore_log("misformed month in http-date: '%s'", http_date);
+		kore_debug("misformed month in http-date: '%s'", http_date);
 		goto out;
 	}
 
 	tm.tm_mday = kore_strtonum(args[1], 1, 31, &err);
 	if (err == KORE_RESULT_ERROR) {
-		kore_log("misformed mday in http-date: '%s'", http_date);
+		kore_debug("misformed mday in http-date: '%s'", http_date);
 		goto out;
 	}
 
 	if (kore_split_string(args[4], ":", tbuf, 5) != 3) {
-		kore_log("misformed HH:MM:SS in http-date: '%s'", http_date);
+		kore_debug("misformed HH:MM:SS in http-date: '%s'", http_date);
 		goto out;
 	}
 
 	tm.tm_hour = kore_strtonum(tbuf[0], 1, 23, &err);
 	if (err == KORE_RESULT_ERROR) {
-		kore_log("misformed hour in http-date: '%s'", http_date);
+		kore_debug("misformed hour in http-date: '%s'", http_date);
 		goto out;
 	}
 
 	tm.tm_min = kore_strtonum(tbuf[1], 1, 59, &err);
 	if (err == KORE_RESULT_ERROR) {
-		kore_log("misformed minutes in http-date: '%s'", http_date);
+		kore_debug("misformed minutes in http-date: '%s'", http_date);
 		goto out;
 	}
 
 	tm.tm_sec = kore_strtonum(tbuf[2], 0, 60, &err);
 	if (err == KORE_RESULT_ERROR) {
-		kore_log("misformed seconds in http-date: '%s'", http_date);
+		kore_debug("misformed seconds in http-date: '%s'", http_date);
 		goto out;
 	}
 
 	t = mktime(&tm);
 	if (t == -1) {
 		t = 0;
-		kore_log("mktime() on '%s' failed", http_date);
+		kore_debug("mktime() on '%s' failed", http_date);
 	}
 
 out:
@@ -270,7 +270,7 @@ kore_time_to_date(time_t now)
 
 		tm = gmtime(&now);
 		if (!strftime(tbuf, sizeof(tbuf), "%a, %d %b %Y %T GMT", tm)) {
-			kore_log("strftime() gave us NULL (%ld)", now);
+			kore_debug("strftime() gave us NULL (%ld)", now);
 			return (NULL);
 		}
 	}

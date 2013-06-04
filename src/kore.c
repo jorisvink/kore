@@ -104,7 +104,7 @@ main(int argc, char *argv[])
 	if ((pw = getpwnam(runas_user)) == NULL)
 		fatal("user '%s' does not exist");
 	if ((cpu_count = sysconf(_SC_NPROCESSORS_ONLN)) == -1) {
-		kore_log("could not get number of cpu's falling back to 1");
+		kore_debug("could not get number of cpu's falling back to 1");
 		cpu_count = 1;
 	}
 
@@ -130,7 +130,7 @@ main(int argc, char *argv[])
 			if (sig_recv == SIGHUP) {
 				TAILQ_FOREACH(kw, &kore_workers, list) {
 					if (kill(kw->pid, SIGHUP) == -1) {
-						kore_log("kill(%d, SIGHUP): %s",
+						kore_debug("kill(%d, SIGHUP): %s",
 						    kw->pid, errno_s);
 					}
 				}
@@ -147,14 +147,14 @@ main(int argc, char *argv[])
 	for (kw = TAILQ_FIRST(&kore_workers); kw != NULL; kw = next) {
 		next = TAILQ_NEXT(kw, list);
 		if (kill(kw->pid, SIGINT) == -1)
-			kore_log("kill(%d, SIGINT): %s", kw->pid, errno_s);
+			kore_debug("kill(%d, SIGINT): %s", kw->pid, errno_s);
 	}
 
-	kore_log("waiting for workers to drain and finish");
+	kore_debug("waiting for workers to drain and finish");
 	while (!TAILQ_EMPTY(&kore_workers))
 		kore_worker_wait(1);
 
-	kore_log("server shutting down");
+	kore_debug("server shutting down");
 	close(server.fd);
 
 	return (0);
@@ -164,7 +164,7 @@ void
 kore_server_disconnect(struct connection *c)
 {
 	if (c->state != CONN_STATE_DISCONNECTING) {
-		kore_log("preparing %p for disconnection", c);
+		kore_debug("preparing %p for disconnection", c);
 		c->state = CONN_STATE_DISCONNECTING;
 		TAILQ_REMOVE(&worker_clients, c, list);
 		TAILQ_INSERT_TAIL(&disconnected, c, list);
@@ -174,24 +174,24 @@ kore_server_disconnect(struct connection *c)
 static int
 kore_server_sslstart(void)
 {
-	kore_log("kore_server_sslstart()");
+	kore_debug("kore_server_sslstart()");
 
 	SSL_library_init();
 	SSL_load_error_strings();
 	ssl_ctx = SSL_CTX_new(SSLv23_server_method());
 	if (ssl_ctx == NULL) {
-		kore_log("SSL_ctx_new(): %s", ssl_errno_s);
+		kore_debug("SSL_ctx_new(): %s", ssl_errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
 	if (!SSL_CTX_use_certificate_chain_file(ssl_ctx, "cert/server.crt")) {
-		kore_log("SSL_CTX_use_certificate_file(): %s", ssl_errno_s);
+		kore_debug("SSL_CTX_use_certificate_file(): %s", ssl_errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
 	if (!SSL_CTX_use_PrivateKey_file(ssl_ctx, "cert/server.key",
 	    SSL_FILETYPE_PEM)) {
-		kore_log("SSL_CTX_use_PrivateKey_file(): %s", ssl_errno_s);
+		kore_debug("SSL_CTX_use_PrivateKey_file(): %s", ssl_errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -208,10 +208,10 @@ kore_server_bind(struct listener *l, const char *ip, int port)
 {
 	int	on;
 
-	kore_log("kore_server_bind(%p, %s, %d)", l, ip, port);
+	kore_debug("kore_server_bind(%p, %s, %d)", l, ip, port);
 
 	if ((l->fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
-		kore_log("socket(): %s", errno_s);
+		kore_debug("socket(): %s", errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -223,7 +223,7 @@ kore_server_bind(struct listener *l, const char *ip, int port)
 	on = 1;
 	if (setsockopt(l->fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&on,
 	    sizeof(on)) == -1) {
-		kore_log("setsockopt(): %s", errno_s);
+		kore_debug("setsockopt(): %s", errno_s);
 		close(l->fd);
 		return (KORE_RESULT_ERROR);
 	}
@@ -235,13 +235,13 @@ kore_server_bind(struct listener *l, const char *ip, int port)
 
 	if (bind(l->fd, (struct sockaddr *)&(l->sin), sizeof(l->sin)) == -1) {
 		close(l->fd);
-		kore_log("bind(): %s", errno_s);
+		kore_debug("bind(): %s", errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
 	if (listen(l->fd, 50) == -1) {
 		close(l->fd);
-		kore_log("listen(): %s", errno_s);
+		kore_debug("listen(): %s", errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -254,13 +254,13 @@ kore_server_accept(struct listener *l)
 	socklen_t		len;
 	struct connection	*c;
 
-	kore_log("kore_server_accept(%p)", l);
+	kore_debug("kore_server_accept(%p)", l);
 
 	len = sizeof(struct sockaddr_in);
 	c = (struct connection *)kore_malloc(sizeof(*c));
 	if ((c->fd = accept(l->fd, (struct sockaddr *)&(c->sin), &len)) == -1) {
 		free(c);
-		kore_log("accept(): %s", errno_s);
+		kore_debug("accept(): %s", errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -295,7 +295,7 @@ kore_server_final_disconnect(struct connection *c)
 	struct netbuf		*nb, *next;
 	struct spdy_stream	*s, *snext;
 
-	kore_log("kore_server_final_disconnect(%p)", c);
+	kore_debug("kore_server_final_disconnect(%p)", c);
 
 	if (c->ssl != NULL)
 		SSL_free(c->ssl);
@@ -344,7 +344,7 @@ kore_connection_handle(struct connection *c, int flags)
 	u_int32_t		len;
 	const u_char		*data;
 
-	kore_log("kore_connection_handle(%p, %d)", c, flags);
+	kore_debug("kore_connection_handle(%p, %d)", c, flags);
 
 	if (flags & EPOLLIN)
 		c->flags |= CONN_READ_POSSIBLE;
@@ -356,7 +356,7 @@ kore_connection_handle(struct connection *c, int flags)
 		if (c->ssl == NULL) {
 			c->ssl = SSL_new(ssl_ctx);
 			if (c->ssl == NULL) {
-				kore_log("SSL_new(): %s", ssl_errno_s);
+				kore_debug("SSL_new(): %s", ssl_errno_s);
 				return (KORE_RESULT_ERROR);
 			}
 
@@ -371,26 +371,26 @@ kore_connection_handle(struct connection *c, int flags)
 			case SSL_ERROR_WANT_WRITE:
 				return (KORE_RESULT_OK);
 			default:
-				kore_log("SSL_accept(): %s", ssl_errno_s);
+				kore_debug("SSL_accept(): %s", ssl_errno_s);
 				return (KORE_RESULT_ERROR);
 			}
 		}
 
 		r = SSL_get_verify_result(c->ssl);
 		if (r != X509_V_OK) {
-			kore_log("SSL_get_verify_result(): %s", ssl_errno_s);
+			kore_debug("SSL_get_verify_result(): %s", ssl_errno_s);
 			return (KORE_RESULT_ERROR);
 		}
 
 		SSL_get0_next_proto_negotiated(c->ssl, &data, &len);
 		if (data) {
 			if (!memcmp(data, "spdy/3", 6))
-				kore_log("using SPDY/3");
+				kore_debug("using SPDY/3");
 			c->proto = CONN_PROTO_SPDY;
 			net_recv_queue(c, SPDY_FRAME_SIZE, 0,
 			    NULL, spdy_frame_recv);
 		} else {
-			kore_log("using HTTP/1.1");
+			kore_debug("using HTTP/1.1");
 			c->proto = CONN_PROTO_HTTP;
 			net_recv_queue(c, HTTP_HEADER_MAX_LEN,
 			    NETBUF_CALL_CB_ALWAYS, NULL,
@@ -413,7 +413,7 @@ kore_connection_handle(struct connection *c, int flags)
 	case CONN_STATE_DISCONNECTING:
 		break;
 	default:
-		kore_log("unknown state on %d (%d)", c->fd, c->state);
+		kore_debug("unknown state on %d (%d)", c->fd, c->state);
 		break;
 	}
 
@@ -428,10 +428,10 @@ kore_worker_init(void)
 	if (worker_count == 0)
 		fatal("no workers specified");
 
-	kore_log("kore_worker_init(): system has %d cpu's", cpu_count);
-	kore_log("kore_worker_init(): starting %d workers", worker_count);
+	kore_debug("kore_worker_init(): system has %d cpu's", cpu_count);
+	kore_debug("kore_worker_init(): starting %d workers", worker_count);
 	if (worker_count > cpu_count)
-		kore_log("kore_worker_init(): more workers then cpu's");
+		kore_debug("kore_worker_init(): more workers then cpu's");
 
 	cpu = 0;
 	TAILQ_INIT(&kore_workers);
@@ -477,7 +477,7 @@ kore_worker_wait(int final)
 	else
 		r = waitid(P_ALL, 0, &info, WEXITED | WNOHANG);
 	if (r == -1) {
-		kore_log("waitid(): %s", errno_s);
+		kore_debug("waitid(): %s", errno_s);
 		return;
 	}
 
@@ -491,7 +491,7 @@ kore_worker_wait(int final)
 
 		cpu = kw->cpu;
 		TAILQ_REMOVE(&kore_workers, kw, list);
-		kore_log("worker %d (%d)-> status %d (%d)",
+		kore_debug("worker %d (%d)-> status %d (%d)",
 		    kw->id, info.si_pid, info.si_status, info.si_code);
 		free(kw);
 
@@ -501,7 +501,7 @@ kore_worker_wait(int final)
 		if (info.si_code == CLD_EXITED ||
 		    info.si_code == CLD_KILLED ||
 		    info.si_code == CLD_DUMPED) {
-			kore_log("worker gone, respawning new one");
+			kore_debug("worker gone, respawning new one");
 			kore_worker_spawn(cpu);
 		}
 	}
@@ -515,9 +515,9 @@ kore_worker_setcpu(struct kore_worker *kw)
 	CPU_ZERO(&cpuset);
 	CPU_SET(kw->cpu, &cpuset);
 	if (sched_setaffinity(0, sizeof(cpu_set_t), &cpuset) == -1) {
-		kore_log("kore_worker_setcpu(): %s", errno_s);
+		kore_debug("kore_worker_setcpu(): %s", errno_s);
 	} else {
-		kore_log("kore_worker_setcpu(): worker %d on cpu %d",
+		kore_debug("kore_worker_setcpu(): worker %d on cpu %d",
 		    kw->id, kw->cpu);
 	}
 }
@@ -577,7 +577,7 @@ kore_worker_entry(struct kore_worker *kw)
 		}
 
 		if (n > 0)
-			kore_log("main(): %d sockets available", n);
+			kore_debug("main(): %d sockets available", n);
 
 		for (i = 0; i < n; i++) {
 			fd = (int *)events[i].data.ptr;
@@ -626,7 +626,7 @@ kore_worker_entry(struct kore_worker *kw)
 		kore_server_final_disconnect(c);
 	}
 
-	kore_log("worker %d shutting down", kw->id);
+	kore_debug("worker %d shutting down", kw->id);
 	exit(0);
 }
 
@@ -635,16 +635,16 @@ kore_socket_nonblock(int fd)
 {
 	int		flags;
 
-	kore_log("kore_socket_nonblock(%d)", fd);
+	kore_debug("kore_socket_nonblock(%d)", fd);
 
 	if ((flags = fcntl(fd, F_GETFL, 0)) == -1) {
-		kore_log("fcntl(): F_GETFL %s", errno_s);
+		kore_debug("fcntl(): F_GETFL %s", errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
 	flags |= O_NONBLOCK;
 	if (fcntl(fd, F_SETFL, flags) == -1) {
-		kore_log("fcntl(): F_SETFL %s", errno_s);
+		kore_debug("fcntl(): F_SETFL %s", errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -654,7 +654,7 @@ kore_socket_nonblock(int fd)
 static int
 kore_ssl_npn_cb(SSL *ssl, const u_char **data, unsigned int *len, void *arg)
 {
-	kore_log("kore_ssl_npn_cb(): sending protocols");
+	kore_debug("kore_ssl_npn_cb(): sending protocols");
 
 	*data = (const unsigned char *)KORE_SSL_PROTO_STRING;
 	*len = strlen(KORE_SSL_PROTO_STRING);
@@ -667,7 +667,7 @@ kore_event(int fd, int flags, void *udata)
 {
 	struct epoll_event	evt;
 
-	kore_log("kore_event(%d, %d, %p)", fd, flags, udata);
+	kore_debug("kore_event(%d, %d, %p)", fd, flags, udata);
 
 	evt.events = flags;
 	evt.data.ptr = udata;

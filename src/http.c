@@ -59,7 +59,7 @@ http_request_new(struct connection *c, struct spdy_stream *s, char *host,
 {
 	struct http_request		*req;
 
-	kore_log("http_request_new(%p, %p, %s, %s, %s)", c, s,
+	kore_debug("http_request_new(%p, %p, %s, %s, %s)", c, s,
 	    host, method, path);
 
 	req = (struct http_request *)kore_malloc(sizeof(*req));
@@ -79,7 +79,7 @@ http_request_new(struct connection *c, struct spdy_stream *s, char *host,
 	} else if (!strcasecmp(method, "post")) {
 		req->method = HTTP_METHOD_POST;
 	} else {
-		kore_log("invalid method specified in request: %s", method);
+		kore_debug("invalid method specified in request: %s", method);
 		http_request_free(req);
 		return (KORE_RESULT_ERROR);
 	}
@@ -143,7 +143,7 @@ http_response_header_add(struct http_request *req, char *header, char *value)
 {
 	struct http_header	*hdr;
 
-	kore_log("http_response_header_add(%p, %s, %s)", req, header, value);
+	kore_debug("http_response_header_add(%p, %s, %s)", req, header, value);
 
 	hdr = (struct http_header *)kore_malloc(sizeof(*hdr));
 	hdr->header = kore_strdup(header);
@@ -200,7 +200,7 @@ http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 	struct spdy_header_block	*hblock;
 	char				sbuf[512];
 
-	kore_log("http_response(%p, %d, %p, %d)", req, status, d, len);
+	kore_debug("http_response(%p, %d, %p, %d)", req, status, d, len);
 
 	if (req->owner->proto == CONN_PROTO_SPDY) {
 		snprintf(sbuf, sizeof(sbuf), "%d", status);
@@ -288,7 +288,7 @@ http_header_recv(struct netbuf *nb)
 	char			*p, *headers[HTTP_REQ_HEADER_MAX];
 	struct connection	*c = (struct connection *)nb->owner;
 
-	kore_log("http_header_recv(%p)", nb);
+	kore_debug("http_header_recv(%p)", nb);
 
 	ch = nb->buf[nb->len];
 	nb->buf[nb->len] = '\0';
@@ -363,7 +363,7 @@ http_header_recv(struct netbuf *nb)
 
 		p = strchr(headers[i], ':');
 		if (p == NULL) {
-			kore_log("malformed header: '%s'", headers[i]);
+			kore_debug("malformed header: '%s'", headers[i]);
 			continue;
 		}
 
@@ -378,7 +378,7 @@ http_header_recv(struct netbuf *nb)
 
 	if (req->method == HTTP_METHOD_POST) {
 		if (!http_request_header_get(req, "content-length", &p)) {
-			kore_log("POST but no content-length");
+			kore_debug("POST but no content-length");
 			req->flags |= HTTP_REQUEST_DELETE;
 			return (KORE_RESULT_ERROR);
 		}
@@ -386,7 +386,7 @@ http_header_recv(struct netbuf *nb)
 		clen = kore_strtonum(p, 0, UINT_MAX, &v);
 		if (v == KORE_RESULT_ERROR) {
 			free(p);
-			kore_log("content-length invalid: %s", p);
+			kore_debug("content-length invalid: %s", p);
 			req->flags |= HTTP_REQUEST_DELETE;
 			return (KORE_RESULT_ERROR);
 		}
@@ -397,7 +397,7 @@ http_header_recv(struct netbuf *nb)
 		    (nb->offset - len));
 
 		bytes_left = clen - (nb->offset - len);
-		kore_log("need %ld more bytes for POST", bytes_left);
+		kore_debug("need %ld more bytes for POST", bytes_left);
 		net_recv_queue(c, bytes_left, 0, &nnb, http_post_data_recv);
 		nnb->extra = req;
 	}
@@ -415,7 +415,7 @@ http_populate_arguments(struct http_request *req)
 	if (req->method == HTTP_METHOD_POST) {
 		query = http_post_data_text(req);
 	} else {
-		kore_log("HTTP_METHOD_GET not supported for arguments");
+		kore_debug("HTTP_METHOD_GET not supported for arguments");
 		return (0);
 	}
 
@@ -424,7 +424,7 @@ http_populate_arguments(struct http_request *req)
 	for (i = 0; i < v; i++) {
 		c = kore_split_string(args[i], "=", val, 3);
 		if (c != 1 && c != 2) {
-			kore_log("malformed query argument");
+			kore_debug("malformed query argument");
 			continue;
 		}
 
@@ -479,7 +479,7 @@ http_post_data_text(struct http_request *req)
 int
 http_generic_404(struct http_request *req)
 {
-	kore_log("http_generic_404(%s, %d, %s)",
+	kore_debug("http_generic_404(%s, %d, %s)",
 	    req->host, req->method, req->path);
 
 	return (http_response(req, 404, NULL, 0));
@@ -493,7 +493,7 @@ http_post_data_recv(struct netbuf *nb)
 	kore_buf_append(req->post_data, nb->buf, nb->offset);
 	req->flags |= HTTP_REQUEST_COMPLETE;
 
-	kore_log("post complete for request %p", req);
+	kore_debug("post complete for request %p", req);
 
 	return (KORE_RESULT_OK);
 }

@@ -24,12 +24,12 @@
 #define errno_s			strerror(errno)
 #define ssl_errno_s		ERR_error_string(ERR_get_error(), NULL)
 
-#define KORE_DEBUG		1
+//#define KORE_DEBUG		1
 #if defined(KORE_DEBUG)
-#define kore_log(fmt, ...)	\
-	kore_log_internal(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
+#define kore_debug(fmt, ...)	\
+	kore_debug_internal(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
 #else
-#define kore_log(fmt, ...)
+#define kore_debug(fmt, ...)
 #endif
 
 #define NETBUF_RECV		0
@@ -155,7 +155,7 @@ void		*kore_module_handler_find(char *, char *);
 int		kore_module_handler_new(char *, char *, char *, int);
 
 void		fatal(const char *, ...);
-void		kore_log_internal(char *, int, const char *, ...);
+void		kore_debug_internal(char *, int, const char *, ...);
 
 u_int16_t	net_read16(u_int8_t *);
 u_int32_t	net_read32(u_int8_t *);

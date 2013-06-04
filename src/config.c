@@ -115,14 +115,14 @@ configure_bind(char **argv)
 	if (argv[1] == NULL || argv[2] == NULL)
 		return (KORE_RESULT_ERROR);
 	if (server_ip != NULL || server_port != 0) {
-		kore_log("duplicate bind directive seen");
+		kore_debug("duplicate bind directive seen");
 		return (KORE_RESULT_ERROR);
 	}
 
 	server_ip = kore_strdup(argv[1]);
 	server_port = kore_strtonum(argv[2], 1, 65535, &err);
 	if (err != KORE_RESULT_OK) {
-		kore_log("%s is an invalid port number", argv[2]);
+		kore_debug("%s is an invalid port number", argv[2]);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -146,7 +146,7 @@ configure_onload(char **argv)
 		return (KORE_RESULT_ERROR);
 
 	if (kore_module_onload != NULL) {
-		kore_log("duplicate onload directive found");
+		kore_debug("duplicate onload directive found");
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -164,7 +164,7 @@ configure_domain(char **argv)
 		free(current_domain);
 	current_domain = kore_strdup(argv[1]);
 	if (!kore_module_domain_new(current_domain)) {
-		kore_log("could not create new domain %s", current_domain);
+		kore_debug("could not create new domain %s", current_domain);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -177,7 +177,7 @@ configure_handler(char **argv)
 	int		type;
 
 	if (current_domain == NULL) {
-		kore_log("missing domain for page handler");
+		kore_debug("missing domain for page handler");
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -192,7 +192,7 @@ configure_handler(char **argv)
 		return (KORE_RESULT_ERROR);
 
 	if (!kore_module_handler_new(argv[1], current_domain, argv[2], type)) {
-		kore_log("cannot create handler for %s", argv[1]);
+		kore_debug("cannot create handler for %s", argv[1]);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -203,7 +203,7 @@ static int
 configure_chroot(char **argv)
 {
 	if (chroot_path != NULL) {
-		kore_log("duplicate chroot path specified");
+		kore_debug("duplicate chroot path specified");
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -218,7 +218,7 @@ static int
 configure_runas(char **argv)
 {
 	if (runas_user != NULL) {
-		kore_log("duplicate runas user specified");
+		kore_debug("duplicate runas user specified");
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -235,7 +235,7 @@ configure_workers(char **argv)
 	int		err;
 
 	if (worker_count != 0) {
-		kore_log("duplicate worker directive specified");
+		kore_debug("duplicate worker directive specified");
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -244,7 +244,7 @@ configure_workers(char **argv)
 
 	worker_count = kore_strtonum(argv[1], 1, 255, &err);
 	if (err != KORE_RESULT_OK) {
-		kore_log("%s is not a correct worker number", argv[1]);
+		kore_debug("%s is not a correct worker number", argv[1]);
 		return (KORE_RESULT_ERROR);
 	}
 

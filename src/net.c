@@ -44,7 +44,7 @@ net_send_queue(struct connection *c, u_int8_t *data, size_t len, int flags,
 {
 	struct netbuf		*nb;
 
-	//kore_log("net_send_queue(%p, %p, %d, %p)", c, data, len, cb);
+	//kore_debug("net_send_queue(%p, %p, %d, %p)", c, data, len, cb);
 
 	nb = (struct netbuf *)kore_malloc(sizeof(*nb));
 	nb->cb = cb;
@@ -72,7 +72,7 @@ net_recv_queue(struct connection *c, size_t len, int flags,
 {
 	struct netbuf		*nb;
 
-	//kore_log("net_recv_queue(%p, %d, %p)", c, len, cb);
+	//kore_debug("net_recv_queue(%p, %d, %p)", c, len, cb);
 
 	nb = (struct netbuf *)kore_malloc(sizeof(*nb));
 	nb->cb = cb;
@@ -92,10 +92,10 @@ int
 net_recv_expand(struct connection *c, struct netbuf *nb, size_t len,
     int (*cb)(struct netbuf *))
 {
-	//kore_log("net_recv_expand(%p, %p, %d, %p)", c, nb, len, cb);
+	//kore_debug("net_recv_expand(%p, %p, %d, %p)", c, nb, len, cb);
 
 	if (nb->type != NETBUF_RECV) {
-		kore_log("net_recv_expand(): wrong netbuf type");
+		kore_debug("net_recv_expand(): wrong netbuf type");
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -118,13 +118,13 @@ net_send(struct connection *c)
 
 	nb = TAILQ_FIRST(&(c->send_queue));
 	if (nb->len == 0) {
-		kore_log("net_send(): len is 0");
+		kore_debug("net_send(): len is 0");
 		return (KORE_RESULT_ERROR);
 	}
 
 	r = SSL_write(c->ssl, (nb->buf + nb->offset), (nb->len - nb->offset));
 
-	kore_log("net_send(%ld/%ld bytes), progress with %d",
+	kore_debug("net_send(%ld/%ld bytes), progress with %d",
 	    nb->offset, nb->len, r);
 
 	if (r <= 0) {
@@ -135,7 +135,7 @@ net_send(struct connection *c)
 			c->flags &= ~CONN_WRITE_POSSIBLE;
 			return (KORE_RESULT_OK);
 		default:
-			kore_log("SSL_write(): %s", ssl_errno_s);
+			kore_debug("SSL_write(): %s", ssl_errno_s);
 			return (KORE_RESULT_ERROR);
 		}
 	}
@@ -165,7 +165,7 @@ net_send(struct connection *c)
 int
 net_send_flush(struct connection *c)
 {
-	kore_log("net_send_flush(%p)", c);
+	kore_debug("net_send_flush(%p)", c);
 
 	while (!TAILQ_EMPTY(&(c->send_queue)) &&
 	    (c->flags & CONN_WRITE_POSSIBLE)) {
@@ -188,7 +188,7 @@ net_recv(struct connection *c)
 	nb = TAILQ_FIRST(&(c->recv_queue));
 	r = SSL_read(c->ssl, (nb->buf + nb->offset), (nb->len - nb->offset));
 
-	kore_log("net_recv(%ld/%ld bytes), progress with %d",
+	kore_debug("net_recv(%ld/%ld bytes), progress with %d",
 	    nb->offset, nb->len, r);
 
 	if (r <= 0) {
@@ -199,7 +199,7 @@ net_recv(struct connection *c)
 			c->flags &= ~CONN_READ_POSSIBLE;
 			return (KORE_RESULT_OK);
 		default:
-			kore_log("SSL_read(): %s", ssl_errno_s);
+			kore_debug("SSL_read(): %s", ssl_errno_s);
 			return (KORE_RESULT_ERROR);
 		}
 	}
@@ -207,7 +207,7 @@ net_recv(struct connection *c)
 	nb->offset += (size_t)r;
 	if (nb->offset == nb->len || (nb->flags & NETBUF_CALL_CB_ALWAYS)) {
 		if (nb->cb == NULL) {
-			kore_log("kore_read_client(): nb->cb == NULL");
+			kore_debug("kore_read_client(): nb->cb == NULL");
 			return (KORE_RESULT_ERROR);
 		}
 
@@ -231,7 +231,7 @@ net_recv(struct connection *c)
 int
 net_recv_flush(struct connection *c)
 {
-	kore_log("net_recv_flush(%p)", c);
+	kore_debug("net_recv_flush(%p)", c);
 
 	while (!TAILQ_EMPTY(&(c->recv_queue)) &&
 	    (c->flags & CONN_READ_POSSIBLE)) {

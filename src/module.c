@@ -60,7 +60,7 @@ kore_module_load(char *module_name)
 	struct stat		st;
 	void			(*onload)(void);
 
-	kore_log("kore_module_load(%s)", module_name);
+	kore_debug("kore_module_load(%s)", module_name);
 
 	if (mod_handle != NULL)
 		fatal("site module already loaded, skipping %s", module_name);
@@ -113,7 +113,7 @@ kore_module_reload(void)
 		onload();
 	}
 
-	kore_log("reloaded '%s' module", mod_name);
+	kore_debug("reloaded '%s' module", mod_name);
 }
 
 int
@@ -145,12 +145,12 @@ kore_module_handler_new(char *path, char *domain, char *func, int type)
 	struct module_domain		*dom;
 	struct kore_module_handle	*hdlr;
 
-	kore_log("kore_module_handler_new(%s, %s, %s, %d)", path,
+	kore_debug("kore_module_handler_new(%s, %s, %s, %d)", path,
 	    domain, func, type);
 
 	addr = dlsym(mod_handle, func);
 	if (addr == NULL) {
-		kore_log("function '%s' not found", func);
+		kore_debug("function '%s' not found", func);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -168,7 +168,7 @@ kore_module_handler_new(char *path, char *domain, char *func, int type)
 			free(hdlr->func);
 			free(hdlr->path);
 			free(hdlr);
-			kore_log("regcomp() on %s failed", path);
+			kore_debug("regcomp() on %s failed", path);
 			return (KORE_RESULT_ERROR);
 		}
 	}
