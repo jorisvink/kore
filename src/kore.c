@@ -125,12 +125,14 @@ main(int argc, char *argv[])
 	signal(SIGQUIT, kore_signal);
 	signal(SIGHUP, kore_signal);
 
+	printf("kore has been started\n");
+
 	for (;;) {
 		if (sig_recv != 0) {
 			if (sig_recv == SIGHUP) {
 				TAILQ_FOREACH(kw, &kore_workers, list) {
 					if (kill(kw->pid, SIGHUP) == -1) {
-						kore_debug("kill(%d, SIGHUP): %s",
+						kore_debug("kill(%d, HUP): %s",
 						    kw->pid, errno_s);
 					}
 				}

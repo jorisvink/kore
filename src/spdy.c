@@ -108,7 +108,7 @@ spdy_frame_recv(struct netbuf *nb)
 	} else {
 		data.stream_id = net_read32(nb->buf) & ~(1 << 31);
 		if ((s = spdy_stream_lookup(c, data.stream_id)) == NULL) {
-			kore_debug("received data frame for non existing stream");
+			kore_debug("recv data frame for non existing stream");
 			r = KORE_RESULT_ERROR;
 		} else if (s->flags & FLAG_FIN) {
 			kore_debug("received data frame but FLAG_FIN was set");
