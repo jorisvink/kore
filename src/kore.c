@@ -19,6 +19,7 @@
 #include <sys/socket.h>
 #include <sys/queue.h>
 #include <sys/epoll.h>
+#include <sys/prctl.h>
 #include <sys/wait.h>
 
 #include <netinet/in.h>
@@ -122,6 +123,7 @@ main(int argc, char *argv[])
 	kore_write_mypid();
 
 	kore_worker_init();
+	prctl(PR_SET_NAME, "[main]");
 
 	sig_recv = 0;
 	signal(SIGQUIT, kore_signal);
@@ -528,10 +530,14 @@ kore_worker_setcpu(struct kore_worker *kw)
 static void
 kore_worker_entry(struct kore_worker *kw)
 {
+	char			buf[16];
 	struct epoll_event	*events;
 	struct connection	*c, *cnext;
 	struct kore_worker	*k, *next;
 	int			n, i, *fd, quit;
+
+	snprintf(buf, sizeof(buf), "[worker %d]", kw->id);
+	prctl(PR_SET_NAME, buf);
 
 	if (setgroups(1, &pw->pw_gid) || setresgid(pw->pw_gid, pw->pw_gid,
 	    pw->pw_gid) || setresuid(pw->pw_uid, pw->pw_uid, pw->pw_uid))
