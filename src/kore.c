@@ -128,7 +128,7 @@ main(int argc, char *argv[])
 		fatal("cannot chdir(): %s", errno_s);
 
 	kore_worker_init();
-	if (prctl(PR_SET_NAME, "[main]"))
+	if (prctl(PR_SET_NAME, "kore [main]"))
 		kore_debug("cannot set process title");
 
 	sig_recv = 0;
@@ -542,7 +542,7 @@ kore_worker_entry(struct kore_worker *kw)
 	struct kore_worker	*k, *next;
 	int			n, i, *fd, quit;
 
-	snprintf(buf, sizeof(buf), "[worker %d]", kw->id);
+	snprintf(buf, sizeof(buf), "kore [wrk %d]", kw->id);
 	if (prctl(PR_SET_NAME, buf) == -1)
 		kore_debug("cannot set process title");
 
