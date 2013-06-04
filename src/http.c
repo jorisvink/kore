@@ -44,9 +44,12 @@ static int		http_send_done(struct netbuf *);
 
 static TAILQ_HEAD(, http_request)	http_requests;
 
+int		http_request_count;
+
 void
 http_init(void)
 {
+	http_request_count = 0;
 	TAILQ_INIT(&http_requests);
 }
 
@@ -84,6 +87,7 @@ http_request_new(struct connection *c, struct spdy_stream *s, char *host,
 	if (out != NULL)
 		*out = req;
 
+	http_request_count++;
 	TAILQ_INSERT_TAIL(&http_requests, req, list);
 	return (KORE_RESULT_OK);
 }
@@ -100,6 +104,7 @@ http_process(void)
 		if (req->flags & HTTP_REQUEST_DELETE) {
 			TAILQ_REMOVE(&http_requests, req, list);
 			http_request_free(req);
+			http_request_count--;
 			continue;
 		}
 
@@ -128,6 +133,7 @@ http_process(void)
 		if (r != KORE_RESULT_RETRY) {
 			TAILQ_REMOVE(&http_requests, req, list);
 			http_request_free(req);
+			http_request_count--;
 		}
 	}
 }

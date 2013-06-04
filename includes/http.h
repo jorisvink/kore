@@ -56,6 +56,8 @@ struct http_request {
 	TAILQ_ENTRY(http_request)	list;
 };
 
+extern int	http_request_count;
+
 void		http_init(void);
 void		http_process(void);
 time_t		http_date_to_time(char *);
