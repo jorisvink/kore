@@ -138,6 +138,7 @@ extern char	*kore_pidfile;
 extern u_int8_t	worker_count;
 extern pid_t	mypid;
 
+void		kore_log_init(void);
 void		*kore_malloc(size_t);
 void		*kore_calloc(size_t, size_t);
 void		*kore_realloc(void *, size_t);
@@ -145,6 +146,7 @@ time_t		kore_date_to_time(char *);
 char		*kore_time_to_date(time_t);
 char		*kore_strdup(const char *);
 void		kore_parse_config(const char *);
+void		kore_log(int, const char *, ...);
 void		kore_strlcpy(char *, const char *, size_t);
 void		kore_server_disconnect(struct connection *);
 int		kore_split_string(char *, char *, char **, size_t);

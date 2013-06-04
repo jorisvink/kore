@@ -31,6 +31,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <syslog.h>
 #include <regex.h>
 #include <zlib.h>
 
@@ -113,6 +114,25 @@ kore_debug_internal(char *file, int line, const char *fmt, ...)
 	va_end(args);
 
 	printf("[%d] %s:%d - %s\n", mypid, file, line, buf);
+}
+
+void
+kore_log_init(void)
+{
+	openlog("kore", LOG_NDELAY | LOG_PID, LOG_DAEMON);
+}
+
+void
+kore_log(int prio, const char *fmt, ...)
+{
+	va_list		args;
+	char		buf[2048];
+
+	va_start(args, fmt);
+	vsnprintf(buf, sizeof(buf), fmt, args);
+	va_end(args);
+
+	syslog(prio, "%s", buf);
 }
 
 void
@@ -288,6 +308,6 @@ fatal(const char *fmt, ...)
 	vsnprintf(buf, sizeof(buf), fmt, args);
 	va_end(args);
 
-	printf("error: %s\n", buf);
+	printf("%s\n", buf);
 	exit(1);
 }

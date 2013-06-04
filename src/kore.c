@@ -37,6 +37,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sched.h>
+#include <syslog.h>
 #include <unistd.h>
 #include <time.h>
 #include <regex.h>
@@ -90,6 +91,7 @@ main(int argc, char *argv[])
 {
 	struct kore_worker	*kw, *next;
 
+	kore_log_init();
 	mypid = getpid();
 
 	if (argc != 2)
@@ -127,7 +129,9 @@ main(int argc, char *argv[])
 	if (chdir("/") == -1)
 		fatal("cannot chdir(): %s", errno_s);
 
+	kore_log(LOG_NOTICE, "kore is starting up");
 	kore_worker_init();
+
 	if (prctl(PR_SET_NAME, "kore [main]"))
 		kore_debug("cannot set process title");
 
@@ -160,11 +164,11 @@ main(int argc, char *argv[])
 			kore_debug("kill(%d, SIGINT): %s", kw->pid, errno_s);
 	}
 
-	kore_debug("waiting for workers to drain and finish");
+	kore_log(LOG_NOTICE, "waiting for workers to drain and finish");
 	while (!TAILQ_EMPTY(&kore_workers))
 		kore_worker_wait(1);
 
-	kore_debug("server shutting down");
+	kore_log(LOG_NOTICE, "server shutting down");
 	unlink(kore_pidfile);
 	close(server.fd);
 
@@ -576,6 +580,9 @@ kore_worker_entry(struct kore_worker *kw)
 	quit = 0;
 	kore_event(server.fd, EPOLLIN, &server);
 	events = kore_calloc(EPOLL_EVENTS, sizeof(struct epoll_event));
+
+	kore_log(LOG_NOTICE, "worker %d going to work (CPU: %d)",
+	    kw->id, kw->cpu);
 	for (;;) {
 		if (sig_recv != 0) {
 			if (sig_recv == SIGHUP)
