@@ -35,6 +35,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sched.h>
 #include <unistd.h>
 #include <time.h>
 #include <regex.h>
@@ -69,12 +70,13 @@ pid_t			mypid = -1;
 static void	kore_signal(int);
 static void	kore_worker_wait(int);
 static void	kore_worker_init(void);
-static void	kore_worker_spawn(void);
 static int	kore_socket_nonblock(int);
 static int	kore_server_sslstart(void);
 static void	kore_event(int, int, void *);
+static void	kore_worker_spawn(u_int16_t);
 static int	kore_server_accept(struct listener *);
 static void	kore_worker_entry(struct kore_worker *);
+static void	kore_worker_setcpu(struct kore_worker *);
 static int	kore_connection_handle(struct connection *, int);
 static void	kore_server_final_disconnect(struct connection *);
 static int	kore_server_bind(struct listener *, const char *, int);
@@ -423,7 +425,7 @@ kore_connection_handle(struct connection *c, int flags)
 static void
 kore_worker_init(void)
 {
-	u_int8_t		i;
+	u_int16_t		i, cpu;
 
 	if (worker_count == 0)
 		fatal("no workers specified");
@@ -433,18 +435,23 @@ kore_worker_init(void)
 	if (worker_count > cpu_count)
 		kore_log("kore_worker_init(): more workers then cpu's");
 
+	cpu = 0;
 	TAILQ_INIT(&kore_workers);
-	for (i = 0; i < worker_count; i++)
-		kore_worker_spawn();
+	for (i = 0; i < worker_count; i++) {
+		kore_worker_spawn(cpu++);
+		if (cpu == cpu_count)
+			cpu = 0;
+	}
 }
 
 static void
-kore_worker_spawn(void)
+kore_worker_spawn(u_int16_t cpu)
 {
 	struct kore_worker	*kw;
 
 	kw = (struct kore_worker *)kore_malloc(sizeof(*kw));
 	kw->id = workerid++;
+	kw->cpu = cpu;
 	kw->pid = fork();
 	if (kw->pid == -1)
 		fatal("could not spawn worker child: %s", errno_s);
@@ -462,6 +469,7 @@ static void
 kore_worker_wait(int final)
 {
 	int			r;
+	u_int16_t		cpu;
 	siginfo_t		info;
 	struct kore_worker	*kw, *next;
 
@@ -483,6 +491,7 @@ kore_worker_wait(int final)
 		if (kw->pid != info.si_pid)
 			continue;
 
+		cpu = kw->cpu;
 		TAILQ_REMOVE(&kore_workers, kw, list);
 		kore_log("worker %d (%d)-> status %d (%d)",
 		    kw->id, info.si_pid, info.si_status, info.si_code);
@@ -494,9 +503,24 @@ kore_worker_wait(int final)
 		if (info.si_code == CLD_EXITED ||
 		    info.si_code == CLD_KILLED ||
 		    info.si_code == CLD_DUMPED) {
-			kore_log("worker died, respawning new one");
-			kore_worker_spawn();
+			kore_log("worker gone, respawning new one");
+			kore_worker_spawn(cpu);
 		}
+	}
+}
+
+static void
+kore_worker_setcpu(struct kore_worker *kw)
+{
+	cpu_set_t	cpuset;
+
+	CPU_ZERO(&cpuset);
+	CPU_SET(kw->cpu, &cpuset);
+	if (sched_setaffinity(0, sizeof(cpu_set_t), &cpuset) == -1) {
+		kore_log("kore_worker_setcpu(): %s", errno_s);
+	} else {
+		kore_log("kore_worker_setcpu(): worker %d on cpu %d",
+		    kw->id, kw->cpu);
 	}
 }
 
@@ -511,6 +535,8 @@ kore_worker_entry(struct kore_worker *kw)
 	if (setgroups(1, &pw->pw_gid) || setresgid(pw->pw_gid, pw->pw_gid,
 	    pw->pw_gid) || setresuid(pw->pw_uid, pw->pw_uid, pw->pw_uid))
 		fatal("unable to drop privileges");
+
+	kore_worker_setcpu(kw);
 
 	for (k = TAILQ_FIRST(&kore_workers); k != NULL; k = next) {
 		next = TAILQ_NEXT(k, list);

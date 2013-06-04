@@ -108,6 +108,7 @@ struct kore_module_handle {
 
 struct kore_worker {
 	u_int16_t			id;
+	u_int16_t			cpu;
 	pid_t				pid;
 	TAILQ_ENTRY(kore_worker)	list;
 };
