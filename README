@@ -17,4 +17,8 @@ To get started put some X.509 certificates in a folder called certs
 and run a make to get everything compiled. If if doesn't compile out of
 the box there's something you can help me out with.
 
+You can tell kore to reload its site module by sending a SIGHUP signal
+to the main process. Sending a SIGQUIT signal will reap all worker
+processes and shutdown the server.
+
 I should add a TODO list.
