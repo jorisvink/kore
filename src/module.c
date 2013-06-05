@@ -34,6 +34,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <syslog.h>
 #include <regex.h>
 #include <zlib.h>
 
@@ -113,7 +114,7 @@ kore_module_reload(void)
 		onload();
 	}
 
-	kore_debug("reloaded '%s' module", mod_name);
+	kore_log(LOG_NOTICE, "reloaded '%s' module", mod_name);
 }
 
 int
