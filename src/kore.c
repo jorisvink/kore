@@ -179,6 +179,7 @@ main(int argc, char *argv[])
 	for (;;) {
 		if (sig_recv != 0) {
 			if (sig_recv == SIGHUP) {
+				kore_module_reload();
 				TAILQ_FOREACH(kw, &kore_workers, list) {
 					if (kill(kw->pid, SIGHUP) == -1) {
 						kore_debug("kill(%d, HUP): %s",
