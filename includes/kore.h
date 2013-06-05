@@ -132,6 +132,8 @@ extern char	*chroot_path;
 extern char	*runas_user;
 extern char	*kore_module_onload;
 extern char	*kore_pidfile;
+extern char	*kore_certfile;
+extern char	*kore_certkey;
 extern u_int8_t	worker_count;
 extern pid_t	mypid;
 

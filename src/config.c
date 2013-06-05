@@ -47,6 +47,8 @@ static int		configure_chroot(char **);
 static int		configure_runas(char **);
 static int		configure_workers(char **);
 static int		configure_pidfile(char **);
+static int		configure_certfile(char **);
+static int		configure_certkey(char **);
 
 static struct {
 	const char		*name;
@@ -62,6 +64,8 @@ static struct {
 	{ "runas",		configure_runas },
 	{ "workers",		configure_workers },
 	{ "pidfile",		configure_pidfile },
+	{ "certfile",		configure_certfile },
+	{ "certkey",		configure_certkey },
 	{ NULL,			NULL },
 };
 
@@ -267,3 +271,34 @@ configure_pidfile(char **argv)
 	kore_pidfile = kore_strdup(argv[1]);
 	return (KORE_RESULT_OK);
 }
+
+static int
+configure_certfile(char **argv)
+{
+	if (argv[1] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	if (kore_certfile != NULL) {
+		kore_debug("duplicate kore_certfile directive specified");
+		return (KORE_RESULT_ERROR);
+	}
+
+	kore_certfile = kore_strdup(argv[1]);
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_certkey(char **argv)
+{
+	if (argv[1] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	if (kore_certkey != NULL) {
+		kore_debug("duplicate kore_certkey directive specified");
+		return (KORE_RESULT_ERROR);
+	}
+
+	kore_certkey = kore_strdup(argv[1]);
+	return (KORE_RESULT_OK);
+}
+

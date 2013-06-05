@@ -67,8 +67,10 @@ int			kore_debug = 0;
 int			server_port = 0;
 u_int8_t		worker_count = 0;
 char			*server_ip = NULL;
-char			*chroot_path = NULL;
 char			*runas_user = NULL;
+char			*chroot_path = NULL;
+char			*kore_certkey = NULL;
+char			*kore_certfile = NULL;
 char			*kore_pidfile = KORE_PIDFILE_DEFAULT;
 
 static void	usage(void);
@@ -141,6 +143,9 @@ main(int argc, char *argv[])
 		fatal("missing a username to run as");
 	if ((pw = getpwnam(runas_user)) == NULL)
 		fatal("user '%s' does not exist", runas_user);
+	if (kore_certfile == NULL || kore_certkey == NULL)
+		fatal("missing certificate information");
+
 	if ((cpu_count = sysconf(_SC_NPROCESSORS_ONLN)) == -1) {
 		kore_debug("could not get number of cpu's falling back to 1");
 		cpu_count = 1;
@@ -163,8 +168,13 @@ main(int argc, char *argv[])
 		kore_debug("cannot set process title");
 
 	sig_recv = 0;
-	signal(SIGQUIT, kore_signal);
 	signal(SIGHUP, kore_signal);
+	signal(SIGQUIT, kore_signal);
+
+	free(server_ip);
+	free(runas_user);
+	free(kore_certkey);
+	free(kore_certfile);
 
 	for (;;) {
 		if (sig_recv != 0) {
@@ -226,12 +236,12 @@ kore_server_sslstart(void)
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (!SSL_CTX_use_certificate_chain_file(ssl_ctx, "cert/server.crt")) {
+	if (!SSL_CTX_use_certificate_chain_file(ssl_ctx, kore_certfile)) {
 		kore_debug("SSL_CTX_use_certificate_file(): %s", ssl_errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (!SSL_CTX_use_PrivateKey_file(ssl_ctx, "cert/server.key",
+	if (!SSL_CTX_use_PrivateKey_file(ssl_ctx, kore_certkey,
 	    SSL_FILETYPE_PEM)) {
 		kore_debug("SSL_CTX_use_PrivateKey_file(): %s", ssl_errno_s);
 		return (KORE_RESULT_ERROR);
