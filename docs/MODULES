@@ -1,0 +1,61 @@
+Page to function mapping
+========================
+In the configuration file you specify how pages on your site are
+mapped to what callback in your module.
+
+static /profile.html serve_profile
+
+The above example binds the callback serve_profile() to the profile.html page.
+Kore automatically calls this callback when the page is requested by a client.
+
+All callbacks must be based on this prototype:
+	int callback(struct http_request *);
+
+Callback functions MUST return either KORE_RESULT_OK,
+KORE_RESULT_ERROR or KORE_RESULT_RETRY.
+
+KORE_RESULT_OK will cleanup the request and remove it.
+KORE_RESULT_ERROR will disconnect the client immediately after returning.
+KORE_RESULT_RETRY will reschedule the callback to be called again.
+
+Most of the times KORE_RESULT_ERROR or KORE_RESULT_OK should come from:
+	int http_response(struct http_request *req,
+	    int status, u_int8_t *data, u_int32_t datalen);
+
+The http_response() function is used to queue up the HTTP response
+(including status code and content to be sent).
+
+If you wish to add headers to the response do so before calling http_response():
+	void http_response_header_add(struct http_request *req,
+	    char *header, char *value);
+
+If your callback wants to use POST data, it should populate it first by calling:
+	int http_populate_arguments(struct http_request *req);
+
+The returned value is the number of arguments available.
+After calling the populate function you can retrieve arguments by calling:
+	int http_argument_lookup(struct http_request *req,
+	    const char *name, char **out);
+
+This will store the value of the requested argument in the out parameter.
+If http_argument_lookup() returns KORE_RESULT_ERROR out will be NULL.
+
+Please see the example/ folder for a good overview of a module.
+
+Static content
+==============
+Static content is included directly in the module.
+The example module shows how this is done.
+
+After adding each static component to the Makefile, it will convert it
+to a .c source file and export certain symbols that can be used by the module.
+
+Each component gets 3 symbols:
+	static_[html|css]_<component_name>		actual data.
+	static_len_[html|css]_<component_name>		length of the data.
+	static_mtime_[html|css]_<component_name>	last modified timestamp.
+
+API functions
+=============
+	See includes/kore.h and includes/http.h for a definite overview.
+
