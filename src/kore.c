@@ -124,11 +124,6 @@ main(int argc, char *argv[])
 	mypid = getpid();
 	kore_write_mypid();
 
-	if (chroot(chroot_path) == -1)
-		fatal("cannot chroot(): %s", errno_s);
-	if (chdir("/") == -1)
-		fatal("cannot chdir(): %s", errno_s);
-
 	kore_log(LOG_NOTICE, "kore is starting up");
 	kore_worker_init();
 
@@ -482,9 +477,8 @@ static void
 kore_worker_wait(int final)
 {
 	int			r;
-	u_int16_t		cpu;
 	siginfo_t		info;
-	struct kore_worker	*kw, *next;
+	struct kore_worker	k, *kw, *next;
 
 	memset(&info, 0, sizeof(info));
 	if (final)
@@ -504,9 +498,9 @@ kore_worker_wait(int final)
 		if (kw->pid != info.si_pid)
 			continue;
 
-		cpu = kw->cpu;
+		k = *kw;
 		TAILQ_REMOVE(&kore_workers, kw, list);
-		kore_debug("worker %d (%d)-> status %d (%d)",
+		kore_log(LOG_NOTICE, "worker %d (%d)-> status %d (%d)",
 		    kw->id, info.si_pid, info.si_status, info.si_code);
 		free(kw);
 
@@ -516,8 +510,10 @@ kore_worker_wait(int final)
 		if (info.si_code == CLD_EXITED ||
 		    info.si_code == CLD_KILLED ||
 		    info.si_code == CLD_DUMPED) {
-			kore_debug("worker gone, respawning new one");
-			kore_worker_spawn(cpu);
+			kore_log(LOG_NOTICE,
+			    "worker %d (pid: %d) gone, respawning new one",
+			    k.id, k.pid);
+			kore_worker_spawn(k.cpu);
 		}
 	}
 }
@@ -550,6 +546,10 @@ kore_worker_entry(struct kore_worker *kw)
 	if (prctl(PR_SET_NAME, buf) == -1)
 		kore_debug("cannot set process title");
 
+	if (chroot(chroot_path) == -1)
+		fatal("cannot chroot(): %s", errno_s);
+	if (chdir("/") == -1)
+		fatal("cannot chdir(): %s", errno_s);
 	if (setgroups(1, &pw->pw_gid) || setresgid(pw->pw_gid, pw->pw_gid,
 	    pw->pw_gid) || setresuid(pw->pw_uid, pw->pw_uid, pw->pw_uid))
 		fatal("unable to drop privileges");
