@@ -63,6 +63,7 @@ static u_int16_t			workerid = 0;
 static u_int16_t			cpu_count = 1;
 
 pid_t			mypid = -1;
+int			kore_debug = 0;
 int			server_port = 0;
 u_int8_t		worker_count = 0;
 char			*server_ip = NULL;
@@ -70,6 +71,7 @@ char			*chroot_path = NULL;
 char			*runas_user = NULL;
 char			*kore_pidfile = KORE_PIDFILE_DEFAULT;
 
+static void	usage(void);
 static void	kore_signal(int);
 static void	kore_worker_wait(int);
 static void	kore_worker_init(void);
@@ -86,20 +88,48 @@ static void	kore_server_final_disconnect(struct connection *);
 static int	kore_server_bind(struct listener *, const char *, int);
 static int	kore_ssl_npn_cb(SSL *, const u_char **, unsigned int *, void *);
 
+static void
+usage(void)
+{
+	fprintf(stderr, "Usage: kore [-c config] [-d]\n");
+	exit(1);
+}
+
 int
 main(int argc, char *argv[])
 {
+	int			ch;
 	struct kore_worker	*kw, *next;
+	char			*config_file;
 
 	kore_log_init();
 	mypid = getpid();
 
-	if (argc != 2)
-		fatal("Usage: kore [config file]");
 	if (getuid() != 0)
 		fatal("kore must be started as root");
 
-	kore_parse_config(argv[1]);
+	kore_debug = 0;
+	config_file = NULL;
+	while ((ch = getopt(argc, argv, "c:d")) != -1) {
+		switch (ch) {
+		case 'c':
+			config_file = optarg;
+			break;
+		case 'd':
+			kore_debug = 1;
+			break;
+		default:
+			usage();
+		}
+	}
+
+	argc -= optind;
+	argv += optind;
+
+	if (config_file == NULL)
+		fatal("please specify a configuration file to use (-c)");
+
+	kore_parse_config(config_file);
 	if (!kore_module_loaded())
 		fatal("no site module was loaded");
 
@@ -110,7 +140,7 @@ main(int argc, char *argv[])
 	if (runas_user == NULL)
 		fatal("missing a username to run as");
 	if ((pw = getpwnam(runas_user)) == NULL)
-		fatal("user '%s' does not exist");
+		fatal("user '%s' does not exist", runas_user);
 	if ((cpu_count = sysconf(_SC_NPROCESSORS_ONLN)) == -1) {
 		kore_debug("could not get number of cpu's falling back to 1");
 		cpu_count = 1;

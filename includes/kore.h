@@ -26,13 +26,9 @@
 
 #define KORE_PIDFILE_DEFAULT	"/var/run/kore.pid"
 
-//#define KORE_DEBUG		1
-#if defined(KORE_DEBUG)
 #define kore_debug(fmt, ...)	\
-	kore_debug_internal(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
-#else
-#define kore_debug(fmt, ...)
-#endif
+	if (kore_debug)		\
+		kore_debug_internal(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
 
 #define NETBUF_RECV		0
 #define NETBUF_SEND		1
@@ -129,6 +125,7 @@ struct buf_vec {
 	u_int32_t		length;
 };
 
+extern int	kore_debug;
 extern int	server_port;
 extern char	*server_ip;
 extern char	*chroot_path;

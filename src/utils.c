@@ -308,6 +308,6 @@ fatal(const char *fmt, ...)
 	vsnprintf(buf, sizeof(buf), fmt, args);
 	va_end(args);
 
-	printf("%s\n", buf);
+	printf("kore: %s\n", buf);
 	exit(1);
 }
