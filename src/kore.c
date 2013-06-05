@@ -146,6 +146,8 @@ main(int argc, char *argv[])
 		cpu_count = 1;
 	}
 
+	if (!kore_server_sslstart())
+		fatal("cannot initiate SSL");
 	if (!kore_server_bind(&server, server_ip, server_port))
 		fatal("cannot bind to %s:%d", server_ip, server_port);
 	if (daemon(1, 1) == -1)
@@ -593,9 +595,6 @@ kore_worker_entry(struct kore_worker *kw)
 	}
 
 	mypid = kw->pid;
-
-	if (!kore_server_sslstart())
-		fatal("cannot initiate SSL");
 	if ((efd = epoll_create(1000)) == -1)
 		fatal("epoll_create(): %s", errno_s);
 
