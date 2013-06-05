@@ -1,0 +1,6 @@
+*BSD support
+Auxiliary library framework
+Better logging facilities
+Ability to load one module per domain
+GET arguments (only POST supported)
+POST multiform/form-data support
