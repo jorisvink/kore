@@ -9,15 +9,15 @@ With a site loaded as a module in memory the page callbacks are directly called 
 No overhead.
 
 Features
-	Supports SPDY/3
-	Supports HTTP/1.1
-	Secure by default
-	SSL connections only
-	Virtual host support
-	Easy to use configuration
-	Loads your site as a precompiled C module
-	Linux epoll(7) and worker processes for throughput
-	Modules can be reloaded on-the-fly even while serving content
+- Supports SPDY/3
+- Supports HTTP/1.1
+- Secure by default
+- SSL connections only
+- Virtual host support
+- Easy to use configuration
+- Loads your site as a precompiled C module
+- Linux epoll(7) and worker processes for throughput
+- Modules can be reloaded on-the-fly even while serving content
 
 Right now Kore development is a moving process, so expect bugs.
 If you run into said bugs please contact me at patches@coders.se.
