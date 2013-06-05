@@ -63,6 +63,16 @@ kore_buf_append(struct kore_buf *buf, u_int8_t *d, u_int32_t len)
 }
 
 void
+kore_buf_appendb(struct kore_buf *buf, struct kore_buf *src)
+{
+	u_int8_t	*d;
+	u_int32_t	len;
+
+	d = kore_buf_release(src, &len);
+	kore_buf_append(buf, d, len);
+}
+
+void
 kore_buf_appendv(struct kore_buf *buf, struct buf_vec *v, u_int16_t count)
 {
 	u_int16_t		i;
