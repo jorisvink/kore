@@ -37,7 +37,7 @@ html_inject: tools/html_inject.c
 .css.c:
 	tools/html_inject $< `basename $<` > $@
 
-.c.o: $<
+.c.o:
 	$(CC) -fPIC $(CFLAGS) -c $< -o $@
 
 clean:

@@ -18,8 +18,6 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/queue.h>
-#include <sys/epoll.h>
-#include <sys/prctl.h>
 #include <sys/wait.h>
 
 #include <netinet/in.h>
@@ -48,21 +46,18 @@
 #include "kore.h"
 #include "http.h"
 
-#define EPOLL_EVENTS	500
-
-static int	efd = -1;
 static SSL_CTX	*ssl_ctx = NULL;
 
 volatile sig_atomic_t			sig_recv;
-static struct listener			server;
 static TAILQ_HEAD(, connection)		disconnected;
 static TAILQ_HEAD(, connection)		worker_clients;
-static TAILQ_HEAD(, kore_worker)	kore_workers;
 static struct passwd			*pw = NULL;
 static u_int16_t			workerid = 0;
-static u_int16_t			cpu_count = 1;
 
+struct listener		server;
 pid_t			mypid = -1;
+u_int16_t		cpu_count = 1;
+struct kore_worker_h	kore_workers;
 int			kore_debug = 0;
 int			server_port = 0;
 u_int8_t		worker_count = 0;
@@ -75,17 +70,9 @@ char			*kore_pidfile = KORE_PIDFILE_DEFAULT;
 
 static void	usage(void);
 static void	kore_signal(int);
-static void	kore_worker_wait(int);
-static void	kore_worker_init(void);
 static void	kore_write_mypid(void);
 static int	kore_socket_nonblock(int);
 static int	kore_server_sslstart(void);
-static void	kore_event(int, int, void *);
-static void	kore_worker_spawn(u_int16_t);
-static int	kore_server_accept(struct listener *);
-static void	kore_worker_entry(struct kore_worker *);
-static void	kore_worker_setcpu(struct kore_worker *);
-static int	kore_connection_handle(struct connection *, int);
 static void	kore_server_final_disconnect(struct connection *);
 static int	kore_server_bind(struct listener *, const char *, int);
 static int	kore_ssl_npn_cb(SSL *, const u_char **, unsigned int *, void *);
@@ -146,10 +133,7 @@ main(int argc, char *argv[])
 	if (kore_certfile == NULL || kore_certkey == NULL)
 		fatal("missing certificate information");
 
-	if ((cpu_count = sysconf(_SC_NPROCESSORS_ONLN)) == -1) {
-		kore_debug("could not get number of cpu's falling back to 1");
-		cpu_count = 1;
-	}
+	kore_init();
 
 	if (!kore_server_sslstart())
 		fatal("cannot initiate SSL");
@@ -163,9 +147,7 @@ main(int argc, char *argv[])
 
 	kore_log(LOG_NOTICE, "kore is starting up");
 	kore_worker_init();
-
-	if (prctl(PR_SET_NAME, "kore [main]"))
-		kore_debug("cannot set process title");
+	kore_set_proctitle("kore [parent]");
 
 	sig_recv = 0;
 	signal(SIGHUP, kore_signal);
@@ -213,6 +195,47 @@ main(int argc, char *argv[])
 	return (0);
 }
 
+int
+kore_server_accept(struct listener *l, struct connection **out)
+{
+	socklen_t		len;
+	struct connection	*c;
+
+	kore_debug("kore_server_accept(%p)", l);
+
+	*out = NULL;
+	len = sizeof(struct sockaddr_in);
+	c = (struct connection *)kore_malloc(sizeof(*c));
+	if ((c->fd = accept(l->fd, (struct sockaddr *)&(c->sin), &len)) == -1) {
+		free(c);
+		kore_debug("accept(): %s", errno_s);
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (!kore_socket_nonblock(c->fd)) {
+		close(c->fd);
+		free(c);
+		return (KORE_RESULT_ERROR);
+	}
+
+	c->owner = l;
+	c->ssl = NULL;
+	c->flags = 0;
+	c->inflate_started = 0;
+	c->deflate_started = 0;
+	c->client_stream_id = 0;
+	c->proto = CONN_PROTO_UNKNOWN;
+	c->state = CONN_STATE_SSL_SHAKE;
+
+	TAILQ_INIT(&(c->send_queue));
+	TAILQ_INIT(&(c->recv_queue));
+	TAILQ_INIT(&(c->spdy_streams));
+	TAILQ_INSERT_TAIL(&worker_clients, c, list);
+
+	*out = c;
+	return (KORE_RESULT_OK);
+}
+
 void
 kore_server_disconnect(struct connection *c)
 {
@@ -222,6 +245,183 @@ kore_server_disconnect(struct connection *c)
 		TAILQ_REMOVE(&worker_clients, c, list);
 		TAILQ_INSERT_TAIL(&disconnected, c, list);
 	}
+}
+
+int
+kore_connection_handle(struct connection *c)
+{
+	int			r;
+	u_int32_t		len;
+	const u_char		*data;
+
+	kore_debug("kore_connection_handle(%p)", c);
+
+	switch (c->state) {
+	case CONN_STATE_SSL_SHAKE:
+		if (c->ssl == NULL) {
+			c->ssl = SSL_new(ssl_ctx);
+			if (c->ssl == NULL) {
+				kore_debug("SSL_new(): %s", ssl_errno_s);
+				return (KORE_RESULT_ERROR);
+			}
+
+			SSL_set_fd(c->ssl, c->fd);
+		}
+
+		r = SSL_accept(c->ssl);
+		if (r <= 0) {
+			r = SSL_get_error(c->ssl, r);
+			switch (r) {
+			case SSL_ERROR_WANT_READ:
+			case SSL_ERROR_WANT_WRITE:
+				return (KORE_RESULT_OK);
+			default:
+				kore_debug("SSL_accept(): %s", ssl_errno_s);
+				return (KORE_RESULT_ERROR);
+			}
+		}
+
+		r = SSL_get_verify_result(c->ssl);
+		if (r != X509_V_OK) {
+			kore_debug("SSL_get_verify_result(): %s", ssl_errno_s);
+			return (KORE_RESULT_ERROR);
+		}
+
+		SSL_get0_next_proto_negotiated(c->ssl, &data, &len);
+		if (data) {
+			if (!memcmp(data, "spdy/3", 6))
+				kore_debug("using SPDY/3");
+			c->proto = CONN_PROTO_SPDY;
+			net_recv_queue(c, SPDY_FRAME_SIZE, 0,
+			    NULL, spdy_frame_recv);
+		} else {
+			kore_debug("using HTTP/1.1");
+			c->proto = CONN_PROTO_HTTP;
+			net_recv_queue(c, HTTP_HEADER_MAX_LEN,
+			    NETBUF_CALL_CB_ALWAYS, NULL,
+			    http_header_recv);
+		}
+
+		c->state = CONN_STATE_ESTABLISHED;
+		/* FALLTHROUGH */
+	case CONN_STATE_ESTABLISHED:
+		if (c->flags & CONN_READ_POSSIBLE) {
+			if (!net_recv_flush(c))
+				return (KORE_RESULT_ERROR);
+		}
+
+		if (c->flags & CONN_WRITE_POSSIBLE) {
+			if (!net_send_flush(c))
+				return (KORE_RESULT_ERROR);
+		}
+		break;
+	case CONN_STATE_DISCONNECTING:
+		break;
+	default:
+		kore_debug("unknown state on %d (%d)", c->fd, c->state);
+		break;
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+void
+kore_worker_spawn(u_int16_t cpu)
+{
+	struct kore_worker	*kw;
+
+	kw = (struct kore_worker *)kore_malloc(sizeof(*kw));
+	kw->id = workerid++;
+	kw->cpu = cpu;
+	kw->pid = fork();
+	if (kw->pid == -1)
+		fatal("could not spawn worker child: %s", errno_s);
+
+	if (kw->pid == 0) {
+		kw->pid = getpid();
+		kore_worker_entry(kw);
+		/* NOTREACHED */
+	}
+
+	TAILQ_INSERT_TAIL(&kore_workers, kw, list);
+}
+
+void
+kore_worker_entry(struct kore_worker *kw)
+{
+	int			quit;
+	char			buf[16];
+	struct connection	*c, *cnext;
+	struct kore_worker	*k, *next;
+
+	if (chroot(chroot_path) == -1)
+		fatal("cannot chroot(): %s", errno_s);
+	if (chdir("/") == -1)
+		fatal("cannot chdir(): %s", errno_s);
+	if (setgroups(1, &pw->pw_gid) || setresgid(pw->pw_gid, pw->pw_gid,
+	    pw->pw_gid) || setresuid(pw->pw_uid, pw->pw_uid, pw->pw_uid))
+		fatal("unable to drop privileges");
+
+	snprintf(buf, sizeof(buf), "kore [wrk %d]", kw->id);
+	kore_set_proctitle(buf);
+	kore_worker_setcpu(kw);
+
+	for (k = TAILQ_FIRST(&kore_workers); k != NULL; k = next) {
+		next = TAILQ_NEXT(k, list);
+		TAILQ_REMOVE(&kore_workers, k, list);
+		free(k);
+	}
+
+	mypid = kw->pid;
+
+	sig_recv = 0;
+	signal(SIGHUP, kore_signal);
+	signal(SIGQUIT, kore_signal);
+
+	http_init();
+	TAILQ_INIT(&disconnected);
+	TAILQ_INIT(&worker_clients);
+
+	quit = 0;
+	kore_event_init();
+
+	kore_log(LOG_NOTICE, "worker %d going to work (CPU: %d)",
+	    kw->id, kw->cpu);
+	for (;;) {
+		if (sig_recv != 0) {
+			if (sig_recv == SIGHUP)
+				kore_module_reload();
+			else if (sig_recv == SIGQUIT)
+				quit = 1;
+			sig_recv = 0;
+		}
+
+		kore_event_wait(quit);
+		http_process();
+
+		for (c = TAILQ_FIRST(&disconnected); c != NULL; c = cnext) {
+			cnext = TAILQ_NEXT(c, list);
+			kore_server_final_disconnect(c);
+		}
+
+		if (quit && http_request_count == 0)
+			break;
+	}
+
+	for (c = TAILQ_FIRST(&worker_clients); c != NULL; c = cnext) {
+		cnext = TAILQ_NEXT(c, list);
+		net_send_flush(c);
+		kore_server_final_disconnect(c);
+	}
+
+	for (c = TAILQ_FIRST(&disconnected); c != NULL; c = cnext) {
+		cnext = TAILQ_NEXT(c, list);
+		net_send_flush(c);
+		kore_server_final_disconnect(c);
+	}
+
+	kore_debug("worker %d shutting down", kw->id);
+	exit(0);
 }
 
 static int
@@ -301,47 +501,6 @@ kore_server_bind(struct listener *l, const char *ip, int port)
 	return (KORE_RESULT_OK);
 }
 
-static int
-kore_server_accept(struct listener *l)
-{
-	socklen_t		len;
-	struct connection	*c;
-
-	kore_debug("kore_server_accept(%p)", l);
-
-	len = sizeof(struct sockaddr_in);
-	c = (struct connection *)kore_malloc(sizeof(*c));
-	if ((c->fd = accept(l->fd, (struct sockaddr *)&(c->sin), &len)) == -1) {
-		free(c);
-		kore_debug("accept(): %s", errno_s);
-		return (KORE_RESULT_ERROR);
-	}
-
-	if (!kore_socket_nonblock(c->fd)) {
-		close(c->fd);
-		free(c);
-		return (KORE_RESULT_ERROR);
-	}
-
-	c->owner = l;
-	c->ssl = NULL;
-	c->flags = 0;
-	c->inflate_started = 0;
-	c->deflate_started = 0;
-	c->client_stream_id = 0;
-	c->proto = CONN_PROTO_UNKNOWN;
-	c->state = CONN_STATE_SSL_SHAKE;
-
-	TAILQ_INIT(&(c->send_queue));
-	TAILQ_INIT(&(c->recv_queue));
-	TAILQ_INIT(&(c->spdy_streams));;
-	TAILQ_INSERT_TAIL(&worker_clients, c, list);
-
-	kore_event(c->fd, EPOLLIN | EPOLLOUT | EPOLLET, c);
-
-	return (KORE_RESULT_OK);
-}
-
 static void
 kore_server_final_disconnect(struct connection *c)
 {
@@ -391,309 +550,6 @@ kore_server_final_disconnect(struct connection *c)
 }
 
 static int
-kore_connection_handle(struct connection *c, int flags)
-{
-	int			r;
-	u_int32_t		len;
-	const u_char		*data;
-
-	kore_debug("kore_connection_handle(%p, %d)", c, flags);
-
-	if (flags & EPOLLIN)
-		c->flags |= CONN_READ_POSSIBLE;
-	if (flags & EPOLLOUT)
-		c->flags |= CONN_WRITE_POSSIBLE;
-
-	switch (c->state) {
-	case CONN_STATE_SSL_SHAKE:
-		if (c->ssl == NULL) {
-			c->ssl = SSL_new(ssl_ctx);
-			if (c->ssl == NULL) {
-				kore_debug("SSL_new(): %s", ssl_errno_s);
-				return (KORE_RESULT_ERROR);
-			}
-
-			SSL_set_fd(c->ssl, c->fd);
-		}
-
-		r = SSL_accept(c->ssl);
-		if (r <= 0) {
-			r = SSL_get_error(c->ssl, r);
-			switch (r) {
-			case SSL_ERROR_WANT_READ:
-			case SSL_ERROR_WANT_WRITE:
-				return (KORE_RESULT_OK);
-			default:
-				kore_debug("SSL_accept(): %s", ssl_errno_s);
-				return (KORE_RESULT_ERROR);
-			}
-		}
-
-		r = SSL_get_verify_result(c->ssl);
-		if (r != X509_V_OK) {
-			kore_debug("SSL_get_verify_result(): %s", ssl_errno_s);
-			return (KORE_RESULT_ERROR);
-		}
-
-		SSL_get0_next_proto_negotiated(c->ssl, &data, &len);
-		if (data) {
-			if (!memcmp(data, "spdy/3", 6))
-				kore_debug("using SPDY/3");
-			c->proto = CONN_PROTO_SPDY;
-			net_recv_queue(c, SPDY_FRAME_SIZE, 0,
-			    NULL, spdy_frame_recv);
-		} else {
-			kore_debug("using HTTP/1.1");
-			c->proto = CONN_PROTO_HTTP;
-			net_recv_queue(c, HTTP_HEADER_MAX_LEN,
-			    NETBUF_CALL_CB_ALWAYS, NULL,
-			    http_header_recv);
-		}
-
-		c->state = CONN_STATE_ESTABLISHED;
-		/* FALLTHROUGH */
-	case CONN_STATE_ESTABLISHED:
-		if (c->flags & CONN_READ_POSSIBLE) {
-			if (!net_recv_flush(c))
-				return (KORE_RESULT_ERROR);
-		}
-
-		if (c->flags & CONN_WRITE_POSSIBLE) {
-			if (!net_send_flush(c))
-				return (KORE_RESULT_ERROR);
-		}
-		break;
-	case CONN_STATE_DISCONNECTING:
-		break;
-	default:
-		kore_debug("unknown state on %d (%d)", c->fd, c->state);
-		break;
-	}
-
-	return (KORE_RESULT_OK);
-}
-
-static void
-kore_worker_init(void)
-{
-	u_int16_t		i, cpu;
-
-	if (worker_count == 0)
-		fatal("no workers specified");
-
-	kore_debug("kore_worker_init(): system has %d cpu's", cpu_count);
-	kore_debug("kore_worker_init(): starting %d workers", worker_count);
-	if (worker_count > cpu_count)
-		kore_debug("kore_worker_init(): more workers then cpu's");
-
-	cpu = 0;
-	TAILQ_INIT(&kore_workers);
-	for (i = 0; i < worker_count; i++) {
-		kore_worker_spawn(cpu++);
-		if (cpu == cpu_count)
-			cpu = 0;
-	}
-}
-
-static void
-kore_worker_spawn(u_int16_t cpu)
-{
-	struct kore_worker	*kw;
-
-	kw = (struct kore_worker *)kore_malloc(sizeof(*kw));
-	kw->id = workerid++;
-	kw->cpu = cpu;
-	kw->pid = fork();
-	if (kw->pid == -1)
-		fatal("could not spawn worker child: %s", errno_s);
-
-	if (kw->pid == 0) {
-		kw->pid = getpid();
-		kore_worker_entry(kw);
-		/* NOTREACHED */
-	}
-
-	TAILQ_INSERT_TAIL(&kore_workers, kw, list);
-}
-
-static void
-kore_worker_wait(int final)
-{
-	int			r;
-	siginfo_t		info;
-	struct kore_worker	k, *kw, *next;
-
-	memset(&info, 0, sizeof(info));
-	if (final)
-		r = waitid(P_ALL, 0, &info, WEXITED);
-	else
-		r = waitid(P_ALL, 0, &info, WEXITED | WNOHANG);
-	if (r == -1) {
-		kore_debug("waitid(): %s", errno_s);
-		return;
-	}
-
-	if (info.si_pid == 0)
-		return;
-
-	for (kw = TAILQ_FIRST(&kore_workers); kw != NULL; kw = next) {
-		next = TAILQ_NEXT(kw, list);
-		if (kw->pid != info.si_pid)
-			continue;
-
-		k = *kw;
-		TAILQ_REMOVE(&kore_workers, kw, list);
-		kore_log(LOG_NOTICE, "worker %d (%d)-> status %d (%d)",
-		    kw->id, info.si_pid, info.si_status, info.si_code);
-		free(kw);
-
-		if (final)
-			continue;
-
-		if (info.si_code == CLD_EXITED ||
-		    info.si_code == CLD_KILLED ||
-		    info.si_code == CLD_DUMPED) {
-			kore_log(LOG_NOTICE,
-			    "worker %d (pid: %d) gone, respawning new one",
-			    k.id, k.pid);
-			kore_worker_spawn(k.cpu);
-		}
-	}
-}
-
-static void
-kore_worker_setcpu(struct kore_worker *kw)
-{
-	cpu_set_t	cpuset;
-
-	CPU_ZERO(&cpuset);
-	CPU_SET(kw->cpu, &cpuset);
-	if (sched_setaffinity(0, sizeof(cpu_set_t), &cpuset) == -1) {
-		kore_debug("kore_worker_setcpu(): %s", errno_s);
-	} else {
-		kore_debug("kore_worker_setcpu(): worker %d on cpu %d",
-		    kw->id, kw->cpu);
-	}
-}
-
-static void
-kore_worker_entry(struct kore_worker *kw)
-{
-	char			buf[16];
-	struct epoll_event	*events;
-	struct connection	*c, *cnext;
-	struct kore_worker	*k, *next;
-	int			n, i, *fd, quit;
-
-	snprintf(buf, sizeof(buf), "kore [wrk %d]", kw->id);
-	if (prctl(PR_SET_NAME, buf) == -1)
-		kore_debug("cannot set process title");
-
-	if (chroot(chroot_path) == -1)
-		fatal("cannot chroot(): %s", errno_s);
-	if (chdir("/") == -1)
-		fatal("cannot chdir(): %s", errno_s);
-	if (setgroups(1, &pw->pw_gid) || setresgid(pw->pw_gid, pw->pw_gid,
-	    pw->pw_gid) || setresuid(pw->pw_uid, pw->pw_uid, pw->pw_uid))
-		fatal("unable to drop privileges");
-
-	kore_worker_setcpu(kw);
-
-	for (k = TAILQ_FIRST(&kore_workers); k != NULL; k = next) {
-		next = TAILQ_NEXT(k, list);
-		TAILQ_REMOVE(&kore_workers, k, list);
-		free(k);
-	}
-
-	mypid = kw->pid;
-	if ((efd = epoll_create(1000)) == -1)
-		fatal("epoll_create(): %s", errno_s);
-
-	sig_recv = 0;
-	signal(SIGHUP, kore_signal);
-	signal(SIGQUIT, kore_signal);
-
-	http_init();
-	TAILQ_INIT(&disconnected);
-	TAILQ_INIT(&worker_clients);
-
-	quit = 0;
-	kore_event(server.fd, EPOLLIN, &server);
-	events = kore_calloc(EPOLL_EVENTS, sizeof(struct epoll_event));
-
-	kore_log(LOG_NOTICE, "worker %d going to work (CPU: %d)",
-	    kw->id, kw->cpu);
-	for (;;) {
-		if (sig_recv != 0) {
-			if (sig_recv == SIGHUP)
-				kore_module_reload();
-			else if (sig_recv == SIGQUIT)
-				quit = 1;
-			sig_recv = 0;
-		}
-
-		n = epoll_wait(efd, events, EPOLL_EVENTS, 100);
-		if (n == -1) {
-			if (errno == EINTR)
-				continue;
-			fatal("epoll_wait(): %s", errno_s);
-		}
-
-		if (n > 0)
-			kore_debug("main(): %d sockets available", n);
-
-		for (i = 0; i < n; i++) {
-			fd = (int *)events[i].data.ptr;
-
-			if (events[i].events & EPOLLERR ||
-			    events[i].events & EPOLLHUP) {
-				if (*fd == server.fd)
-					fatal("error on server socket");
-
-				c = (struct connection *)events[i].data.ptr;
-				kore_server_disconnect(c);
-				continue;
-			}
-
-			if (*fd == server.fd) {
-				if (!quit)
-					kore_server_accept(&server);
-			} else {
-				c = (struct connection *)events[i].data.ptr;
-				if (!kore_connection_handle(c,
-				    events[i].events))
-					kore_server_disconnect(c);
-			}
-		}
-
-		http_process();
-
-		for (c = TAILQ_FIRST(&disconnected); c != NULL; c = cnext) {
-			cnext = TAILQ_NEXT(c, list);
-			kore_server_final_disconnect(c);
-		}
-
-		if (quit && http_request_count == 0)
-			break;
-	}
-
-	for (c = TAILQ_FIRST(&worker_clients); c != NULL; c = cnext) {
-		cnext = TAILQ_NEXT(c, list);
-		net_send_flush(c);
-		kore_server_final_disconnect(c);
-	}
-
-	for (c = TAILQ_FIRST(&disconnected); c != NULL; c = cnext) {
-		cnext = TAILQ_NEXT(c, list);
-		net_send_flush(c);
-		kore_server_final_disconnect(c);
-	}
-
-	kore_debug("worker %d shutting down", kw->id);
-	exit(0);
-}
-
-static int
 kore_socket_nonblock(int fd)
 {
 	int		flags;
@@ -723,25 +579,6 @@ kore_ssl_npn_cb(SSL *ssl, const u_char **data, unsigned int *len, void *arg)
 	*len = strlen(KORE_SSL_PROTO_STRING);
 
 	return (SSL_TLSEXT_ERR_OK);
-}
-
-static void
-kore_event(int fd, int flags, void *udata)
-{
-	struct epoll_event	evt;
-
-	kore_debug("kore_event(%d, %d, %p)", fd, flags, udata);
-
-	evt.events = flags;
-	evt.data.ptr = udata;
-	if (epoll_ctl(efd, EPOLL_CTL_ADD, fd, &evt) == -1) {
-		if (errno == EEXIST) {
-			if (epoll_ctl(efd, EPOLL_CTL_MOD, fd, &evt) == -1)
-				fatal("epoll_ctl() MOD: %s", errno_s);
-		} else {
-			fatal("epoll_ctl() ADD: %s", errno_s);
-		}
-	}
 }
 
 static void

@@ -111,6 +111,8 @@ struct kore_worker {
 	TAILQ_ENTRY(kore_worker)	list;
 };
 
+TAILQ_HEAD(kore_worker_h, kore_worker);
+
 #define KORE_BUF_INITIAL	128
 #define KORE_BUF_INCREMENT	KORE_BUF_INITIAL
 
@@ -125,6 +127,7 @@ struct buf_vec {
 	u_int32_t		length;
 };
 
+extern pid_t	mypid;
 extern int	kore_debug;
 extern int	server_port;
 extern char	*server_ip;
@@ -134,8 +137,25 @@ extern char	*kore_module_onload;
 extern char	*kore_pidfile;
 extern char	*kore_certfile;
 extern char	*kore_certkey;
-extern u_int8_t	worker_count;
-extern pid_t	mypid;
+
+extern u_int16_t		cpu_count;
+extern u_int8_t			worker_count;
+
+extern struct listener		server;
+extern struct kore_worker_h	kore_workers;
+
+void		kore_init(void);
+void		kore_worker_init(void);
+void		kore_worker_wait(int);
+void		kore_event_init(void);
+void		kore_event_wait(int);
+void		kore_set_proctitle(char *);
+void		kore_worker_spawn(u_int16_t);
+void		kore_worker_entry(struct kore_worker *);
+void		kore_worker_setcpu(struct kore_worker *);
+void		kore_event_schedule(int, int, int, void *);
+int		kore_connection_handle(struct connection *);
+int		kore_server_accept(struct listener *, struct connection **);
 
 void		kore_log_init(void);
 void		*kore_malloc(size_t);
