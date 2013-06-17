@@ -13,7 +13,7 @@ CFLAGS+=-Wmissing-declarations -Wshadow -Wpointer-arith -Wcast-qual
 CFLAGS+=-D_GNU_SOURCE=1 -Wsign-compare -Iincludes -g
 LDFLAGS=-rdynamic -Llibs -lssl -lcrypto -ldl -lz
 
-light: $(S_OBJS)
+kore: $(S_OBJS)
 	$(CC) $(CFLAGS) $(S_OBJS) $(LDFLAGS) -o $(BIN)
 
 .c.o: $<
