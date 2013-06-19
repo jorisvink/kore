@@ -377,6 +377,7 @@ kore_worker_entry(struct kore_worker *kw)
 	sig_recv = 0;
 	signal(SIGHUP, kore_signal);
 	signal(SIGQUIT, kore_signal);
+	signal(SIGPIPE, SIG_IGN);
 
 	http_init();
 	TAILQ_INIT(&disconnected);
