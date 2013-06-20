@@ -16,8 +16,14 @@ Features
 - Virtual host support
 - Easy to use configuration
 - Loads your site as a precompiled C module
-- Linux epoll(7) and worker processes for throughput
+- Event driven architecture and worker processes for throughput
 - Modules can be reloaded on-the-fly even while serving content
+
+Current supported systems:
+- Linux
+- OpenBSD
+
+Any other BSD might function, but is untested.
 
 Right now Kore development is a moving process, so expect bugs.
 If you run into said bugs please contact me at patches@coders.se.
