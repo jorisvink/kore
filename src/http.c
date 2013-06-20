@@ -290,15 +290,15 @@ http_header_recv(struct netbuf *nb)
 
 	kore_debug("http_header_recv(%p)", nb);
 
-	ch = nb->buf[nb->len];
-	nb->buf[nb->len] = '\0';
+	ch = nb->buf[nb->len - 1];
+	nb->buf[nb->len - 1] = '\0';
 
 	if ((end_headers = (u_int8_t *)strrchr((char *)nb->buf, '\r')) == NULL)
 		return (KORE_RESULT_OK);
 	if (nb->len > 2 && strncmp(((char *)end_headers - 2), "\r\n\r\n", 4))
 		return (KORE_RESULT_OK);
 
-	nb->buf[nb->len] = ch;
+	nb->buf[nb->len - 1] = ch;
 	nb->flags |= NETBUF_FORCE_REMOVE;
 	end_headers += 2;
 
