@@ -195,8 +195,13 @@ kore_event_wait(int quit)
 void
 kore_event_schedule(int fd, int type, int flags, void *data)
 {
-	EV_SET(&changelist[nchanges], fd, type, flags, 0, 0, data);
-	nchanges++;
+	if (nchanges >= KQUEUE_EVENTS) {
+		kore_log(LOG_WARNING, "cannot schedule %d (%d) on %d",
+		    type, flags, fd);
+	} else {
+		EV_SET(&changelist[nchanges], fd, type, flags, 0, 0, data);
+		nchanges++;
+	}
 }
 
 void
