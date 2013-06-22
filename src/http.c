@@ -233,7 +233,7 @@ http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 
 		kore_buf_appendf(buf, "HTTP/1.1 %d\r\n", status);
 		kore_buf_appendf(buf, "Content-length: %d\r\n", len);
-		kore_buf_appendf(buf, "Connection: close\r\n");
+		kore_buf_appendf(buf, "Connection: keep-alive\r\n");
 
 		TAILQ_FOREACH(hdr, &(req->resp_headers), list) {
 			kore_buf_appendf(buf, "%s: %s\r\n",
@@ -501,6 +501,10 @@ http_post_data_recv(struct netbuf *nb)
 static int
 http_send_done(struct netbuf *nb)
 {
-	/* disconnects. */
-	return (KORE_RESULT_ERROR);
+	struct connection	*c = (struct connection *)nb->owner;
+
+	net_recv_queue(c, HTTP_HEADER_MAX_LEN,
+	    NETBUF_CALL_CB_ALWAYS, NULL, http_header_recv);
+
+	return (KORE_RESULT_OK);
 }
