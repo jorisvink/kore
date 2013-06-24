@@ -20,7 +20,10 @@ Features
 - Event driven architecture and worker processes for throughput
 - Modules can be reloaded on-the-fly even while serving content
 
-Current supported systems:
+License
+- Kore is licensed under the ISC license.
+
+Platform support
 - Linux
 - OpenBSD
 
