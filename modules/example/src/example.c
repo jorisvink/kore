@@ -42,6 +42,7 @@
 
 int		serve_style_css(struct http_request *);
 int		serve_index(struct http_request *);
+int		serve_intro(struct http_request *);
 
 int
 serve_style_css(struct http_request *req)
@@ -81,6 +82,18 @@ serve_index(struct http_request *req)
 	http_response_header_add(req, "content-type", "text/html");
 	ret = http_response(req, 200, static_html_index,
 	    static_len_html_index);
+
+	return (ret);
+}
+
+int
+serve_intro(struct http_request *req)
+{
+	int		ret;
+
+	http_response_header_add(req, "content-type", "image/jpg");
+	ret = http_response(req, 200, static_jpg_intro,
+	    static_len_jpg_intro);
 
 	return (ret);
 }

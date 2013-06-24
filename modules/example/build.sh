@@ -10,7 +10,7 @@ MODULE=example.module
 
 # The directory containing all your media files (HTML, CSS, ...).
 # These files will be compiled into the module and symbols will
-# be exported for you to use in your code (see static.h after building).
+# be exported for you to use in your code.
 MEDIA_DIR=media
 
 # The directory containing your module source.
@@ -69,3 +69,4 @@ echo "Building completed!"
 rm -rf ${SOURCE_DIR}/${MEDIA_DIR}
 rm -rf .objs
 rm -f tools/inject
+rm -f static.h

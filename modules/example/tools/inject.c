@@ -32,7 +32,8 @@ main(int argc, char *argv[])
 	struct stat	st;
 	ssize_t		len;
 	FILE		*hdr;
-	char		*ext, c[1];
+	char		*ext;
+	unsigned char	c[1];
 	int		fd, newline, count;
 
 	if (argc != 3)
