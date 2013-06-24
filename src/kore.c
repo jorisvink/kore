@@ -58,6 +58,7 @@ struct listener		server;
 pid_t			mypid = -1;
 u_int16_t		cpu_count = 1;
 struct kore_worker_h	kore_workers;
+struct kore_worker	*worker = NULL;
 int			kore_debug = 0;
 int			server_port = 0;
 u_int8_t		worker_count = 0;
@@ -91,9 +92,6 @@ main(int argc, char *argv[])
 	struct kore_worker	*kw, *next;
 	char			*config_file;
 
-	kore_log_init();
-	mypid = getpid();
-
 	if (getuid() != 0)
 		fatal("kore must be started as root");
 
@@ -118,6 +116,7 @@ main(int argc, char *argv[])
 	if (config_file == NULL)
 		fatal("please specify a configuration file to use (-c)");
 
+	mypid = getpid();
 	kore_parse_config(config_file);
 	if (!kore_module_loaded())
 		fatal("no site module was loaded");
@@ -133,7 +132,9 @@ main(int argc, char *argv[])
 	if (kore_certfile == NULL || kore_certkey == NULL)
 		fatal("missing certificate information");
 
-	kore_init();
+	kore_log_init();
+	kore_platform_init();
+	kore_accesslog_init();
 
 	if (!kore_server_sslstart())
 		fatal("cannot initiate SSL");
@@ -174,8 +175,9 @@ main(int argc, char *argv[])
 			sig_recv = 0;
 		}
 
+		if (!kore_accesslog_wait())
+			break;
 		kore_worker_wait(0);
-		sleep(1);
 	}
 
 	for (kw = TAILQ_FIRST(&kore_workers); kw != NULL; kw = next) {
@@ -354,6 +356,8 @@ kore_worker_entry(struct kore_worker *kw)
 	struct connection	*c, *cnext;
 	struct kore_worker	*k, *next;
 
+	worker = kw;
+
 	if (chroot(chroot_path) == -1)
 		fatal("cannot chroot(): %s", errno_s);
 	if (chdir("/") == -1)
@@ -385,9 +389,9 @@ kore_worker_entry(struct kore_worker *kw)
 
 	quit = 0;
 	kore_event_init();
+	kore_accesslog_worker_init();
 
-	kore_log(LOG_NOTICE, "worker %d going to work (CPU: %d)",
-	    kw->id, kw->cpu);
+	kore_log(LOG_NOTICE, "worker %d started (cpu#%d)", kw->id, kw->cpu);
 	for (;;) {
 		if (sig_recv != 0) {
 			if (sig_recv == SIGHUP)

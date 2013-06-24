@@ -18,6 +18,8 @@
 #define __H_HTTP_H
 
 #define HTTP_HEADER_MAX_LEN	8192
+#define HTTP_URI_LEN		2000
+#define HTTP_USERAGENT_LEN	256
 #define HTTP_REQ_HEADER_MAX	25
 #define HTTP_MAX_QUERY_ARGS	10
 
@@ -44,8 +46,12 @@ struct http_arg {
 struct http_request {
 	u_int8_t		method;
 	u_int8_t		flags;
+	int			status;
+	u_int64_t		start;
+	u_int64_t		end;
 	char			*host;
 	char			*path;
+	char			*agent;
 	struct connection	*owner;
 	struct spdy_stream	*stream;
 	struct kore_buf		*post_data;
@@ -75,5 +81,7 @@ char		*http_post_data_text(struct http_request *);
 int		http_populate_arguments(struct http_request *);
 int		http_argument_lookup(struct http_request *,
 		    const char *, char **);
+
+void		kore_accesslog(struct http_request *);
 
 #endif /* !__H_HTTP_H */

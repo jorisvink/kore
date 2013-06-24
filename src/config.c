@@ -49,6 +49,7 @@ static int		configure_workers(char **);
 static int		configure_pidfile(char **);
 static int		configure_certfile(char **);
 static int		configure_certkey(char **);
+static int		configure_accesslog(char **);
 
 static struct {
 	const char		*name;
@@ -66,6 +67,7 @@ static struct {
 	{ "pidfile",		configure_pidfile },
 	{ "certfile",		configure_certfile },
 	{ "certkey",		configure_certkey },
+	{ "accesslog",		configure_accesslog },
 	{ NULL,			NULL },
 };
 
@@ -302,3 +304,35 @@ configure_certkey(char **argv)
 	return (KORE_RESULT_OK);
 }
 
+static int
+configure_accesslog(char **argv)
+{
+	struct module_domain	*dom;
+
+	if (argv[1] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	if (current_domain == NULL) {
+		kore_debug("missing domain for accesslog");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if ((dom = kore_module_domain_lookup(current_domain)) == NULL) {
+		kore_debug("current_domain not found: (%s)", current_domain);
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (dom->accesslog != -1) {
+		kore_debug("domain %s already has an open accesslog",
+		    current_domain);
+		return (KORE_RESULT_ERROR);
+	}
+
+	dom->accesslog = open(argv[1], O_CREAT | O_APPEND | O_WRONLY, 0755);
+	if (dom->accesslog == -1) {
+		kore_debug("open(%s): %s", argv[1], errno_s);
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}

@@ -24,6 +24,7 @@
 #define errno_s			strerror(errno)
 #define ssl_errno_s		ERR_error_string(ERR_get_error(), NULL)
 
+#define KORE_DOMAINNAME_LEN	254
 #define KORE_PIDFILE_DEFAULT	"/var/run/kore.pid"
 
 #define kore_debug(fmt, ...)	\
@@ -113,6 +114,13 @@ struct kore_worker {
 
 TAILQ_HEAD(kore_worker_h, kore_worker);
 
+struct module_domain {
+	char					*domain;
+	int					accesslog;
+	TAILQ_HEAD(, kore_module_handle)	handlers;
+	TAILQ_ENTRY(module_domain)		list;
+};
+
 #define KORE_BUF_INITIAL	128
 #define KORE_BUF_INCREMENT	KORE_BUF_INITIAL
 
@@ -142,21 +150,26 @@ extern u_int16_t		cpu_count;
 extern u_int8_t			worker_count;
 
 extern struct listener		server;
+extern struct kore_worker	*worker;
 extern struct kore_worker_h	kore_workers;
 
-void		kore_init(void);
 void		kore_worker_init(void);
 void		kore_worker_wait(int);
 void		kore_event_init(void);
 void		kore_event_wait(int);
+void		kore_platform_init(void);
+void		kore_accesslog_init(void);
+int		kore_accesslog_wait(void);
 void		kore_set_proctitle(char *);
 void		kore_worker_spawn(u_int16_t);
+void		kore_accesslog_worker_init(void);
 void		kore_worker_entry(struct kore_worker *);
 void		kore_worker_setcpu(struct kore_worker *);
 void		kore_event_schedule(int, int, int, void *);
 int		kore_connection_handle(struct connection *);
 int		kore_server_accept(struct listener *, struct connection **);
 
+u_int64_t	kore_time_ms(void);
 void		kore_log_init(void);
 void		*kore_malloc(size_t);
 void		*kore_calloc(size_t, size_t);
@@ -175,8 +188,10 @@ void		kore_module_load(char *);
 void		kore_module_reload(void);
 int		kore_module_loaded(void);
 int		kore_module_domain_new(char *);
+void		kore_module_domain_closelogs(void);
 void		*kore_module_handler_find(char *, char *);
 int		kore_module_handler_new(char *, char *, char *, int);
+struct module_domain	*kore_module_domain_lookup(char *);
 
 void		fatal(const char *, ...);
 void		kore_debug_internal(char *, int, const char *, ...);

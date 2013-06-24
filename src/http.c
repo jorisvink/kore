@@ -62,9 +62,17 @@ http_request_new(struct connection *c, struct spdy_stream *s, char *host,
 	kore_debug("http_request_new(%p, %p, %s, %s, %s)", c, s,
 	    host, method, path);
 
+	if (strlen(host) >= KORE_DOMAINNAME_LEN - 1)
+		return (KORE_RESULT_ERROR);
+	if (strlen(path) >= HTTP_URI_LEN - 1)
+		return (KORE_RESULT_ERROR);
+
 	req = (struct http_request *)kore_malloc(sizeof(*req));
+	req->end = 0;
+	req->start = 0;
 	req->flags = 0;
 	req->owner = c;
+	req->status = 0;
 	req->stream = s;
 	req->post_data = NULL;
 	req->host = kore_strdup(host);
@@ -82,6 +90,13 @@ http_request_new(struct connection *c, struct spdy_stream *s, char *host,
 		kore_debug("invalid method specified in request: %s", method);
 		http_request_free(req);
 		return (KORE_RESULT_ERROR);
+	}
+
+	if (s != NULL) {
+		if (!http_request_header_get(req, "user-agent", &(req->agent)))
+			req->agent = kore_strdup("unknown");
+	} else {
+		req->agent = NULL;
 	}
 
 	if (out != NULL)
@@ -112,10 +127,12 @@ http_process(void)
 			continue;
 
 		hdlr = kore_module_handler_find(req->host, req->path);
+		req->start = kore_time_ms();
 		if (hdlr == NULL)
 			r = http_generic_404(req);
 		else
 			r = hdlr(req);
+		req->end = kore_time_ms();
 
 		switch (r) {
 		case KORE_RESULT_OK:
@@ -131,6 +148,8 @@ http_process(void)
 		}
 
 		if (r != KORE_RESULT_RETRY) {
+			kore_accesslog(req);
+
 			TAILQ_REMOVE(&http_requests, req, list);
 			http_request_free(req);
 			http_request_count--;
@@ -187,6 +206,8 @@ http_request_free(struct http_request *req)
 
 	free(req->path);
 	free(req->host);
+	if (req->agent != NULL)
+		free(req->agent);
 	free(req);
 }
 
@@ -202,6 +223,7 @@ http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 
 	kore_debug("http_response(%p, %d, %p, %d)", req, status, d, len);
 
+	req->status = status;
 	if (req->owner->proto == CONN_PROTO_SPDY) {
 		snprintf(sbuf, sizeof(sbuf), "%d", status);
 
@@ -368,10 +390,16 @@ http_header_recv(struct netbuf *nb)
 		}
 
 		*(p++) = '\0';
+		if (*p == ' ')
+			p++;
 		hdr = (struct http_header *)kore_malloc(sizeof(*hdr));
 		hdr->header = kore_strdup(headers[i]);
 		hdr->value = kore_strdup(p);
 		TAILQ_INSERT_TAIL(&(req->req_headers), hdr, list);
+
+		if (req->agent == NULL &&
+		    !strcasecmp(hdr->header, "user-agent"))
+			req->agent = kore_strdup(hdr->value);
 	}
 
 	free(hbuf);

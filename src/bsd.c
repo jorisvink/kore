@@ -51,7 +51,7 @@ static int			nchanges;
 static struct kevent		*changelist;
 
 void
-kore_init(void)
+kore_platform_init(void)
 {
 	cpu_count = 0;
 }

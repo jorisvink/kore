@@ -18,6 +18,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/queue.h>
+#include <sys/time.h>
 
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -132,7 +133,10 @@ kore_log(int prio, const char *fmt, ...)
 	vsnprintf(buf, sizeof(buf), fmt, args);
 	va_end(args);
 
-	syslog(prio, "%s", buf);
+	if (worker != NULL)
+		syslog(prio, "[wrk %d]: %s", worker->id, buf);
+	else
+		syslog(prio, "[parent]: %s", buf);
 }
 
 void
@@ -296,6 +300,17 @@ kore_time_to_date(time_t now)
 	}
 
 	return (tbuf);
+}
+
+u_int64_t
+kore_time_ms(void)
+{
+	struct timeval		tv;
+
+	if (gettimeofday(&tv, NULL) == -1)
+		return (0);
+
+	return (tv.tv_sec * 1000 + (tv.tv_usec / 100));
 }
 
 void

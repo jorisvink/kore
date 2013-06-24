@@ -46,14 +46,7 @@ static char		*mod_name = NULL;
 static time_t		mod_last_mtime = 0;
 char			*kore_module_onload = NULL;
 
-struct module_domain {
-	char					*domain;
-	TAILQ_HEAD(, kore_module_handle)	handlers;
-	TAILQ_ENTRY(module_domain)		list;
-};
-
 static TAILQ_HEAD(, module_domain)	domains;
-static struct module_domain		*kore_module_domain_lookup(char *);
 
 void
 kore_module_load(char *module_name)
@@ -132,6 +125,7 @@ kore_module_domain_new(char *domain)
 		return (KORE_RESULT_ERROR);
 
 	dom = (struct module_domain *)kore_malloc(sizeof(*dom));
+	dom->accesslog = -1;
 	dom->domain = kore_strdup(domain);
 	TAILQ_INIT(&(dom->handlers));
 	TAILQ_INSERT_TAIL(&domains, dom, list);
@@ -200,7 +194,7 @@ kore_module_handler_find(char *domain, char *path)
 	return (NULL);
 }
 
-static struct module_domain *
+struct module_domain *
 kore_module_domain_lookup(char *domain)
 {
 	struct module_domain	*dom;
@@ -211,4 +205,13 @@ kore_module_domain_lookup(char *domain)
 	}
 
 	return (NULL);
+}
+
+void
+kore_module_domain_closelogs(void)
+{
+	struct module_domain	*dom;
+
+	TAILQ_FOREACH(dom, &domains, list)
+		close(dom->accesslog);
 }

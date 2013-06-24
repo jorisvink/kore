@@ -52,7 +52,7 @@ static int			efd = -1;
 static struct epoll_event	*events = NULL;
 
 void
-kore_init(void)
+kore_platform_init(void)
 {
 	if ((cpu_count = sysconf(_SC_NPROCESSORS_ONLN)) == -1) {
 		kore_debug("could not get number of cpu's falling back to 1");
