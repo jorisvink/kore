@@ -114,12 +114,17 @@ struct kore_worker {
 
 TAILQ_HEAD(kore_worker_h, kore_worker);
 
-struct module_domain {
+struct kore_domain {
 	char					*domain;
+	char					*certfile;
+	char					*certkey;
 	int					accesslog;
+	SSL_CTX					*ssl_ctx;
 	TAILQ_HEAD(, kore_module_handle)	handlers;
-	TAILQ_ENTRY(module_domain)		list;
+	TAILQ_ENTRY(kore_domain)		list;
 };
+
+TAILQ_HEAD(kore_domain_h, kore_domain);
 
 #define KORE_BUF_INITIAL	128
 #define KORE_BUF_INCREMENT	KORE_BUF_INITIAL
@@ -143,8 +148,6 @@ extern char	*chroot_path;
 extern char	*runas_user;
 extern char	*kore_module_onload;
 extern char	*kore_pidfile;
-extern char	*kore_certfile;
-extern char	*kore_certkey;
 
 extern u_int16_t		cpu_count;
 extern u_int8_t			worker_count;
@@ -152,6 +155,8 @@ extern u_int8_t			worker_count;
 extern struct listener		server;
 extern struct kore_worker	*worker;
 extern struct kore_worker_h	kore_workers;
+extern struct kore_domain_h	domains;
+extern struct kore_domain	*primary_dom;
 
 void		kore_worker_init(void);
 void		kore_worker_wait(int);
@@ -168,6 +173,8 @@ void		kore_worker_setcpu(struct kore_worker *);
 void		kore_event_schedule(int, int, int, void *);
 int		kore_connection_handle(struct connection *);
 int		kore_server_accept(struct listener *, struct connection **);
+int		kore_ssl_sni_cb(SSL *, int *, void *);
+int		kore_ssl_npn_cb(SSL *, const u_char **, unsigned int *, void *);
 
 u_int64_t	kore_time_ms(void);
 void		kore_log_init(void);
@@ -184,14 +191,16 @@ void		kore_server_disconnect(struct connection *);
 int		kore_split_string(char *, char *, char **, size_t);
 long long	kore_strtonum(const char *, long long, long long, int *);
 
+void		kore_domain_init(void);
+int		kore_domain_new(char *);
 void		kore_module_load(char *);
 void		kore_module_reload(void);
 int		kore_module_loaded(void);
-int		kore_module_domain_new(char *);
-void		kore_module_domain_closelogs(void);
+void		kore_domain_closelogs(void);
 void		*kore_module_handler_find(char *, char *);
+void		kore_domain_sslstart(struct kore_domain *);
 int		kore_module_handler_new(char *, char *, char *, int);
-struct module_domain	*kore_module_domain_lookup(char *);
+struct kore_domain	*kore_domain_lookup(const char *);
 
 void		fatal(const char *, ...);
 void		kore_debug_internal(char *, int, const char *, ...);

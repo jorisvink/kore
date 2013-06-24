@@ -47,9 +47,10 @@ static int		configure_chroot(char **);
 static int		configure_runas(char **);
 static int		configure_workers(char **);
 static int		configure_pidfile(char **);
+static int		configure_accesslog(char **);
 static int		configure_certfile(char **);
 static int		configure_certkey(char **);
-static int		configure_accesslog(char **);
+static void		domain_sslstart(void);
 
 static struct {
 	const char		*name;
@@ -65,13 +66,13 @@ static struct {
 	{ "runas",		configure_runas },
 	{ "workers",		configure_workers },
 	{ "pidfile",		configure_pidfile },
+	{ "accesslog",		configure_accesslog },
 	{ "certfile",		configure_certfile },
 	{ "certkey",		configure_certkey },
-	{ "accesslog",		configure_accesslog },
 	{ NULL,			NULL },
 };
 
-static char		*current_domain = NULL;
+static struct kore_domain	*current_domain = NULL;
 
 void
 kore_parse_config(const char *config_path)
@@ -99,6 +100,9 @@ kore_parse_config(const char *config_path)
 			if (*t == '\t')
 				*t = ' ';
 		}
+
+		if (!strcmp(p, "}") && current_domain != NULL)
+			domain_sslstart();
 
 		kore_split_string(p, " ", argv, 5);
 		for (i = 0; config_names[i].name != NULL; i++) {
@@ -165,17 +169,25 @@ configure_onload(char **argv)
 static int
 configure_domain(char **argv)
 {
-	if (argv[1] == NULL)
+	if (argv[2] == NULL)
 		return (KORE_RESULT_ERROR);
 
-	if (current_domain != NULL)
-		free(current_domain);
-	current_domain = kore_strdup(argv[1]);
-	if (!kore_module_domain_new(current_domain)) {
+	if (current_domain != NULL) {
+		kore_debug("previous domain configuration not closed");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (strcmp(argv[2], "{")) {
+		kore_debug("missing { for domain directive");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (!kore_domain_new(argv[1])) {
 		kore_debug("could not create new domain %s", current_domain);
 		return (KORE_RESULT_ERROR);
 	}
 
+	current_domain = kore_domain_lookup(argv[1]);
 	return (KORE_RESULT_OK);
 }
 
@@ -199,7 +211,8 @@ configure_handler(char **argv)
 	else
 		return (KORE_RESULT_ERROR);
 
-	if (!kore_module_handler_new(argv[1], current_domain, argv[2], type)) {
+	if (!kore_module_handler_new(argv[1],
+	    current_domain->domain, argv[2], type)) {
 		kore_debug("cannot create handler for %s", argv[1]);
 		return (KORE_RESULT_ERROR);
 	}
@@ -275,17 +288,49 @@ configure_pidfile(char **argv)
 }
 
 static int
+configure_accesslog(char **argv)
+{
+	if (argv[1] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	if (current_domain == NULL) {
+		kore_debug("missing domain for accesslog");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (current_domain->accesslog != -1) {
+		kore_debug("domain %s already has an open accesslog",
+		    current_domain->domain);
+		return (KORE_RESULT_ERROR);
+	}
+
+	current_domain->accesslog = open(argv[1],
+	    O_CREAT | O_APPEND | O_WRONLY, 0755);
+	if (current_domain->accesslog == -1) {
+		kore_debug("open(%s): %s", argv[1], errno_s);
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
 configure_certfile(char **argv)
 {
 	if (argv[1] == NULL)
 		return (KORE_RESULT_ERROR);
 
-	if (kore_certfile != NULL) {
-		kore_debug("duplicate kore_certfile directive specified");
+	if (current_domain == NULL) {
+		kore_debug("missing domain for certfile");
 		return (KORE_RESULT_ERROR);
 	}
 
-	kore_certfile = kore_strdup(argv[1]);
+	if (current_domain->certfile != NULL) {
+		kore_debug("domain already has a certfile set");
+		return (KORE_RESULT_ERROR);
+	}
+
+	current_domain->certfile = kore_strdup(argv[1]);
 	return (KORE_RESULT_OK);
 }
 
@@ -295,44 +340,23 @@ configure_certkey(char **argv)
 	if (argv[1] == NULL)
 		return (KORE_RESULT_ERROR);
 
-	if (kore_certkey != NULL) {
-		kore_debug("duplicate kore_certkey directive specified");
+	if (current_domain == NULL) {
+		kore_debug("missing domain for certkey");
 		return (KORE_RESULT_ERROR);
 	}
 
-	kore_certkey = kore_strdup(argv[1]);
+	if (current_domain->certkey != NULL) {
+		kore_debug("domain already has a certkey set");
+		return (KORE_RESULT_ERROR);
+	}
+
+	current_domain->certkey = kore_strdup(argv[1]);
 	return (KORE_RESULT_OK);
 }
 
-static int
-configure_accesslog(char **argv)
+static void
+domain_sslstart(void)
 {
-	struct module_domain	*dom;
-
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
-
-	if (current_domain == NULL) {
-		kore_debug("missing domain for accesslog");
-		return (KORE_RESULT_ERROR);
-	}
-
-	if ((dom = kore_module_domain_lookup(current_domain)) == NULL) {
-		kore_debug("current_domain not found: (%s)", current_domain);
-		return (KORE_RESULT_ERROR);
-	}
-
-	if (dom->accesslog != -1) {
-		kore_debug("domain %s already has an open accesslog",
-		    current_domain);
-		return (KORE_RESULT_ERROR);
-	}
-
-	dom->accesslog = open(argv[1], O_CREAT | O_APPEND | O_WRONLY, 0755);
-	if (dom->accesslog == -1) {
-		kore_debug("open(%s): %s", argv[1], errno_s);
-		return (KORE_RESULT_ERROR);
-	}
-
-	return (KORE_RESULT_OK);
+	kore_domain_sslstart(current_domain);
+	current_domain = NULL;
 }

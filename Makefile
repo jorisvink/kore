@@ -4,7 +4,7 @@ CC=gcc
 BIN=kore
 
 S_SRC+=	src/kore.c src/buf.c src/config.c src/net.c src/spdy.c src/http.c \
-	src/accesslog.c src/module.c src/utils.c src/zlib_dict.c
+	src/accesslog.c src/domain.c src/module.c src/utils.c src/zlib_dict.c
 S_OBJS=	$(S_SRC:.c=.o)
 
 CFLAGS+=-I/usr/local/ssl/include

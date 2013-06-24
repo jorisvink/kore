@@ -65,7 +65,7 @@ void
 kore_accesslog_worker_init(void)
 {
 	close(accesslog_fd[0]);
-	kore_module_domain_closelogs();
+	kore_domain_closelogs();
 }
 
 int
@@ -75,7 +75,7 @@ kore_accesslog_wait(void)
 	time_t			now;
 	size_t			slen;
 	int			nfds;
-	struct module_domain	*dom;
+	struct kore_domain	*dom;
 	struct pollfd		pfd[1];
 	struct kore_log_packet	logpacket;
 	char			*method, buf[4096], *tbuf;
@@ -104,7 +104,7 @@ kore_accesslog_wait(void)
 	if (len != sizeof(logpacket))
 		return (KORE_RESULT_ERROR);
 
-	if ((dom = kore_module_domain_lookup(logpacket.host)) == NULL) {
+	if ((dom = kore_domain_lookup(logpacket.host)) == NULL) {
 		kore_log(LOG_WARNING,
 		    "got accesslog packet for unknown domain: %s",
 		    logpacket.host);

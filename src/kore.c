@@ -46,8 +46,6 @@
 #include "kore.h"
 #include "http.h"
 
-static SSL_CTX	*ssl_ctx = NULL;
-
 volatile sig_atomic_t			sig_recv;
 static TAILQ_HEAD(, connection)		disconnected;
 static TAILQ_HEAD(, connection)		worker_clients;
@@ -65,18 +63,15 @@ u_int8_t		worker_count = 0;
 char			*server_ip = NULL;
 char			*runas_user = NULL;
 char			*chroot_path = NULL;
-char			*kore_certkey = NULL;
-char			*kore_certfile = NULL;
 char			*kore_pidfile = KORE_PIDFILE_DEFAULT;
 
 static void	usage(void);
 static void	kore_signal(int);
 static void	kore_write_mypid(void);
 static int	kore_socket_nonblock(int);
-static int	kore_server_sslstart(void);
+static void	kore_server_sslstart(void);
 static void	kore_server_final_disconnect(struct connection *);
 static int	kore_server_bind(struct listener *, const char *, int);
-static int	kore_ssl_npn_cb(SSL *, const u_char **, unsigned int *, void *);
 
 static void
 usage(void)
@@ -117,6 +112,10 @@ main(int argc, char *argv[])
 		fatal("please specify a configuration file to use (-c)");
 
 	mypid = getpid();
+
+	kore_domain_init();
+	kore_server_sslstart();
+
 	kore_parse_config(config_file);
 	if (!kore_module_loaded())
 		fatal("no site module was loaded");
@@ -129,15 +128,11 @@ main(int argc, char *argv[])
 		fatal("missing a username to run as");
 	if ((pw = getpwnam(runas_user)) == NULL)
 		fatal("user '%s' does not exist", runas_user);
-	if (kore_certfile == NULL || kore_certkey == NULL)
-		fatal("missing certificate information");
 
 	kore_log_init();
 	kore_platform_init();
 	kore_accesslog_init();
 
-	if (!kore_server_sslstart())
-		fatal("cannot initiate SSL");
 	if (!kore_server_bind(&server, server_ip, server_port))
 		fatal("cannot bind to %s:%d", server_ip, server_port);
 	if (daemon(1, 1) == -1)
@@ -156,8 +151,6 @@ main(int argc, char *argv[])
 
 	free(server_ip);
 	free(runas_user);
-	free(kore_certkey);
-	free(kore_certfile);
 
 	for (;;) {
 		if (sig_recv != 0) {
@@ -261,7 +254,7 @@ kore_connection_handle(struct connection *c)
 	switch (c->state) {
 	case CONN_STATE_SSL_SHAKE:
 		if (c->ssl == NULL) {
-			c->ssl = SSL_new(ssl_ctx);
+			c->ssl = SSL_new(primary_dom->ssl_ctx);
 			if (c->ssl == NULL) {
 				kore_debug("SSL_new(): %s", ssl_errno_s);
 				return (KORE_RESULT_ERROR);
@@ -429,36 +422,42 @@ kore_worker_entry(struct kore_worker *kw)
 	exit(0);
 }
 
-static int
+int
+kore_ssl_npn_cb(SSL *ssl, const u_char **data, unsigned int *len, void *arg)
+{
+	kore_debug("kore_ssl_npn_cb(): sending protocols");
+
+	*data = (const unsigned char *)KORE_SSL_PROTO_STRING;
+	*len = strlen(KORE_SSL_PROTO_STRING);
+
+	return (SSL_TLSEXT_ERR_OK);
+}
+
+int
+kore_ssl_sni_cb(SSL *ssl, int *ad, void *arg)
+{
+	struct kore_domain	*dom;
+	const char		*sname;
+
+	sname = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
+	kore_debug("kore_ssl_sni_cb(): received host %s", sname);
+
+	if (sname != NULL && (dom = kore_domain_lookup(sname)) != NULL) {
+		kore_debug("kore_ssl_sni_cb(): Using %s CTX", sname);
+		SSL_set_SSL_CTX(ssl, dom->ssl_ctx);
+		return (SSL_TLSEXT_ERR_OK);
+	}
+
+	return (SSL_TLSEXT_ERR_NOACK);
+}
+
+static void
 kore_server_sslstart(void)
 {
 	kore_debug("kore_server_sslstart()");
 
 	SSL_library_init();
 	SSL_load_error_strings();
-	ssl_ctx = SSL_CTX_new(SSLv23_server_method());
-	if (ssl_ctx == NULL) {
-		kore_debug("SSL_ctx_new(): %s", ssl_errno_s);
-		return (KORE_RESULT_ERROR);
-	}
-
-	if (!SSL_CTX_use_certificate_chain_file(ssl_ctx, kore_certfile)) {
-		kore_debug("SSL_CTX_use_certificate_file(): %s", ssl_errno_s);
-		return (KORE_RESULT_ERROR);
-	}
-
-	if (!SSL_CTX_use_PrivateKey_file(ssl_ctx, kore_certkey,
-	    SSL_FILETYPE_PEM)) {
-		kore_debug("SSL_CTX_use_PrivateKey_file(): %s", ssl_errno_s);
-		return (KORE_RESULT_ERROR);
-	}
-
-	SSL_CTX_set_mode(ssl_ctx, SSL_MODE_AUTO_RETRY);
-	SSL_CTX_set_mode(ssl_ctx, SSL_MODE_ENABLE_PARTIAL_WRITE);
-	SSL_CTX_set_options(ssl_ctx, SSL_OP_NO_SSLv2);
-	SSL_CTX_set_next_protos_advertised_cb(ssl_ctx, kore_ssl_npn_cb, NULL);
-
-	return (KORE_RESULT_OK);
 }
 
 static int
@@ -573,17 +572,6 @@ kore_socket_nonblock(int fd)
 	}
 
 	return (KORE_RESULT_OK);
-}
-
-static int
-kore_ssl_npn_cb(SSL *ssl, const u_char **data, unsigned int *len, void *arg)
-{
-	kore_debug("kore_ssl_npn_cb(): sending protocols");
-
-	*data = (const unsigned char *)KORE_SSL_PROTO_STRING;
-	*len = strlen(KORE_SSL_PROTO_STRING);
-
-	return (SSL_TLSEXT_ERR_OK);
 }
 
 static void
