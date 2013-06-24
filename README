@@ -9,6 +9,7 @@ With a site loaded as a module in memory the page callbacks are directly called 
 No overhead.
 
 Features
+- Supports SNI
 - Supports SPDY/3
 - Supports HTTP/1.1
 - Secure by default
