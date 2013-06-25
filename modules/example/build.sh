@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 #
 # Copyright (c) 2013 Joris Vink <joris@coders.se>
 #
@@ -21,10 +21,10 @@ KORE_DIR=../../
 
 # Compiler settings.
 CC=gcc
-CFLAGS="-I. -I${KORE_DIR}includes -Wall -Wstrict-prototypes \
+CFLAGS="-I. -I${KORE_DIR}/includes -Wall -Wstrict-prototypes \
 	-Wmissing-prototypes -Wmissing-declarations -Wshadow \
 	-Wpointer-arith -Wcast-qual -Wsign-compare -g"
-LDFLAGS+=-shared
+LDFLAGS=-shared
 
 # Functions used in the build process.
 function create_and_empty_dir {
