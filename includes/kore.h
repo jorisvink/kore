@@ -112,8 +112,6 @@ struct kore_worker {
 	TAILQ_ENTRY(kore_worker)	list;
 };
 
-TAILQ_HEAD(kore_worker_h, kore_worker);
-
 struct kore_domain {
 	char					*domain;
 	char					*certfile;
@@ -152,23 +150,28 @@ extern char	*config_file;
 
 extern u_int16_t		cpu_count;
 extern u_int8_t			worker_count;
+extern u_int32_t		worker_max_connections;
 
 extern struct listener		server;
 extern struct kore_worker	*worker;
-extern struct kore_worker_h	kore_workers;
 extern struct kore_domain_h	domains;
 extern struct kore_domain	*primary_dom;
 extern struct passwd		*pw;
 
 void		kore_signal(int);
+void		kore_worker_wait(int);
 void		kore_worker_init(void);
+void		kore_worker_shutdown(void);
+void		kore_worker_dispatch_signal(int);
 void		kore_worker_connection_add(struct connection *);
-void		kore_worker_connection_move(struct connection *c);
+void		kore_worker_connection_move(struct connection *);
+void		kore_worker_connection_remove(struct connection *);
 
 void		kore_platform_event_init(void);
-void		kore_platform_event_wait(int);
-void		kore_platform_worker_wait(int);
+void		kore_platform_event_wait(void);
 void		kore_platform_proctitle(char *);
+void		kore_platform_enable_accept(void);
+void		kore_platform_disable_accept(void);
 void		kore_platform_event_schedule(int, int, int, void *);
 void		kore_platform_worker_setcpu(struct kore_worker *);
 
@@ -181,6 +184,7 @@ void		kore_worker_entry(struct kore_worker *);
 int		kore_ssl_sni_cb(SSL *, int *, void *);
 int		kore_ssl_npn_cb(SSL *, const u_char **, unsigned int *, void *);
 
+int		kore_connection_nonblock(int);
 int		kore_connection_handle(struct connection *);
 void		kore_connection_remove(struct connection *);
 void		kore_connection_disconnect(struct connection *);

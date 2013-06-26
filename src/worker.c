@@ -18,6 +18,8 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/queue.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
 #include <sys/wait.h>
 
 #include <netinet/in.h>
@@ -30,30 +32,50 @@
 #include <errno.h>
 #include <grp.h>
 #include <fcntl.h>
+#include <regex.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sched.h>
 #include <syslog.h>
-#include <unistd.h>
+#include <semaphore.h>
 #include <time.h>
-#include <regex.h>
-#include <zlib.h>
 #include <unistd.h>
+#include <zlib.h>
 
 #include "spdy.h"
 #include "kore.h"
 #include "http.h"
 
+#define KORE_SHM_KEY		15000
+
+#if defined(KORE_USE_SEMAPHORE)
+#define kore_trylock		sem_trywait
+#define kore_unlock		sem_post
+static sem_t			*kore_accept_lock;
+#else
+#define kore_trylock		kore_internal_trylock
+#define kore_unlock		kore_internal_unlock
+static int			*kore_accept_lock;
+static int			kore_internal_trylock(int *);
+static int			kore_internal_unlock(int *);
+#endif
+
+static void	kore_worker_acceptlock_obtain(void);
+static void	kore_worker_acceptlock_release(void);
+
 static u_int16_t			workerid = 0;
 static TAILQ_HEAD(, connection)		disconnected;
 static TAILQ_HEAD(, connection)		worker_clients;
+static TAILQ_HEAD(, kore_worker)	kore_workers;
+static int				shm_accept_key;
 
-struct kore_worker_h			kore_workers;
-struct kore_worker			*worker = NULL;
+static u_int32_t		worker_active_connections = 0;
+static u_int8_t			worker_has_acceptlock = 0;
 
-extern volatile sig_atomic_t		sig_recv;
+extern volatile sig_atomic_t	sig_recv;
+struct kore_worker		*worker = NULL;
+u_int32_t			worker_max_connections = 250;
 
 void
 kore_worker_init(void)
@@ -62,6 +84,20 @@ kore_worker_init(void)
 
 	if (worker_count == 0)
 		fatal("no workers specified");
+
+	shm_accept_key = shmget(KORE_SHM_KEY,
+	    sizeof(*kore_accept_lock), IPC_CREAT | IPC_EXCL | 0700);
+	if (shm_accept_key == -1)
+		fatal("kore_worker_init(): shmget() %s", errno_s);
+	if ((kore_accept_lock = shmat(shm_accept_key, NULL, 0)) == NULL)
+		fatal("kore_worker_init(): shmat() %s", errno_s);
+
+#if defined(KORE_USE_SEMAPHORE)
+	if (sem_init(kore_accept_lock, 1, 1) == -1)
+		fatal("kore_worker_init(): sem_init() %s", errno_s);
+#else
+	*kore_accept_lock = 0;
+#endif
 
 	kore_debug("kore_worker_init(): system has %d cpu's", cpu_count);
 	kore_debug("kore_worker_init(): starting %d workers", worker_count);
@@ -99,9 +135,34 @@ kore_worker_spawn(u_int16_t cpu)
 }
 
 void
+kore_worker_shutdown(void)
+{
+	kore_log(LOG_NOTICE, "waiting for workers to drain and shutdown");
+	while (!TAILQ_EMPTY(&kore_workers))
+		kore_worker_wait(1);
+
+	if (shmctl(shm_accept_key, IPC_RMID, NULL) == -1) {
+		kore_log(LOG_NOTICE,
+		    "failed to deleted shm segment: %s", errno_s);
+	}
+}
+
+void
+kore_worker_dispatch_signal(int sig)
+{
+	struct kore_worker	*kw;
+
+	TAILQ_FOREACH(kw, &kore_workers, list) {
+		if (kill(kw->pid, sig) == -1)
+			kore_debug("kill(%d, %d): %s", kw->pid, sig, errno_s);
+	}
+}
+
+void
 kore_worker_entry(struct kore_worker *kw)
 {
 	int			quit;
+	u_int32_t		lowat;
 	char			buf[16];
 	struct connection	*c, *cnext;
 	struct kore_worker	*k, *next;
@@ -122,6 +183,9 @@ kore_worker_entry(struct kore_worker *kw)
 
 	for (k = TAILQ_FIRST(&kore_workers); k != NULL; k = next) {
 		next = TAILQ_NEXT(k, list);
+		if (k == worker)
+			continue;
+
 		TAILQ_REMOVE(&kore_workers, k, list);
 		free(k);
 	}
@@ -141,6 +205,7 @@ kore_worker_entry(struct kore_worker *kw)
 	kore_platform_event_init();
 	kore_accesslog_worker_init();
 
+	lowat = worker_max_connections / 10;
 	kore_log(LOG_NOTICE, "worker %d started (cpu#%d)", kw->id, kw->cpu);
 	for (;;) {
 		if (sig_recv != 0) {
@@ -151,7 +216,17 @@ kore_worker_entry(struct kore_worker *kw)
 			sig_recv = 0;
 		}
 
-		kore_platform_event_wait(quit);
+		if (!quit && !worker_has_acceptlock &&
+		    worker_active_connections < lowat)
+			kore_worker_acceptlock_obtain();
+
+		kore_platform_event_wait();
+
+		if (worker_has_acceptlock &&
+		    (worker_active_connections >= worker_max_connections ||
+		    quit == 1))
+			kore_worker_acceptlock_release();
+
 		http_process();
 
 		for (c = TAILQ_FIRST(&disconnected); c != NULL; c = cnext) {
@@ -186,6 +261,7 @@ void
 kore_worker_connection_add(struct connection *c)
 {
 	TAILQ_INSERT_TAIL(&worker_clients, c, list);
+	worker_active_connections++;
 }
 
 void
@@ -194,3 +270,124 @@ kore_worker_connection_move(struct connection *c)
 	TAILQ_REMOVE(&worker_clients, c, list);
 	TAILQ_INSERT_TAIL(&disconnected, c, list);
 }
+
+void
+kore_worker_connection_remove(struct connection *c)
+{
+	worker_active_connections--;
+}
+
+void
+kore_worker_wait(int final)
+{
+	pid_t			pid;
+	int			status;
+	struct kore_worker	k, *kw, *next;
+
+	if (final)
+		pid = waitpid(WAIT_ANY, &status, 0);
+	else
+		pid = waitpid(WAIT_ANY, &status, WNOHANG);
+
+	if (pid == -1) {
+		kore_debug("waitpid(): %s", errno_s);
+		return;
+	}
+
+	if (pid == 0)
+		return;
+
+	for (kw = TAILQ_FIRST(&kore_workers); kw != NULL; kw = next) {
+		next = TAILQ_NEXT(kw, list);
+		if (kw->pid != pid)
+			continue;
+
+		k = *kw;
+		TAILQ_REMOVE(&kore_workers, kw, list);
+		kore_log(LOG_NOTICE, "worker %d (%d)-> status %d",
+		    kw->id, pid, status);
+		free(kw);
+
+		if (final)
+			continue;
+
+		if (WEXITSTATUS(status) || WTERMSIG(status) ||
+		    WCOREDUMP(status)) {
+			kore_log(LOG_NOTICE,
+			    "worker %d (pid: %d) gone, respawning new one",
+			    k.id, k.pid);
+			kore_worker_spawn(k.cpu);
+		}
+	}
+}
+
+static void
+kore_worker_acceptlock_obtain(void)
+{
+	int		ret;
+
+	if (worker_count == 1 && !worker_has_acceptlock) {
+		worker_has_acceptlock = 1;
+		kore_platform_enable_accept();
+		return;
+	}
+
+	ret = kore_trylock(kore_accept_lock);
+	if (ret == -1) {
+		if (errno == EAGAIN)
+			return;
+		kore_log(LOG_WARNING, "kore_worker_acceptlock(): %s", errno_s);
+	} else {
+		worker_has_acceptlock = 1;
+		kore_platform_enable_accept();
+		kore_log(LOG_NOTICE, "obtained accept lock (%d/%d)",
+		    worker_active_connections, worker_max_connections);
+	}
+}
+
+static void
+kore_worker_acceptlock_release(void)
+{
+	if (worker_count == 1)
+		return;
+
+	if (worker_has_acceptlock != 1) {
+		kore_log(LOG_NOTICE,
+		    "kore_worker_acceptlock_release() != 1");
+		return;
+	}
+
+	if (kore_unlock(kore_accept_lock) == -1) {
+		kore_log(LOG_NOTICE,
+		    "kore_worker_acceptlock_release(): %s", errno_s);
+	} else {
+		worker_has_acceptlock = 0;
+		kore_platform_disable_accept();
+		kore_log(LOG_NOTICE, "released %d/%d",
+		    worker_active_connections, worker_max_connections);
+	}
+}
+
+#if !defined(KORE_USE_SEMAPHORE)
+
+static int
+kore_internal_trylock(int *lock)
+{
+	errno = EAGAIN;
+	if (__sync_val_compare_and_swap(lock, 0, 1) == 1)
+		return (-1);
+
+	errno = 0;
+	return (0);
+}
+
+static int
+kore_internal_unlock(int *lock)
+{
+	if (__sync_val_compare_and_swap(lock, 1, 0) != 1)
+		kore_log(LOG_NOTICE, "kore_internal_unlock(): wasnt locked");
+
+	return (0);
+}
+
+#endif

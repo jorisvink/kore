@@ -310,7 +310,7 @@ kore_time_ms(void)
 	if (gettimeofday(&tv, NULL) == -1)
 		return (0);
 
-	return (tv.tv_sec * 1000 + (tv.tv_usec / 100));
+	return (tv.tv_sec * 1000 + (tv.tv_usec / 1000));
 }
 
 void
@@ -323,6 +323,7 @@ fatal(const char *fmt, ...)
 	vsnprintf(buf, sizeof(buf), fmt, args);
 	va_end(args);
 
+	kore_log(LOG_ERR, "%s", buf);
 	printf("kore: %s\n", buf);
 	exit(1);
 }

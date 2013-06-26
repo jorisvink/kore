@@ -51,26 +51,28 @@ static int		configure_pidfile(char **);
 static int		configure_accesslog(char **);
 static int		configure_certfile(char **);
 static int		configure_certkey(char **);
+static int		configure_max_connections(char **);
 static void		domain_sslstart(void);
 
 static struct {
 	const char		*name;
 	int			(*configure)(char **);
 } config_names[] = {
-	{ "bind",		configure_bind },
-	{ "load",		configure_load },
-	{ "onload",		configure_onload },
-	{ "static",		configure_handler },
-	{ "dynamic",		configure_handler },
-	{ "domain",		configure_domain },
-	{ "chroot",		configure_chroot },
-	{ "runas",		configure_runas },
-	{ "workers",		configure_workers },
-	{ "pidfile",		configure_pidfile },
-	{ "accesslog",		configure_accesslog },
-	{ "certfile",		configure_certfile },
-	{ "certkey",		configure_certkey },
-	{ NULL,			NULL },
+	{ "bind",			configure_bind },
+	{ "load",			configure_load },
+	{ "onload",			configure_onload },
+	{ "static",			configure_handler },
+	{ "dynamic",			configure_handler },
+	{ "domain",			configure_domain },
+	{ "chroot",			configure_chroot },
+	{ "runas",			configure_runas },
+	{ "workers",			configure_workers },
+	{ "worker_max_connections",	configure_max_connections },
+	{ "pidfile",			configure_pidfile },
+	{ "accesslog",			configure_accesslog },
+	{ "certfile",			configure_certfile },
+	{ "certkey",			configure_certkey },
+	{ NULL,				NULL },
 };
 
 char				*config_file = NULL;
@@ -368,6 +370,21 @@ configure_certkey(char **argv)
 	}
 
 	current_domain->certkey = kore_strdup(argv[1]);
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_max_connections(char **argv)
+{
+	int		err;
+
+	if (argv[1] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	worker_max_connections = kore_strtonum(argv[1], 1, 65535, &err);
+	if (err != KORE_RESULT_OK)
+		return (KORE_RESULT_ERROR);
+
 	return (KORE_RESULT_OK);
 }
 

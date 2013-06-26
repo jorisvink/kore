@@ -34,7 +34,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <syslog.h>
-#include <unistd.h>
 #include <time.h>
 #include <regex.h>
 #include <zlib.h>
@@ -57,50 +56,6 @@ kore_platform_init(void)
 }
 
 void
-kore_platform_worker_wait(int final)
-{
-	pid_t			pid;
-	int			status;
-	struct kore_worker	k, *kw, *next;
-
-	if (final)
-		pid = waitpid(WAIT_ANY, &status, 0);
-	else
-		pid = waitpid(WAIT_ANY, &status, WNOHANG);
-
-	if (pid == -1) {
-		kore_debug("waitpid(): %s", errno_s);
-		return;
-	}
-
-	if (pid == 0)
-		return;
-
-	for (kw = TAILQ_FIRST(&kore_workers); kw != NULL; kw = next) {
-		next = TAILQ_NEXT(kw, list);
-		if (kw->pid != pid)
-			continue;
-
-		k = *kw;
-		TAILQ_REMOVE(&kore_workers, kw, list);
-		kore_log(LOG_NOTICE, "worker %d (%d)-> status %d",
-		    kw->id, pid, status);
-		free(kw);
-
-		if (final)
-			continue;
-
-		if (WEXITSTATUS(status) || WTERMSIG(status) ||
-		    WCOREDUMP(status)) {
-			kore_log(LOG_NOTICE,
-			    "worker %d (pid: %d) gone, respawning new one",
-			    k.id, k.pid);
-			kore_worker_spawn(0);
-		}
-	}
-}
-
-void
 kore_platform_worker_setcpu(struct kore_worker *kw)
 {
 }
@@ -114,16 +69,21 @@ kore_platform_event_init(void)
 	nchanges = 0;
 	events = kore_calloc(KQUEUE_EVENTS, sizeof(struct kevent));
 	changelist = kore_calloc(KQUEUE_EVENTS, sizeof(struct kevent));
-	kore_platform_event_schedule(server.fd, EVFILT_READ, EV_ADD, &server);
+
+	kore_platform_event_schedule(server.fd,
+	    EVFILT_READ, EV_ADD | EV_DISABLE, &server);
 }
 
 void
-kore_platform_event_wait(int quit)
+kore_platform_event_wait(void)
 {
 	struct connection	*c;
+	struct timespec		timeo;
 	int			n, i, *fd;
 
-	n = kevent(kfd, changelist, nchanges, events, KQUEUE_EVENTS, NULL);
+	timeo.tv_sec = 0;
+	timeo.tv_nsec = 100000000;
+	n = kevent(kfd, changelist, nchanges, events, KQUEUE_EVENTS, &timeo);
 	if (n == -1) {
 		if (errno == EINTR)
 			return;
@@ -148,16 +108,14 @@ kore_platform_event_wait(int quit)
 		}
 
 		if (*fd == server.fd) {
-			if (!quit) {
-				kore_connection_accept(&server, &c);
-				if (c == NULL)
-					continue;
+			kore_connection_accept(&server, &c);
+			if (c == NULL)
+				continue;
 
-				kore_platform_event_schedule(c->fd,
-				    EVFILT_READ, EV_ADD, c);
-				kore_platform_event_schedule(c->fd,
-				    EVFILT_WRITE, EV_ADD | EV_ONESHOT, c);
-			}
+			kore_platform_event_schedule(c->fd,
+			    EVFILT_READ, EV_ADD, c);
+			kore_platform_event_schedule(c->fd,
+			    EVFILT_WRITE, EV_ADD | EV_ONESHOT, c);
 		} else {
 			c = (struct connection *)events[i].udata;
 			if (events[i].filter == EVFILT_READ)
@@ -188,6 +146,20 @@ kore_platform_event_schedule(int fd, int type, int flags, void *data)
 		EV_SET(&changelist[nchanges], fd, type, flags, 0, 0, data);
 		nchanges++;
 	}
+}
+
+void
+kore_platform_enable_accept(void)
+{
+	kore_platform_event_schedule(server.fd,
+	    EVFILT_READ, EV_ENABLE, &server);
+}
+
+void
+kore_platform_disable_accept(void)
+{
+	kore_platform_event_schedule(server.fd,
+	    EVFILT_READ, EV_DISABLE, NULL);
 }
 
 void

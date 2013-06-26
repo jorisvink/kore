@@ -36,7 +36,6 @@
 #include <string.h>
 #include <sched.h>
 #include <syslog.h>
-#include <unistd.h>
 #include <time.h>
 #include <regex.h>
 #include <zlib.h>
@@ -61,51 +60,6 @@ kore_platform_init(void)
 }
 
 void
-kore_platform_worker_wait(int final)
-{
-	int			r;
-	siginfo_t		info;
-	struct kore_worker	k, *kw, *next;
-
-	memset(&info, 0, sizeof(info));
-	if (final)
-		r = waitid(P_ALL, 0, &info, WEXITED);
-	else
-		r = waitid(P_ALL, 0, &info, WEXITED | WNOHANG);
-	if (r == -1) {
-		kore_debug("waitid(): %s", errno_s);
-		return;
-	}
-
-	if (info.si_pid == 0)
-		return;
-
-	for (kw = TAILQ_FIRST(&kore_workers); kw != NULL; kw = next) {
-		next = TAILQ_NEXT(kw, list);
-		if (kw->pid != info.si_pid)
-			continue;
-
-		k = *kw;
-		TAILQ_REMOVE(&kore_workers, kw, list);
-		kore_log(LOG_NOTICE, "worker %d (%d)-> status %d (%d)",
-		    kw->id, info.si_pid, info.si_status, info.si_code);
-		free(kw);
-
-		if (final)
-			continue;
-
-		if (info.si_code == CLD_EXITED ||
-		    info.si_code == CLD_KILLED ||
-		    info.si_code == CLD_DUMPED) {
-			kore_log(LOG_NOTICE,
-			    "worker %d (pid: %d) gone, respawning new one",
-			    k.id, k.pid);
-			kore_worker_spawn(k.cpu);
-		}
-	}
-}
-
-void
 kore_platform_worker_setcpu(struct kore_worker *kw)
 {
 	cpu_set_t	cpuset;
@@ -123,20 +77,19 @@ kore_platform_worker_setcpu(struct kore_worker *kw)
 void
 kore_platform_event_init(void)
 {
-	if ((efd = epoll_create(1000)) == -1)
+	if ((efd = epoll_create(10000)) == -1)
 		fatal("epoll_create(): %s", errno_s);
 
 	events = kore_calloc(EPOLL_EVENTS, sizeof(struct epoll_event));
-	kore_platform_event_schedule(server.fd, EPOLLIN, 0, &server);
 }
 
 void
-kore_platform_event_wait(int quit)
+kore_platform_event_wait(void)
 {
 	struct connection	*c;
-	int			n, i, *fd;
+	int			n, i, a, *fd;
 
-	n = epoll_wait(efd, events, EPOLL_EVENTS, 100);
+	n = epoll_wait(efd, events, EPOLL_EVENTS, 10);
 	if (n == -1) {
 		if (errno == EINTR)
 			return;
@@ -160,10 +113,10 @@ kore_platform_event_wait(int quit)
 		}
 
 		if (*fd == server.fd) {
-			if (!quit) {
+			for (a = 0; a < 10; a++) {
 				kore_connection_accept(&server, &c);
 				if (c == NULL)
-					continue;
+					break;
 
 				kore_platform_event_schedule(c->fd,
 				    EPOLLIN | EPOLLOUT | EPOLLET, 0, c);
@@ -199,6 +152,19 @@ kore_platform_event_schedule(int fd, int type, int flags, void *udata)
 			fatal("epoll_ctl() ADD: %s", errno_s);
 		}
 	}
+}
+
+void
+kore_platform_enable_accept(void)
+{
+	kore_platform_event_schedule(server.fd, EPOLLIN, 0, &server);
+}
+
+void
+kore_platform_disable_accept(void)
+{
+	if (epoll_ctl(efd, EPOLL_CTL_DEL, server.fd, NULL) == -1)
+		fatal("kore_platform_disable_accept: %s", errno_s);
 }
 
 void

@@ -18,7 +18,7 @@ default:
 	@echo "Please specify a build target [linux | bsd]"
 
 linux:
-	@LDFLAGS=-ldl CFLAGS=-D_GNU_SOURCE=1 S_SRC=src/linux.c make kore
+	@LDFLAGS="-ldl" CFLAGS="-D_GNU_SOURCE=1" S_SRC=src/linux.c make kore
 
 bsd:
 	@S_SRC=src/bsd.c make kore

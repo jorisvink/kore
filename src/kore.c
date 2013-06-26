@@ -28,7 +28,6 @@
 
 #include <pwd.h>
 #include <errno.h>
-#include <grp.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
@@ -36,7 +35,6 @@
 #include <string.h>
 #include <sched.h>
 #include <syslog.h>
-#include <unistd.h>
 #include <time.h>
 #include <regex.h>
 #include <zlib.h>
@@ -77,7 +75,6 @@ int
 main(int argc, char *argv[])
 {
 	int			ch;
-	struct kore_worker	*kw, *next;
 
 	if (getuid() != 0)
 		fatal("kore must be started as root");
@@ -114,41 +111,12 @@ main(int argc, char *argv[])
 
 	kore_server_start();
 
-	for (;;) {
-		if (sig_recv != 0) {
-			if (sig_recv == SIGHUP) {
-				kore_module_reload();
-				TAILQ_FOREACH(kw, &kore_workers, list) {
-					if (kill(kw->pid, SIGHUP) == -1) {
-						kore_debug("kill(%d, HUP): %s",
-						    kw->pid, errno_s);
-					}
-				}
-			} else if (sig_recv == SIGQUIT) {
-				break;
-			}
-			sig_recv = 0;
-		}
-
-		if (!kore_accesslog_wait())
-			break;
-		kore_platform_worker_wait(0);
-	}
-
-	for (kw = TAILQ_FIRST(&kore_workers); kw != NULL; kw = next) {
-		next = TAILQ_NEXT(kw, list);
-		if (kill(kw->pid, SIGINT) == -1)
-			kore_debug("kill(%d, SIGINT): %s", kw->pid, errno_s);
-	}
-
-	kore_log(LOG_NOTICE, "waiting for workers to drain and finish");
-	while (!TAILQ_EMPTY(&kore_workers))
-		kore_platform_worker_wait(1);
-
 	kore_log(LOG_NOTICE, "server shutting down");
+	kore_worker_shutdown();
 	unlink(kore_pidfile);
 	close(server.fd);
 
+	kore_log(LOG_NOTICE, "goodbye");
 	return (0);
 }
 
@@ -201,6 +169,10 @@ kore_server_start(void)
 {
 	if (!kore_server_bind(&server, server_ip, server_port))
 		fatal("cannot bind to %s:%d", server_ip, server_port);
+
+	free(server_ip);
+	free(runas_user);
+
 	if (daemon(1, 1) == -1)
 		fatal("cannot daemon(): %s", errno_s);
 
@@ -212,8 +184,22 @@ kore_server_start(void)
 
 	kore_worker_init();
 
-	free(server_ip);
-	free(runas_user);
+	for (;;) {
+		if (sig_recv != 0) {
+			if (sig_recv == SIGHUP || sig_recv == SIGQUIT) {
+				kore_worker_dispatch_signal(sig_recv);
+				if (sig_recv == SIGHUP)
+					kore_module_reload();
+				if (sig_recv == SIGQUIT)
+					break;
+			}
+			sig_recv = 0;
+		}
+
+		if (!kore_accesslog_wait())
+			break;
+		kore_worker_wait(0);
+	}
 }
 
 static int
@@ -227,6 +213,9 @@ kore_server_bind(struct listener *l, const char *ip, int port)
 		kore_debug("socket(): %s", errno_s);
 		return (KORE_RESULT_ERROR);
 	}
+
+	if (!kore_connection_nonblock(l->fd))
+		return (KORE_RESULT_ERROR);
 
 	on = 1;
 	if (setsockopt(l->fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&on,
@@ -247,7 +236,7 @@ kore_server_bind(struct listener *l, const char *ip, int port)
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (listen(l->fd, 50) == -1) {
+	if (listen(l->fd, 5000) == -1) {
 		close(l->fd);
 		kore_debug("listen(): %s", errno_s);
 		return (KORE_RESULT_ERROR);

@@ -36,7 +36,6 @@
 #include <string.h>
 #include <sched.h>
 #include <syslog.h>
-#include <unistd.h>
 #include <time.h>
 #include <regex.h>
 #include <zlib.h>
@@ -45,8 +44,6 @@
 #include "spdy.h"
 #include "kore.h"
 #include "http.h"
-
-static int	kore_connection_nonblock(int);
 
 int
 kore_connection_accept(struct listener *l, struct connection **out)
@@ -187,8 +184,8 @@ kore_connection_remove(struct connection *c)
 
 	if (c->ssl != NULL)
 		SSL_free(c->ssl);
-
 	close(c->fd);
+
 	if (c->inflate_started)
 		inflateEnd(&(c->z_inflate));
 	if (c->deflate_started)
@@ -221,10 +218,11 @@ kore_connection_remove(struct connection *c)
 		free(s);
 	}
 
+	kore_worker_connection_remove(c);
 	free(c);
 }
 
-static int
+int
 kore_connection_nonblock(int fd)
 {
 	int		flags;
