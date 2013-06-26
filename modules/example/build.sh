@@ -44,7 +44,7 @@ ${CC} ${CFLAGS} tools/inject.c -o tools/inject
 create_and_empty_dir ${SOURCE_DIR}/${MEDIA_DIR}
 create_and_empty_dir .objs
 
-for file in `find ${MEDIA_DIR} -type f`; do
+for file in `find ${MEDIA_DIR} -type f \( ! -name \*.swp \)`; do
 	echo "Injecting $file";
 	base=`basename $file`;
 	./tools/inject $file $base > ${SOURCE_DIR}/${MEDIA_DIR}/${base}.c;
@@ -54,7 +54,7 @@ for file in `find ${MEDIA_DIR} -type f`; do
 	fi
 done
 
-for src in `find ${SOURCE_DIR} -type f`; do
+for src in `find ${SOURCE_DIR} -type f -name \*.c`; do
 	base=`basename $src`;
 	${CC} ${CFLAGS} -fPIC -c $src -o .objs/${base}.o
 	if [ $? -ne 0 ]; then
