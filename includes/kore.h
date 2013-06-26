@@ -113,6 +113,7 @@ struct kore_module_handle {
 struct kore_worker {
 	u_int16_t			id;
 	u_int16_t			cpu;
+	u_int16_t			load;
 	pid_t				pid;
 	TAILQ_ENTRY(kore_worker)	list;
 };
@@ -157,6 +158,7 @@ extern char	kore_version_string[];
 extern u_int16_t		cpu_count;
 extern u_int8_t			worker_count;
 extern u_int32_t		worker_max_connections;
+extern u_int32_t		worker_active_connections;
 
 extern struct listener		server;
 extern struct kore_worker	*worker;
@@ -174,7 +176,7 @@ void		kore_worker_connection_move(struct connection *);
 void		kore_worker_connection_remove(struct connection *);
 
 void		kore_platform_event_init(void);
-void		kore_platform_event_wait(void);
+int		kore_platform_event_wait(void);
 void		kore_platform_proctitle(char *);
 void		kore_platform_enable_accept(void);
 void		kore_platform_disable_accept(void);
@@ -184,7 +186,7 @@ void		kore_platform_worker_setcpu(struct kore_worker *);
 void		kore_platform_init(void);
 void		kore_accesslog_init(void);
 int		kore_accesslog_wait(void);
-void		kore_worker_spawn(u_int16_t);
+void		kore_worker_spawn(u_int16_t, u_int16_t);
 void		kore_accesslog_worker_init(void);
 void		kore_worker_entry(struct kore_worker *);
 int		kore_ssl_sni_cb(SSL *, int *, void *);

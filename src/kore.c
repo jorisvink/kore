@@ -80,7 +80,6 @@ main(int argc, char *argv[])
 	if (getuid() != 0)
 		fatal("kore must be started as root");
 
-	kore_debug = 0;
 	while ((ch = getopt(argc, argv, "c:d")) != -1) {
 		switch (ch) {
 		case 'c':

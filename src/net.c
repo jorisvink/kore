@@ -112,53 +112,53 @@ net_send(struct connection *c)
 	int			r;
 	struct netbuf		*nb;
 
-	if (TAILQ_EMPTY(&(c->send_queue)))
-		return (KORE_RESULT_OK);
-
-	nb = TAILQ_FIRST(&(c->send_queue));
-	if (nb->len == 0) {
-		kore_debug("net_send(): len is 0");
-		return (KORE_RESULT_ERROR);
-	}
-
-	r = SSL_write(c->ssl, (nb->buf + nb->offset), (nb->len - nb->offset));
-
-	kore_debug("net_send(%ld/%ld bytes), progress with %d",
-	    nb->offset, nb->len, r);
-
-	if (r <= 0) {
-		r = SSL_get_error(c->ssl, r);
-		switch (r) {
-		case SSL_ERROR_WANT_READ:
-		case SSL_ERROR_WANT_WRITE:
-			c->flags &= ~CONN_WRITE_POSSIBLE;
-			return (KORE_RESULT_OK);
-		default:
-			kore_debug("SSL_write(): %s", ssl_errno_s);
+	while (!TAILQ_EMPTY(&(c->send_queue))) {
+		nb = TAILQ_FIRST(&(c->send_queue));
+		if (nb->len == 0) {
+			kore_debug("net_send(): len is 0");
 			return (KORE_RESULT_ERROR);
 		}
-	}
 
-	nb->offset += (size_t)r;
-	if (nb->offset == nb->len) {
-		if (nb->offset == nb->len)
+		r = SSL_write(c->ssl,
+		    (nb->buf + nb->offset), (nb->len - nb->offset));
+
+		kore_debug("net_send(%ld/%ld bytes), progress with %d",
+		    nb->offset, nb->len, r);
+
+		if (r <= 0) {
+			r = SSL_get_error(c->ssl, r);
+			switch (r) {
+			case SSL_ERROR_WANT_READ:
+			case SSL_ERROR_WANT_WRITE:
+				c->flags &= ~CONN_WRITE_POSSIBLE;
+				return (KORE_RESULT_OK);
+			default:
+				kore_debug("SSL_write(): %s", ssl_errno_s);
+				return (KORE_RESULT_ERROR);
+			}
+		}
+
+		nb->offset += (size_t)r;
+		if (nb->offset == nb->len) {
 			TAILQ_REMOVE(&(c->send_queue), nb, list);
 
-		if (nb->cb != NULL)
-			r = nb->cb(nb);
-		else
-			r = KORE_RESULT_OK;
+			if (nb->cb != NULL)
+				r = nb->cb(nb);
+			else
+				r = KORE_RESULT_OK;
 
-		if (nb->offset == nb->len) {
-			if (nb->buf != NULL)
-				free(nb->buf);
-			free(nb);
+			if (nb->offset == nb->len) {
+				if (nb->buf != NULL)
+					free(nb->buf);
+				free(nb);
+			}
+
+			if (r != KORE_RESULT_OK)
+				return (r);
 		}
-	} else {
-		r = KORE_RESULT_OK;
 	}
 
-	return (r);
+	return (KORE_RESULT_OK);
 }
 
 int
@@ -181,50 +181,56 @@ net_recv(struct connection *c)
 	int			r;
 	struct netbuf		*nb;
 
-	if (TAILQ_EMPTY(&(c->recv_queue)))
-		return (KORE_RESULT_ERROR);
-
-	nb = TAILQ_FIRST(&(c->recv_queue));
-	r = SSL_read(c->ssl, (nb->buf + nb->offset), (nb->len - nb->offset));
-
-	kore_debug("net_recv(%ld/%ld bytes), progress with %d",
-	    nb->offset, nb->len, r);
-
-	if (r <= 0) {
-		r = SSL_get_error(c->ssl, r);
-		switch (r) {
-		case SSL_ERROR_WANT_READ:
-		case SSL_ERROR_WANT_WRITE:
-			c->flags &= ~CONN_READ_POSSIBLE;
-			return (KORE_RESULT_OK);
-		default:
-			kore_debug("SSL_read(): %s", ssl_errno_s);
-			return (KORE_RESULT_ERROR);
-		}
-	}
-
-	nb->offset += (size_t)r;
-	if (nb->offset == nb->len || (nb->flags & NETBUF_CALL_CB_ALWAYS)) {
+	while (!TAILQ_EMPTY(&(c->recv_queue))) {
+		nb = TAILQ_FIRST(&(c->recv_queue));
 		if (nb->cb == NULL) {
 			kore_debug("kore_read_client(): nb->cb == NULL");
 			return (KORE_RESULT_ERROR);
 		}
 
-		r = nb->cb(nb);
-		if (nb->offset == nb->len ||
-		    (nb->flags & NETBUF_FORCE_REMOVE)) {
-			TAILQ_REMOVE(&(c->recv_queue), nb, list);
+		r = SSL_read(c->ssl,
+		    (nb->buf + nb->offset), (nb->len - nb->offset));
 
-			if (!(nb->flags & NETBUF_RETAIN)) {
-				free(nb->buf);
-				free(nb);
+		kore_debug("net_recv(%ld/%ld bytes), progress with %d",
+		    nb->offset, nb->len, r);
+
+		if (r <= 0) {
+			r = SSL_get_error(c->ssl, r);
+			switch (r) {
+			case SSL_ERROR_WANT_READ:
+				c->flags &= ~CONN_READ_POSSIBLE;
+				if (nb->flags & NETBUF_CALL_CB_ALWAYS)
+					goto handle;
+				return (KORE_RESULT_OK);
+			case SSL_ERROR_WANT_WRITE:
+				c->flags &= ~CONN_READ_POSSIBLE;
+				return (KORE_RESULT_OK);
+			default:
+				kore_debug("SSL_read(): %s", ssl_errno_s);
+				return (KORE_RESULT_ERROR);
 			}
 		}
-	} else {
-		r = KORE_RESULT_OK;
+
+		nb->offset += (size_t)r;
+		if (nb->offset == nb->len) {
+handle:
+			r = nb->cb(nb);
+			if (nb->offset == nb->len ||
+			    (nb->flags & NETBUF_FORCE_REMOVE)) {
+				TAILQ_REMOVE(&(c->recv_queue), nb, list);
+
+				if (!(nb->flags & NETBUF_RETAIN)) {
+					free(nb->buf);
+					free(nb);
+				}
+			}
+
+			if (r != KORE_RESULT_OK)
+				return (r);
+		}
 	}
 
-	return (r);
+	return (KORE_RESULT_OK);
 }
 
 int

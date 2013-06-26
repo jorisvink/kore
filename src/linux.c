@@ -83,22 +83,23 @@ kore_platform_event_init(void)
 	events = kore_calloc(EPOLL_EVENTS, sizeof(struct epoll_event));
 }
 
-void
+int
 kore_platform_event_wait(void)
 {
 	struct connection	*c;
-	int			n, i, a, *fd;
+	int			n, i, *fd, count;
 
-	n = epoll_wait(efd, events, EPOLL_EVENTS, 10);
+	n = epoll_wait(efd, events, EPOLL_EVENTS, 100);
 	if (n == -1) {
 		if (errno == EINTR)
-			return;
+			return (0);
 		fatal("epoll_wait(): %s", errno_s);
 	}
 
 	if (n > 0)
 		kore_debug("main(): %d sockets available", n);
 
+	count = 0;
 	for (i = 0; i < n; i++) {
 		fd = (int *)events[i].data.ptr;
 
@@ -113,11 +114,13 @@ kore_platform_event_wait(void)
 		}
 
 		if (*fd == server.fd) {
-			for (a = 0; a < 10; a++) {
+			while (worker_active_connections <
+			    worker_max_connections) {
 				kore_connection_accept(&server, &c);
 				if (c == NULL)
 					break;
 
+				count++;
 				kore_platform_event_schedule(c->fd,
 				    EPOLLIN | EPOLLOUT | EPOLLET, 0, c);
 			}
@@ -132,6 +135,8 @@ kore_platform_event_wait(void)
 				kore_connection_disconnect(c);
 		}
 	}
+
+	return (count);
 }
 
 void

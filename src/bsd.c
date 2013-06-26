@@ -74,19 +74,19 @@ kore_platform_event_init(void)
 	    EVFILT_READ, EV_ADD | EV_DISABLE, &server);
 }
 
-void
+int
 kore_platform_event_wait(void)
 {
 	struct connection	*c;
 	struct timespec		timeo;
-	int			n, i, *fd;
+	int			n, i, *fd, count;
 
 	timeo.tv_sec = 0;
 	timeo.tv_nsec = 100000000;
 	n = kevent(kfd, changelist, nchanges, events, KQUEUE_EVENTS, &timeo);
 	if (n == -1) {
 		if (errno == EINTR)
-			return;
+			return (0);
 		fatal("kevent(): %s", errno_s);
 	}
 
@@ -94,6 +94,7 @@ kore_platform_event_wait(void)
 	if (n > 0)
 		kore_debug("main(): %d sockets available", n);
 
+	count = 0;
 	for (i = 0; i < n; i++) {
 		fd = (int *)events[i].udata;
 
@@ -108,14 +109,18 @@ kore_platform_event_wait(void)
 		}
 
 		if (*fd == server.fd) {
-			kore_connection_accept(&server, &c);
-			if (c == NULL)
-				continue;
+			while (worker_active_connections <
+			    worker_max_connections) {
+				kore_connection_accept(&server, &c);
+				if (c == NULL)
+					continue;
 
-			kore_platform_event_schedule(c->fd,
-			    EVFILT_READ, EV_ADD, c);
-			kore_platform_event_schedule(c->fd,
-			    EVFILT_WRITE, EV_ADD | EV_ONESHOT, c);
+				count++;
+				kore_platform_event_schedule(c->fd,
+				    EVFILT_READ, EV_ADD, c);
+				kore_platform_event_schedule(c->fd,
+				    EVFILT_WRITE, EV_ADD | EV_ONESHOT, c);
+			}
 		} else {
 			c = (struct connection *)events[i].udata;
 			if (events[i].filter == EVFILT_READ)
@@ -134,6 +139,8 @@ kore_platform_event_wait(void)
 			}
 		}
 	}
+
+	return (count);
 }
 
 void
