@@ -56,6 +56,7 @@ u_int8_t		worker_count = 0;
 char			*server_ip = NULL;
 char			*runas_user = NULL;
 char			*chroot_path = NULL;
+char			kore_version_string[32];
 char			*kore_pidfile = KORE_PIDFILE_DEFAULT;
 
 static void	usage(void);
@@ -182,6 +183,9 @@ kore_server_start(void)
 	kore_log(LOG_NOTICE, "kore is starting up");
 	kore_platform_proctitle("kore [parent]");
 
+	snprintf(kore_version_string, sizeof(kore_version_string),
+	    "%s-%d.%d.%d", KORE_NAME_STRING, KORE_VERSION_MAJOR,
+	    KORE_VERSION_MINOR, KORE_VERSION_PATCH);
 	kore_worker_init();
 
 	for (;;) {

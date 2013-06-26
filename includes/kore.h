@@ -21,6 +21,11 @@
 #define KORE_RESULT_OK		1
 #define KORE_RESULT_RETRY	2
 
+#define KORE_VERSION_MAJOR	0
+#define KORE_VERSION_MINOR	1
+#define KORE_VERSION_PATCH	0
+#define KORE_NAME_STRING	"kore"
+
 #define errno_s			strerror(errno)
 #define ssl_errno_s		ERR_error_string(ERR_get_error(), NULL)
 
@@ -147,6 +152,7 @@ extern char	*runas_user;
 extern char	*kore_module_onload;
 extern char	*kore_pidfile;
 extern char	*config_file;
+extern char	kore_version_string[];
 
 extern u_int16_t		cpu_count;
 extern u_int8_t			worker_count;
