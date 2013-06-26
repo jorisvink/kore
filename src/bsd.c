@@ -153,8 +153,8 @@ kore_platform_event_wait(int quit)
 				if (c == NULL)
 					continue;
 
-				kore_plaform_event_schedule(c->fd, EVFILT_READ,
-				    EV_ADD, c);
+				kore_platform_event_schedule(c->fd,
+				    EVFILT_READ, EV_ADD, c);
 				kore_platform_event_schedule(c->fd,
 				    EVFILT_WRITE, EV_ADD | EV_ONESHOT, c);
 			}
