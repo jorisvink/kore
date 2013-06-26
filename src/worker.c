@@ -340,7 +340,7 @@ kore_worker_acceptlock_obtain(void)
 	} else {
 		worker_has_acceptlock = 1;
 		kore_platform_enable_accept();
-		kore_log(LOG_NOTICE, "obtained accept lock (%d/%d)",
+		kore_debug("obtained accept lock (%d/%d)",
 		    worker_active_connections, worker_max_connections);
 	}
 }
@@ -363,7 +363,7 @@ kore_worker_acceptlock_release(void)
 	} else {
 		worker_has_acceptlock = 0;
 		kore_platform_disable_accept();
-		kore_log(LOG_NOTICE, "released %d/%d",
+		kore_debug("released %d/%d",
 		    worker_active_connections, worker_max_connections);
 	}
 }
