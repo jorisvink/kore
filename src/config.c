@@ -28,6 +28,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <pwd.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -72,17 +73,21 @@ static struct {
 	{ NULL,			NULL },
 };
 
+char				*config_file = NULL;
 static struct kore_domain	*current_domain = NULL;
 
 void
-kore_parse_config(const char *config_path)
+kore_parse_config(void)
 {
 	FILE		*fp;
 	int		i, lineno;
 	char		buf[BUFSIZ], *p, *t, *argv[5];
 
-	if ((fp = fopen(config_path, "r")) == NULL)
-		fatal("configuration given cannot be opened: %s", config_path);
+	if (config_file == NULL)
+		fatal("specify a configuration file with -c");
+
+	if ((fp = fopen(config_file, "r")) == NULL)
+		fatal("configuration given cannot be opened: %s", config_file);
 
 	lineno = 1;
 	while (fgets(buf, sizeof(buf), fp) != NULL) {
@@ -117,6 +122,18 @@ kore_parse_config(const char *config_path)
 
 		lineno++;
 	}
+
+	if (!kore_module_loaded())
+		fatal("no site module was loaded");
+
+	if (server_ip == NULL || server_port == 0)
+		fatal("missing a correct bind directive in configuration");
+	if (chroot_path == NULL)
+		fatal("missing a chroot path");
+	if (runas_user == NULL)
+		fatal("missing a username to run as");
+	if ((pw = getpwnam(runas_user)) == NULL)
+		fatal("user '%s' does not exist", runas_user);
 }
 
 static int

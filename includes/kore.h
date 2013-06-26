@@ -140,7 +140,7 @@ struct buf_vec {
 	u_int32_t		length;
 };
 
-extern pid_t	mypid;
+extern pid_t	kore_pid;
 extern int	kore_debug;
 extern int	server_port;
 extern char	*server_ip;
@@ -148,6 +148,7 @@ extern char	*chroot_path;
 extern char	*runas_user;
 extern char	*kore_module_onload;
 extern char	*kore_pidfile;
+extern char	*config_file;
 
 extern u_int16_t		cpu_count;
 extern u_int8_t			worker_count;
@@ -157,34 +158,43 @@ extern struct kore_worker	*worker;
 extern struct kore_worker_h	kore_workers;
 extern struct kore_domain_h	domains;
 extern struct kore_domain	*primary_dom;
+extern struct passwd		*pw;
 
+void		kore_signal(int);
 void		kore_worker_init(void);
-void		kore_worker_wait(int);
-void		kore_event_init(void);
-void		kore_event_wait(int);
+void		kore_worker_connection_add(struct connection *);
+void		kore_worker_connection_move(struct connection *c);
+
+void		kore_platform_event_init(void);
+void		kore_platform_event_wait(int);
+void		kore_platform_worker_wait(int);
+void		kore_platform_proctitle(char *);
+void		kore_platform_event_schedule(int, int, int, void *);
+void		kore_platform_worker_setcpu(struct kore_worker *);
+
 void		kore_platform_init(void);
 void		kore_accesslog_init(void);
 int		kore_accesslog_wait(void);
-void		kore_set_proctitle(char *);
 void		kore_worker_spawn(u_int16_t);
 void		kore_accesslog_worker_init(void);
 void		kore_worker_entry(struct kore_worker *);
-void		kore_worker_setcpu(struct kore_worker *);
-void		kore_event_schedule(int, int, int, void *);
-int		kore_connection_handle(struct connection *);
-int		kore_server_accept(struct listener *, struct connection **);
 int		kore_ssl_sni_cb(SSL *, int *, void *);
 int		kore_ssl_npn_cb(SSL *, const u_char **, unsigned int *, void *);
+
+int		kore_connection_handle(struct connection *);
+void		kore_connection_remove(struct connection *);
+void		kore_connection_disconnect(struct connection *);
+int		kore_connection_accept(struct listener *, struct connection **);
 
 u_int64_t	kore_time_ms(void);
 void		kore_log_init(void);
 void		*kore_malloc(size_t);
+void		kore_parse_config(void);
 void		*kore_calloc(size_t, size_t);
 void		*kore_realloc(void *, size_t);
 time_t		kore_date_to_time(char *);
 char		*kore_time_to_date(time_t);
 char		*kore_strdup(const char *);
-void		kore_parse_config(const char *);
 void		kore_log(int, const char *, ...);
 void		kore_strlcpy(char *, const char *, size_t);
 void		kore_server_disconnect(struct connection *);

@@ -61,29 +61,7 @@ kore_platform_init(void)
 }
 
 void
-kore_worker_init(void)
-{
-	u_int16_t		i, cpu;
-
-	if (worker_count == 0)
-		fatal("no workers specified");
-
-	kore_debug("kore_worker_init(): system has %d cpu's", cpu_count);
-	kore_debug("kore_worker_init(): starting %d workers", worker_count);
-	if (worker_count > cpu_count)
-		kore_debug("kore_worker_init(): more workers then cpu's");
-
-	cpu = 0;
-	TAILQ_INIT(&kore_workers);
-	for (i = 0; i < worker_count; i++) {
-		kore_worker_spawn(cpu++);
-		if (cpu == cpu_count)
-			cpu = 0;
-	}
-}
-
-void
-kore_worker_wait(int final)
+kore_platform_worker_wait(int final)
 {
 	int			r;
 	siginfo_t		info;
@@ -128,7 +106,7 @@ kore_worker_wait(int final)
 }
 
 void
-kore_worker_setcpu(struct kore_worker *kw)
+kore_platform_worker_setcpu(struct kore_worker *kw)
 {
 	cpu_set_t	cpuset;
 
@@ -143,17 +121,17 @@ kore_worker_setcpu(struct kore_worker *kw)
 }
 
 void
-kore_event_init(void)
+kore_platform_event_init(void)
 {
 	if ((efd = epoll_create(1000)) == -1)
 		fatal("epoll_create(): %s", errno_s);
 
 	events = kore_calloc(EPOLL_EVENTS, sizeof(struct epoll_event));
-	kore_event_schedule(server.fd, EPOLLIN, 0, &server);
+	kore_platform_event_schedule(server.fd, EPOLLIN, 0, &server);
 }
 
 void
-kore_event_wait(int quit)
+kore_platform_event_wait(int quit)
 {
 	struct connection	*c;
 	int			n, i, *fd;
@@ -177,17 +155,17 @@ kore_event_wait(int quit)
 				fatal("error on server socket");
 
 			c = (struct connection *)events[i].data.ptr;
-			kore_server_disconnect(c);
+			kore_connection_disconnect(c);
 			continue;
 		}
 
 		if (*fd == server.fd) {
 			if (!quit) {
-				kore_server_accept(&server, &c);
+				kore_connection_accept(&server, &c);
 				if (c == NULL)
 					continue;
 
-				kore_event_schedule(c->fd,
+				kore_platform_event_schedule(c->fd,
 				    EPOLLIN | EPOLLOUT | EPOLLET, 0, c);
 			}
 		} else {
@@ -198,17 +176,18 @@ kore_event_wait(int quit)
 				c->flags |= CONN_WRITE_POSSIBLE;
 
 			if (!kore_connection_handle(c))
-				kore_server_disconnect(c);
+				kore_connection_disconnect(c);
 		}
 	}
 }
 
 void
-kore_event_schedule(int fd, int type, int flags, void *udata)
+kore_platform_event_schedule(int fd, int type, int flags, void *udata)
 {
 	struct epoll_event	evt;
 
-	kore_debug("kore_event(%d, %d, %d, %p)", fd, type, flags, udata);
+	kore_debug("kore_platform_event(%d, %d, %d, %p)",
+	    fd, type, flags, udata);
 
 	evt.events = type;
 	evt.data.ptr = udata;
@@ -223,7 +202,7 @@ kore_event_schedule(int fd, int type, int flags, void *udata)
 }
 
 void
-kore_set_proctitle(char *title)
+kore_platform_proctitle(char *title)
 {
 	if (prctl(PR_SET_NAME, title) == -1)
 		kore_debug("prctl(): %s", errno_s);

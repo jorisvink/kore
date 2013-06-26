@@ -114,7 +114,7 @@ kore_debug_internal(char *file, int line, const char *fmt, ...)
 	vsnprintf(buf, sizeof(buf), fmt, args);
 	va_end(args);
 
-	printf("[%d] %s:%d - %s\n", mypid, file, line, buf);
+	printf("[%d] %s:%d - %s\n", kore_pid, file, line, buf);
 }
 
 void

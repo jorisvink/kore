@@ -57,22 +57,7 @@ kore_platform_init(void)
 }
 
 void
-kore_worker_init(void)
-{
-	u_int16_t		i;
-
-	if (worker_count == 0)
-		fatal("no workers specified");
-
-	kore_debug("kore_worker_init(): starting %d workers", worker_count);
-
-	TAILQ_INIT(&kore_workers);
-	for (i = 0; i < worker_count; i++)
-		kore_worker_spawn(0);
-}
-
-void
-kore_worker_wait(int final)
+kore_platform_worker_wait(int final)
 {
 	pid_t			pid;
 	int			status;
@@ -116,12 +101,12 @@ kore_worker_wait(int final)
 }
 
 void
-kore_worker_setcpu(struct kore_worker *kw)
+kore_platform_worker_setcpu(struct kore_worker *kw)
 {
 }
 
 void
-kore_event_init(void)
+kore_platform_event_init(void)
 {
 	if ((kfd = kqueue()) == -1)
 		fatal("kqueue(): %s", errno_s);
@@ -129,11 +114,11 @@ kore_event_init(void)
 	nchanges = 0;
 	events = kore_calloc(KQUEUE_EVENTS, sizeof(struct kevent));
 	changelist = kore_calloc(KQUEUE_EVENTS, sizeof(struct kevent));
-	kore_event_schedule(server.fd, EVFILT_READ, EV_ADD, &server);
+	kore_platform_event_schedule(server.fd, EVFILT_READ, EV_ADD, &server);
 }
 
 void
-kore_event_wait(int quit)
+kore_platform_event_wait(int quit)
 {
 	struct connection	*c;
 	int			n, i, *fd;
@@ -158,20 +143,20 @@ kore_event_wait(int quit)
 				fatal("error on server socket");
 
 			c = (struct connection *)events[i].udata;
-			kore_server_disconnect(c);
+			kore_connection_disconnect(c);
 			continue;
 		}
 
 		if (*fd == server.fd) {
 			if (!quit) {
-				kore_server_accept(&server, &c);
+				kore_connection_accept(&server, &c);
 				if (c == NULL)
 					continue;
 
-				kore_event_schedule(c->fd, EVFILT_READ,
+				kore_plaform_event_schedule(c->fd, EVFILT_READ,
 				    EV_ADD, c);
-				kore_event_schedule(c->fd, EVFILT_WRITE,
-				    EV_ADD | EV_ONESHOT, c);
+				kore_platform_event_schedule(c->fd,
+				    EVFILT_WRITE, EV_ADD | EV_ONESHOT, c);
 			}
 		} else {
 			c = (struct connection *)events[i].udata;
@@ -181,11 +166,12 @@ kore_event_wait(int quit)
 				c->flags |= CONN_WRITE_POSSIBLE;
 
 			if (!kore_connection_handle(c)) {
-				kore_server_disconnect(c);
+				kore_connection_disconnect(c);
 			} else {
 				if (!TAILQ_EMPTY(&(c->send_queue))) {
-					kore_event_schedule(c->fd, EVFILT_WRITE,
-					    EV_ADD | EV_ONESHOT, c);
+					kore_platform_event_schedule(c->fd,
+					    EVFILT_WRITE, EV_ADD | EV_ONESHOT,
+					    c);
 				}
 			}
 		}
@@ -193,7 +179,7 @@ kore_event_wait(int quit)
 }
 
 void
-kore_event_schedule(int fd, int type, int flags, void *data)
+kore_platform_event_schedule(int fd, int type, int flags, void *data)
 {
 	if (nchanges >= KQUEUE_EVENTS) {
 		kore_log(LOG_WARNING, "cannot schedule %d (%d) on %d",
@@ -205,7 +191,7 @@ kore_event_schedule(int fd, int type, int flags, void *data)
 }
 
 void
-kore_set_proctitle(char *title)
+kore_platform_proctitle(char *title)
 {
 	setproctitle("%s", title);
 }

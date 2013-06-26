@@ -138,10 +138,10 @@ http_process(void)
 		case KORE_RESULT_OK:
 			r = net_send_flush(req->owner);
 			if (r == KORE_RESULT_ERROR)
-				kore_server_disconnect(req->owner);
+				kore_connection_disconnect(req->owner);
 			break;
 		case KORE_RESULT_ERROR:
-			kore_server_disconnect(req->owner);
+			kore_connection_disconnect(req->owner);
 			break;
 		case KORE_RESULT_RETRY:
 			break;
