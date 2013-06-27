@@ -47,6 +47,8 @@
 #include "kore.h"
 #include "http.h"
 
+//#define WORKER_DEBUG		1
+
 #if defined(WORKER_DEBUG)
 #define worker_debug(fmt, ...)		printf(fmt, ##__VA_ARGS__)
 #else
@@ -55,7 +57,7 @@
 
 #define KORE_SHM_KEY		15000
 #define WORKER(id)		\
-	(struct kore_worker *)kore_workers + (sizeof(struct kore_worker) * id)
+	(struct kore_worker *)(kore_workers + (sizeof(struct kore_worker) * id))
 
 struct wlock {
 	pid_t		lock;
@@ -75,9 +77,7 @@ static TAILQ_HEAD(, connection)		disconnected;
 static TAILQ_HEAD(, connection)		worker_clients;
 static struct kore_worker		*kore_workers;
 static int				shm_accept_key;
-
-static struct wlock		*accept_lock;
-static u_int8_t			worker_has_acceptlock = 0;
+static struct wlock			*accept_lock;
 
 extern volatile sig_atomic_t	sig_recv;
 struct kore_worker		*worker = NULL;
@@ -130,7 +130,9 @@ kore_worker_spawn(u_int16_t id, u_int16_t cpu)
 	kw->id = id;
 	kw->cpu = cpu;
 	kw->load = 0;
+	kw->accepted = 0;
 	kw->pid = fork();
+
 	if (kw->pid == -1)
 		fatal("could not spawn worker child: %s", errno_s);
 
@@ -217,7 +219,9 @@ kore_worker_entry(struct kore_worker *kw)
 	kore_platform_event_init();
 	kore_accesslog_worker_init();
 
+	worker->accept_treshold = worker_max_connections / 10;
 	kore_log(LOG_NOTICE, "worker %d started (cpu#%d)", kw->id, kw->cpu);
+
 	for (;;) {
 		if (sig_recv != 0) {
 			if (sig_recv == SIGHUP)
@@ -227,11 +231,19 @@ kore_worker_entry(struct kore_worker *kw)
 			sig_recv = 0;
 		}
 
-		if (!worker_has_acceptlock &&
-		    worker_active_connections < worker_max_connections)
+		if (!worker->has_lock)
 			kore_worker_acceptlock_obtain();
-		if (kore_platform_event_wait() && worker_has_acceptlock)
+
+		kore_platform_event_wait();
+
+		if (worker->accepted >= worker->accept_treshold &&
+		    worker->has_lock) {
+			worker->accepted = 0;
 			kore_worker_acceptlock_release();
+		}
+
+		printf("%d: %d conn / %d mem\n", worker->id,
+		    worker_active_connections, meminuse);
 
 		http_process();
 
@@ -325,6 +337,10 @@ kore_worker_wait(int final)
 			    "worker %d (pid: %d) gone, respawning new one",
 			    kw->id, kw->pid);
 			kore_worker_spawn(kw->id, kw->cpu);
+		} else {
+			kore_log(LOG_NOTICE,
+			    "worker %d (pid: %d) signaled us",
+			    kw->id, kw->pid);
 		}
 
 		break;
@@ -334,17 +350,15 @@ kore_worker_wait(int final)
 static void
 kore_worker_acceptlock_obtain(void)
 {
-	if (worker_count == 1 && !worker_has_acceptlock) {
-		worker_has_acceptlock = 1;
+	if (worker_count == 1 && !worker->has_lock) {
+		worker->has_lock = 1;
 		kore_platform_enable_accept();
 		return;
 	}
 
 	if (worker_trylock()) {
-		worker_has_acceptlock = 1;
+		worker->has_lock = 1;
 		kore_platform_enable_accept();
-		worker_debug("%d: obtained accept lock (%d/%d)\n", worker->id,
-		    worker_active_connections, worker_max_connections);
 	}
 }
 
@@ -354,17 +368,15 @@ kore_worker_acceptlock_release(void)
 	if (worker_count == 1)
 		return;
 
-	if (worker_has_acceptlock != 1) {
+	if (worker->has_lock != 1) {
 		kore_log(LOG_NOTICE,
 		    "kore_worker_acceptlock_release() != 1");
 		return;
 	}
 
 	if (worker_unlock()) {
-		worker_has_acceptlock = 0;
+		worker->has_lock = 0;
 		kore_platform_disable_accept();
-		worker_debug("%d: released %d/%d\n", worker->id,
-		    worker_active_connections, worker_max_connections);
 	}
 }
 
@@ -375,6 +387,8 @@ worker_trylock(void)
 	    worker->id, worker->pid) != worker->id)
 		return (0);
 
+	worker_debug("wrk#%d grabbed lock (%d/%d)\n", worker->id,
+	    worker_active_connections, worker_max_connections);
 	worker_decide_next();
 
 	return (1);
@@ -383,12 +397,8 @@ worker_trylock(void)
 static int
 worker_unlock(void)
 {
-	if (accept_lock->next == worker->id) {
-		worker_debug("%d: retaining lock\n", worker->id);
-		worker_decide_next();
-		return (0);
-	}
-
+	worker_debug("%d: wrk#%d releasing (%d/%d)\n", worker->id, worker->id,
+	    worker_active_connections, worker_max_connections);
 	if (__sync_val_compare_and_swap(&(accept_lock->lock),
 	    accept_lock->current, accept_lock->next) != accept_lock->current)
 		kore_log(LOG_NOTICE, "kore_internal_unlock(): wasnt locked");
@@ -399,25 +409,14 @@ worker_unlock(void)
 static void
 worker_decide_next(void)
 {
-	u_int16_t		id, load;
-	struct kore_worker	*kw, *low;
+	struct kore_worker	*kw;
 
-	low = NULL;
-	load = worker_max_connections;
-	for (id = 0; id < worker_count; id++) {
-		kw = WORKER(id);
-		if (kw->load < load) {
-			load = kw->load;
-			low = kw;
-		}
-	}
+	kw = WORKER(accept_lock->workerid++);
+	worker_debug("%d: next wrk#%d (%d, %p)\n",
+	    worker->id, kw->id, kw->pid, kw);
+	if (accept_lock->workerid == worker_count)
+		accept_lock->workerid = 0;
 
-	if (low == NULL) {
-		low = WORKER(accept_lock->workerid++);
-		if (accept_lock->workerid == worker_count)
-			accept_lock->workerid = 0;
-	}
-
-	accept_lock->next = low->id;
+	accept_lock->next = kw->id;
 	accept_lock->current = worker->pid;
 }

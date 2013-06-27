@@ -75,8 +75,9 @@ http_request_new(struct connection *c, struct spdy_stream *s, char *host,
 	req->status = 0;
 	req->stream = s;
 	req->post_data = NULL;
-	req->host = kore_strdup(host);
-	req->path = kore_strdup(path);
+	kore_strlcpy(req->host, host, sizeof(req->host));
+	kore_strlcpy(req->path, path, sizeof(req->path));
+
 	TAILQ_INIT(&(req->resp_headers));
 	TAILQ_INIT(&(req->req_headers));
 	TAILQ_INIT(&(req->arguments));
@@ -180,35 +181,33 @@ http_request_free(struct http_request *req)
 		next = TAILQ_NEXT(hdr, list);
 
 		TAILQ_REMOVE(&(req->resp_headers), hdr, list);
-		free(hdr->header);
-		free(hdr->value);
-		free(hdr);
+		kore_mem_free(hdr->header);
+		kore_mem_free(hdr->value);
+		kore_mem_free(hdr);
 	}
 
 	for (hdr = TAILQ_FIRST(&(req->req_headers)); hdr != NULL; hdr = next) {
 		next = TAILQ_NEXT(hdr, list);
 
 		TAILQ_REMOVE(&(req->req_headers), hdr, list);
-		free(hdr->header);
-		free(hdr->value);
-		free(hdr);
+		kore_mem_free(hdr->header);
+		kore_mem_free(hdr->value);
+		kore_mem_free(hdr);
 	}
 
 	for (q = TAILQ_FIRST(&(req->arguments)); q != NULL; q = qnext) {
 		qnext = TAILQ_NEXT(q, list);
 
 		TAILQ_REMOVE(&(req->arguments), q, list);
-		free(q->name);
+		kore_mem_free(q->name);
 		if (q->value != NULL)
-			free(q->value);
-		free(q);
+			kore_mem_free(q->value);
+		kore_mem_free(q);
 	}
 
-	free(req->path);
-	free(req->host);
 	if (req->agent != NULL)
-		free(req->agent);
-	free(req);
+		kore_mem_free(req->agent);
+	kore_mem_free(req);
 }
 
 int
@@ -241,7 +240,7 @@ http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 		spdy_frame_send(req->owner, SPDY_CTRL_FRAME_SYN_REPLY,
 		    0, hlen, req->stream, 0);
 		net_send_queue(req->owner, htext, hlen, 0, NULL, NULL);
-		free(htext);
+		kore_mem_free(htext);
 
 		if (len > 0) {
 			spdy_frame_send(req->owner, SPDY_DATA_FRAME,
@@ -267,7 +266,7 @@ http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 		kore_buf_append(buf, (u_int8_t *)"\r\n", 2);
 		htext = kore_buf_release(buf, &hlen);
 		net_send_queue(req->owner, htext, hlen, 0, NULL, NULL);
-		free(htext);
+		kore_mem_free(htext);
 
 		net_send_queue(req->owner, d, len, 0, NULL, http_send_done);
 	}
@@ -332,19 +331,19 @@ http_header_recv(struct netbuf *nb)
 
 	h = kore_split_string(hbuf, "\r\n", headers, HTTP_REQ_HEADER_MAX);
 	if (h < 2) {
-		free(hbuf);
+		kore_mem_free(hbuf);
 		return (KORE_RESULT_ERROR);
 	}
 
 	if ((strlen(headers[0]) > 3 && strncasecmp(headers[0], "get", 3)) &&
 	    (strlen(headers[0]) > 4 && strncasecmp(headers[0], "post", 4))) {
-		free(hbuf);
+		kore_mem_free(hbuf);
 		return (KORE_RESULT_ERROR);
 	}
 
 	v = kore_split_string(headers[0], " ", request, 4);
 	if (v != 3) {
-		free(hbuf);
+		kore_mem_free(hbuf);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -356,13 +355,13 @@ http_header_recv(struct netbuf *nb)
 
 		v = kore_split_string(headers[i], ":", host, 3);
 		if (v != 2) {
-			free(hbuf);
+			kore_mem_free(hbuf);
 			return (KORE_RESULT_ERROR);
 		}
 
 		if (strlen(host[0]) != 4 || strncasecmp(host[0], "host", 4) ||
 		    strlen(host[1]) < 4) {
-			free(hbuf);
+			kore_mem_free(hbuf);
 			return (KORE_RESULT_ERROR);
 		}
 
@@ -372,12 +371,12 @@ http_header_recv(struct netbuf *nb)
 	}
 
 	if (host[0] == NULL) {
-		free(hbuf);
+		kore_mem_free(hbuf);
 		return (KORE_RESULT_ERROR);
 	}
 
 	if (!http_request_new(c, NULL, host[1], request[0], request[1], &req)) {
-		free(hbuf);
+		kore_mem_free(hbuf);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -404,7 +403,7 @@ http_header_recv(struct netbuf *nb)
 			req->agent = kore_strdup(hdr->value);
 	}
 
-	free(hbuf);
+	kore_mem_free(hbuf);
 
 	if (req->method == HTTP_METHOD_POST) {
 		if (!http_request_header_get(req, "content-length", &p)) {
@@ -415,13 +414,13 @@ http_header_recv(struct netbuf *nb)
 
 		clen = kore_strtonum(p, 0, UINT_MAX, &v);
 		if (v == KORE_RESULT_ERROR) {
-			free(p);
+			kore_mem_free(p);
 			kore_debug("content-length invalid: %s", p);
 			req->flags |= HTTP_REQUEST_DELETE;
 			return (KORE_RESULT_ERROR);
 		}
 
-		free(p);
+		kore_mem_free(p);
 		req->post_data = kore_buf_create(clen);
 		kore_buf_append(req->post_data, end_headers,
 		    (nb->offset - len));
@@ -468,7 +467,7 @@ http_populate_arguments(struct http_request *req)
 		count++;
 	}
 
-	free(query);
+	kore_mem_free(query);
 	return (count);
 }
 
@@ -501,7 +500,7 @@ http_post_data_text(struct http_request *req)
 
 	text = (char *)kore_malloc(len);
 	kore_strlcpy(text, (char *)data, len);
-	free(data);
+	kore_mem_free(data);
 
 	return (text);
 }

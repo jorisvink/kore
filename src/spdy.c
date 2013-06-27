@@ -253,13 +253,13 @@ spdy_header_block_release(struct connection *c,
 	net_write32(hblock->header_block, hblock->header_pairs);
 	if (!spdy_zlib_deflate(c, hblock->header_block, hblock->header_offset,
 	    &deflated, len)) {
-		free(hblock->header_block);
-		free(hblock);
+		kore_mem_free(hblock->header_block);
+		kore_mem_free(hblock);
 		return (NULL);
 	}
 
-	free(hblock->header_block);
-	free(hblock);
+	kore_mem_free(hblock->header_block);
+	kore_mem_free(hblock);
 
 	return (deflated);
 }
@@ -366,9 +366,9 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 	kore_debug("compressed headers are %d bytes long", ctrl.length - 10);
 	if (!spdy_zlib_inflate(c, src, (ctrl.length - SPDY_SYNFRAME_SIZE),
 	    &(s->hblock->header_block), &(s->hblock->header_block_len))) {
-		free(s->hblock->header_block);
-		free(s->hblock);
-		free(s);
+		kore_mem_free(s->hblock->header_block);
+		kore_mem_free(s->hblock);
+		kore_mem_free(s);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -381,16 +381,16 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 
 #define GET_HEADER(n, r)				\
 	if (!spdy_stream_get_header(s->hblock, n, r)) {	\
-		free(s->hblock->header_block);		\
-		free(s->hblock);			\
-		free(s);				\
+		kore_mem_free(s->hblock->header_block);		\
+		kore_mem_free(s->hblock);			\
+		kore_mem_free(s);				\
 		kore_debug("no such header: %s", n);	\
 		if (path != NULL)			\
-			free(path);			\
+			kore_mem_free(path);			\
 		if (host != NULL)			\
-			free(host);			\
+			kore_mem_free(host);			\
 		if (method != NULL)			\
-			free(method);			\
+			kore_mem_free(method);			\
 		return (KORE_RESULT_ERROR);		\
 	}
 
@@ -400,18 +400,18 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 
 	if (!http_request_new(c, s, host, method, path,
 	    (struct http_request **)&(s->httpreq))) {
-		free(path);
-		free(method);
-		free(host);
-		free(s->hblock->header_block);
-		free(s->hblock);
-		free(s);
+		kore_mem_free(path);
+		kore_mem_free(method);
+		kore_mem_free(host);
+		kore_mem_free(s->hblock->header_block);
+		kore_mem_free(s->hblock);
+		kore_mem_free(s);
 		return (KORE_RESULT_ERROR);
 	}
 
-	free(path);
-	free(method);
-	free(host);
+	kore_mem_free(path);
+	kore_mem_free(method);
+	kore_mem_free(host);
 
 	c->client_stream_id = s->stream_id;
 	TAILQ_INSERT_TAIL(&(c->spdy_streams), s, list);
@@ -505,11 +505,11 @@ spdy_stream_close(struct connection *c, struct spdy_stream *s)
 	TAILQ_REMOVE(&(c->spdy_streams), s, list);
 	if (s->hblock != NULL) {
 		if (s->hblock->header_block != NULL)
-			free(s->hblock->header_block);
-		free(s->hblock);
+			kore_mem_free(s->hblock->header_block);
+		kore_mem_free(s->hblock);
 	}
 
-	free(s);
+	kore_mem_free(s);
 }
 
 static int

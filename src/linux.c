@@ -45,9 +45,8 @@
 #include "kore.h"
 #include "http.h"
 
-#define EPOLL_EVENTS	500
-
 static int			efd = -1;
+static u_int32_t		event_count = 0;
 static struct epoll_event	*events = NULL;
 
 void
@@ -80,26 +79,26 @@ kore_platform_event_init(void)
 	if ((efd = epoll_create(10000)) == -1)
 		fatal("epoll_create(): %s", errno_s);
 
-	events = kore_calloc(EPOLL_EVENTS, sizeof(struct epoll_event));
+	event_count = worker_max_connections + 1;
+	events = kore_calloc(event_count, sizeof(struct epoll_event));
 }
 
-int
+void
 kore_platform_event_wait(void)
 {
 	struct connection	*c;
-	int			n, i, *fd, count;
+	int			n, i, *fd;
 
-	n = epoll_wait(efd, events, EPOLL_EVENTS, 100);
+	n = epoll_wait(efd, events, event_count, 100);
 	if (n == -1) {
 		if (errno == EINTR)
-			return (0);
+			return;
 		fatal("epoll_wait(): %s", errno_s);
 	}
 
 	if (n > 0)
 		kore_debug("main(): %d sockets available", n);
 
-	count = 0;
 	for (i = 0; i < n; i++) {
 		fd = (int *)events[i].data.ptr;
 
@@ -114,13 +113,16 @@ kore_platform_event_wait(void)
 		}
 
 		if (*fd == server.fd) {
+#if 0
 			while (worker_active_connections <
 			    worker_max_connections) {
+#endif
+			while (worker->accepted < worker->accept_treshold) {
 				kore_connection_accept(&server, &c);
 				if (c == NULL)
 					break;
 
-				count++;
+				worker->accepted++;
 				kore_platform_event_schedule(c->fd,
 				    EPOLLIN | EPOLLOUT | EPOLLET, 0, c);
 			}
@@ -135,8 +137,6 @@ kore_platform_event_wait(void)
 				kore_connection_disconnect(c);
 		}
 	}
-
-	return (count);
 }
 
 void

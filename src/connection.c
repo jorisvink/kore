@@ -57,14 +57,14 @@ kore_connection_accept(struct listener *l, struct connection **out)
 	len = sizeof(struct sockaddr_in);
 	c = (struct connection *)kore_malloc(sizeof(*c));
 	if ((c->fd = accept(l->fd, (struct sockaddr *)&(c->sin), &len)) == -1) {
-		free(c);
+		kore_mem_free(c);
 		kore_debug("accept(): %s", errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
 	if (!kore_connection_nonblock(c->fd)) {
 		close(c->fd);
-		free(c);
+		kore_mem_free(c);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -194,15 +194,16 @@ kore_connection_remove(struct connection *c)
 	for (nb = TAILQ_FIRST(&(c->send_queue)); nb != NULL; nb = next) {
 		next = TAILQ_NEXT(nb, list);
 		TAILQ_REMOVE(&(c->send_queue), nb, list);
-		free(nb->buf);
-		free(nb);
+		if (nb->buf != NULL)
+			kore_mem_free(nb->buf);
+		kore_mem_free(nb);
 	}
 
 	for (nb = TAILQ_FIRST(&(c->recv_queue)); nb != NULL; nb = next) {
 		next = TAILQ_NEXT(nb, list);
 		TAILQ_REMOVE(&(c->recv_queue), nb, list);
-		free(nb->buf);
-		free(nb);
+		kore_mem_free(nb->buf);
+		kore_mem_free(nb);
 	}
 
 	for (s = TAILQ_FIRST(&(c->spdy_streams)); s != NULL; s = snext) {
@@ -211,15 +212,15 @@ kore_connection_remove(struct connection *c)
 
 		if (s->hblock != NULL) {
 			if (s->hblock->header_block != NULL)
-				free(s->hblock->header_block);
-			free(s->hblock);
+				kore_mem_free(s->hblock->header_block);
+			kore_mem_free(s->hblock);
 		}
 
-		free(s);
+		kore_mem_free(s);
 	}
 
 	kore_worker_connection_remove(c);
-	free(c);
+	kore_mem_free(c);
 }
 
 int

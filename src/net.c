@@ -149,8 +149,8 @@ net_send(struct connection *c)
 
 			if (nb->offset == nb->len) {
 				if (nb->buf != NULL)
-					free(nb->buf);
-				free(nb);
+					kore_mem_free(nb->buf);
+				kore_mem_free(nb);
 			}
 
 			if (r != KORE_RESULT_OK)
@@ -199,7 +199,8 @@ net_recv(struct connection *c)
 			switch (r) {
 			case SSL_ERROR_WANT_READ:
 				c->flags &= ~CONN_READ_POSSIBLE;
-				if (nb->flags & NETBUF_CALL_CB_ALWAYS)
+				if (nb->flags & NETBUF_CALL_CB_ALWAYS &&
+				    nb-> offset > 0)
 					goto handle;
 				return (KORE_RESULT_OK);
 			case SSL_ERROR_WANT_WRITE:
@@ -220,8 +221,8 @@ handle:
 				TAILQ_REMOVE(&(c->recv_queue), nb, list);
 
 				if (!(nb->flags & NETBUF_RETAIN)) {
-					free(nb->buf);
-					free(nb);
+					kore_mem_free(nb->buf);
+					kore_mem_free(nb);
 				}
 			}
 

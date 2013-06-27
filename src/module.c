@@ -141,9 +141,9 @@ kore_module_handler_new(char *path, char *domain, char *func, int type)
 
 	if (hdlr->type == HANDLER_TYPE_DYNAMIC) {
 		if (regcomp(&(hdlr->rctx), hdlr->path, REG_NOSUB)) {
-			free(hdlr->func);
-			free(hdlr->path);
-			free(hdlr);
+			kore_mem_free(hdlr->func);
+			kore_mem_free(hdlr->path);
+			kore_mem_free(hdlr);
 			kore_debug("regcomp() on %s failed", path);
 			return (KORE_RESULT_ERROR);
 		}

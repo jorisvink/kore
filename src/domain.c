@@ -58,12 +58,13 @@ kore_domain_new(char *domain)
 	if (kore_domain_lookup(domain) != NULL)
 		return (KORE_RESULT_ERROR);
 
-	kore_debug("kore_domain_new(%s, %s, %s)", domain);
+	kore_debug("kore_domain_new(%s)", domain);
 
 	dom = (struct kore_domain *)kore_malloc(sizeof(*dom));
 	dom->accesslog = -1;
 	dom->certfile = NULL;
 	dom->certkey = NULL;
+	dom->ssl_ctx = NULL;
 	dom->domain = kore_strdup(domain);
 	TAILQ_INIT(&(dom->handlers));
 	TAILQ_INSERT_TAIL(&domains, dom, list);
@@ -81,7 +82,7 @@ kore_domain_sslstart(struct kore_domain *dom)
 
 	dom->ssl_ctx = SSL_CTX_new(SSLv23_server_method());
 	if (dom->ssl_ctx == NULL)
-		fatal("kore_domain_new(): SSL_ctx_new(): %s", ssl_errno_s);
+		fatal("kore_domain_sslstart(): SSL_ctx_new(): %s", ssl_errno_s);
 	if (!SSL_CTX_use_certificate_chain_file(dom->ssl_ctx, dom->certfile)) {
 		fatal("SSL_CTX_use_certificate_chain_file(%s): %s",
 		    dom->certfile, ssl_errno_s);
@@ -96,15 +97,16 @@ kore_domain_sslstart(struct kore_domain *dom)
 	if (!SSL_CTX_check_private_key(dom->ssl_ctx))
 		fatal("Public/Private key for %s do not match", dom->domain);
 
-	SSL_CTX_set_mode(dom->ssl_ctx, SSL_MODE_AUTO_RETRY);
+	SSL_CTX_set_mode(dom->ssl_ctx, SSL_MODE_RELEASE_BUFFERS);
+	SSL_CTX_set_cipher_list(dom->ssl_ctx, kore_ssl_cipher_list);
 	SSL_CTX_set_mode(dom->ssl_ctx, SSL_MODE_ENABLE_PARTIAL_WRITE);
 	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_SSLv2);
 	SSL_CTX_set_tlsext_servername_callback(dom->ssl_ctx, kore_ssl_sni_cb);
 	SSL_CTX_set_next_protos_advertised_cb(dom->ssl_ctx,
 	    kore_ssl_npn_cb, NULL);
 
-	free(dom->certfile);
-	free(dom->certkey);
+	kore_mem_free(dom->certfile);
+	kore_mem_free(dom->certkey);
 }
 
 struct kore_domain *

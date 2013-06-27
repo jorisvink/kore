@@ -49,8 +49,8 @@ struct http_request {
 	int			status;
 	u_int64_t		start;
 	u_int64_t		end;
-	char			*host;
-	char			*path;
+	char			host[KORE_DOMAINNAME_LEN];
+	char			path[HTTP_URI_LEN];
 	char			*agent;
 	struct connection	*owner;
 	struct spdy_stream	*stream;

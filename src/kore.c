@@ -58,6 +58,7 @@ char			*runas_user = NULL;
 char			*chroot_path = NULL;
 char			kore_version_string[32];
 char			*kore_pidfile = KORE_PIDFILE_DEFAULT;
+char			*kore_ssl_cipher_list = KORE_DEFAULT_CIPHER_LIST;
 
 static void	usage(void);
 static void	kore_server_start(void);
@@ -97,10 +98,12 @@ main(int argc, char *argv[])
 	argv += optind;
 
 	kore_pid = getpid();
+
+	kore_mem_init();
 	kore_domain_init();
 	kore_server_sslstart();
-
 	kore_parse_config();
+
 	kore_log_init();
 	kore_platform_init();
 	kore_accesslog_init();
@@ -162,6 +165,9 @@ kore_server_sslstart(void)
 
 	SSL_library_init();
 	SSL_load_error_strings();
+
+CRYPTO_malloc_debug_init();
+CRYPTO_set_mem_debug_options(V_CRYPTO_MDEBUG_ALL);
 }
 
 static void
@@ -170,8 +176,8 @@ kore_server_start(void)
 	if (!kore_server_bind(&server, server_ip, server_port))
 		fatal("cannot bind to %s:%d", server_ip, server_port);
 
-	free(server_ip);
-	free(runas_user);
+	kore_mem_free(server_ip);
+	kore_mem_free(runas_user);
 
 	if (daemon(1, 1) == -1)
 		fatal("cannot daemon(): %s", errno_s);

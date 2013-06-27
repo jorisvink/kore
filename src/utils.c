@@ -58,52 +58,6 @@ static struct {
 	{ NULL,		0 },
 };
 
-void *
-kore_malloc(size_t len)
-{
-	void		*ptr;
-
-	if ((ptr = malloc(len)) == NULL)
-		fatal("kore_malloc(%d): %d", len, errno);
-
-	memset(ptr, 0, len);
-	return (ptr);
-}
-
-void *
-kore_realloc(void *ptr, size_t len)
-{
-	void		*nptr;
-
-	if ((nptr = realloc(ptr, len)) == NULL)
-		fatal("kore_realloc(%p, %d): %d", ptr, len, errno);
-
-	return (nptr);
-}
-
-void *
-kore_calloc(size_t memb, size_t len)
-{
-	void		*ptr;
-
-	if ((ptr = calloc(memb, len)) == NULL)
-		fatal("kore_calloc(%d, %d): %d", memb, len, errno);
-
-	memset(ptr, 0, memb * len);
-	return (ptr);
-}
-
-char *
-kore_strdup(const char *str)
-{
-	char		*nstr;
-
-	if ((nstr = strdup(str)) == NULL)
-		fatal("kore_strdup(): %d", errno);
-
-	return (nstr);
-}
-
 void
 kore_debug_internal(char *file, int line, const char *fmt, ...)
 {
@@ -278,7 +232,7 @@ kore_date_to_time(char *http_date)
 	}
 
 out:
-	free(sdup);
+	kore_mem_free(sdup);
 	return (t);
 }
 

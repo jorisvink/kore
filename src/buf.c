@@ -105,7 +105,7 @@ kore_buf_release(struct kore_buf *buf, u_int32_t *len)
 
 	p = buf->data;
 	*len = buf->offset;
-	free(buf);
+	kore_mem_free(buf);
 
 	return (p);
 }

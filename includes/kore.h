@@ -29,8 +29,9 @@
 #define errno_s			strerror(errno)
 #define ssl_errno_s		ERR_error_string(ERR_get_error(), NULL)
 
-#define KORE_DOMAINNAME_LEN	254
-#define KORE_PIDFILE_DEFAULT	"/var/run/kore.pid"
+#define KORE_DOMAINNAME_LEN		254
+#define KORE_PIDFILE_DEFAULT		"/var/run/kore.pid"
+#define KORE_DEFAULT_CIPHER_LIST	"HIGH:!aNULL:!MD5;"
 
 #define kore_debug(fmt, ...)	\
 	if (kore_debug)		\
@@ -76,12 +77,12 @@ struct listener {
 
 struct connection {
 	int			fd;
-	int			state;
-	int			proto;
+	u_int8_t		state;
+	u_int8_t		proto;
 	struct sockaddr_in	sin;
 	void			*owner;
 	SSL			*ssl;
-	int			flags;
+	u_int8_t		flags;
 
 	u_int8_t		inflate_started;
 	z_stream		z_inflate;
@@ -111,11 +112,13 @@ struct kore_module_handle {
 };
 
 struct kore_worker {
-	u_int16_t			id;
-	u_int16_t			cpu;
+	u_int8_t			id;
+	u_int8_t			cpu;
 	u_int16_t			load;
 	pid_t				pid;
-	TAILQ_ENTRY(kore_worker)	list;
+	u_int8_t			has_lock;
+	u_int16_t			accepted;
+	u_int16_t			accept_treshold;
 };
 
 struct kore_domain {
@@ -154,7 +157,9 @@ extern char	*kore_module_onload;
 extern char	*kore_pidfile;
 extern char	*config_file;
 extern char	kore_version_string[];
+extern char	*kore_ssl_cipher_list;
 
+extern u_int32_t		meminuse;
 extern u_int16_t		cpu_count;
 extern u_int8_t			worker_count;
 extern u_int32_t		worker_max_connections;
@@ -176,7 +181,7 @@ void		kore_worker_connection_move(struct connection *);
 void		kore_worker_connection_remove(struct connection *);
 
 void		kore_platform_event_init(void);
-int		kore_platform_event_wait(void);
+void		kore_platform_event_wait(void);
 void		kore_platform_proctitle(char *);
 void		kore_platform_enable_accept(void);
 void		kore_platform_disable_accept(void);
@@ -200,10 +205,15 @@ int		kore_connection_accept(struct listener *, struct connection **);
 
 u_int64_t	kore_time_ms(void);
 void		kore_log_init(void);
+
 void		*kore_malloc(size_t);
 void		kore_parse_config(void);
 void		*kore_calloc(size_t, size_t);
 void		*kore_realloc(void *, size_t);
+void		kore_mem_free(void *);
+void		kore_mem_init(void);
+void		kore_mem_dump(void);
+
 time_t		kore_date_to_time(char *);
 char		*kore_time_to_date(time_t);
 char		*kore_strdup(const char *);
