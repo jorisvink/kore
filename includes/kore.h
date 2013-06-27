@@ -212,7 +212,6 @@ void		*kore_calloc(size_t, size_t);
 void		*kore_realloc(void *, size_t);
 void		kore_mem_free(void *);
 void		kore_mem_init(void);
-void		kore_mem_dump(void);
 
 time_t		kore_date_to_time(char *);
 char		*kore_time_to_date(time_t);

@@ -242,9 +242,6 @@ kore_worker_entry(struct kore_worker *kw)
 			kore_worker_acceptlock_release();
 		}
 
-		printf("%d: %d conn / %d mem\n", worker->id,
-		    worker_active_connections, meminuse);
-
 		http_process();
 
 		for (c = TAILQ_FIRST(&disconnected); c != NULL; c = cnext) {

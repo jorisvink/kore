@@ -124,27 +124,9 @@ kore_mem_free(void *ptr)
 	if (mem->magic != KORE_MEM_MAGIC)
 		fatal("kore_mem_free(): magic boundary not found");
 
-	//t = kore_time_ms();
-	//printf("mem#%d released, %ld ms old\n", mem->id, t - mem->t);
-
 	meminuse -= mem->clen;
 	TAILQ_REMOVE(&memused, mem, list);
 	free(mem);
-}
-
-void
-kore_mem_dump(void)
-{
-	printf("wrk#%d: %d bytes in use\n", worker->id, meminuse);
-
-#if 0
-	now = kore_time_ms();
-	TAILQ_FOREACH(mem, &memused, list) {
-		length = now - mem->t;
-		printf("wrk#%d: mem#%d %d bytes (%ld ms)\n",
-		    worker->id, mem->id, mem->clen, length);
-	}
-#endif
 }
 
 char *
