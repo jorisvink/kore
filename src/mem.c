@@ -44,23 +44,20 @@
 	((struct meminfo *)((u_int8_t *)x - sizeof(struct meminfo)))
 
 struct meminfo {
-	u_int32_t		id;
 	u_int32_t		len;
 	u_int32_t		clen;
 	u_int64_t		t;
 	TAILQ_ENTRY(meminfo)	list;
-	u_int16_t		magic;
 	u_int8_t		*addr;
+	u_int16_t		magic;
 };
 
-static u_int64_t		memid;
 u_int32_t			meminuse;
 TAILQ_HEAD(, meminfo)		memused;
 
 void
 kore_mem_init(void)
 {
-	memid = 0;
 	meminuse = 0;
 	TAILQ_INIT(&memused);
 }
@@ -77,7 +74,6 @@ kore_malloc(size_t len)
 
 	mem->clen = len;
 	mem->len = mlen;
-	mem->id = memid++;
 	mem->t = kore_time_ms();
 	mem->addr = (u_int8_t *)mem + sizeof(struct meminfo);
 	mem->magic = KORE_MEM_MAGIC;
