@@ -115,6 +115,7 @@ kore_connection_handle(struct connection *c)
 			}
 
 			SSL_set_fd(c->ssl, c->fd);
+			SSL_set_accept_state(c->ssl);
 		}
 
 		r = SSL_accept(c->ssl);
