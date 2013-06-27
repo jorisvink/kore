@@ -97,16 +97,19 @@ kore_realloc(void *ptr, size_t len)
 	struct meminfo		*mem;
 	void			*nptr;
 
-	mem = KORE_MEMINFO(ptr);
-	if (mem->magic != KORE_MEM_MAGIC)
-		fatal("kore_realloc(): magic boundary not found");
+	if (ptr == NULL) {
+		nptr = kore_malloc(len);
+	} else {
+		mem = KORE_MEMINFO(ptr);
+		if (mem->magic != KORE_MEM_MAGIC)
+			fatal("kore_realloc(): magic boundary not found");
 
-	nptr = kore_malloc(len);
-	memcpy(nptr, mem->addr, mem->clen);
-	kore_mem_free(mem);
+		nptr = kore_malloc(len);
+		memcpy(nptr, ptr, mem->clen);
+		kore_mem_free(ptr);
+	}
 
-	mem = (struct meminfo *)nptr - sizeof(*mem);
-	return (mem->addr);
+	return (nptr);
 }
 
 void *
