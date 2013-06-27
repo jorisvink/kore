@@ -113,10 +113,6 @@ kore_platform_event_wait(void)
 		}
 
 		if (*fd == server.fd) {
-#if 0
-			while (worker_active_connections <
-			    worker_max_connections) {
-#endif
 			while (worker->accepted < worker->accept_treshold) {
 				kore_connection_accept(&server, &c);
 				if (c == NULL)
