@@ -43,11 +43,11 @@
 #include "kore.h"
 #include "http.h"
 
-#define KQUEUE_EVENTS		500
 static int			kfd = -1;
 static struct kevent		*events;
 static int			nchanges;
 static struct kevent		*changelist;
+static u_int32_t		event_count = 0;
 
 void
 kore_platform_init(void)
@@ -67,8 +67,9 @@ kore_platform_event_init(void)
 		fatal("kqueue(): %s", errno_s);
 
 	nchanges = 0;
-	events = kore_calloc(KQUEUE_EVENTS, sizeof(struct kevent));
-	changelist = kore_calloc(KQUEUE_EVENTS, sizeof(struct kevent));
+	event_count = worker_max_connections + 1;
+	events = kore_calloc(event_count, sizeof(struct kevent));
+	changelist = kore_calloc(event_count, sizeof(struct kevent));
 
 	kore_platform_event_schedule(server.fd,
 	    EVFILT_READ, EV_ADD | EV_DISABLE, &server);
@@ -79,11 +80,11 @@ kore_platform_event_wait(void)
 {
 	struct connection	*c;
 	struct timespec		timeo;
-	int			n, i, *fd, count;
+	int			n, i, *fd;
 
 	timeo.tv_sec = 0;
 	timeo.tv_nsec = 100000000;
-	n = kevent(kfd, changelist, nchanges, events, KQUEUE_EVENTS, &timeo);
+	n = kevent(kfd, changelist, nchanges, events, event_count, &timeo);
 	if (n == -1) {
 		if (errno == EINTR)
 			return (0);
@@ -94,7 +95,6 @@ kore_platform_event_wait(void)
 	if (n > 0)
 		kore_debug("main(): %d sockets available", n);
 
-	count = 0;
 	for (i = 0; i < n; i++) {
 		fd = (int *)events[i].udata;
 
@@ -109,13 +109,12 @@ kore_platform_event_wait(void)
 		}
 
 		if (*fd == server.fd) {
-			while (worker_active_connections <
-			    worker_max_connections) {
+			while (worker->accepted < worker->accept_treshold) {
 				kore_connection_accept(&server, &c);
 				if (c == NULL)
 					continue;
 
-				count++;
+				worker->accepted++;
 				kore_platform_event_schedule(c->fd,
 				    EVFILT_READ, EV_ADD, c);
 				kore_platform_event_schedule(c->fd,
