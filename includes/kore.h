@@ -75,6 +75,9 @@ struct listener {
 #define CONN_READ_POSSIBLE	0x01
 #define CONN_WRITE_POSSIBLE	0x02
 #define CONN_WRITE_BLOCK	0x04
+#define CONN_IDLE_TIMER_ACT	0x10
+
+#define KORE_IDLE_TIMER_MAX	20000
 
 struct connection {
 	int			fd;
@@ -84,6 +87,11 @@ struct connection {
 	void			*owner;
 	SSL			*ssl;
 	u_int8_t		flags;
+
+	struct {
+		u_int64_t	length;
+		u_int64_t	start;
+	} idle_timer;
 
 	u_int8_t		inflate_started;
 	z_stream		z_inflate;
@@ -203,6 +211,9 @@ int		kore_connection_nonblock(int);
 int		kore_connection_handle(struct connection *);
 void		kore_connection_remove(struct connection *);
 void		kore_connection_disconnect(struct connection *);
+void		kore_connection_start_idletimer(struct connection *);
+void		kore_connection_stop_idletimer(struct connection *);
+void		kore_connection_check_idletimer(u_int64_t, struct connection *);
 int		kore_connection_accept(struct listener *, struct connection **);
 
 u_int64_t	kore_time_ms(void);

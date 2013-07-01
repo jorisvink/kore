@@ -259,6 +259,7 @@ http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 		kore_buf_appendf(buf, "HTTP/1.1 %d\r\n", status);
 		kore_buf_appendf(buf, "Content-length: %d\r\n", len);
 		kore_buf_appendf(buf, "Connection: keep-alive\r\n");
+		kore_buf_appendf(buf, "Keep-Alive: timeout=20\r\n");
 		kore_buf_appendf(buf, "Server: %s\r\n", kore_version_string);
 
 		TAILQ_FOREACH(hdr, &(req->resp_headers), list) {

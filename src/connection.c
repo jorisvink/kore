@@ -77,11 +77,15 @@ kore_connection_accept(struct listener *l, struct connection **out)
 	c->proto = CONN_PROTO_UNKNOWN;
 	c->state = CONN_STATE_SSL_SHAKE;
 	c->wsize_initial = SPDY_INIT_WSIZE;
+	c->idle_timer.start = 0;
+	c->idle_timer.length = KORE_IDLE_TIMER_MAX;
 
 	TAILQ_INIT(&(c->send_queue));
 	TAILQ_INIT(&(c->recv_queue));
 	TAILQ_INIT(&(c->spdy_streams));
+
 	kore_worker_connection_add(c);
+	kore_connection_start_idletimer(c);
 
 	*out = c;
 	return (KORE_RESULT_OK);
@@ -105,6 +109,9 @@ kore_connection_handle(struct connection *c)
 	const u_char		*data;
 
 	kore_debug("kore_connection_handle(%p)", c);
+
+	if (c->proto != CONN_PROTO_SPDY)
+		kore_connection_stop_idletimer(c);
 
 	switch (c->state) {
 	case CONN_STATE_SSL_SHAKE:
@@ -173,6 +180,9 @@ kore_connection_handle(struct connection *c)
 		break;
 	}
 
+	if (c->proto != CONN_PROTO_SPDY)
+		kore_connection_start_idletimer(c);
+
 	return (KORE_RESULT_OK);
 }
 
@@ -223,6 +233,36 @@ kore_connection_remove(struct connection *c)
 
 	kore_worker_connection_remove(c);
 	kore_mem_free(c);
+}
+
+void
+kore_connection_check_idletimer(u_int64_t now, struct connection *c)
+{
+	u_int64_t	d;
+
+	d = now - c->idle_timer.start;
+	if (d >= c->idle_timer.length) {
+		kore_debug("%p idle for %d ms, expiring", c, d);
+		kore_connection_disconnect(c);
+	}
+}
+
+void
+kore_connection_start_idletimer(struct connection *c)
+{
+	kore_debug("kore_connection_start_idletimer(%p)", c);
+
+	c->flags |= CONN_IDLE_TIMER_ACT;
+	c->idle_timer.start = kore_time_ms();
+}
+
+void
+kore_connection_stop_idletimer(struct connection *c)
+{
+	kore_debug("kore_connection_stop_idletimer(%p)", c);
+
+	c->flags &= ~CONN_IDLE_TIMER_ACT;
+	c->idle_timer.start = 0;
 }
 
 int

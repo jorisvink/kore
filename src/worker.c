@@ -189,6 +189,7 @@ kore_worker_entry(struct kore_worker *kw)
 	int			quit;
 	char			buf[16];
 	struct connection	*c, *cnext;
+	u_int64_t		now, idle_check;
 
 	worker = kw;
 
@@ -216,6 +217,7 @@ kore_worker_entry(struct kore_worker *kw)
 	TAILQ_INIT(&worker_clients);
 
 	quit = 0;
+	now = idle_check = 0;
 	kore_platform_event_init();
 	kore_accesslog_worker_init();
 
@@ -243,6 +245,19 @@ kore_worker_entry(struct kore_worker *kw)
 		}
 
 		http_process();
+
+		now = kore_time_ms();
+		if ((now - idle_check) >= 10000) {
+			idle_check = now;
+			TAILQ_FOREACH(c, &worker_clients, list) {
+				if (c->proto == CONN_PROTO_SPDY &&
+				    !(c->flags & CONN_WRITE_BLOCK))
+					continue;
+				if (!(c->flags & CONN_IDLE_TIMER_ACT))
+					continue;
+				kore_connection_check_idletimer(now, c);
+			}
+		}
 
 		for (c = TAILQ_FIRST(&disconnected); c != NULL; c = cnext) {
 			cnext = TAILQ_NEXT(c, list);
