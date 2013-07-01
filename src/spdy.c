@@ -447,11 +447,18 @@ static int
 spdy_ctrl_frame_settings(struct netbuf *nb)
 {
 	u_int8_t		*buf, flags;
-	u_int32_t		ecount, i, id, val;
+	u_int32_t		ecount, i, id, val, length;
 	struct connection	*c = (struct connection *)nb->owner;
 
 	ecount = net_read32(nb->buf + SPDY_FRAME_SIZE);
 	kore_debug("SPDY_SETTINGS: %d settings present", ecount);
+
+	length = net_read32(nb->buf + 4) & 0xffffff;
+	if (length != ((ecount * 8) + 4)) {
+		kore_debug("ecount is not correct (%d != %d)", length,
+		    (ecount * 8) + 4);
+		return (KORE_RESULT_ERROR);
+	}
 
 	buf = nb->buf + SPDY_FRAME_SIZE + 4;
 	for (i = 0; i < ecount; i++) {
