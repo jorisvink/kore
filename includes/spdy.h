@@ -49,6 +49,7 @@ struct spdy_stream {
 	u_int32_t	stream_id;
 	u_int8_t	flags;
 	u_int8_t	prio;
+	int32_t		wsize;
 
 	void				*httpreq;
 	struct spdy_header_block	*hblock;
@@ -65,6 +66,7 @@ extern const unsigned char SPDY_dictionary_txt[];
 #define SPDY_SYNFRAME_SIZE		10
 #define SPDY_ZLIB_DICT_SIZE		1423
 #define SPDY_ZLIB_CHUNK			16348
+#define SPDY_INIT_WSIZE			65536
 
 /* control frames */
 #define SPDY_CTRL_FRAME_SYN_STREAM	1
@@ -77,6 +79,17 @@ extern const unsigned char SPDY_dictionary_txt[];
 /* flags */
 #define FLAG_FIN			0x01
 #define FLAG_UNIDIRECTIONAL		0x02
+#define SPDY_STREAM_WILLCLOSE		0x04
+
+/* settings */
+#define SETTINGS_UPLOAD_BANDWIDTH		1
+#define SETTINGS_DOWNLOAD_BANDWIDTH		2
+#define SETTINGS_ROUND_TRIP_TIME		3
+#define SETTINGS_MAX_CONCURRENT_STREAMS		4
+#define SETTINGS_CURRENT_CWND			5
+#define SETTINGS_DOWNLOAD_RETRANS_RATE		6
+#define SETTINGS_INITIAL_WINDOW_SIZE		7
+#define SETTINGS_CLIENT_CERTIFICATE_VECTOR_SIZE	8
 
 #define SPDY_HBLOCK_NORMAL		0
 #define SPDY_HBLOCK_DELAYED_ALLOC	1

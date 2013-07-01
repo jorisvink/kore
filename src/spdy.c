@@ -43,6 +43,9 @@ static int		spdy_ctrl_frame_settings(struct netbuf *);
 static int		spdy_ctrl_frame_ping(struct netbuf *);
 static int		spdy_ctrl_frame_window(struct netbuf *);
 static int		spdy_data_frame_recv(struct netbuf *);
+static int		spdy_frame_send_done(struct netbuf *);
+static void		spdy_update_wsize(struct connection *,
+			    struct spdy_stream *, u_int32_t);
 static void		spdy_stream_close(struct connection *,
 			    struct spdy_stream *);
 
@@ -134,8 +137,9 @@ void
 spdy_frame_send(struct connection *c, u_int16_t type, u_int8_t flags,
     u_int32_t len, struct spdy_stream *s, u_int32_t misc)
 {
-	u_int8_t	nb[12];
-	u_int32_t	length;
+	struct netbuf		*nnb;
+	u_int8_t		nb[12];
+	u_int32_t		length;
 
 	kore_debug("spdy_frame_send(%p, %d, %d, %d, %p, %d)",
 	    c, type, flags, len, s, misc);
@@ -170,10 +174,17 @@ spdy_frame_send(struct connection *c, u_int16_t type, u_int8_t flags,
 		break;
 	}
 
-	net_send_queue(c, nb, length, 0, NULL, NULL);
+	if (s != NULL && type == SPDY_DATA_FRAME) {
+		net_send_queue(c, nb, length, 0, &nnb, spdy_frame_send_done);
+		nnb->extra = s;
+	} else {
+		net_send_queue(c, nb, length, 0, NULL, NULL);
+	}
 
-	if ((flags & FLAG_FIN) && (s->flags & FLAG_FIN))
-		spdy_stream_close(c, s);
+	if (s != NULL) {
+		if ((flags & FLAG_FIN) && (s->flags & FLAG_FIN))
+			s->flags |= SPDY_STREAM_WILLCLOSE;
+	}
 }
 
 struct spdy_stream *
@@ -313,6 +324,16 @@ spdy_stream_get_header(struct spdy_header_block *s, char *header, char **out)
 	return (KORE_RESULT_ERROR);
 }
 
+int
+spdy_frame_data_done(struct netbuf *nb)
+{
+	struct connection	*c = (struct connection *)nb->owner;
+	struct spdy_stream	*s = (struct spdy_stream *)nb->extra;
+
+	spdy_update_wsize(c, s, nb->len);
+	return (KORE_RESULT_OK);
+}
+
 static int
 spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 {
@@ -359,6 +380,7 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 	s = (struct spdy_stream *)kore_malloc(sizeof(*s));
 	s->prio = syn.prio;
 	s->flags = ctrl.flags;
+	s->wsize = c->wsize_initial;
 	s->stream_id = syn.stream_id;
 	s->hblock = spdy_header_block_create(SPDY_HBLOCK_DELAYED_ALLOC);
 
@@ -415,7 +437,8 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 
 	c->client_stream_id = s->stream_id;
 	TAILQ_INSERT_TAIL(&(c->spdy_streams), s, list);
-	kore_debug("SPDY_SYN_STREAM: %d:%d:%d", s->stream_id, s->flags, s->prio);
+	kore_debug("SPDY_SYN_STREAM: %d:%d:%d", s->stream_id,
+	    s->flags, s->prio);
 
 	return (KORE_RESULT_OK);
 }
@@ -423,7 +446,31 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 static int
 spdy_ctrl_frame_settings(struct netbuf *nb)
 {
-	kore_debug("SPDY_SETTINGS (to be implemented)");
+	u_int8_t		*buf, flags;
+	u_int32_t		ecount, i, id, val;
+	struct connection	*c = (struct connection *)nb->owner;
+
+	ecount = net_read32(nb->buf + SPDY_FRAME_SIZE);
+	kore_debug("SPDY_SETTINGS: %d settings present", ecount);
+
+	buf = nb->buf + SPDY_FRAME_SIZE + 4;
+	for (i = 0; i < ecount; i++) {
+		flags = *(u_int8_t *)buf;
+		id = net_read32(buf) & 0xffffff;
+		val = net_read32(buf + 4);
+
+		switch (id) {
+		case SETTINGS_INITIAL_WINDOW_SIZE:
+			c->wsize_initial = val;
+			break;
+		default:
+			kore_debug("no handling for setting %d:%d (%d)",
+			    id, val, flags);
+			break;
+		}
+
+		buf += 8;
+	}
 
 	return (KORE_RESULT_OK);
 }
@@ -450,12 +497,34 @@ spdy_ctrl_frame_ping(struct netbuf *nb)
 static int
 spdy_ctrl_frame_window(struct netbuf *nb)
 {
-	u_int32_t	stream_id, window_size;
+	struct spdy_stream	*s;
+	u_int32_t		stream_id, window_size;
+	struct connection	*c = (struct connection *)nb->owner;
 
 	stream_id = net_read32(nb->buf + SPDY_FRAME_SIZE);
 	window_size = net_read32(nb->buf + SPDY_FRAME_SIZE + 4);
 
+	if ((s = spdy_stream_lookup(c, stream_id)) == NULL) {
+		kore_debug("received WINDOW_UPDATE for nonexistant stream");
+		kore_debug("stream_id: %d", stream_id);
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (s->flags & SPDY_STREAM_WILLCLOSE) {
+		kore_debug("received WINDOW_UPDATE for FIN stream");
+		return (KORE_RESULT_ERROR);
+	}
+
 	kore_debug("SPDY_WINDOW_UPDATE: %d:%d", stream_id, window_size);
+	s->wsize += window_size;
+	if (s->wsize > 0) {
+		c->flags &= ~CONN_WRITE_BLOCK;
+		c->flags |= CONN_WRITE_POSSIBLE;
+
+		kore_debug("can now send again (%d wsize)", s->wsize);
+		return (net_send_flush(c));
+	}
+
 	return (KORE_RESULT_OK);
 }
 
@@ -510,6 +579,34 @@ spdy_stream_close(struct connection *c, struct spdy_stream *s)
 	}
 
 	kore_mem_free(s);
+}
+
+static int
+spdy_frame_send_done(struct netbuf *nb)
+{
+	u_int8_t		flags;
+	struct connection	*c = (struct connection *)nb->owner;
+	struct spdy_stream	*s = (struct spdy_stream *)nb->extra;
+
+	flags = *(u_int8_t *)(nb->buf + 4);
+	if ((flags & FLAG_FIN) && (s->flags & FLAG_FIN))
+		spdy_stream_close(c, s);
+
+	return (KORE_RESULT_OK);
+}
+
+static void
+spdy_update_wsize(struct connection *c, struct spdy_stream *s, u_int32_t len)
+{
+	s->wsize -= len;
+	kore_debug("spdy_update_wsize(): stream %d, window size %d",
+	    s->stream_id, s->wsize);
+
+	if (s->wsize <= 0) {
+		kore_debug("window size <= 0 for stream %d", s->stream_id);
+		c->flags &= ~CONN_WRITE_POSSIBLE;
+		c->flags |= CONN_WRITE_BLOCK;
+	}
 }
 
 static int

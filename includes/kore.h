@@ -74,6 +74,7 @@ struct listener {
 
 #define CONN_READ_POSSIBLE	0x01
 #define CONN_WRITE_POSSIBLE	0x02
+#define CONN_WRITE_BLOCK	0x04
 
 struct connection {
 	int			fd;
@@ -88,6 +89,7 @@ struct connection {
 	z_stream		z_inflate;
 	u_int8_t		deflate_started;
 	z_stream		z_deflate;
+	u_int32_t		wsize_initial;
 
 	TAILQ_HEAD(, netbuf)	send_queue;
 	TAILQ_HEAD(, netbuf)	recv_queue;
@@ -260,6 +262,7 @@ void	kore_buf_appendb(struct kore_buf *, struct kore_buf *);
 
 struct spdy_header_block	*spdy_header_block_create(int);
 struct spdy_stream	*spdy_stream_lookup(struct connection *, u_int32_t);
+int			spdy_frame_data_done(struct netbuf *);
 int			spdy_stream_get_header(struct spdy_header_block *,
 			    char *, char **);
 

@@ -76,6 +76,7 @@ kore_connection_accept(struct listener *l, struct connection **out)
 	c->client_stream_id = 0;
 	c->proto = CONN_PROTO_UNKNOWN;
 	c->state = CONN_STATE_SSL_SHAKE;
+	c->wsize_initial = SPDY_INIT_WSIZE;
 
 	TAILQ_INIT(&(c->send_queue));
 	TAILQ_INIT(&(c->recv_queue));

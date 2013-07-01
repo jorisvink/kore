@@ -213,6 +213,7 @@ http_request_free(struct http_request *req)
 int
 http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 {
+	struct netbuf			*nb;
 	u_int32_t			hlen;
 	struct http_header		*hdr;
 	struct kore_buf			*buf;
@@ -245,7 +246,9 @@ http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 		if (len > 0) {
 			spdy_frame_send(req->owner, SPDY_DATA_FRAME,
 			    0, len, req->stream, 0);
-			net_send_queue(req->owner, d, len, 0, NULL, NULL);
+			net_send_queue(req->owner, d, len, 0, &nb,
+			    spdy_frame_data_done);
+			nb->extra = req->stream;
 		}
 
 		spdy_frame_send(req->owner, SPDY_DATA_FRAME,
