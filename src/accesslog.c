@@ -151,7 +151,14 @@ kore_accesslog(struct http_request *req)
 	logpacket.time_req = req->end - req->start;
 	kore_strlcpy(logpacket.host, req->host, sizeof(logpacket.host));
 	kore_strlcpy(logpacket.path, req->path, sizeof(logpacket.path));
-	kore_strlcpy(logpacket.agent, req->agent, sizeof(logpacket.agent));
+
+	if (req->agent != NULL) {
+		kore_strlcpy(logpacket.agent,
+		    req->agent, sizeof(logpacket.agent));
+	} else {
+		kore_strlcpy(logpacket.agent, "unknown",
+		    sizeof(logpacket.agent));
+	}
 
 	len = send(accesslog_fd[1], &logpacket, sizeof(logpacket), 0);
 	if (len == -1) {
