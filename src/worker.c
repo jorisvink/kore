@@ -192,6 +192,7 @@ kore_worker_entry(struct kore_worker *kw)
 	u_int64_t		now, idle_check;
 
 	worker = kw;
+	kw->has_lock = 0;
 
 	if (chroot(chroot_path) == -1)
 		fatal("cannot chroot(): %s", errno_s);
