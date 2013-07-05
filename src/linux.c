@@ -52,9 +52,13 @@ static struct epoll_event	*events = NULL;
 void
 kore_platform_init(void)
 {
-	if ((cpu_count = sysconf(_SC_NPROCESSORS_ONLN)) == -1) {
+	long		n;
+
+	if ((n = sysconf(_SC_NPROCESSORS_ONLN)) == -1) {
 		kore_debug("could not get number of cpu's falling back to 1");
 		cpu_count = 1;
+	} else {
+		cpu_count = (u_int16_t)n;
 	}
 }
 
