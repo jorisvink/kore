@@ -348,6 +348,15 @@ kore_worker_wait(int final)
 			kore_log(LOG_NOTICE,
 			    "worker %d (pid: %d) gone, respawning new one",
 			    kw->id, kw->pid);
+
+			if (kw->pid == accept_lock->lock) {
+				kore_log(LOG_NOTICE,
+				    "worker %d owned accept lock, releasing",
+				    kw->id);
+
+				accept_lock->lock = accept_lock->next;
+			}
+
 			kore_worker_spawn(kw->id, kw->cpu);
 		} else {
 			kore_log(LOG_NOTICE,
