@@ -165,9 +165,6 @@ kore_server_sslstart(void)
 
 	SSL_library_init();
 	SSL_load_error_strings();
-
-CRYPTO_malloc_debug_init();
-CRYPTO_set_mem_debug_options(V_CRYPTO_MDEBUG_ALL);
 }
 
 static void
