@@ -1,4 +1,13 @@
-Auxiliary library framework
-Ability to load one module per domain
-GET arguments (only POST supported)
-POST multiform/form-data support
+High prio
+- GET arguments (only POST supported)
+- POST multiform/form-data support
+
+Med prio
+- Websocket support (websocket page handlers)
+- GOAWAY for SPDY connections that have been idle too long
+
+Low prio
+- Auxiliary library framework
+- Ability to load one module per domain
+- GET arguments (only POST supported)
+- POST multiform/form-data support
