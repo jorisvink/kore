@@ -15,37 +15,13 @@
  */
 
 #include <sys/param.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/queue.h>
 #include <sys/event.h>
-#include <sys/wait.h>
 
-#include <netinet/in.h>
-#include <arpa/inet.h>
-
-#include <openssl/err.h>
-#include <openssl/ssl.h>
-
-#include <errno.h>
-#include <fcntl.h>
-#include <signal.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <syslog.h>
-#include <time.h>
-#include <regex.h>
-#include <zlib.h>
-#include <unistd.h>
-
-#include "spdy.h"
 #include "kore.h"
-#include "http.h"
 
 static int			kfd = -1;
 static struct kevent		*events;
-static int			nchanges;
+static u_int32_t		nchanges;
 static struct kevent		*changelist;
 static u_int32_t		event_count = 0;
 
@@ -75,7 +51,7 @@ kore_platform_event_init(void)
 	    EVFILT_READ, EV_ADD | EV_DISABLE, &server);
 }
 
-int
+void
 kore_platform_event_wait(void)
 {
 	struct connection	*c;
@@ -87,7 +63,7 @@ kore_platform_event_wait(void)
 	n = kevent(kfd, changelist, nchanges, events, event_count, &timeo);
 	if (n == -1) {
 		if (errno == EINTR)
-			return (0);
+			return;
 		fatal("kevent(): %s", errno_s);
 	}
 
@@ -138,14 +114,12 @@ kore_platform_event_wait(void)
 			}
 		}
 	}
-
-	return (count);
 }
 
 void
 kore_platform_event_schedule(int fd, int type, int flags, void *data)
 {
-	if (nchanges >= KQUEUE_EVENTS) {
+	if (nchanges >= event_count) {
 		kore_log(LOG_WARNING, "cannot schedule %d (%d) on %d",
 		    type, flags, fd);
 	} else {
