@@ -3,9 +3,9 @@
 CC=gcc
 BIN=kore
 
-S_SRC+=	src/kore.c src/buf.c src/config.c src/net.c src/spdy.c src/http.c \
-	src/accesslog.c src/domain.c src/module.c src/utils.c \
-	src/worker.c src/connection.c src/mem.c src/zlib_dict.c
+S_SRC+=	src/kore.c src/accesslog.c src/buf.c src/config.c src/connection.c \
+	src/domain.c src/http.c src/mem.c src/module.c src/net.c src/spdy.c \
+	src/utils.c src/worker.c src/zlib_dict.c
 S_OBJS=	$(S_SRC:.c=.o)
 
 CFLAGS+=-Wall -Wstrict-prototypes -Wmissing-prototypes

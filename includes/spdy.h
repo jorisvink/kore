@@ -17,6 +17,9 @@
 #ifndef __H_SPDY_H
 #define __H_SPDY_H
 
+#include <sys/types.h>
+#include <sys/queue.h>
+
 struct spdy_ctrl_frame {
 	u_int16_t	version;
 	u_int16_t	type;

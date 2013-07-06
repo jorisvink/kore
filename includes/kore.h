@@ -17,6 +17,21 @@
 #ifndef __H_KORE_H
 #define __H_KORE_H
 
+#include <sys/queue.h>
+
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+#include <openssl/err.h>
+#include <openssl/ssl.h>
+
+#include <errno.h>
+#include <regex.h>
+#include <syslog.h>
+#include <zlib.h>
+
+#include "spdy.h"
+
 #define KORE_RESULT_ERROR	0
 #define KORE_RESULT_OK		1
 #define KORE_RESULT_RETRY	2
