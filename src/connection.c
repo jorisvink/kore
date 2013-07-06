@@ -14,36 +14,12 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include <sys/param.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/queue.h>
-#include <sys/wait.h>
-
-#include <netinet/in.h>
-#include <arpa/inet.h>
-
-#include <openssl/err.h>
-#include <openssl/ssl.h>
-
-#include <pwd.h>
-#include <errno.h>
-#include <grp.h>
-#include <fcntl.h>
-#include <signal.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sched.h>
-#include <syslog.h>
-#include <time.h>
-#include <regex.h>
-#include <zlib.h>
-#include <unistd.h>
-
-#include "spdy.h"
 #include "kore.h"
 #include "http.h"
+
+#include <openssl/err.h>
+
+#include <fcntl.h>
 
 int
 kore_connection_accept(struct listener *l, struct connection **out)

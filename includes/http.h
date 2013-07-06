@@ -17,6 +17,9 @@
 #ifndef __H_HTTP_H
 #define __H_HTTP_H
 
+#include <sys/types.h>
+#include <sys/queue.h>
+
 #define HTTP_HEADER_MAX_LEN	8192
 #define HTTP_URI_LEN		2000
 #define HTTP_USERAGENT_LEN	256

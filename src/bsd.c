@@ -14,6 +14,10 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include "spdy.h"
+#include "kore.h"
+#include "http.h"
+
 #include <sys/param.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -38,10 +42,6 @@
 #include <regex.h>
 #include <zlib.h>
 #include <unistd.h>
-
-#include "spdy.h"
-#include "kore.h"
-#include "http.h"
 
 static int			kfd = -1;
 static struct kevent		*events;

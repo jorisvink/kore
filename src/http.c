@@ -14,30 +14,10 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include <sys/param.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/queue.h>
-
-#include <netinet/in.h>
-#include <arpa/inet.h>
-
-#include <openssl/err.h>
-#include <openssl/ssl.h>
-
-#include <errno.h>
-#include <fcntl.h>
-#include <stdarg.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <regex.h>
-#include <time.h>
-#include <zlib.h>
-
-#include "spdy.h"
 #include "kore.h"
 #include "http.h"
+
+#include <sys/param.h>
 
 static int		http_post_data_recv(struct netbuf *);
 static int		http_send_done(struct netbuf *);
