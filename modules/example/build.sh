@@ -25,6 +25,7 @@ CFLAGS="-I. -I${KORE_DIR}/includes -Wall -Wstrict-prototypes \
 	-Wmissing-prototypes -Wmissing-declarations -Wshadow \
 	-Wpointer-arith -Wcast-qual -Wsign-compare -g"
 LDFLAGS=-shared
+MODULE_BUILD_DATE=`date +"%Y-%m-%d %H:%M:%S"`
 
 # Functions used in the build process.
 function create_and_empty_dir {
@@ -44,6 +45,8 @@ ${CC} ${CFLAGS} tools/inject.c -o tools/inject
 create_and_empty_dir ${SOURCE_DIR}/${MEDIA_DIR}
 create_and_empty_dir .objs
 
+rm -f static.h
+
 for file in `find ${MEDIA_DIR} -type f \( ! -name \*.swp \)`; do
 	echo "Injecting $file";
 	base=`basename $file`;
@@ -53,6 +56,8 @@ for file in `find ${MEDIA_DIR} -type f \( ! -name \*.swp \)`; do
 		exit 1;
 	fi
 done
+
+echo "#define MODULE_BUILD_DATE \"${MODULE_BUILD_DATE}\"" >> static.h
 
 for src in `find ${SOURCE_DIR} -type f -name \*.c`; do
 	base=`basename $src`;
