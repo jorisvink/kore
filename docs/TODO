@@ -1,13 +1,18 @@
-High prio
-- GET arguments (only POST supported)
-- POST multiform/form-data support
+Kore TODO list
+===============
 
-Med prio
-- Websocket support (websocket page handlers)
-- GOAWAY for SPDY connections that have been idle too long
+- Websocket support.
+- GET arguments (only POST supported).
+- POST multiform/form-data support.
+- GOAWAY for SPDY connections that have been idle too long.
+- Auxiliary library framework.
+	- Provide more API functions for generic stuff such as
+	  session handler, page building, etc etc.
+- Ability to load one module per domain instead of one global module.
+- API to programmatically configure, start and stop Kore.
+- Find that one memory leak that's causing me agony beyond belief.
+- Get my hands on a 48 core server to test stuff on.
 
-Low prio
-- Auxiliary library framework
-- Ability to load one module per domain
-- GET arguments (only POST supported)
-- POST multiform/form-data support
+Ideas
+=====
+- If a page handler keeps causing issues, show a generic error page?
