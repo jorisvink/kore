@@ -109,8 +109,10 @@ kore_worker_spawn(u_int16_t id, u_int16_t cpu)
 	kw->cpu = cpu;
 	kw->load = 0;
 	kw->accepted = 0;
-	kw->pid = fork();
+	kw->has_lock = 0;
+	kw->active_hdlr = NULL;
 
+	kw->pid = fork();
 	if (kw->pid == -1)
 		fatal("could not spawn worker child: %s", errno_s);
 
@@ -170,7 +172,6 @@ kore_worker_entry(struct kore_worker *kw)
 	u_int64_t		now, idle_check;
 
 	worker = kw;
-	kw->has_lock = 0;
 
 	if (chroot(chroot_path) == -1)
 		fatal("cannot chroot(): %s", errno_s);
@@ -325,22 +326,26 @@ kore_worker_wait(int final)
 		if (WEXITSTATUS(status) || WTERMSIG(status) ||
 		    WCOREDUMP(status)) {
 			kore_log(LOG_NOTICE,
-			    "worker %d (pid: %d) gone, respawning new one",
-			    kw->id, kw->pid);
+			    "worker %d (pid: %d) (hdlr: %p) gone",
+			    kw->id, kw->pid, kw->active_hdlr);
 
-			if (kw->pid == accept_lock->lock) {
-				kore_log(LOG_NOTICE,
-				    "worker %d owned accept lock, releasing",
-				    kw->id);
-
+			if (kw->pid == accept_lock->lock)
 				accept_lock->lock = accept_lock->next;
+
+			if (kw->active_hdlr != NULL) {
+				kw->active_hdlr->errors++;
+				kore_log(LOG_NOTICE,
+				    "hdlr %s has caused %d error(s)",
+				    kw->active_hdlr->func,
+				    kw->active_hdlr->errors);
 			}
 
+			kore_log(LOG_NOTICE, "restarting worker %d", kw->id);
 			kore_worker_spawn(kw->id, kw->cpu);
 		} else {
 			kore_log(LOG_NOTICE,
-			    "worker %d (pid: %d) signaled us",
-			    kw->id, kw->pid);
+			    "worker %d (pid: %d) signaled us (%d)",
+			    kw->id, kw->pid, status);
 		}
 
 		break;

@@ -92,8 +92,9 @@ http_request_new(struct connection *c, struct spdy_stream *s, char *host,
 void
 http_process(void)
 {
-	struct http_request	*req, *next;
-	int			r, (*hdlr)(struct http_request *);
+	struct http_request		*req, *next;
+	struct kore_module_handle	*hdlr;
+	int				r, (*cb)(struct http_request *);
 
 	for (req = TAILQ_FIRST(&http_requests); req != NULL; req = next) {
 		next = TAILQ_NEXT(req, list);
@@ -110,10 +111,15 @@ http_process(void)
 
 		hdlr = kore_module_handler_find(req->host, req->path);
 		req->start = kore_time_ms();
-		if (hdlr == NULL)
+		if (hdlr == NULL) {
 			r = http_generic_404(req);
-		else
-			r = hdlr(req);
+		} else {
+			cb = hdlr->addr;
+
+			worker->active_hdlr = hdlr;
+			r = cb(req);
+			worker->active_hdlr = NULL;
+		}
 		req->end = kore_time_ms();
 
 		switch (r) {

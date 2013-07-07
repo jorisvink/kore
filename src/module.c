@@ -71,6 +71,7 @@ kore_module_reload(void)
 
 	TAILQ_FOREACH(dom, &domains, list) {
 		TAILQ_FOREACH(hdlr, &(dom->handlers), list) {
+			hdlr->errors = 0;
 			hdlr->addr = dlsym(mod_handle, hdlr->func);
 			if (hdlr->func == NULL)
 				fatal("no function '%s' found", hdlr->func);
@@ -113,6 +114,7 @@ kore_module_handler_new(char *path, char *domain, char *func, int type)
 		return (KORE_RESULT_ERROR);
 
 	hdlr = (struct kore_module_handle *)kore_malloc(sizeof(*hdlr));
+	hdlr->errors = 0;
 	hdlr->addr = addr;
 	hdlr->type = type;
 	hdlr->path = kore_strdup(path);
@@ -132,7 +134,7 @@ kore_module_handler_new(char *path, char *domain, char *func, int type)
 	return (KORE_RESULT_OK);
 }
 
-void *
+struct kore_module_handle *
 kore_module_handler_find(char *domain, char *path)
 {
 	struct kore_domain		*dom;
@@ -144,10 +146,10 @@ kore_module_handler_find(char *domain, char *path)
 	TAILQ_FOREACH(hdlr, &(dom->handlers), list) {
 		if (hdlr->type == HANDLER_TYPE_STATIC) {
 			if (!strcmp(hdlr->path, path))
-				return (hdlr->addr);
+				return (hdlr);
 		} else {
 			if (!regexec(&(hdlr->rctx), path, 0, NULL, 0))
-				return (hdlr->addr);
+				return (hdlr);
 		}
 	}
 
