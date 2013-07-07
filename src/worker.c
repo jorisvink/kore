@@ -326,8 +326,10 @@ kore_worker_wait(int final)
 		if (WEXITSTATUS(status) || WTERMSIG(status) ||
 		    WCOREDUMP(status)) {
 			kore_log(LOG_NOTICE,
-			    "worker %d (pid: %d) (hdlr: %p) gone",
-			    kw->id, kw->pid, kw->active_hdlr);
+			    "worker %d (pid: %d) (hdlr: %s) gone",
+			    kw->id, kw->pid,
+			    (kw->active_hdlr != NULL) ? kw->active_hdlr->func :
+			    "none");
 
 			if (kw->pid == accept_lock->lock)
 				accept_lock->lock = accept_lock->next;
