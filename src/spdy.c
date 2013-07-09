@@ -160,11 +160,6 @@ spdy_frame_send(struct connection *c, u_int16_t type, u_int8_t flags,
 	} else {
 		net_send_queue(c, nb, length, 0, NULL, NULL);
 	}
-
-	if (s != NULL) {
-		if ((flags & FLAG_FIN) && (s->flags & FLAG_FIN))
-			s->flags |= SPDY_STREAM_WILLCLOSE;
-	}
 }
 
 struct spdy_stream *
@@ -497,14 +492,9 @@ spdy_ctrl_frame_window(struct netbuf *nb)
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (s->flags & SPDY_STREAM_WILLCLOSE) {
-		kore_debug("received WINDOW_UPDATE for FIN stream");
-		return (KORE_RESULT_ERROR);
-	}
-
 	kore_debug("SPDY_WINDOW_UPDATE: %d:%d", stream_id, window_size);
 	s->wsize += window_size;
-	if (s->wsize > 0) {
+	if (s->wsize > 0 && c->flags & CONN_WRITE_BLOCK) {
 		c->flags &= ~CONN_WRITE_BLOCK;
 		c->flags |= CONN_WRITE_POSSIBLE;
 		kore_connection_stop_idletimer(c);
