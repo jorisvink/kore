@@ -82,7 +82,6 @@ extern const unsigned char SPDY_dictionary_txt[];
 /* flags */
 #define FLAG_FIN			0x01
 #define FLAG_UNIDIRECTIONAL		0x02
-#define SPDY_STREAM_WILLCLOSE		0x04
 
 /* settings */
 #define SETTINGS_UPLOAD_BANDWIDTH		1
