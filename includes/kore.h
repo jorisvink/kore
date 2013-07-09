@@ -17,6 +17,7 @@
 #ifndef __H_KORE_H
 #define __H_KORE_H
 
+#include <sys/types.h>
 #include <sys/queue.h>
 
 #include <netinet/in.h>
@@ -28,6 +29,7 @@
 #include <errno.h>
 #include <regex.h>
 #include <syslog.h>
+#include <unistd.h>
 #include <zlib.h>
 
 #include "spdy.h"
