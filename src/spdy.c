@@ -692,7 +692,7 @@ spdy_zlib_deflate(struct connection *c, u_int8_t *src, size_t len,
 		    SPDY_ZLIB_DICT_SIZE);
 		if (r != Z_OK) {
 			deflateEnd(&(c->z_deflate));
-			kore_debug("delfateSetDictionary(): %d", r);
+			kore_debug("deflateSetDictionary(): %d", r);
 			return (KORE_RESULT_ERROR);
 		}
 
