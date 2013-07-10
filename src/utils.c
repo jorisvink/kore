@@ -35,6 +35,8 @@ static struct {
 	{ NULL,		0 },
 };
 
+static char b64table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
 void
 kore_debug_internal(char *file, int line, const char *fmt, ...)
 {
@@ -242,6 +244,109 @@ kore_time_ms(void)
 		return (0);
 
 	return (tv.tv_sec * 1000 + (tv.tv_usec / 1000));
+}
+
+int
+kore_base64_encode(u_int8_t *data, u_int32_t len, char **out)
+{
+	struct kore_buf		*res;
+	u_int8_t		n, *pdata;
+	int			i, padding;
+	u_int32_t		idx, b, plen;
+
+	if ((len % 3) != 0) {
+		padding = 3 - (len % 3);
+		plen = len + padding;
+		pdata = (u_int8_t *)kore_malloc(plen);
+
+		memcpy(pdata, data, len);
+		memset(pdata + len, 0, padding);
+	} else {
+		plen = len;
+		padding = 0;
+		pdata = data;
+	}
+
+	res = kore_buf_create(plen);
+
+	i = 2;
+	b = 0;
+	for (idx = 0; idx < plen; idx++) {
+		b |= (pdata[idx] << (i * 8));
+		if (i-- == 0) {
+			for (i = 3; i >= 0; i--) {
+				n = (b >> (6 * i)) & 0x3f;
+				if (n >= sizeof(b64table)) {
+					kore_debug("unable to encode %d", n);
+					kore_buf_free(res);
+					return (KORE_RESULT_ERROR);
+				}
+
+				if (idx >= len && i < padding)
+					break;
+
+				kore_buf_append(res,
+				    (u_int8_t *)&(b64table[n]), 1);
+			}
+
+			b = 0;
+			i = 2;
+		}
+	}
+
+	for (i = 0; i < padding; i++)
+		kore_buf_append(res, (u_int8_t *)"=", 1);
+
+	if (pdata != data)
+		kore_mem_free(pdata);
+
+	pdata = kore_buf_release(res, &plen);
+	*out = kore_malloc(plen + 1);
+	kore_strlcpy(*out, (char *)pdata, plen + 1);
+	kore_mem_free(pdata);
+
+	return (KORE_RESULT_OK);
+}
+
+int
+kore_base64_decode(char *in, u_int8_t **out, u_int32_t *olen)
+{
+	int			i;
+	struct kore_buf		*res;
+	u_int8_t		d, n, o;
+	u_int32_t		b, len, idx;
+
+	i = 3;
+	b = 0;
+	len = strlen(in);
+	res = kore_buf_create(len);
+
+	for (idx = 0; idx < len; idx++) {
+		for (o = 0; o < sizeof(b64table); o++) {
+			if (b64table[o] == in[idx]) {
+				d = o;
+				break;
+			}
+		}
+
+		/* XXX - This could be bad? */
+		if (o == sizeof(b64table))
+			d = 0;
+
+		b |= (d & 0x3f) << (i * 6);
+		if (i-- == 0) {
+			for (i = 2; i >= 0; i--) {
+				n = (b >> (8 * i));
+				kore_buf_append(res, &n, 1);
+			}
+
+			b = 0;
+			i = 3;
+		}
+	}
+
+	*out = kore_buf_release(res, olen);
+	return (KORE_RESULT_OK);
 }
 
 void

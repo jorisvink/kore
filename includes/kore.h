@@ -252,6 +252,8 @@ void		kore_strlcpy(char *, const char *, size_t);
 void		kore_server_disconnect(struct connection *);
 int		kore_split_string(char *, char *, char **, size_t);
 long long	kore_strtonum(const char *, long long, long long, int *);
+int		kore_base64_encode(u_int8_t *, u_int32_t, char **);
+int		kore_base64_decode(char *, u_int8_t **, u_int32_t *);
 
 void		kore_domain_init(void);
 int		kore_domain_new(char *);
@@ -282,6 +284,7 @@ int		net_recv_expand(struct connection *c, struct netbuf *, size_t,
 void		net_send_queue(struct connection *, u_int8_t *, size_t, int,
 		    struct netbuf **, int (*cb)(struct netbuf *));
 
+void		kore_buf_free(struct kore_buf *);
 struct kore_buf	*kore_buf_create(u_int32_t);
 void		kore_buf_append(struct kore_buf *, u_int8_t *, u_int32_t);
 u_int8_t	*kore_buf_release(struct kore_buf *, u_int32_t *);

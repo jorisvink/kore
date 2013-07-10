@@ -22,6 +22,19 @@
 int		serve_style_css(struct http_request *);
 int		serve_index(struct http_request *);
 int		serve_intro(struct http_request *);
+int		serve_b64test(struct http_request *);
+void		test_base64(u_int8_t *, u_int32_t, struct kore_buf *);
+
+char *b64tests[] = {
+	"1234567890",
+	"One two three four five",
+	"Man",
+	"any carnal pleasure.",
+	"any carnal pleasure",
+	"any carnal pleas",
+	"I am a nobody, nobody is perfect, therefor I am.",
+	NULL
+};
 
 int
 serve_style_css(struct http_request *req)
@@ -75,4 +88,52 @@ serve_intro(struct http_request *req)
 	    static_len_jpg_intro);
 
 	return (ret);
+}
+
+int
+serve_b64test(struct http_request *req)
+{
+	int			i, ret;
+	u_int32_t		len;
+	struct kore_buf		*res;
+	u_int8_t		*data;
+
+	res = kore_buf_create(1024);
+	for (i = 0; b64tests[i] != NULL; i++)
+		test_base64((u_int8_t *)b64tests[i], strlen(b64tests[i]), res);
+
+	data = kore_buf_release(res, &len);
+
+	http_response_header_add(req, "content-type", "text/plain");
+	ret = http_response(req, 200, data, len);
+	kore_mem_free(data);
+
+	return (ret);
+}
+
+void
+test_base64(u_int8_t *src, u_int32_t slen, struct kore_buf *res)
+{
+	char		*in;
+	u_int32_t	len;
+	u_int8_t	*out;
+
+	kore_buf_appendf(res, "test '%s'\n", src);
+
+	if (!kore_base64_encode(src, slen, &in)) {
+		kore_buf_appendf(res, "encoding '%s' failed\n", src);
+	} else {
+		kore_buf_appendf(res, "encoded: '%s'\n", in);
+
+		if (!kore_base64_decode(in, &out, &len)) {
+			kore_buf_appendf(res, "decoding failed\n");
+		} else {
+			kore_buf_appendf(res, "decoded: '%s'\n", out);
+			kore_mem_free(out);
+		}
+
+		kore_mem_free(in);
+	}
+
+	kore_buf_appendf(res, "\n");
 }

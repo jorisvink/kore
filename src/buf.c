@@ -88,3 +88,10 @@ kore_buf_release(struct kore_buf *buf, u_int32_t *len)
 
 	return (p);
 }
+
+void
+kore_buf_free(struct kore_buf *buf)
+{
+	free(buf->data);
+	free(buf);
+}
