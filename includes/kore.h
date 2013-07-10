@@ -59,7 +59,6 @@
 
 #define NETBUF_CALL_CB_ALWAYS	0x01
 #define NETBUF_FORCE_REMOVE	0x02
-#define NETBUF_RETAIN		0x04
 
 struct netbuf {
 	u_int8_t		*buf;

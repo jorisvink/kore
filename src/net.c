@@ -199,10 +199,8 @@ handle:
 			    (nb->flags & NETBUF_FORCE_REMOVE)) {
 				TAILQ_REMOVE(&(c->recv_queue), nb, list);
 
-				if (!(nb->flags & NETBUF_RETAIN)) {
-					kore_mem_free(nb->buf);
-					kore_mem_free(nb);
-				}
+				kore_mem_free(nb->buf);
+				kore_mem_free(nb);
 			}
 
 			if (r != KORE_RESULT_OK)
