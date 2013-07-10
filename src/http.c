@@ -295,9 +295,9 @@ http_header_recv(struct netbuf *nb)
 	struct http_header	*hdr;
 	struct http_request	*req;
 	struct netbuf		*nnb;
-	int			h, i, v, skip;
+	size_t			clen, len;
 	u_int8_t		*end_headers, ch;
-	size_t			clen, len, bytes_left;
+	int			h, i, v, skip, bytes_left;
 	char			*request[4], *host[3], *hbuf;
 	char			*p, *headers[HTTP_REQ_HEADER_MAX];
 	struct connection	*c = (struct connection *)nb->owner;
@@ -417,9 +417,17 @@ http_header_recv(struct netbuf *nb)
 		    (nb->offset - len));
 
 		bytes_left = clen - (nb->offset - len);
-		kore_debug("need %ld more bytes for POST", bytes_left);
-		net_recv_queue(c, bytes_left, 0, &nnb, http_post_data_recv);
-		nnb->extra = req;
+		if (bytes_left > 0) {
+			kore_debug("need %ld more bytes for POST", bytes_left);
+			net_recv_queue(c, bytes_left,
+			    0, &nnb, http_post_data_recv);
+			nnb->extra = req;
+		} else if (bytes_left == 0) {
+			req->flags |= HTTP_REQUEST_COMPLETE;
+		} else {
+			kore_debug("bytes_left would become zero (%ld)", clen);
+			return (KORE_RESULT_ERROR);
+		}
 	}
 
 	return (KORE_RESULT_OK);
