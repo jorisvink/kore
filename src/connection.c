@@ -14,6 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <sys/param.h>
 #include <sys/socket.h>
 
 #include <fcntl.h>
@@ -123,13 +124,19 @@ kore_connection_handle(struct connection *c)
 
 		SSL_get0_next_proto_negotiated(c->ssl, &data, &len);
 		if (data) {
-			if (!memcmp(data, "spdy/3", 6))
-				kore_debug("using SPDY/3");
-			c->proto = CONN_PROTO_SPDY;
-			net_recv_queue(c, SPDY_FRAME_SIZE, 0,
-			    NULL, spdy_frame_recv);
+			if (!memcmp(data, "spdy/3", MIN(6, len))) {
+				c->proto = CONN_PROTO_SPDY;
+				net_recv_queue(c, SPDY_FRAME_SIZE, 0,
+				    NULL, spdy_frame_recv);
+			} else if (!memcmp(data, "http/1.1", MIN(8, len))) {
+				c->proto = CONN_PROTO_HTTP;
+				net_recv_queue(c, HTTP_HEADER_MAX_LEN,
+				    NETBUF_CALL_CB_ALWAYS, NULL,
+				    http_header_recv);
+			} else {
+				kore_debug("npn: received unknown protocol");
+			}
 		} else {
-			kore_debug("using HTTP/1.1");
 			c->proto = CONN_PROTO_HTTP;
 			net_recv_queue(c, HTTP_HEADER_MAX_LEN,
 			    NETBUF_CALL_CB_ALWAYS, NULL,
