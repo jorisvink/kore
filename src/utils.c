@@ -35,7 +35,7 @@ static struct {
 	{ NULL,		0 },
 };
 
-static char b64table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+static char b64table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
 void
 kore_debug_internal(char *file, int line, const char *fmt, ...)
