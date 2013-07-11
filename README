@@ -26,6 +26,7 @@ License
 Platforms support
 - Linux
 - OpenBSD
+- FreeBSD
 
 Any other BSD might function, but is untested.
 
