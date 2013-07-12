@@ -80,6 +80,8 @@ net_recv_expand(struct connection *c, struct netbuf *nb, size_t len,
 	nb->cb = cb;
 	nb->len += len;
 	nb->buf = (u_int8_t *)kore_realloc(nb->buf, nb->len);
+
+	TAILQ_REMOVE(&(c->recv_queue), nb, list);
 	TAILQ_INSERT_HEAD(&(c->recv_queue), nb, list);
 
 	return (KORE_RESULT_OK);
