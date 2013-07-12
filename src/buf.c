@@ -92,6 +92,6 @@ kore_buf_release(struct kore_buf *buf, u_int32_t *len)
 void
 kore_buf_free(struct kore_buf *buf)
 {
-	free(buf->data);
-	free(buf);
+	kore_mem_free(buf->data);
+	kore_mem_free(buf);
 }
