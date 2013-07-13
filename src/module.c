@@ -113,7 +113,7 @@ kore_module_handler_new(char *path, char *domain, char *func, int type)
 	if ((dom = kore_domain_lookup(domain)) == NULL)
 		return (KORE_RESULT_ERROR);
 
-	hdlr = (struct kore_module_handle *)kore_malloc(sizeof(*hdlr));
+	hdlr = kore_malloc(sizeof(*hdlr));
 	hdlr->errors = 0;
 	hdlr->addr = addr;
 	hdlr->type = type;

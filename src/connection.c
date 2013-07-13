@@ -32,7 +32,8 @@ kore_connection_accept(struct listener *l, struct connection **out)
 
 	*out = NULL;
 	len = sizeof(struct sockaddr_in);
-	c = (struct connection *)kore_malloc(sizeof(*c));
+
+	c = kore_malloc(sizeof(*c));
 	if ((c->fd = accept(l->fd, (struct sockaddr *)&(c->sin), &len)) == -1) {
 		kore_mem_free(c);
 		kore_debug("accept(): %s", errno_s);

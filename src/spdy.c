@@ -198,9 +198,9 @@ spdy_header_block_create(int delayed_alloc)
 
 	kore_debug("spdy_header_block_create()");
 
-	hblock = (struct spdy_header_block *)kore_malloc(sizeof(*hblock));
+	hblock = kore_malloc(sizeof(*hblock));
 	if (delayed_alloc == SPDY_HBLOCK_NORMAL) {
-		hblock->header_block = (u_int8_t *)kore_malloc(128);
+		hblock->header_block = kore_malloc(128);
 		hblock->header_block_len = 128;
 		hblock->header_offset = 4;
 	} else {
@@ -226,8 +226,7 @@ spdy_header_block_add(struct spdy_header_block *hblock, char *name, char *value)
 	vlen = strlen(value);
 	if ((nlen + vlen + hblock->header_offset) > hblock->header_block_len) {
 		hblock->header_block_len += nlen + vlen + 128;
-		hblock->header_block =
-		    (u_int8_t *)kore_realloc(hblock->header_block,
+		hblock->header_block = kore_realloc(hblock->header_block,
 		    hblock->header_block_len);
 	}
 
@@ -302,7 +301,7 @@ spdy_stream_get_header(struct spdy_header_block *s, char *header, char **out)
 			kore_debug("found %s header", header);
 
 			cmp = (char *)(p + nlen + 8);
-			*out = (char *)kore_malloc(vlen + 1);
+			*out = kore_malloc(vlen + 1);
 			kore_strlcpy(*out, cmp, vlen + 1);
 			return (KORE_RESULT_OK);
 		}
@@ -390,7 +389,7 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 		return (KORE_RESULT_OK);
 	}
 
-	s = (struct spdy_stream *)kore_malloc(sizeof(*s));
+	s = kore_malloc(sizeof(*s));
 	s->prio = syn.prio;
 	s->flags = ctrl.flags;
 	s->wsize = c->wsize_initial;
@@ -701,7 +700,7 @@ spdy_zlib_inflate(struct connection *c, u_int8_t *src, size_t len,
 		case Z_OK:
 			have = SPDY_ZLIB_CHUNK - c->z_inflate.avail_out;
 			*olen += have;
-			*dst = (u_int8_t *)kore_realloc(*dst, *olen);
+			*dst = kore_realloc(*dst, *olen);
 			memcpy((*dst) + (*olen - have), inflate_buffer, have);
 
 			if (c->z_inflate.avail_in != 0 ||
@@ -769,7 +768,7 @@ spdy_zlib_deflate(struct connection *c, u_int8_t *src, size_t len,
 		case Z_OK:
 			have = SPDY_ZLIB_CHUNK - c->z_deflate.avail_out;
 			*olen += have;
-			*dst = (u_int8_t *)kore_realloc(*dst, *olen);
+			*dst = kore_realloc(*dst, *olen);
 			memcpy((*dst) + (*olen - have), deflate_buffer, have);
 
 			if (c->z_deflate.avail_in == 0 &&

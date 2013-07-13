@@ -257,7 +257,7 @@ kore_base64_encode(u_int8_t *data, u_int32_t len, char **out)
 	if ((len % 3) != 0) {
 		padding = 3 - (len % 3);
 		plen = len + padding;
-		pdata = (u_int8_t *)kore_malloc(plen);
+		pdata = kore_malloc(plen);
 
 		memcpy(pdata, data, len);
 		memset(pdata + len, 0, padding);

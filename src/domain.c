@@ -35,7 +35,7 @@ kore_domain_new(char *domain)
 
 	kore_debug("kore_domain_new(%s)", domain);
 
-	dom = (struct kore_domain *)kore_malloc(sizeof(*dom));
+	dom = kore_malloc(sizeof(*dom));
 	dom->accesslog = -1;
 	dom->certfile = NULL;
 	dom->certkey = NULL;

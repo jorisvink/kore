@@ -24,7 +24,7 @@ net_send_queue(struct connection *c, u_int8_t *data, size_t len, int flags,
 
 	//kore_debug("net_send_queue(%p, %p, %d, %p)", c, data, len, cb);
 
-	nb = (struct netbuf *)kore_malloc(sizeof(*nb));
+	nb = kore_malloc(sizeof(*nb));
 	nb->cb = cb;
 	nb->len = len;
 	nb->owner = c;
@@ -33,7 +33,7 @@ net_send_queue(struct connection *c, u_int8_t *data, size_t len, int flags,
 	nb->type = NETBUF_SEND;
 
 	if (len > 0) {
-		nb->buf = (u_int8_t *)kore_malloc(nb->len);
+		nb->buf = kore_malloc(nb->len);
 		memcpy(nb->buf, data, nb->len);
 	} else {
 		nb->buf = NULL;
@@ -52,14 +52,14 @@ net_recv_queue(struct connection *c, size_t len, int flags,
 
 	//kore_debug("net_recv_queue(%p, %d, %p)", c, len, cb);
 
-	nb = (struct netbuf *)kore_malloc(sizeof(*nb));
+	nb = kore_malloc(sizeof(*nb));
 	nb->cb = cb;
 	nb->len = len;
 	nb->owner = c;
 	nb->offset = 0;
 	nb->flags = flags;
 	nb->type = NETBUF_RECV;
-	nb->buf = (u_int8_t *)kore_malloc(nb->len);
+	nb->buf = kore_malloc(nb->len);
 
 	TAILQ_INSERT_TAIL(&(c->recv_queue), nb, list);
 	if (out != NULL)
@@ -79,7 +79,7 @@ net_recv_expand(struct connection *c, struct netbuf *nb, size_t len,
 
 	nb->cb = cb;
 	nb->len += len;
-	nb->buf = (u_int8_t *)kore_realloc(nb->buf, nb->len);
+	nb->buf = kore_realloc(nb->buf, nb->len);
 
 	TAILQ_REMOVE(&(c->recv_queue), nb, list);
 	TAILQ_INSERT_HEAD(&(c->recv_queue), nb, list);

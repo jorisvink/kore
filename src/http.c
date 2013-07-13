@@ -48,7 +48,7 @@ http_request_new(struct connection *c, struct spdy_stream *s, char *host,
 	if (strlen(path) >= HTTP_URI_LEN - 1)
 		return (KORE_RESULT_ERROR);
 
-	req = (struct http_request *)kore_malloc(sizeof(*req));
+	req = kore_malloc(sizeof(*req));
 	req->end = 0;
 	req->start = 0;
 	req->flags = 0;
@@ -152,7 +152,7 @@ http_response_header_add(struct http_request *req, char *header, char *value)
 
 	kore_debug("http_response_header_add(%p, %s, %s)", req, header, value);
 
-	hdr = (struct http_header *)kore_malloc(sizeof(*hdr));
+	hdr = kore_malloc(sizeof(*hdr));
 	hdr->header = kore_strdup(header);
 	hdr->value = kore_strdup(value);
 	TAILQ_INSERT_TAIL(&(req->resp_headers), hdr, list);
@@ -280,7 +280,7 @@ http_request_header_get(struct http_request *req, char *header, char **out)
 		TAILQ_FOREACH(hdr, &(req->req_headers), list) {
 			if (!strcasecmp(hdr->header, header)) {
 				r = strlen(hdr->value) + 1;
-				*out = (char *)kore_malloc(r);
+				*out = kore_malloc(r);
 				kore_strlcpy(*out, hdr->value, r);
 				return (KORE_RESULT_OK);
 			}
@@ -320,7 +320,7 @@ http_header_recv(struct netbuf *nb)
 	end_headers += 2;
 
 	len = end_headers - nb->buf;
-	hbuf = (char *)kore_malloc(len + 1);
+	hbuf = kore_malloc(len + 1);
 	kore_strlcpy(hbuf, (char *)nb->buf, len + 1);
 
 	h = kore_split_string(hbuf, "\r\n", headers, HTTP_REQ_HEADER_MAX);
@@ -387,7 +387,7 @@ http_header_recv(struct netbuf *nb)
 		*(p++) = '\0';
 		if (*p == ' ')
 			p++;
-		hdr = (struct http_header *)kore_malloc(sizeof(*hdr));
+		hdr = kore_malloc(sizeof(*hdr));
 		hdr->header = kore_strdup(headers[i]);
 		hdr->value = kore_strdup(p);
 		TAILQ_INSERT_TAIL(&(req->req_headers), hdr, list);
@@ -459,7 +459,7 @@ http_populate_arguments(struct http_request *req)
 			continue;
 		}
 
-		q = (struct http_arg *)kore_malloc(sizeof(*q));
+		q = kore_malloc(sizeof(*q));
 		q->name = kore_strdup(val[0]);
 		if (c == 2)
 			q->value = kore_strdup(val[1]);
@@ -500,7 +500,7 @@ http_post_data_text(struct http_request *req)
 	data = kore_buf_release(req->post_data, &len);
 	len++;
 
-	text = (char *)kore_malloc(len);
+	text = kore_malloc(len);
 	kore_strlcpy(text, (char *)data, len);
 	kore_mem_free(data);
 

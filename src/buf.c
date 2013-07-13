@@ -21,8 +21,8 @@ kore_buf_create(u_int32_t initial)
 {
 	struct kore_buf		*buf;
 
-	buf = (struct kore_buf *)kore_malloc(sizeof(*buf));
-	buf->data = (u_int8_t *)kore_malloc(initial);
+	buf = kore_malloc(sizeof(*buf));
+	buf->data = kore_malloc(initial);
 	buf->length = initial;
 	buf->offset = 0;
 
@@ -34,7 +34,7 @@ kore_buf_append(struct kore_buf *buf, u_int8_t *d, u_int32_t len)
 {
 	if ((buf->offset + len) >= buf->length) {
 		buf->length += len + KORE_BUF_INCREMENT;
-		buf->data = (u_int8_t *)kore_realloc(buf->data, buf->length);
+		buf->data = kore_realloc(buf->data, buf->length);
 	}
 
 	memcpy((buf->data + buf->offset), d, len);
