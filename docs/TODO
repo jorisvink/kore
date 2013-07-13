@@ -1,6 +1,7 @@
 Kore TODO list
 ===============
 
+- Relay proper SPDY stream/protocol errors back to client.
 - Websocket support.
 - GET arguments (only POST supported).
 - POST multiform/form-data support.
