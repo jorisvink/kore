@@ -87,8 +87,7 @@ kore_connection_handle(struct connection *c)
 
 	kore_debug("kore_connection_handle(%p)", c);
 
-	if (c->proto != CONN_PROTO_SPDY)
-		kore_connection_stop_idletimer(c);
+	kore_connection_stop_idletimer(c);
 
 	switch (c->state) {
 	case CONN_STATE_SSL_SHAKE:
@@ -126,6 +125,7 @@ kore_connection_handle(struct connection *c)
 		if (data) {
 			if (!memcmp(data, "spdy/3", MIN(6, len))) {
 				c->proto = CONN_PROTO_SPDY;
+				c->idle_timer.length = spdy_idle_time;
 				net_recv_queue(c, SPDY_FRAME_SIZE, 0,
 				    NULL, spdy_frame_recv);
 			} else if (!memcmp(data, "http/1.1", MIN(8, len))) {
@@ -163,8 +163,7 @@ kore_connection_handle(struct connection *c)
 		break;
 	}
 
-	if (c->proto != CONN_PROTO_SPDY)
-		kore_connection_start_idletimer(c);
+	kore_connection_start_idletimer(c);
 
 	return (KORE_RESULT_OK);
 }

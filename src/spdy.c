@@ -35,6 +35,8 @@ static int		spdy_zlib_inflate(struct connection *, u_int8_t *,
 static int		spdy_zlib_deflate(struct connection *, u_int8_t *,
 			    size_t, u_int8_t **, u_int32_t *);
 
+u_int64_t		spdy_idle_time = 120000;
+
 int
 spdy_frame_recv(struct netbuf *nb)
 {
@@ -339,7 +341,7 @@ spdy_session_teardown(struct connection *c, u_int8_t err)
 	c->flags &= ~CONN_READ_POSSIBLE;
 	c->flags |= CONN_READ_BLOCK;
 
-	c->idle_timer.length = 5;
+	c->idle_timer.length = 5000;
 	kore_connection_start_idletimer(c);
 }
 
@@ -540,7 +542,9 @@ spdy_ctrl_frame_window(struct netbuf *nb)
 	if (s->wsize > 0 && c->flags & CONN_WRITE_BLOCK) {
 		c->flags &= ~CONN_WRITE_BLOCK;
 		c->flags |= CONN_WRITE_POSSIBLE;
+
 		kore_connection_stop_idletimer(c);
+		c->idle_timer.length = spdy_idle_time;
 
 		kore_debug("can now send again (%d wsize)", s->wsize);
 		return (net_send_flush(c));
@@ -638,6 +642,8 @@ spdy_update_wsize(struct connection *c, struct spdy_stream *s, u_int32_t len)
 		kore_debug("window size <= 0 for stream %d", s->stream_id);
 		c->flags &= ~CONN_WRITE_POSSIBLE;
 		c->flags |= CONN_WRITE_BLOCK;
+
+		c->idle_timer.length = 5000;
 		kore_connection_start_idletimer(c);
 	}
 }

@@ -188,6 +188,7 @@ extern char	*config_file;
 extern char	kore_version_string[];
 extern char	*kore_ssl_cipher_list;
 
+extern u_int64_t		spdy_idle_time;
 extern u_int32_t		meminuse;
 extern u_int16_t		cpu_count;
 extern u_int8_t			worker_count;

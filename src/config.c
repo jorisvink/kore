@@ -34,6 +34,7 @@ static int		configure_certfile(char **);
 static int		configure_certkey(char **);
 static int		configure_max_connections(char **);
 static int		configure_ssl_cipher(char **);
+static int		configure_spdy_idle_time(char **);
 static void		domain_sslstart(void);
 
 static struct {
@@ -46,6 +47,7 @@ static struct {
 	{ "static",			configure_handler },
 	{ "dynamic",			configure_handler },
 	{ "ssl_cipher",			configure_ssl_cipher },
+	{ "spdy_idle_time",		configure_spdy_idle_time },
 	{ "domain",			configure_domain },
 	{ "chroot",			configure_chroot },
 	{ "runas",			configure_runas },
@@ -180,6 +182,24 @@ configure_ssl_cipher(char **argv)
 	}
 
 	kore_ssl_cipher_list = kore_strdup(argv[1]);
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_spdy_idle_time(char **argv)
+{
+	int		err;
+
+	if (argv[1] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	spdy_idle_time = kore_strtonum(argv[1], 0, 65535, &err);
+	if (err != KORE_RESULT_OK) {
+		kore_debug("spdy_idle_time has invalid value: %s", argv[1]);
+		return (KORE_RESULT_ERROR);
+	}
+
+	spdy_idle_time = spdy_idle_time * 1000;
 	return (KORE_RESULT_OK);
 }
 

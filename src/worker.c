@@ -231,6 +231,7 @@ kore_worker_entry(struct kore_worker *kw)
 			idle_check = now;
 			TAILQ_FOREACH(c, &worker_clients, list) {
 				if (c->proto == CONN_PROTO_SPDY &&
+				    c->idle_timer.length == 0 &&
 				    !(c->flags & CONN_WRITE_BLOCK) &&
 				    !(c->flags & CONN_READ_BLOCK))
 					continue;
