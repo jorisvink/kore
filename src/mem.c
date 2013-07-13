@@ -14,6 +14,8 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <stdlib.h>
+
 #include "kore.h"
 
 #define KORE_MEM_MAGIC		0xd0d0
@@ -46,7 +48,7 @@ kore_malloc(size_t len)
 	struct meminfo		*mem;
 
 	mlen = sizeof(struct meminfo) + len;
-	if ((mem = (struct meminfo *)malloc(mlen)) == NULL)
+	if ((mem = malloc(mlen)) == NULL)
 		fatal("kore_malloc(%d): %d", len, errno);
 
 	mem->clen = len;
