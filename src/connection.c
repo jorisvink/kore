@@ -225,7 +225,10 @@ kore_connection_check_idletimer(u_int64_t now, struct connection *c)
 	d = now - c->idle_timer.start;
 	if (d >= c->idle_timer.length) {
 		kore_debug("%p idle for %d ms, expiring", c, d);
-		kore_connection_disconnect(c);
+		if (c->proto == CONN_PROTO_SPDY)
+			spdy_session_teardown(c, SPDY_SESSION_ERROR_OK);
+		else
+			kore_connection_disconnect(c);
 	}
 }
 

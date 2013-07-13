@@ -341,8 +341,7 @@ spdy_session_teardown(struct connection *c, u_int8_t err)
 	c->flags &= ~CONN_READ_POSSIBLE;
 	c->flags |= CONN_READ_BLOCK;
 
-	c->idle_timer.length = 5000;
-	kore_connection_start_idletimer(c);
+	net_send_flush(c);
 }
 
 static int
