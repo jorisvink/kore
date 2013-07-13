@@ -19,16 +19,14 @@
 #include "kore.h"
 
 #define KORE_MEM_MAGIC		0xd0d0
+#define KORE_MEMSIZE(x)		\
+	(*(u_int32_t *)((u_int8_t *)x - sizeof(u_int32_t)))
 #define KORE_MEMINFO(x)		\
-	((struct meminfo *)((u_int8_t *)x - sizeof(struct meminfo)))
+	(struct meminfo *)((u_int8_t *)x + KORE_MEMSIZE(x))
 
 struct meminfo {
-	u_int32_t		len;
-	u_int32_t		clen;
-	u_int64_t		t;
-	TAILQ_ENTRY(meminfo)	list;
-	u_int8_t		*addr;
 	u_int16_t		magic;
+	TAILQ_ENTRY(meminfo)	list;
 };
 
 u_int32_t			meminuse;
@@ -45,25 +43,27 @@ void *
 kore_malloc(size_t len)
 {
 	size_t			mlen;
+	void			*ptr;
 	struct meminfo		*mem;
+	u_int8_t		*addr;
+	u_int32_t		*plen;
 
-	mlen = sizeof(struct meminfo) + len;
-	if ((mem = malloc(mlen)) == NULL)
+	mlen = sizeof(u_int32_t) + len + sizeof(struct meminfo);
+	if ((ptr = malloc(mlen)) == NULL)
 		fatal("kore_malloc(%d): %d", len, errno);
 
-	mem->clen = len;
-	mem->len = mlen;
-	mem->t = kore_time_ms();
-	mem->addr = (u_int8_t *)mem + sizeof(struct meminfo);
+	plen = (u_int32_t *)ptr;
+	*plen = len;
+	addr = (u_int8_t *)ptr + sizeof(u_int32_t);
+
+	mem = KORE_MEMINFO(addr);
 	mem->magic = KORE_MEM_MAGIC;
 	TAILQ_INSERT_TAIL(&memused, mem, list);
-	if ((u_int8_t *)mem != mem->addr - sizeof(struct meminfo))
-		fatal("kore_malloc(): addr offset is wrong");
 
 	meminuse += len;
-	memset(mem->addr, '\0', mem->clen);
+	memset(addr, '\0', len);
 
-	return (mem->addr);
+	return (addr);
 }
 
 void *
@@ -80,7 +80,7 @@ kore_realloc(void *ptr, size_t len)
 			fatal("kore_realloc(): magic boundary not found");
 
 		nptr = kore_malloc(len);
-		memcpy(nptr, ptr, mem->clen);
+		memcpy(nptr, ptr, KORE_MEMSIZE(ptr));
 		kore_mem_free(ptr);
 	}
 
@@ -96,15 +96,18 @@ kore_calloc(size_t memb, size_t len)
 void
 kore_mem_free(void *ptr)
 {
+	u_int8_t	*addr;
 	struct meminfo	*mem;
 
 	mem = KORE_MEMINFO(ptr);
 	if (mem->magic != KORE_MEM_MAGIC)
 		fatal("kore_mem_free(): magic boundary not found");
 
-	meminuse -= mem->clen;
+	meminuse -= KORE_MEMSIZE(ptr);
 	TAILQ_REMOVE(&memused, mem, list);
-	free(mem);
+
+	addr = (u_int8_t *)ptr - sizeof(u_int32_t);
+	free(addr);
 }
 
 char *
