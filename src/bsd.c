@@ -88,7 +88,7 @@ kore_platform_event_wait(void)
 			while (worker->accepted < worker->accept_treshold) {
 				kore_connection_accept(&server, &c);
 				if (c == NULL)
-					continue;
+					break;
 
 				worker->accepted++;
 				kore_platform_event_schedule(c->fd,
