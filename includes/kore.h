@@ -92,6 +92,7 @@ struct listener {
 #define CONN_WRITE_POSSIBLE	0x02
 #define CONN_WRITE_BLOCK	0x04
 #define CONN_IDLE_TIMER_ACT	0x10
+#define CONN_READ_BLOCK		0x20
 
 #define KORE_IDLE_TIMER_MAX	20000
 
@@ -299,6 +300,7 @@ int			spdy_stream_get_header(struct spdy_header_block *,
 			    char *, char **);
 
 int		spdy_frame_recv(struct netbuf *);
+void		spdy_session_teardown(struct connection *c, u_int8_t);
 void		spdy_frame_send(struct connection *, u_int16_t,
 		    u_int8_t, u_int32_t, struct spdy_stream *, u_int32_t);
 void		spdy_header_block_add(struct spdy_header_block *,

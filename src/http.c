@@ -222,8 +222,11 @@ http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 			spdy_header_block_add(hblock, hdr->header, hdr->value);
 
 		htext = spdy_header_block_release(req->owner, hblock, &hlen);
-		if (htext == NULL)
-			return (KORE_RESULT_ERROR);
+		if (htext == NULL) {
+			spdy_session_teardown(req->owner,
+			    SPDY_SESSION_ERROR_INTERNAL);
+			return (KORE_RESULT_OK);
+		}
 
 		spdy_frame_send(req->owner, SPDY_CTRL_FRAME_SYN_REPLY,
 		    0, hlen, req->stream, 0);

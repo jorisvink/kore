@@ -104,7 +104,8 @@ kore_platform_event_wait(void)
 			}
 		} else {
 			c = (struct connection *)events[i].data.ptr;
-			if (events[i].events & EPOLLIN)
+			if (events[i].events & EPOLLIN &&
+			    !(c->flags & CONN_READ_BLOCK))
 				c->flags |= CONN_READ_POSSIBLE;
 			if (events[i].events & EPOLLOUT &&
 			    !(c->flags & CONN_WRITE_BLOCK))

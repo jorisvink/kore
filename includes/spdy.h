@@ -76,8 +76,14 @@ extern const unsigned char SPDY_dictionary_txt[];
 #define SPDY_CTRL_FRAME_SYN_REPLY	2
 #define SPDY_CTRL_FRAME_SETTINGS	4
 #define SPDY_CTRL_FRAME_PING		6
+#define SPDY_CTRL_FRAME_GOAWAY		7
 #define SPDY_CTRL_FRAME_WINDOW		9
 #define SPDY_DATA_FRAME			99
+
+/* session error codes */
+#define SPDY_SESSION_ERROR_OK		0
+#define SPDY_SESSION_ERROR_PROTOCOL	1
+#define SPDY_SESSION_ERROR_INTERNAL	2
 
 /* flags */
 #define FLAG_FIN			0x01

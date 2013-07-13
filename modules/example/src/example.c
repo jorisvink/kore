@@ -23,6 +23,8 @@ int		serve_style_css(struct http_request *);
 int		serve_index(struct http_request *);
 int		serve_intro(struct http_request *);
 int		serve_b64test(struct http_request *);
+int		serve_spdyreset(struct http_request *);
+
 void		test_base64(u_int8_t *, u_int32_t, struct kore_buf *);
 
 char *b64tests[] = {
@@ -109,6 +111,13 @@ serve_b64test(struct http_request *req)
 	kore_mem_free(data);
 
 	return (ret);
+}
+
+int
+serve_spdyreset(struct http_request *req)
+{
+	spdy_session_teardown(req->owner, SPDY_SESSION_ERROR_OK);
+	return (KORE_RESULT_OK);
 }
 
 void

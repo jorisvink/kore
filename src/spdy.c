@@ -24,11 +24,12 @@ static int		spdy_ctrl_frame_ping(struct netbuf *);
 static int		spdy_ctrl_frame_window(struct netbuf *);
 static int		spdy_data_frame_recv(struct netbuf *);
 static int		spdy_frame_send_done(struct netbuf *);
+static int		spdy_goaway_send_done(struct netbuf *);
+
 static void		spdy_update_wsize(struct connection *,
 			    struct spdy_stream *, u_int32_t);
 static void		spdy_stream_close(struct connection *,
 			    struct spdy_stream *);
-
 static int		spdy_zlib_inflate(struct connection *, u_int8_t *,
 			    size_t, u_int8_t **, u_int32_t *);
 static int		spdy_zlib_deflate(struct connection *, u_int8_t *,
@@ -61,7 +62,9 @@ spdy_frame_recv(struct netbuf *nb)
 		if (ctrl.version != 3) {
 			kore_debug("protocol mismatch (recv version %d)",
 			    ctrl.version);
-			return (KORE_RESULT_ERROR);
+
+			spdy_session_teardown(c, SPDY_SESSION_ERROR_PROTOCOL);
+			return (KORE_RESULT_OK);
 		}
 
 		switch (ctrl.type) {
@@ -108,6 +111,9 @@ spdy_frame_recv(struct netbuf *nb)
 	if (r == KORE_RESULT_OK) {
 		net_recv_queue(c, SPDY_FRAME_SIZE,
 		    0, NULL, spdy_frame_recv);
+	} else {
+		r = KORE_RESULT_OK;
+		spdy_session_teardown(c, SPDY_SESSION_ERROR_PROTOCOL);
 	}
 
 	return (r);
@@ -144,6 +150,14 @@ spdy_frame_send(struct connection *c, u_int16_t type, u_int8_t flags,
 		}
 
 		length = 12;
+		break;
+	case SPDY_CTRL_FRAME_GOAWAY:
+		net_write16(&nb[0], 3);
+		nb[0] |= (1 << 7);
+		net_write16(&nb[2], type);
+		net_write32(&nb[4], len);
+		nb[4] = flags;
+		length = 8;
 		break;
 	case SPDY_DATA_FRAME:
 		net_write32(&nb[0], s->stream_id);
@@ -309,6 +323,26 @@ spdy_frame_data_done(struct netbuf *nb)
 	return (KORE_RESULT_OK);
 }
 
+void
+spdy_session_teardown(struct connection *c, u_int8_t err)
+{
+	u_int8_t	d[8];
+
+	kore_debug("spdy_session_teardown(%p, %d)", c, err);
+
+	net_write32((u_int8_t *)&d[0], c->client_stream_id);
+	net_write32((u_int8_t *)&d[4], err);
+
+	spdy_frame_send(c, SPDY_CTRL_FRAME_GOAWAY, 0, 8, NULL, 0);
+	net_send_queue(c, d, sizeof(d), 0, NULL, spdy_goaway_send_done);
+
+	c->flags &= ~CONN_READ_POSSIBLE;
+	c->flags |= CONN_READ_BLOCK;
+
+	c->idle_timer.length = 5;
+	kore_connection_start_idletimer(c);
+}
+
 static int
 spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 {
@@ -337,19 +371,22 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 	if ((syn.stream_id % 2) == 0 || syn.stream_id == 0) {
 		kore_debug("client sent incorrect id for SPDY_SYN_STREAM (%d)",
 		    syn.stream_id);
-		return (KORE_RESULT_ERROR);
+		spdy_session_teardown(c, SPDY_SESSION_ERROR_PROTOCOL);
+		return (KORE_RESULT_OK);
 	}
 
 	/* XXX need to send protocol error. */
 	if (syn.stream_id < c->client_stream_id) {
 		kore_debug("client sent incorrect id SPDY_SYN_STREAM (%d < %d)",
 		    syn.stream_id, c->client_stream_id);
-		return (KORE_RESULT_ERROR);
+		spdy_session_teardown(c, SPDY_SESSION_ERROR_PROTOCOL);
+		return (KORE_RESULT_OK);
 	}
 
 	if ((s = spdy_stream_lookup(c, syn.stream_id)) != NULL) {
 		kore_debug("duplicate SPDY_SYN_STREAM (%d)", syn.stream_id);
-		return (KORE_RESULT_ERROR);
+		spdy_session_teardown(c, SPDY_SESSION_ERROR_PROTOCOL);
+		return (KORE_RESULT_OK);
 	}
 
 	s = (struct spdy_stream *)kore_malloc(sizeof(*s));
@@ -366,7 +403,8 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 		kore_mem_free(s->hblock->header_block);
 		kore_mem_free(s->hblock);
 		kore_mem_free(s);
-		return (KORE_RESULT_ERROR);
+		spdy_session_teardown(c, SPDY_SESSION_ERROR_INTERNAL);
+		return (KORE_RESULT_OK);
 	}
 
 	s->hblock->header_pairs = net_read32(s->hblock->header_block);
@@ -376,19 +414,20 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 	host = NULL;
 	method = NULL;
 
-#define GET_HEADER(n, r)				\
-	if (!spdy_stream_get_header(s->hblock, n, r)) {	\
+#define GET_HEADER(n, r)					\
+	if (!spdy_stream_get_header(s->hblock, n, r)) {		\
 		kore_mem_free(s->hblock->header_block);		\
 		kore_mem_free(s->hblock);			\
 		kore_mem_free(s);				\
-		kore_debug("no such header: %s", n);	\
-		if (path != NULL)			\
+		kore_debug("no such header: %s", n);		\
+		if (path != NULL)				\
 			kore_mem_free(path);			\
-		if (host != NULL)			\
+		if (host != NULL)				\
 			kore_mem_free(host);			\
-		if (method != NULL)			\
+		if (method != NULL)				\
 			kore_mem_free(method);			\
-		return (KORE_RESULT_ERROR);		\
+		spdy_session_teardown(c, SPDY_SESSION_ERROR_PROTOCOL);	\
+		return (KORE_RESULT_OK);			\
 	}
 
 	GET_HEADER(":path", &path);
@@ -403,7 +442,8 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 		kore_mem_free(s->hblock->header_block);
 		kore_mem_free(s->hblock);
 		kore_mem_free(s);
-		return (KORE_RESULT_ERROR);
+		spdy_session_teardown(c, SPDY_SESSION_ERROR_INTERNAL);
+		return (KORE_RESULT_OK);
 	}
 
 	kore_mem_free(path);
@@ -432,7 +472,8 @@ spdy_ctrl_frame_settings(struct netbuf *nb)
 	if (length != ((ecount * 8) + 4)) {
 		kore_debug("ecount is not correct (%d != %d)", length,
 		    (ecount * 8) + 4);
-		return (KORE_RESULT_ERROR);
+		spdy_session_teardown(c, SPDY_SESSION_ERROR_PROTOCOL);
+		return (KORE_RESULT_OK);
 	}
 
 	buf = nb->buf + SPDY_FRAME_SIZE + 4;
@@ -469,7 +510,8 @@ spdy_ctrl_frame_ping(struct netbuf *nb)
 	/* XXX todo - check if we sent the ping. */
 	if ((id % 2) == 0) {
 		kore_debug("received malformed client PING (%d)", id);
-		return (KORE_RESULT_ERROR);
+		spdy_session_teardown(c, SPDY_SESSION_ERROR_PROTOCOL);
+		return (KORE_RESULT_OK);
 	}
 
 	spdy_frame_send(c, SPDY_CTRL_FRAME_PING, 0, 4, NULL, id);
@@ -489,7 +531,8 @@ spdy_ctrl_frame_window(struct netbuf *nb)
 	if ((s = spdy_stream_lookup(c, stream_id)) == NULL) {
 		kore_debug("received WINDOW_UPDATE for nonexistant stream");
 		kore_debug("stream_id: %d", stream_id);
-		return (KORE_RESULT_ERROR);
+		spdy_session_teardown(c, SPDY_SESSION_ERROR_PROTOCOL);
+		return (KORE_RESULT_OK);
 	}
 
 	kore_debug("SPDY_WINDOW_UPDATE: %d:%d", stream_id, window_size);
@@ -521,13 +564,15 @@ spdy_data_frame_recv(struct netbuf *nb)
 	    data.flags, data.length);
 
 	if ((s = spdy_stream_lookup(c, data.stream_id)) == NULL) {
-		kore_debug("session data for incorrect stream");
-		return (KORE_RESULT_OK);
+		kore_debug("session data for non-existant stream");
+		/* stream error */
+		return (KORE_RESULT_ERROR);
 	}
 
 	req = (struct http_request *)s->httpreq;
 	if (req->method != HTTP_METHOD_POST) {
 		kore_debug("data frame for non post received");
+		/* stream error */
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -570,6 +615,15 @@ spdy_frame_send_done(struct netbuf *nb)
 	if ((flags & FLAG_FIN) && (s->flags & FLAG_FIN))
 		spdy_stream_close(c, s);
 
+	return (KORE_RESULT_OK);
+}
+
+static int
+spdy_goaway_send_done(struct netbuf *nb)
+{
+	struct connection	*c = (struct connection *)nb->owner;
+
+	kore_connection_disconnect(c);
 	return (KORE_RESULT_OK);
 }
 

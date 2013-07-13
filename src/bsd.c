@@ -98,9 +98,11 @@ kore_platform_event_wait(void)
 			}
 		} else {
 			c = (struct connection *)events[i].udata;
-			if (events[i].filter == EVFILT_READ)
+			if (events[i].filter == EVFILT_READ &&
+			    !(c->flags & CONN_READ_BLOCK))
 				c->flags |= CONN_READ_POSSIBLE;
-			if (events[i].filter == EVFILT_WRITE)
+			if (events[i].filter == EVFILT_WRITE &&
+			    !(c->flags & CONN_WRITE_BLOCK))
 				c->flags |= CONN_WRITE_POSSIBLE;
 
 			if (!kore_connection_handle(c)) {
