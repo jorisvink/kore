@@ -93,7 +93,9 @@ kore_platform_event_wait(void)
 		}
 
 		if (*fd == server.fd) {
-			while (worker->accepted < worker->accept_treshold) {
+			while ((worker->accepted < worker->accept_treshold) &&
+			    (worker_active_connections <
+			    worker_max_connections)) {
 				kore_connection_accept(&server, &c);
 				if (c == NULL)
 					break;

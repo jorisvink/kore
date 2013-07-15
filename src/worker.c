@@ -192,7 +192,9 @@ kore_worker_entry(struct kore_worker *kw)
 	signal(SIGQUIT, kore_signal);
 	signal(SIGPIPE, SIG_IGN);
 
+	net_init();
 	http_init();
+	kore_connection_init();
 	TAILQ_INIT(&disconnected);
 	TAILQ_INIT(&worker_clients);
 
@@ -213,12 +215,14 @@ kore_worker_entry(struct kore_worker *kw)
 			sig_recv = 0;
 		}
 
-		if (!worker->has_lock)
+		if (!worker->has_lock &&
+		    (worker_active_connections < worker_max_connections))
 			kore_worker_acceptlock_obtain();
 
 		kore_platform_event_wait();
 
-		if (worker->accepted >= worker->accept_treshold &&
+		if (((worker->accepted >= worker->accept_treshold) ||
+		    (worker_active_connections < worker_max_connections)) &&
 		    worker->has_lock) {
 			worker->accepted = 0;
 			kore_worker_acceptlock_release();

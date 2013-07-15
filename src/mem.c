@@ -27,7 +27,7 @@
 struct meminfo {
 	u_int16_t		magic;
 	TAILQ_ENTRY(meminfo)	list;
-};
+} __attribute__((__packed__));
 
 u_int32_t			meminuse;
 TAILQ_HEAD(, meminfo)		memused;

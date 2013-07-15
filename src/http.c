@@ -24,6 +24,8 @@ static int		http_post_data_recv(struct netbuf *);
 static int		http_send_done(struct netbuf *);
 
 static TAILQ_HEAD(, http_request)	http_requests;
+static struct kore_pool			http_request_pool;
+static struct kore_pool			http_header_pool;
 
 int		http_request_count;
 
@@ -32,6 +34,12 @@ http_init(void)
 {
 	http_request_count = 0;
 	TAILQ_INIT(&http_requests);
+
+	kore_pool_init(&http_request_pool, "http_request_pool",
+	    sizeof(struct http_request), worker_max_connections);
+	kore_pool_init(&http_header_pool, "http_header_pool",
+	    sizeof(struct http_header),
+	    worker_max_connections * HTTP_REQ_HEADER_MAX);
 }
 
 int
@@ -48,7 +56,7 @@ http_request_new(struct connection *c, struct spdy_stream *s, char *host,
 	if (strlen(path) >= HTTP_URI_LEN - 1)
 		return (KORE_RESULT_ERROR);
 
-	req = kore_malloc(sizeof(*req));
+	req = kore_pool_get(&http_request_pool);
 	req->end = 0;
 	req->start = 0;
 	req->flags = 0;
@@ -152,7 +160,7 @@ http_response_header_add(struct http_request *req, char *header, char *value)
 
 	kore_debug("http_response_header_add(%p, %s, %s)", req, header, value);
 
-	hdr = kore_malloc(sizeof(*hdr));
+	hdr = kore_pool_get(&http_header_pool);
 	hdr->header = kore_strdup(header);
 	hdr->value = kore_strdup(value);
 	TAILQ_INSERT_TAIL(&(req->resp_headers), hdr, list);
@@ -170,7 +178,7 @@ http_request_free(struct http_request *req)
 		TAILQ_REMOVE(&(req->resp_headers), hdr, list);
 		kore_mem_free(hdr->header);
 		kore_mem_free(hdr->value);
-		kore_mem_free(hdr);
+		kore_pool_put(&http_header_pool, hdr);
 	}
 
 	for (hdr = TAILQ_FIRST(&(req->req_headers)); hdr != NULL; hdr = next) {
@@ -179,7 +187,7 @@ http_request_free(struct http_request *req)
 		TAILQ_REMOVE(&(req->req_headers), hdr, list);
 		kore_mem_free(hdr->header);
 		kore_mem_free(hdr->value);
-		kore_mem_free(hdr);
+		kore_pool_put(&http_header_pool, hdr);
 	}
 
 	for (q = TAILQ_FIRST(&(req->arguments)); q != NULL; q = qnext) {
@@ -194,7 +202,8 @@ http_request_free(struct http_request *req)
 
 	if (req->agent != NULL)
 		kore_mem_free(req->agent);
-	kore_mem_free(req);
+
+	kore_pool_put(&http_request_pool, req);
 }
 
 int
@@ -387,7 +396,7 @@ http_header_recv(struct netbuf *nb)
 		*(p++) = '\0';
 		if (*p == ' ')
 			p++;
-		hdr = kore_malloc(sizeof(*hdr));
+		hdr = kore_pool_get(&http_header_pool);
 		hdr->header = kore_strdup(headers[i]);
 		hdr->value = kore_strdup(p);
 		TAILQ_INSERT_TAIL(&(req->req_headers), hdr, list);

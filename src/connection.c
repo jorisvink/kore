@@ -22,6 +22,15 @@
 #include "kore.h"
 #include "http.h"
 
+struct kore_pool		connection_pool;
+
+void
+kore_connection_init(void)
+{
+	kore_pool_init(&connection_pool, "connection_pool",
+	    sizeof(struct connection), worker_max_connections);
+}
+
 int
 kore_connection_accept(struct listener *l, struct connection **out)
 {
@@ -33,16 +42,16 @@ kore_connection_accept(struct listener *l, struct connection **out)
 	*out = NULL;
 	len = sizeof(struct sockaddr_in);
 
-	c = kore_malloc(sizeof(*c));
+	c = kore_pool_get(&connection_pool);
 	if ((c->fd = accept(l->fd, (struct sockaddr *)&(c->sin), &len)) == -1) {
-		kore_mem_free(c);
+		kore_pool_put(&connection_pool, c);
 		kore_debug("accept(): %s", errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
 	if (!kore_connection_nonblock(c->fd)) {
 		close(c->fd);
-		kore_mem_free(c);
+		kore_pool_put(&connection_pool, c);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -191,14 +200,14 @@ kore_connection_remove(struct connection *c)
 		TAILQ_REMOVE(&(c->send_queue), nb, list);
 		if (nb->buf != NULL)
 			kore_mem_free(nb->buf);
-		kore_mem_free(nb);
+		kore_pool_put(&nb_pool, nb);
 	}
 
 	for (nb = TAILQ_FIRST(&(c->recv_queue)); nb != NULL; nb = next) {
 		next = TAILQ_NEXT(nb, list);
 		TAILQ_REMOVE(&(c->recv_queue), nb, list);
 		kore_mem_free(nb->buf);
-		kore_mem_free(nb);
+		kore_pool_put(&nb_pool, nb);
 	}
 
 	for (s = TAILQ_FIRST(&(c->spdy_streams)); s != NULL; s = snext) {
@@ -215,7 +224,7 @@ kore_connection_remove(struct connection *c)
 	}
 
 	kore_worker_connection_remove(c);
-	kore_mem_free(c);
+	kore_pool_put(&connection_pool, c);
 }
 
 void

@@ -461,7 +461,7 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 static int
 spdy_ctrl_frame_settings(struct netbuf *nb)
 {
-	u_int8_t		*buf, flags;
+	u_int8_t		*buf;
 	u_int32_t		ecount, i, id, val, length;
 	struct connection	*c = (struct connection *)nb->owner;
 
@@ -478,7 +478,6 @@ spdy_ctrl_frame_settings(struct netbuf *nb)
 
 	buf = nb->buf + SPDY_FRAME_SIZE + 4;
 	for (i = 0; i < ecount; i++) {
-		flags = *(u_int8_t *)buf;
 		id = net_read32(buf) & 0xffffff;
 		val = net_read32(buf + 4);
 
@@ -487,8 +486,7 @@ spdy_ctrl_frame_settings(struct netbuf *nb)
 			c->wsize_initial = val;
 			break;
 		default:
-			kore_debug("no handling for setting %d:%d (%d)",
-			    id, val, flags);
+			kore_debug("no handling for setting %d:%d", id, val);
 			break;
 		}
 

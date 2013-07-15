@@ -16,15 +16,21 @@
 
 #include "kore.h"
 
+struct kore_pool		nb_pool;
+
+void
+net_init(void)
+{
+	kore_pool_init(&nb_pool, "nb_pool", sizeof(struct netbuf), 1000);
+}
+
 void
 net_send_queue(struct connection *c, u_int8_t *data, size_t len, int flags,
     struct netbuf **out, int (*cb)(struct netbuf *))
 {
 	struct netbuf		*nb;
 
-	//kore_debug("net_send_queue(%p, %p, %d, %p)", c, data, len, cb);
-
-	nb = kore_malloc(sizeof(*nb));
+	nb = kore_pool_get(&nb_pool);
 	nb->cb = cb;
 	nb->len = len;
 	nb->owner = c;
@@ -50,9 +56,7 @@ net_recv_queue(struct connection *c, size_t len, int flags,
 {
 	struct netbuf		*nb;
 
-	//kore_debug("net_recv_queue(%p, %d, %p)", c, len, cb);
-
-	nb = kore_malloc(sizeof(*nb));
+	nb = kore_pool_get(&nb_pool);
 	nb->cb = cb;
 	nb->len = len;
 	nb->owner = c;
@@ -70,8 +74,6 @@ int
 net_recv_expand(struct connection *c, struct netbuf *nb, size_t len,
     int (*cb)(struct netbuf *))
 {
-	//kore_debug("net_recv_expand(%p, %p, %d, %p)", c, nb, len, cb);
-
 	if (nb->type != NETBUF_RECV) {
 		kore_debug("net_recv_expand(): wrong netbuf type");
 		return (KORE_RESULT_ERROR);
@@ -131,7 +133,7 @@ net_send(struct connection *c)
 			if (nb->offset == nb->len) {
 				if (nb->buf != NULL)
 					kore_mem_free(nb->buf);
-				kore_mem_free(nb);
+				kore_pool_put(&nb_pool, nb);
 			}
 
 			if (r != KORE_RESULT_OK)
@@ -202,7 +204,7 @@ handle:
 				TAILQ_REMOVE(&(c->recv_queue), nb, list);
 
 				kore_mem_free(nb->buf);
-				kore_mem_free(nb);
+				kore_pool_put(&nb_pool, nb);
 			}
 
 			if (r != KORE_RESULT_OK)

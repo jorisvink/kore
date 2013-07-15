@@ -63,7 +63,11 @@ main(int argc, char *argv[])
 			config_file = optarg;
 			break;
 		case 'd':
+#if defined(KORE_DEBUG)
 			kore_debug = 1;
+#else
+			printf("kore not compiled with debug support\n");
+#endif
 			break;
 		default:
 			usage();
@@ -75,12 +79,12 @@ main(int argc, char *argv[])
 
 	kore_pid = getpid();
 
+	kore_log_init();
 	kore_mem_init();
 	kore_domain_init();
 	kore_server_sslstart();
 	kore_parse_config();
 
-	kore_log_init();
 	kore_platform_init();
 	kore_accesslog_init();
 

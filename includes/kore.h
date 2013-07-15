@@ -50,9 +50,13 @@
 #define KORE_PIDFILE_DEFAULT		"/var/run/kore.pid"
 #define KORE_DEFAULT_CIPHER_LIST	"HIGH:!aNULL:!MD5;"
 
+#if defined(KORE_DEBUG)
 #define kore_debug(fmt, ...)	\
 	if (kore_debug)		\
 		kore_debug_internal(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
+#else
+#define kore_debug(fmt, ...)
+#endif
 
 #define NETBUF_RECV		0
 #define NETBUF_SEND		1
@@ -176,6 +180,29 @@ struct buf_vec {
 	u_int32_t		length;
 };
 
+struct kore_pool_region {
+	void			*start;
+
+	LIST_ENTRY(kore_pool_region)	list;
+} __attribute__((__packed__));
+
+struct kore_pool_entry {
+	u_int8_t			state;
+	struct kore_pool_region		*region;
+	LIST_ENTRY(kore_pool_entry)	list;
+} __attribute__((__packed__));
+
+struct kore_pool {
+	u_int32_t		elen;
+	u_int32_t		slen;
+	u_int32_t		elms;
+	u_int32_t		inuse;
+	char			*name;
+
+	LIST_HEAD(, kore_pool_region)	regions;
+	LIST_HEAD(, kore_pool_entry)	freelist;
+} __attribute__((__packed__));
+
 extern pid_t	kore_pid;
 extern int	kore_debug;
 extern int	server_port;
@@ -200,6 +227,7 @@ extern struct kore_worker	*worker;
 extern struct kore_domain_h	domains;
 extern struct kore_domain	*primary_dom;
 extern struct passwd		*pw;
+extern struct kore_pool		nb_pool;
 
 void		kore_signal(int);
 void		kore_worker_wait(int);
@@ -227,6 +255,7 @@ void		kore_worker_entry(struct kore_worker *);
 int		kore_ssl_sni_cb(SSL *, int *, void *);
 int		kore_ssl_npn_cb(SSL *, const u_char **, unsigned int *, void *);
 
+void		kore_connection_init(void);
 int		kore_connection_nonblock(int);
 int		kore_connection_handle(struct connection *);
 void		kore_connection_remove(struct connection *);
@@ -245,6 +274,11 @@ void		*kore_calloc(size_t, size_t);
 void		*kore_realloc(void *, size_t);
 void		kore_mem_free(void *);
 void		kore_mem_init(void);
+
+void		*kore_pool_get(struct kore_pool *);
+void		kore_pool_put(struct kore_pool *, void *);
+void		kore_pool_init(struct kore_pool *, char *,
+		    u_int32_t, u_int32_t);
 
 time_t		kore_date_to_time(char *);
 char		*kore_time_to_date(time_t);
@@ -275,6 +309,7 @@ u_int16_t	net_read16(u_int8_t *);
 u_int32_t	net_read32(u_int8_t *);
 void		net_write16(u_int8_t *, u_int16_t);
 void		net_write32(u_int8_t *, u_int32_t);
+void		net_init(void);
 int		net_recv(struct connection *);
 int		net_send(struct connection *);
 int		net_send_flush(struct connection *);
