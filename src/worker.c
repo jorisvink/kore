@@ -34,8 +34,9 @@
 #endif
 
 #define KORE_SHM_KEY		15000
-#define WORKER(id)		\
-	(struct kore_worker *)(kore_workers + (sizeof(struct kore_worker) * id))
+#define WORKER(id)						\
+	(struct kore_worker *)((u_int8_t *)kore_workers +	\
+	    (sizeof(struct kore_worker) * id))
 
 struct wlock {
 	pid_t		lock;
@@ -83,7 +84,8 @@ kore_worker_init(void)
 	accept_lock->current = 0;
 	accept_lock->workerid = 1;
 
-	kore_workers = (struct kore_worker *)accept_lock + sizeof(*accept_lock);
+	kore_workers = (struct kore_worker *)((u_int8_t *)accept_lock +
+	    sizeof(*accept_lock));
 	memset(kore_workers, 0, sizeof(struct kore_worker) * worker_count);
 
 	kore_debug("kore_worker_init(): system has %d cpu's", cpu_count);
