@@ -222,7 +222,7 @@ kore_worker_entry(struct kore_worker *kw)
 		kore_platform_event_wait();
 
 		if (((worker->accepted >= worker->accept_treshold) ||
-		    (worker_active_connections < worker_max_connections)) &&
+		    (worker_active_connections >= worker_max_connections)) &&
 		    worker->has_lock) {
 			worker->accepted = 0;
 			kore_worker_acceptlock_release();
