@@ -17,7 +17,7 @@
 #ifndef __H_HTTP_H
 #define __H_HTTP_H
 
-#define HTTP_HEADER_MAX_LEN	8192
+#define HTTP_HEADER_MAX_LEN	4096
 #define HTTP_URI_LEN		2000
 #define HTTP_USERAGENT_LEN	256
 #define HTTP_REQ_HEADER_MAX	25
