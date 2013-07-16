@@ -319,9 +319,11 @@ http_header_recv(struct netbuf *nb)
 	ch = nb->buf[nb->len - 1];
 	nb->buf[nb->len - 1] = '\0';
 
+	if (nb->len < 4)
+		return (KORE_RESULT_OK);
 	if ((end_headers = (u_int8_t *)strrchr((char *)nb->buf, '\r')) == NULL)
 		return (KORE_RESULT_OK);
-	if (nb->len > 2 && strncmp(((char *)end_headers - 2), "\r\n\r\n", 4))
+	if (strncmp(((char *)end_headers - 2), "\r\n\r\n", 4))
 		return (KORE_RESULT_OK);
 
 	nb->buf[nb->len - 1] = ch;
@@ -329,26 +331,19 @@ http_header_recv(struct netbuf *nb)
 	end_headers += 2;
 
 	len = end_headers - nb->buf;
-	hbuf = kore_malloc(len + 1);
-	kore_strlcpy(hbuf, (char *)nb->buf, len + 1);
+	hbuf = (char *)nb->buf;
 
 	h = kore_split_string(hbuf, "\r\n", headers, HTTP_REQ_HEADER_MAX);
-	if (h < 2) {
-		kore_mem_free(hbuf);
+	if (h < 2)
 		return (KORE_RESULT_ERROR);
-	}
 
 	if ((strlen(headers[0]) > 3 && strncasecmp(headers[0], "get", 3)) &&
-	    (strlen(headers[0]) > 4 && strncasecmp(headers[0], "post", 4))) {
-		kore_mem_free(hbuf);
+	    (strlen(headers[0]) > 4 && strncasecmp(headers[0], "post", 4)))
 		return (KORE_RESULT_ERROR);
-	}
 
 	v = kore_split_string(headers[0], " ", request, 4);
-	if (v != 3) {
-		kore_mem_free(hbuf);
+	if (v != 3)
 		return (KORE_RESULT_ERROR);
-	}
 
 	host[0] = NULL;
 	for (i = 0; i < h; i++) {
@@ -357,31 +352,23 @@ http_header_recv(struct netbuf *nb)
 			continue;
 
 		v = kore_split_string(headers[i], ":", host, 3);
-		if (v != 2) {
-			kore_mem_free(hbuf);
+		if (v != 2)
 			return (KORE_RESULT_ERROR);
-		}
 
 		if (strlen(host[0]) != 4 || strncasecmp(host[0], "host", 4) ||
-		    strlen(host[1]) < 4) {
-			kore_mem_free(hbuf);
+		    strlen(host[1]) < 4)
 			return (KORE_RESULT_ERROR);
-		}
 
 		host[1]++;
 		skip = i;
 		break;
 	}
 
-	if (host[0] == NULL) {
-		kore_mem_free(hbuf);
+	if (host[0] == NULL)
 		return (KORE_RESULT_ERROR);
-	}
 
-	if (!http_request_new(c, NULL, host[1], request[0], request[1], &req)) {
-		kore_mem_free(hbuf);
+	if (!http_request_new(c, NULL, host[1], request[0], request[1], &req))
 		return (KORE_RESULT_ERROR);
-	}
 
 	for (i = 1; i < h; i++) {
 		if (i == skip)
@@ -405,8 +392,6 @@ http_header_recv(struct netbuf *nb)
 		    !strcasecmp(hdr->header, "user-agent"))
 			req->agent = kore_strdup(hdr->value);
 	}
-
-	kore_mem_free(hbuf);
 
 	if (req->method == HTTP_METHOD_POST) {
 		if (!http_request_header_get(req, "content-length", &p)) {
