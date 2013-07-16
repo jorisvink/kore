@@ -226,7 +226,7 @@ http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 		hblock = spdy_header_block_create(SPDY_HBLOCK_NORMAL);
 		spdy_header_block_add(hblock, ":status", sbuf);
 		spdy_header_block_add(hblock, ":version", "HTTP/1.1");
-		spdy_header_block_add(hblock, ":server", kore_version_string);
+		spdy_header_block_add(hblock, ":server", KORE_NAME_STRING);
 		TAILQ_FOREACH(hdr, &(req->resp_headers), list)
 			spdy_header_block_add(hblock, hdr->header, hdr->value);
 
@@ -259,7 +259,7 @@ http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 		kore_buf_appendf(buf, "Content-length: %d\r\n", len);
 		kore_buf_appendf(buf, "Connection: keep-alive\r\n");
 		kore_buf_appendf(buf, "Keep-Alive: timeout=20\r\n");
-		kore_buf_appendf(buf, "Server: %s\r\n", kore_version_string);
+		kore_buf_appendf(buf, "Server: %s\r\n", KORE_NAME_STRING);
 
 		TAILQ_FOREACH(hdr, &(req->resp_headers), list) {
 			kore_buf_appendf(buf, "%s: %s\r\n",

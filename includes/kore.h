@@ -38,9 +38,6 @@
 #define KORE_RESULT_OK		1
 #define KORE_RESULT_RETRY	2
 
-#define KORE_VERSION_MAJOR	0
-#define KORE_VERSION_MINOR	1
-#define KORE_VERSION_PATCH	0
 #define KORE_NAME_STRING	"kore"
 
 #define errno_s			strerror(errno)
@@ -212,7 +209,6 @@ extern char	*runas_user;
 extern char	*kore_module_onload;
 extern char	*kore_pidfile;
 extern char	*config_file;
-extern char	kore_version_string[];
 extern char	*kore_ssl_cipher_list;
 
 extern u_int64_t		spdy_idle_time;
