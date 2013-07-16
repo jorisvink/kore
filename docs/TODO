@@ -1,11 +1,9 @@
 Kore TODO list
 ===============
 
-- Relay proper SPDY stream/protocol errors back to client.
 - Websocket support.
 - GET arguments (only POST supported).
 - POST multiform/form-data support.
-- GOAWAY for SPDY connections that have been idle too long.
 - Auxiliary library framework.
 	- Provide more API functions for generic stuff such as
 	  session handler, page building, etc etc.
