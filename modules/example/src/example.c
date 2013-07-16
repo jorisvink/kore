@@ -137,7 +137,9 @@ test_base64(u_int8_t *src, u_int32_t slen, struct kore_buf *res)
 		if (!kore_base64_decode(in, &out, &len)) {
 			kore_buf_appendf(res, "decoding failed\n");
 		} else {
-			kore_buf_appendf(res, "decoded: '%s'\n", out);
+			kore_buf_appendf(res, "decoded: ");
+			kore_buf_append(res, out, len);
+			kore_buf_appendf(res, "\n");
 			kore_mem_free(out);
 		}
 

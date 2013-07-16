@@ -316,8 +316,8 @@ http_header_recv(struct netbuf *nb)
 
 	kore_debug("http_header_recv(%p)", nb);
 
-	ch = nb->buf[nb->len - 1];
-	nb->buf[nb->len - 1] = '\0';
+	ch = nb->buf[nb->offset];
+	nb->buf[nb->offset] = '\0';
 
 	if (nb->len < 4)
 		return (KORE_RESULT_OK);
@@ -326,7 +326,8 @@ http_header_recv(struct netbuf *nb)
 	if (strncmp(((char *)end_headers - 2), "\r\n\r\n", 4))
 		return (KORE_RESULT_OK);
 
-	nb->buf[nb->len - 1] = ch;
+	nb->buf[nb->offset] = ch;
+	nb->buf[nb->len - 1] = '\0';
 	nb->flags |= NETBUF_FORCE_REMOVE;
 	end_headers += 2;
 

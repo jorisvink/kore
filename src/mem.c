@@ -61,7 +61,6 @@ kore_malloc(size_t len)
 	TAILQ_INSERT_TAIL(&memused, mem, list);
 
 	meminuse += len;
-	memset(addr, '\0', len);
 
 	return (addr);
 }
