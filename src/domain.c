@@ -72,7 +72,9 @@ kore_domain_sslstart(struct kore_domain *dom)
 	if (!SSL_CTX_check_private_key(dom->ssl_ctx))
 		fatal("Public/Private key for %s do not match", dom->domain);
 
+#ifdef SSL_MODE_RELEASE_BUFFERS
 	SSL_CTX_set_mode(dom->ssl_ctx, SSL_MODE_RELEASE_BUFFERS);
+#endif
 	SSL_CTX_set_cipher_list(dom->ssl_ctx, kore_ssl_cipher_list);
 	SSL_CTX_set_mode(dom->ssl_ctx, SSL_MODE_ENABLE_PARTIAL_WRITE);
 	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_SSLv2);

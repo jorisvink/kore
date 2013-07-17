@@ -147,5 +147,7 @@ kore_platform_disable_accept(void)
 void
 kore_platform_proctitle(char *title)
 {
+#ifndef __MACH__
 	setproctitle("%s", title);
+#endif
 }
