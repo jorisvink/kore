@@ -22,6 +22,9 @@ linux:
 bsd:
 	@S_SRC=src/bsd.c make kore
 
+osx:
+	@LDFLAGS="-L/opt/local/lib" CFLAGS="-I/opt/local/include/" make bsd
+
 kore: $(S_OBJS)
 	$(CC) $(CFLAGS) $(S_OBJS) $(LDFLAGS) -o $(BIN)
 

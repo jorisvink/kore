@@ -179,8 +179,14 @@ kore_worker_entry(struct kore_worker *kw)
 		fatal("cannot chroot(): %s", errno_s);
 	if (chdir("/") == -1)
 		fatal("cannot chdir(): %s", errno_s);
-	if (setgroups(1, &pw->pw_gid) || setresgid(pw->pw_gid, pw->pw_gid,
-	    pw->pw_gid) || setresuid(pw->pw_uid, pw->pw_uid, pw->pw_uid))
+	if (setgroups(1, &pw->pw_gid) ||
+#ifdef __MACH__
+	    setgid(pw->pw_gid) || setegid(pw->pw_gid) ||
+	    setuid(pw->pw_uid) || seteuid(pw->pw_uid))
+#else
+	    setresgid(pw->pw_gid, pw->pw_gid, pw->pw_gid) ||
+	    setresuid(pw->pw_uid, pw->pw_uid, pw->pw_uid))
+#endif
 		fatal("unable to drop privileges");
 
 	snprintf(buf, sizeof(buf), "kore [wrk %d]", kw->id);
