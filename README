@@ -1,12 +1,15 @@
 Hi.
 
-Kore is a fast webserver that facilitates creating dynamic websites in
-the C programming language. It takes away the bottleneck of constantly
-loading items from disk or executing non compiled code (PHP, Perl, ...).
+Kore is a fast webserver that facilitates creating dynamic websites in the
+C programming language. It takes away the bottleneck of constantly loading
+items from disk or executing non compiled code (PHP, Perl, ...).
 
-With a site loaded as a module in memory the page callbacks are directly called from the worker proceses and requests can be handled incredibly fast.
+Kore provides you with a set of API functions you can use to build your site
+which is then loaded into the webserver as a loadable C module. Because of
+this pages are mapped to functions that are directly called from the worker
+processes allowing for the potential of great speed. 
 
-No overhead.
+As little overhead as possible.
 
 Features
 - Supports SNI
@@ -27,8 +30,7 @@ Platforms support
 - Linux
 - OpenBSD
 - FreeBSD
-
-Any other BSD might function, but is untested.
+- OSX
 
 Right now Kore development is a moving process, so expect bugs.
 If you run into said bugs please contact me at joris@coders.se.
