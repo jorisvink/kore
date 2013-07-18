@@ -25,8 +25,6 @@
 #include "kore.h"
 #include "http.h"
 
-//#define WORKER_DEBUG		1
-
 #if defined(WORKER_DEBUG)
 #define worker_debug(fmt, ...)		printf(fmt, ##__VA_ARGS__)
 #else
