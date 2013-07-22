@@ -49,6 +49,7 @@ kore_buf_appendb(struct kore_buf *buf, struct kore_buf *src)
 
 	d = kore_buf_release(src, &len);
 	kore_buf_append(buf, d, len);
+	kore_mem_free(d);
 }
 
 void
