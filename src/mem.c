@@ -14,6 +14,8 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <sys/param.h>
+
 #include <stdlib.h>
 
 #include "kore.h"
@@ -79,7 +81,7 @@ kore_realloc(void *ptr, size_t len)
 			fatal("kore_realloc(): magic boundary not found");
 
 		nptr = kore_malloc(len);
-		memcpy(nptr, ptr, KORE_MEMSIZE(ptr));
+		memcpy(nptr, ptr, MIN(len, KORE_MEMSIZE(ptr)));
 		kore_mem_free(ptr);
 	}
 
