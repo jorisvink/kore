@@ -28,17 +28,11 @@
 
 struct meminfo {
 	u_int16_t		magic;
-	TAILQ_ENTRY(meminfo)	list;
 } __attribute__((__packed__));
-
-u_int32_t			meminuse;
-TAILQ_HEAD(, meminfo)		memused;
 
 void
 kore_mem_init(void)
 {
-	meminuse = 0;
-	TAILQ_INIT(&memused);
 }
 
 void *
@@ -60,9 +54,6 @@ kore_malloc(size_t len)
 
 	mem = KORE_MEMINFO(addr);
 	mem->magic = KORE_MEM_MAGIC;
-	TAILQ_INSERT_TAIL(&memused, mem, list);
-
-	meminuse += len;
 
 	return (addr);
 }
@@ -103,9 +94,6 @@ kore_mem_free(void *ptr)
 	mem = KORE_MEMINFO(ptr);
 	if (mem->magic != KORE_MEM_MAGIC)
 		fatal("kore_mem_free(): magic boundary not found");
-
-	meminuse -= KORE_MEMSIZE(ptr);
-	TAILQ_REMOVE(&memused, mem, list);
 
 	addr = (u_int8_t *)ptr - sizeof(u_int32_t);
 	free(addr);
