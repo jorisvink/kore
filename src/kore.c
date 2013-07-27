@@ -16,20 +16,20 @@
 
 #include <sys/socket.h>
 
+#include <netdb.h>
 #include <signal.h>
 
 #include "kore.h"
 
 volatile sig_atomic_t			sig_recv;
 
-struct listener		server;
+struct listener_head	listeners;
+u_int8_t		nlisteners;
 struct passwd		*pw = NULL;
 pid_t			kore_pid = -1;
 u_int16_t		cpu_count = 1;
 int			kore_debug = 0;
-int			server_port = 0;
 u_int8_t		worker_count = 0;
-char			*server_ip = NULL;
 char			*runas_user = NULL;
 char			*chroot_path = NULL;
 char			*kore_pidfile = KORE_PIDFILE_DEFAULT;
@@ -39,7 +39,6 @@ static void	usage(void);
 static void	kore_server_start(void);
 static void	kore_write_kore_pid(void);
 static void	kore_server_sslstart(void);
-static int	kore_server_bind(struct listener *, const char *, int);
 
 static void
 usage(void)
@@ -52,6 +51,7 @@ int
 main(int argc, char *argv[])
 {
 	int			ch;
+	struct listener		*l;
 
 	if (getuid() != 0)
 		fatal("kore must be started as root");
@@ -78,6 +78,9 @@ main(int argc, char *argv[])
 
 	kore_pid = getpid();
 
+	nlisteners = 0;
+	LIST_INIT(&listeners);
+
 	kore_log_init();
 	kore_mem_init();
 	kore_domain_init();
@@ -96,7 +99,9 @@ main(int argc, char *argv[])
 	kore_log(LOG_NOTICE, "server shutting down");
 	kore_worker_shutdown();
 	unlink(kore_pidfile);
-	close(server.fd);
+
+	LIST_FOREACH(l, &listeners, list)
+		close(l->fd);
 
 	kore_log(LOG_NOTICE, "goodbye");
 	return (0);
@@ -131,6 +136,72 @@ kore_ssl_sni_cb(SSL *ssl, int *ad, void *arg)
 	return (SSL_TLSEXT_ERR_NOACK);
 }
 
+int
+kore_server_bind(const char *ip, const char *port)
+{
+	struct listener		*l;
+	int			on, r;
+	struct addrinfo		*results;
+
+	kore_debug("kore_server_bind(%s, %s)", ip, port);
+
+	r = getaddrinfo(ip, port, NULL, &results);
+	if (r != 0)
+		fatal("getaddrinfo(%s): %s", ip, gai_strerror(r));
+
+	l = kore_malloc(sizeof(struct listener));
+	l->type = KORE_TYPE_LISTENER;
+	l->addrtype = results->ai_family;
+
+	if (l->addrtype != AF_INET && l->addrtype != AF_INET6)
+		fatal("getaddrinfo(): unknown address family %d", l->addrtype);
+
+	if ((l->fd = socket(results->ai_family, SOCK_STREAM, 0)) == -1) {
+		kore_mem_free(l);
+		freeaddrinfo(results);
+		kore_debug("socket(): %s", errno_s);
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (!kore_connection_nonblock(l->fd)) {
+		kore_mem_free(l);
+		freeaddrinfo(results);
+		return (KORE_RESULT_ERROR);
+	}
+
+	on = 1;
+	if (setsockopt(l->fd, SOL_SOCKET,
+	    SO_REUSEADDR, (const char *)&on, sizeof(on)) == -1) {
+		close(l->fd);
+		kore_mem_free(l);
+		freeaddrinfo(results);
+		kore_debug("setsockopt(): %s", errno_s);
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (bind(l->fd, results->ai_addr, results->ai_addrlen) == -1) {
+		close(l->fd);
+		kore_mem_free(l);
+		freeaddrinfo(results);
+		kore_debug("bind(): %s", errno_s);
+		return (KORE_RESULT_ERROR);
+	}
+
+	freeaddrinfo(results);
+
+	if (listen(l->fd, 5000) == -1) {
+		close(l->fd);
+		kore_mem_free(l);
+		kore_debug("listen(): %s", errno_s);
+		return (KORE_RESULT_ERROR);
+	}
+
+	nlisteners++;
+	LIST_INSERT_HEAD(&listeners, l, list);
+
+	return (KORE_RESULT_OK);
+}
+
 void
 kore_signal(int sig)
 {
@@ -149,10 +220,6 @@ kore_server_sslstart(void)
 static void
 kore_server_start(void)
 {
-	if (!kore_server_bind(&server, server_ip, server_port))
-		fatal("cannot bind to %s:%d", server_ip, server_port);
-
-	kore_mem_free(server_ip);
 	kore_mem_free(runas_user);
 
 	if (daemon(1, 1) == -1)
@@ -181,49 +248,6 @@ kore_server_start(void)
 			break;
 		kore_worker_wait(0);
 	}
-}
-
-static int
-kore_server_bind(struct listener *l, const char *ip, int port)
-{
-	int	on;
-
-	kore_debug("kore_server_bind(%p, %s, %d)", l, ip, port);
-
-	if ((l->fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
-		kore_debug("socket(): %s", errno_s);
-		return (KORE_RESULT_ERROR);
-	}
-
-	if (!kore_connection_nonblock(l->fd))
-		return (KORE_RESULT_ERROR);
-
-	on = 1;
-	if (setsockopt(l->fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&on,
-	    sizeof(on)) == -1) {
-		kore_debug("setsockopt(): %s", errno_s);
-		close(l->fd);
-		return (KORE_RESULT_ERROR);
-	}
-
-	memset(&(l->sin), 0, sizeof(l->sin));
-	l->sin.sin_family = AF_INET;
-	l->sin.sin_port = htons(port);
-	l->sin.sin_addr.s_addr = inet_addr(ip);
-
-	if (bind(l->fd, (struct sockaddr *)&(l->sin), sizeof(l->sin)) == -1) {
-		close(l->fd);
-		kore_debug("bind(): %s", errno_s);
-		return (KORE_RESULT_ERROR);
-	}
-
-	if (listen(l->fd, 5000) == -1) {
-		close(l->fd);
-		kore_debug("listen(): %s", errno_s);
-		return (KORE_RESULT_ERROR);
-	}
-
-	return (KORE_RESULT_OK);
 }
 
 static void

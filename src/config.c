@@ -113,8 +113,8 @@ kore_parse_config(void)
 	if (!kore_module_loaded())
 		fatal("no site module was loaded");
 
-	if (server_ip == NULL || server_port == 0)
-		fatal("missing a correct bind directive in configuration");
+	if (LIST_EMPTY(&listeners))
+		fatal("no listeners defined");
 	if (chroot_path == NULL)
 		fatal("missing a chroot path");
 	if (runas_user == NULL)
@@ -126,23 +126,10 @@ kore_parse_config(void)
 static int
 configure_bind(char **argv)
 {
-	int		err;
-
 	if (argv[1] == NULL || argv[2] == NULL)
 		return (KORE_RESULT_ERROR);
-	if (server_ip != NULL || server_port != 0) {
-		kore_debug("duplicate bind directive seen");
-		return (KORE_RESULT_ERROR);
-	}
 
-	server_ip = kore_strdup(argv[1]);
-	server_port = kore_strtonum(argv[2], 1, 65535, &err);
-	if (err != KORE_RESULT_OK) {
-		kore_debug("%s is an invalid port number", argv[2]);
-		return (KORE_RESULT_ERROR);
-	}
-
-	return (KORE_RESULT_OK);
+	return (kore_server_bind(argv[1], argv[2]));
 }
 
 static int

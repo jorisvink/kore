@@ -59,7 +59,7 @@ kore_platform_event_init(void)
 	if ((efd = epoll_create(10000)) == -1)
 		fatal("epoll_create(): %s", errno_s);
 
-	event_count = worker_max_connections + 1;
+	event_count = worker_max_connections + nlisteners;
 	events = kore_calloc(event_count, sizeof(struct epoll_event));
 }
 
@@ -67,7 +67,9 @@ void
 kore_platform_event_wait(void)
 {
 	struct connection	*c;
-	int			n, i, *fd;
+	struct listener		*l;
+	u_int8_t		type;
+	int			n, i;
 
 	n = epoll_wait(efd, events, event_count, 100);
 	if (n == -1) {
@@ -80,23 +82,28 @@ kore_platform_event_wait(void)
 		kore_debug("main(): %d sockets available", n);
 
 	for (i = 0; i < n; i++) {
-		fd = (int *)events[i].data.ptr;
+		if (events[i].data.ptr == NULL)
+			fatal("events[%d].data.ptr == NULL", i);
+
+		type = *(u_int8_t *)events[i].data.ptr;
 
 		if (events[i].events & EPOLLERR ||
 		    events[i].events & EPOLLHUP) {
-			if (*fd == server.fd)
-				fatal("error on server socket");
+			if (type == KORE_TYPE_LISTENER)
+				fatal("failed on listener socket");
 
 			c = (struct connection *)events[i].data.ptr;
 			kore_connection_disconnect(c);
 			continue;
 		}
 
-		if (*fd == server.fd) {
+		if (type == KORE_TYPE_LISTENER) {
+			l = (struct listener *)events[i].data.ptr;
+
 			while ((worker->accepted < worker->accept_treshold) &&
 			    (worker_active_connections <
 			    worker_max_connections)) {
-				kore_connection_accept(&server, &c);
+				kore_connection_accept(l, &c);
 				if (c == NULL)
 					break;
 
@@ -142,14 +149,21 @@ kore_platform_event_schedule(int fd, int type, int flags, void *udata)
 void
 kore_platform_enable_accept(void)
 {
-	kore_platform_event_schedule(server.fd, EPOLLIN, 0, &server);
+	struct listener		*l;
+
+	LIST_FOREACH(l, &listeners, list)
+		kore_platform_event_schedule(l->fd, EPOLLIN, 0, l);
 }
 
 void
 kore_platform_disable_accept(void)
 {
-	if (epoll_ctl(efd, EPOLL_CTL_DEL, server.fd, NULL) == -1)
-		fatal("kore_platform_disable_accept: %s", errno_s);
+	struct listener		*l;
+
+	LIST_FOREACH(l, &listeners, list) {
+		if (epoll_ctl(efd, EPOLL_CTL_DEL, l->fd, NULL) == -1)
+			fatal("kore_platform_disable_accept: %s", errno_s);
+	}
 }
 
 void

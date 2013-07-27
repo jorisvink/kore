@@ -34,16 +34,26 @@ kore_connection_init(void)
 int
 kore_connection_accept(struct listener *l, struct connection **out)
 {
-	socklen_t		len;
 	struct connection	*c;
+	struct sockaddr		*sin;
+	socklen_t		len;
 
 	kore_debug("kore_connection_accept(%p)", l);
 
 	*out = NULL;
-	len = sizeof(struct sockaddr_in);
-
 	c = kore_pool_get(&connection_pool);
-	if ((c->fd = accept(l->fd, (struct sockaddr *)&(c->sin), &len)) == -1) {
+	c->type = KORE_TYPE_CONNECTION;
+
+	c->addrtype = l->addrtype;
+	if (c->addrtype == AF_INET) {
+		len = sizeof(struct sockaddr_in);
+		sin = (struct sockaddr *)&(c->addr.ipv4);
+	} else {
+		len = sizeof(struct sockaddr_in6);
+		sin = (struct sockaddr *)&(c->addr.ipv6);
+	}
+
+	if ((c->fd = accept(l->fd, sin, &len)) == -1) {
 		kore_pool_put(&connection_pool, c);
 		kore_debug("accept(): %s", errno_s);
 		return (KORE_RESULT_ERROR);

@@ -39,24 +39,30 @@ kore_platform_worker_setcpu(struct kore_worker *kw)
 void
 kore_platform_event_init(void)
 {
+	struct listener		*l;
+
 	if ((kfd = kqueue()) == -1)
 		fatal("kqueue(): %s", errno_s);
 
 	nchanges = 0;
-	event_count = worker_max_connections + 1;
+	event_count = worker_max_connections + nlisteners;
 	events = kore_calloc(event_count, sizeof(struct kevent));
 	changelist = kore_calloc(event_count, sizeof(struct kevent));
 
-	kore_platform_event_schedule(server.fd,
-	    EVFILT_READ, EV_ADD | EV_DISABLE, &server);
+	LIST_FOREACH(l, &listeners, list) {
+		kore_platform_event_schedule(l->fd,
+		    EVFILT_READ, EV_ADD | EV_DISABLE, l);
+	}
 }
 
 void
 kore_platform_event_wait(void)
 {
+	struct listener		*l;
 	struct connection	*c;
+	u_int8_t		type;
 	struct timespec		timeo;
-	int			n, i, *fd;
+	int			n, i;
 
 	timeo.tv_sec = 0;
 	timeo.tv_nsec = 100000000;
@@ -72,11 +78,14 @@ kore_platform_event_wait(void)
 		kore_debug("main(): %d sockets available", n);
 
 	for (i = 0; i < n; i++) {
-		fd = (int *)events[i].udata;
+		if (events[i].udata == NULL)
+			fatal("events[%d].udata == NULL", i);
+
+		type = *(u_int8_t *)events[i].udata;
 
 		if (events[i].flags & EV_EOF ||
 		    events[i].flags & EV_ERROR) {
-			if (*fd == server.fd)
+			if (type == KORE_TYPE_LISTENER)
 				fatal("error on server socket");
 
 			c = (struct connection *)events[i].udata;
@@ -84,9 +93,13 @@ kore_platform_event_wait(void)
 			continue;
 		}
 
-		if (*fd == server.fd) {
-			while (worker->accepted < worker->accept_treshold) {
-				kore_connection_accept(&server, &c);
+		if (type == KORE_TYPE_LISTENER) {
+			l = (struct listener *)events[i].udata;
+
+			while ((worker->accepted < worker->accept_treshold) &&
+			    (worker_active_connections <
+			    worker_max_connections)) {
+				kore_connection_accept(l, &c);
 				if (c == NULL)
 					break;
 
@@ -133,15 +146,19 @@ kore_platform_event_schedule(int fd, int type, int flags, void *data)
 void
 kore_platform_enable_accept(void)
 {
-	kore_platform_event_schedule(server.fd,
-	    EVFILT_READ, EV_ENABLE, &server);
+	struct listener		*l;
+
+	LIST_FOREACH(l, &listeners, list)
+		kore_platform_event_schedule(l->fd, EVFILT_READ, EV_ENABLE, l);
 }
 
 void
 kore_platform_disable_accept(void)
 {
-	kore_platform_event_schedule(server.fd,
-	    EVFILT_READ, EV_DISABLE, NULL);
+	struct listener		*l;
+
+	LIST_FOREACH(l, &listeners, list)
+		kore_platform_event_schedule(l->fd, EVFILT_READ, EV_DISABLE, l);
 }
 
 void

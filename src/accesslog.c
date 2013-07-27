@@ -29,7 +29,8 @@ struct kore_log_packet {
 	u_int16_t	time_req;
 	u_int16_t	worker_id;
 	u_int16_t	worker_cpu;
-	struct in_addr	src;
+	u_int8_t	addrtype;
+	u_int8_t	addr[sizeof(struct in6_addr)];
 	char		host[KORE_DOMAINNAME_LEN];
 	char		path[HTTP_URI_LEN];
 	char		agent[HTTP_USERAGENT_LEN];
@@ -59,6 +60,7 @@ kore_accesslog_wait(void)
 	struct kore_domain	*dom;
 	struct pollfd		pfd[1];
 	struct kore_log_packet	logpacket;
+	char			addr[INET6_ADDRSTRLEN];
 	char			*method, buf[4096], *tbuf;
 
 	pfd[0].fd = accesslog_fd[0];
@@ -97,10 +99,14 @@ kore_accesslog_wait(void)
 	else
 		method = "POST";
 
+	if (inet_ntop(logpacket.addrtype, &(logpacket.addr),
+	    addr, sizeof(addr)) == NULL)
+		kore_strlcpy(addr, "unknown", sizeof(addr));
+
 	time(&now);
 	tbuf = kore_time_to_date(now);
 	snprintf(buf, sizeof(buf), "[%s] %s %d %s %s (w#%d) (%dms) (%s)\n",
-	    tbuf, inet_ntoa(logpacket.src), logpacket.status, method,
+	    tbuf, addr, logpacket.status, method,
 	    logpacket.path, logpacket.worker_id, logpacket.time_req,
 	    logpacket.agent);
 	slen = strlen(buf);
@@ -124,11 +130,21 @@ kore_accesslog(struct http_request *req)
 	ssize_t			len;
 	struct kore_log_packet	logpacket;
 
+	logpacket.addrtype = req->owner->addrtype;
+	if (logpacket.addrtype == AF_INET) {
+		memcpy(logpacket.addr,
+		    &(req->owner->addr.ipv4.sin_addr),
+		    sizeof(req->owner->addr.ipv4.sin_addr));
+	} else {
+		memcpy(logpacket.addr,
+		    &(req->owner->addr.ipv6.sin6_addr),
+		    sizeof(req->owner->addr.ipv6.sin6_addr));
+	}
+
 	logpacket.status = req->status;
 	logpacket.method = req->method;
 	logpacket.worker_id = worker->id;
 	logpacket.worker_cpu = worker->cpu;
-	logpacket.src = req->owner->sin.sin_addr;
 	logpacket.time_req = req->end - req->start;
 	kore_strlcpy(logpacket.host, req->host, sizeof(logpacket.host));
 	kore_strlcpy(logpacket.path, req->path, sizeof(logpacket.path));

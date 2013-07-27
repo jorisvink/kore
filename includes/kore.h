@@ -75,10 +75,24 @@ struct netbuf {
 	TAILQ_ENTRY(netbuf)	list;
 };
 
+#define KORE_TYPE_LISTENER	1
+#define KORE_TYPE_CONNECTION	2
+
 struct listener {
+	u_int8_t		type;
+
 	int			fd;
-	struct sockaddr_in	sin;
+	u_int8_t		addrtype;
+
+	union {
+		struct sockaddr_in	ipv4;
+		struct sockaddr_in6	ipv6;
+	} addr;
+
+	LIST_ENTRY(listener)	list;
 };
+
+LIST_HEAD(listener_head, listener);
 
 #define CONN_STATE_UNKNOWN		0
 #define CONN_STATE_SSL_SHAKE		1
@@ -98,13 +112,19 @@ struct listener {
 #define KORE_IDLE_TIMER_MAX	20000
 
 struct connection {
+	u_int8_t		type;
 	int			fd;
 	u_int8_t		state;
 	u_int8_t		proto;
-	struct sockaddr_in	sin;
 	void			*owner;
 	SSL			*ssl;
 	u_int8_t		flags;
+
+	u_int8_t		addrtype;
+	union {
+		struct sockaddr_in	ipv4;
+		struct sockaddr_in6	ipv6;
+	} addr;
 
 	struct {
 		u_int64_t	length;
@@ -202,8 +222,6 @@ struct kore_pool {
 
 extern pid_t	kore_pid;
 extern int	kore_debug;
-extern int	server_port;
-extern char	*server_ip;
 extern char	*chroot_path;
 extern char	*runas_user;
 extern char	*kore_module_onload;
@@ -211,13 +229,14 @@ extern char	*kore_pidfile;
 extern char	*config_file;
 extern char	*kore_ssl_cipher_list;
 
+extern u_int8_t			nlisteners;
 extern u_int64_t		spdy_idle_time;
 extern u_int16_t		cpu_count;
 extern u_int8_t			worker_count;
 extern u_int32_t		worker_max_connections;
 extern u_int32_t		worker_active_connections;
 
-extern struct listener		server;
+extern struct listener_head	listeners;
 extern struct kore_worker	*worker;
 extern struct kore_domain_h	domains;
 extern struct kore_domain	*primary_dom;
@@ -229,10 +248,13 @@ void		kore_worker_wait(int);
 void		kore_worker_init(void);
 void		kore_worker_shutdown(void);
 void		kore_worker_dispatch_signal(int);
+void		kore_worker_spawn(u_int16_t, u_int16_t);
+void		kore_worker_entry(struct kore_worker *);
 void		kore_worker_connection_add(struct connection *);
 void		kore_worker_connection_move(struct connection *);
 void		kore_worker_connection_remove(struct connection *);
 
+void		kore_platform_init(void);
 void		kore_platform_event_init(void);
 void		kore_platform_event_wait(void);
 void		kore_platform_proctitle(char *);
@@ -241,13 +263,12 @@ void		kore_platform_disable_accept(void);
 void		kore_platform_event_schedule(int, int, int, void *);
 void		kore_platform_worker_setcpu(struct kore_worker *);
 
-void		kore_platform_init(void);
 void		kore_accesslog_init(void);
 int		kore_accesslog_wait(void);
-void		kore_worker_spawn(u_int16_t, u_int16_t);
 void		kore_accesslog_worker_init(void);
-void		kore_worker_entry(struct kore_worker *);
+
 int		kore_ssl_sni_cb(SSL *, int *, void *);
+int		kore_server_bind(const char *, const char *);
 int		kore_ssl_npn_cb(SSL *, const u_char **, unsigned int *, void *);
 
 void		kore_connection_init(void);
