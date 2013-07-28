@@ -14,7 +14,7 @@ CFLAGS+=-Wsign-compare -Iincludes -g
 LDFLAGS+=-rdynamic -lssl -lcrypto -lz
 
 default:
-	@echo "Please specify a build target [linux | bsd]"
+	@echo "Please specify a build target [linux | bsd | osx]"
 
 linux:
 	@LDFLAGS="-ldl" CFLAGS="-D_GNU_SOURCE=1" S_SRC=src/linux.c make kore
