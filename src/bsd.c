@@ -17,6 +17,10 @@
 #include <sys/param.h>
 #include <sys/event.h>
 
+#ifdef __MACH__
+    #include <sys/sysctl.h>
+#endif
+
 #include "kore.h"
 
 static int			kfd = -1;
@@ -28,7 +32,24 @@ static u_int32_t		event_count = 0;
 void
 kore_platform_init(void)
 {
-	cpu_count = 0;
+    cpu_count = 0;
+
+#ifdef __MACH__
+    long n;
+    int mib[] = { CTL_HW, HW_AVAILCPU };
+    size_t len = sizeof(n);
+
+    sysctl(mib, 2, &n, &len, NULL, 0);
+    if (n < 1) {
+        mib[1] = HW_NCPU;
+        sysctl(mib, 2, &n, &len, NULL, 0);
+    }
+
+    if (n >= 1) {
+        cpu_count = (u_int16_t)n;
+    }
+#endif /* __MACH__ */
+
 }
 
 void
