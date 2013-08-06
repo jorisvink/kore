@@ -218,13 +218,15 @@ void
 spdy_header_block_add(struct spdy_header_block *hblock, char *name, char *value)
 {
 	u_int8_t		*p;
-	u_int32_t		nlen, vlen;
+	u_int32_t		nlen, vlen, tlen;
 
 	kore_debug("spdy_header_block_add(%p, %s, %s)", hblock, name, value);
 
 	nlen = strlen(name);
 	vlen = strlen(value);
-	if ((nlen + vlen + hblock->header_offset) > hblock->header_block_len) {
+
+	tlen = nlen + 4 + vlen + 4;
+	if ((tlen + hblock->header_offset) > hblock->header_block_len) {
 		hblock->header_block_len += nlen + vlen + 128;
 		hblock->header_block = kore_realloc(hblock->header_block,
 		    hblock->header_block_len);
