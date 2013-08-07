@@ -79,8 +79,11 @@ int		http_generic_404(struct http_request *);
 int		http_header_recv(struct netbuf *);
 char		*http_post_data_text(struct http_request *);
 int		http_populate_arguments(struct http_request *);
+void		http_argument_multiple_free(struct http_arg *);
 int		http_argument_lookup(struct http_request *,
 		    const char *, char **);
+int		http_argument_multiple_lookup(struct http_request *,
+		    struct http_arg *);
 
 void		kore_accesslog(struct http_request *);
 

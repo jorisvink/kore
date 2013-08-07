@@ -485,6 +485,33 @@ http_argument_lookup(struct http_request *req, const char *name, char **out)
 	return (KORE_RESULT_ERROR);
 }
 
+int
+http_argument_multiple_lookup(struct http_request *req, struct http_arg *args)
+{
+	int		i;
+
+	for (i = 0; args[i].name != NULL; i++) {
+		if (!http_argument_lookup(req,
+		    args[i].name, &(args[i].value))) {
+			args[i].value = NULL;
+			return (i);
+		}
+	}
+
+	return (i);
+}
+
+void
+http_argument_multiple_free(struct http_arg *args)
+{
+	int		i;
+
+	for (i = 0; args[i].name != NULL; i++) {
+		if (args[i].value != NULL)
+			kore_mem_free(args[i].value);
+	}
+}
+
 char *
 http_post_data_text(struct http_request *req)
 {
