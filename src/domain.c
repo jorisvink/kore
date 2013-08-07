@@ -19,6 +19,7 @@
 struct kore_domain_h		domains;
 struct kore_domain		*primary_dom = NULL;
 DH				*ssl_dhparam = NULL;
+int				ssl_no_compression = 0;
 
 void
 kore_domain_init(void)
@@ -77,6 +78,9 @@ kore_domain_sslstart(struct kore_domain *dom)
 		SSL_CTX_set_tmp_dh(dom->ssl_ctx, ssl_dhparam);
 		SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_SINGLE_DH_USE);
 	}
+
+	if (ssl_no_compression)
+		SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_COMPRESSION);
 
 	SSL_CTX_set_mode(dom->ssl_ctx, SSL_MODE_RELEASE_BUFFERS);
 	SSL_CTX_set_cipher_list(dom->ssl_ctx, kore_ssl_cipher_list);

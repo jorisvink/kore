@@ -35,6 +35,7 @@ static int		configure_certkey(char **);
 static int		configure_max_connections(char **);
 static int		configure_ssl_cipher(char **);
 static int		configure_ssl_dhparam(char **);
+static int		configure_ssl_no_compression(char **);
 static int		configure_spdy_idle_time(char **);
 static void		domain_sslstart(void);
 
@@ -49,6 +50,7 @@ static struct {
 	{ "dynamic",			configure_handler },
 	{ "ssl_cipher",			configure_ssl_cipher },
 	{ "ssl_dhparam",		configure_ssl_dhparam },
+	{ "ssl_no_compression",		configure_ssl_no_compression },
 	{ "spdy_idle_time",		configure_spdy_idle_time },
 	{ "domain",			configure_domain },
 	{ "chroot",			configure_chroot },
@@ -199,6 +201,14 @@ configure_ssl_dhparam(char **argv)
 		kore_debug("PEM_read_bio_DHparams(): %s", ssl_errno_s);
 		return (KORE_RESULT_ERROR);
 	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_ssl_no_compression(char **argv)
+{
+	ssl_no_compression = 1;
 
 	return (KORE_RESULT_OK);
 }
