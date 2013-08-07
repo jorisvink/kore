@@ -47,8 +47,6 @@
 #define KORE_PIDFILE_DEFAULT		"/var/run/kore.pid"
 #define KORE_DEFAULT_CIPHER_LIST	"HIGH:!aNULL:!MD5;"
 
-#define KORE_DEBUG		1
-
 #if defined(KORE_DEBUG)
 #define kore_debug(fmt, ...)	\
 	if (kore_debug)		\
