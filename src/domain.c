@@ -18,6 +18,7 @@
 
 struct kore_domain_h		domains;
 struct kore_domain		*primary_dom = NULL;
+DH				*ssl_dhparam = NULL;
 
 void
 kore_domain_init(void)
@@ -71,6 +72,11 @@ kore_domain_sslstart(struct kore_domain *dom)
 
 	if (!SSL_CTX_check_private_key(dom->ssl_ctx))
 		fatal("Public/Private key for %s do not match", dom->domain);
+
+	if (ssl_dhparam != NULL) {
+		SSL_CTX_set_tmp_dh(dom->ssl_ctx, ssl_dhparam);
+		SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_SINGLE_DH_USE);
+	}
 
 	SSL_CTX_set_mode(dom->ssl_ctx, SSL_MODE_RELEASE_BUFFERS);
 	SSL_CTX_set_cipher_list(dom->ssl_ctx, kore_ssl_cipher_list);

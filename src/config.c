@@ -34,6 +34,7 @@ static int		configure_certfile(char **);
 static int		configure_certkey(char **);
 static int		configure_max_connections(char **);
 static int		configure_ssl_cipher(char **);
+static int		configure_ssl_dhparam(char **);
 static int		configure_spdy_idle_time(char **);
 static void		domain_sslstart(void);
 
@@ -47,6 +48,7 @@ static struct {
 	{ "static",			configure_handler },
 	{ "dynamic",			configure_handler },
 	{ "ssl_cipher",			configure_ssl_cipher },
+	{ "ssl_dhparam",		configure_ssl_dhparam },
 	{ "spdy_idle_time",		configure_spdy_idle_time },
 	{ "domain",			configure_domain },
 	{ "chroot",			configure_chroot },
@@ -169,6 +171,35 @@ configure_ssl_cipher(char **argv)
 	}
 
 	kore_ssl_cipher_list = kore_strdup(argv[1]);
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_ssl_dhparam(char **argv)
+{
+	BIO		*bio;
+
+	if (argv[1] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	if (ssl_dhparam != NULL) {
+		kore_debug("duplicate ssl_dhparam directive specified");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if ((bio = BIO_new_file(argv[1], "r")) == NULL) {
+		kore_debug("%s did not exist", argv[1]);
+		return (KORE_RESULT_ERROR);
+	}
+
+	ssl_dhparam = PEM_read_bio_DHparams(bio, NULL, NULL, NULL);
+	BIO_free(bio);
+
+	if (ssl_dhparam == NULL) {
+		kore_debug("PEM_read_bio_DHparams(): %s", ssl_errno_s);
+		return (KORE_RESULT_ERROR);
+	}
+
 	return (KORE_RESULT_OK);
 }
 
