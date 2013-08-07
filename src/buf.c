@@ -96,3 +96,39 @@ kore_buf_free(struct kore_buf *buf)
 	kore_mem_free(buf->data);
 	kore_mem_free(buf);
 }
+
+void
+kore_buf_replace_string(struct kore_buf *b, const char *src,
+    u_int8_t *dst, size_t len)
+{
+	u_int32_t	blen, off, off2;
+	size_t		nlen, klen;
+	char		*key, *end, *tmp, *p;
+
+	off = 0;
+	klen = strlen(src);
+	for (;;) {
+		blen = b->offset;
+		nlen = blen + len;
+		p = (char *)b->data;
+
+		if ((key = strstr((p + off), src)) == NULL)
+			break;
+
+		end = key + klen;
+		off = key - p;
+		off2 = ((char *)(b->data + b->offset) - end);
+
+		tmp = kore_malloc(nlen);
+		memcpy(tmp, p, off);
+		memcpy((tmp + off), dst, len);
+		memcpy((tmp + off + len), end, off2);
+
+		kore_mem_free(b->data);
+		b->data = (u_int8_t *)tmp;
+		b->offset = off + len + off2;
+		b->length = nlen;
+
+		off = off + len;
+	}
+}
