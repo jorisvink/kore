@@ -221,7 +221,7 @@ configure_spdy_idle_time(char **argv)
 	if (argv[1] == NULL)
 		return (KORE_RESULT_ERROR);
 
-	spdy_idle_time = kore_strtonum(argv[1], 0, 65535, &err);
+	spdy_idle_time = kore_strtonum(argv[1], 10, 0, 65535, &err);
 	if (err != KORE_RESULT_OK) {
 		kore_debug("spdy_idle_time has invalid value: %s", argv[1]);
 		return (KORE_RESULT_ERROR);
@@ -328,7 +328,7 @@ configure_workers(char **argv)
 	if (argv[1] == NULL)
 		return (KORE_RESULT_ERROR);
 
-	worker_count = kore_strtonum(argv[1], 1, 255, &err);
+	worker_count = kore_strtonum(argv[1], 10, 1, 255, &err);
 	if (err != KORE_RESULT_OK) {
 		kore_debug("%s is not a correct worker number", argv[1]);
 		return (KORE_RESULT_ERROR);
@@ -427,7 +427,7 @@ configure_max_connections(char **argv)
 	if (argv[1] == NULL)
 		return (KORE_RESULT_ERROR);
 
-	worker_max_connections = kore_strtonum(argv[1], 1, 65535, &err);
+	worker_max_connections = kore_strtonum(argv[1], 10, 1, 65535, &err);
 	if (err != KORE_RESULT_OK)
 		return (KORE_RESULT_ERROR);
 

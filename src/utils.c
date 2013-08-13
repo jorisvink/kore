@@ -87,7 +87,7 @@ kore_strlcpy(char *dst, const char *src, size_t len)
 }
 
 long long
-kore_strtonum(const char *str, long long min, long long max, int *err)
+kore_strtonum(const char *str, int base, long long min, long long max, int *err)
 {
 	long long	l;
 	char		*ep;
@@ -99,7 +99,7 @@ kore_strtonum(const char *str, long long min, long long max, int *err)
 
 	l = 0;
 	errno = 0;
-	l = strtoll(str, &ep, 0);
+	l = strtoll(str, &ep, base);
 	if (errno != 0 || str == ep || *ep != '\0') {
 		*err = KORE_RESULT_ERROR;
 		return (0);
@@ -157,7 +157,7 @@ kore_date_to_time(char *http_date)
 		goto out;
 	}
 
-	tm.tm_year = kore_strtonum(args[3], 2013, 2068, &err) - 1900;
+	tm.tm_year = kore_strtonum(args[3], 10, 2013, 2068, &err) - 1900;
 	if (err == KORE_RESULT_ERROR || tm.tm_year < gtm->tm_year) {
 		kore_debug("misformed year in http-date: '%s'", http_date);
 		goto out;
@@ -175,7 +175,7 @@ kore_date_to_time(char *http_date)
 		goto out;
 	}
 
-	tm.tm_mday = kore_strtonum(args[1], 1, 31, &err);
+	tm.tm_mday = kore_strtonum(args[1], 10, 1, 31, &err);
 	if (err == KORE_RESULT_ERROR) {
 		kore_debug("misformed mday in http-date: '%s'", http_date);
 		goto out;
@@ -186,19 +186,19 @@ kore_date_to_time(char *http_date)
 		goto out;
 	}
 
-	tm.tm_hour = kore_strtonum(tbuf[0], 1, 23, &err);
+	tm.tm_hour = kore_strtonum(tbuf[0], 10, 1, 23, &err);
 	if (err == KORE_RESULT_ERROR) {
 		kore_debug("misformed hour in http-date: '%s'", http_date);
 		goto out;
 	}
 
-	tm.tm_min = kore_strtonum(tbuf[1], 1, 59, &err);
+	tm.tm_min = kore_strtonum(tbuf[1], 10, 1, 59, &err);
 	if (err == KORE_RESULT_ERROR) {
 		kore_debug("misformed minutes in http-date: '%s'", http_date);
 		goto out;
 	}
 
-	tm.tm_sec = kore_strtonum(tbuf[2], 0, 60, &err);
+	tm.tm_sec = kore_strtonum(tbuf[2], 10, 0, 60, &err);
 	if (err == KORE_RESULT_ERROR) {
 		kore_debug("misformed seconds in http-date: '%s'", http_date);
 		goto out;

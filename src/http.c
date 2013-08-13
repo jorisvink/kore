@@ -403,7 +403,7 @@ http_header_recv(struct netbuf *nb)
 			return (KORE_RESULT_ERROR);
 		}
 
-		clen = kore_strtonum(p, 0, UINT_MAX, &v);
+		clen = kore_strtonum(p, 10, 0, UINT_MAX, &v);
 		if (v == KORE_RESULT_ERROR) {
 			kore_mem_free(p);
 			kore_debug("content-length invalid: %s", p);
@@ -523,7 +523,7 @@ http_argument_urldecode(char *arg)
 		h[3] = *(p + 2);
 		h[4] = '\0';
 
-		v = kore_strtonum(h, 32, 127, &err);
+		v = kore_strtonum(h, 16, 32, 127, &err);
 		if (err != KORE_RESULT_OK)
 			return (err);
 
