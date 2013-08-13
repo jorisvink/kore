@@ -99,7 +99,7 @@ kore_strtonum(const char *str, long long min, long long max, int *err)
 
 	l = 0;
 	errno = 0;
-	l = strtoll(str, &ep, 10);
+	l = strtoll(str, &ep, 0);
 	if (errno != 0 || str == ep || *ep != '\0') {
 		*err = KORE_RESULT_ERROR;
 		return (0);

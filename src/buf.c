@@ -121,7 +121,8 @@ kore_buf_replace_string(struct kore_buf *b, const char *src,
 
 		tmp = kore_malloc(nlen);
 		memcpy(tmp, p, off);
-		memcpy((tmp + off), dst, len);
+		if (dst != NULL)
+			memcpy((tmp + off), dst, len);
 		memcpy((tmp + off + len), end, off2);
 
 		kore_mem_free(b->data);

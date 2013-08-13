@@ -16,6 +16,8 @@
 
 #include <sys/param.h>
 
+#include <ctype.h>
+
 #include "spdy.h"
 #include "kore.h"
 #include "http.h"
@@ -486,19 +488,69 @@ http_argument_lookup(struct http_request *req, const char *name, char **out)
 }
 
 int
+http_argument_urldecode(char *arg)
+{
+	u_int8_t	v;
+	int		err;
+	size_t		len;
+	char		*p, *in, h[5];
+
+	p = arg;
+	in = arg;
+	len = strlen(arg);
+
+	while (*p != '\0' && p < (arg + len)) {
+		if (*p == '+')
+			*p = ' ';
+		if (*p != '%') {
+			*in++ = *p++;
+			continue;
+		}
+
+		if ((p + 2) >= (arg + len)) {
+			kore_debug("overflow in '%s'", arg);
+			return (KORE_RESULT_ERROR);
+		}
+
+		if (!isxdigit(*(p + 1)) || !isxdigit(*(p + 2))) {
+			*in++ = *p++;
+			continue;
+		}
+
+		h[0] = '0';
+		h[1] = 'x';
+		h[2] = *(p + 1);
+		h[3] = *(p + 2);
+		h[4] = '\0';
+
+		v = kore_strtonum(h, 32, 127, &err);
+		if (err != KORE_RESULT_OK)
+			return (err);
+
+		*in++ = (char)v;
+		p += 3;
+	}
+
+	*in = '\0';
+	return (KORE_RESULT_OK);
+}
+
+int
 http_argument_multiple_lookup(struct http_request *req, struct http_arg *args)
 {
-	int		i;
+	int		i, c;
 
+	c = 0;
 	for (i = 0; args[i].name != NULL; i++) {
 		if (!http_argument_lookup(req,
 		    args[i].name, &(args[i].value))) {
 			args[i].value = NULL;
-			return (i);
+		} else {
+			c++;
 		}
 	}
 
-	return (i);
+	return (c);
 }
 
 void

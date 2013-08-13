@@ -75,8 +75,9 @@ void		http_response_header_add(struct http_request *, char *, char *);
 int		http_request_new(struct connection *, struct spdy_stream *,
 		    char *, char *, char *, struct http_request **);
 
-int		http_generic_404(struct http_request *);
+int		http_argument_urldecode(char *);
 int		http_header_recv(struct netbuf *);
+int		http_generic_404(struct http_request *);
 char		*http_post_data_text(struct http_request *);
 int		http_populate_arguments(struct http_request *);
 void		http_argument_multiple_free(struct http_arg *);
