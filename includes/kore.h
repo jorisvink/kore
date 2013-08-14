@@ -120,6 +120,7 @@ struct connection {
 	void			*owner;
 	SSL			*ssl;
 	u_int8_t		flags;
+	void			*hdlr_extra;
 
 	u_int8_t		addrtype;
 	union {
