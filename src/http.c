@@ -65,6 +65,7 @@ http_request_new(struct connection *c, struct spdy_stream *s, char *host,
 	req->owner = c;
 	req->status = 0;
 	req->stream = s;
+	req->cb_extra = NULL;
 	req->post_data = NULL;
 	kore_strlcpy(req->host, host, sizeof(req->host));
 	kore_strlcpy(req->path, path, sizeof(req->path));
