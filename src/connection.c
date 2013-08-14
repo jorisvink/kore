@@ -201,6 +201,9 @@ kore_connection_remove(struct connection *c)
 		SSL_free(c->ssl);
 	close(c->fd);
 
+	if (c->hdlr_extra != NULL)
+		kore_mem_free(c->hdlr_extra);
+
 	if (c->inflate_started)
 		inflateEnd(&(c->z_inflate));
 	if (c->deflate_started)
