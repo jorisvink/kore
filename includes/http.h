@@ -55,6 +55,7 @@ struct http_request {
 	struct connection	*owner;
 	struct spdy_stream	*stream;
 	struct kore_buf		*post_data;
+	void			*cb_extra;
 
 	TAILQ_HEAD(, http_header)	req_headers;
 	TAILQ_HEAD(, http_header)	resp_headers;
