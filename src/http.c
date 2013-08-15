@@ -22,6 +22,49 @@
 #include "kore.h"
 #include "http.h"
 
+const char *http_code_phrase[] = {
+	[100] = "Continue",
+	[101] = "Switching Protocols",
+	[200] = "OK",
+	[201] = "Created",
+	[202] = "Accepted",
+	[203] = "Non-Authoritative Information",
+	[204] = "No Content",
+	[205] = "Reset Content",
+	[206] = "Partial Content",
+	[300] = "Multiple Choices",
+	[301] = "Moved Permanently",
+	[302] = "Found",
+	[303] = "See Other",
+	[304] = "Not Modified",
+	[305] = "Use Proxy",
+	[307] = "Temporary Redirect",
+	[400] = "Bad Request",
+	[401] = "Unauthorized",
+	[402] = "Payment Required",
+	[403] = "Forbidden",
+	[404] = "Not Found",
+	[405] = "Method Not Allowed",
+	[406] = "Not Acceptable",
+	[407] = "Proxy Authentication Required",
+	[408] = "Request Time-out",
+	[409] = "Conflict",
+	[410] = "Gone",
+	[411] = "Length Required",
+	[412] = "Precondition Failed",
+	[413] = "Request Entity Too Large",
+	[414] = "Request-URI Too Large",
+	[415] = "Unsupported Media Type",
+	[416] = "Requested range not satisfiable",
+	[417] = "Expectation Failed",
+	[500] = "Internal Server Error",
+	[501] = "Not Implemented",
+	[502] = "Bad Gateway",
+	[503] = "Service Unavailable",
+	[504] = "Gateway Time-out",
+	[505] = "HTTP Version not supported"
+};
+
 static int		http_post_data_recv(struct netbuf *);
 static int		http_send_done(struct netbuf *);
 
@@ -226,7 +269,7 @@ http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 
 	req->status = status;
 	if (req->owner->proto == CONN_PROTO_SPDY) {
-		snprintf(sbuf, sizeof(sbuf), "%d", status);
+		snprintf(sbuf, sizeof(sbuf), "%d %s", status, http_code_phrase[status]);
 
 		hblock = spdy_header_block_create(SPDY_HBLOCK_NORMAL);
 		spdy_header_block_add(hblock, ":status", sbuf);
