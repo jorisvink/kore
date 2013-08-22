@@ -343,13 +343,13 @@ void		net_send_queue(struct connection *, u_int8_t *, size_t, int,
 
 void		kore_buf_free(struct kore_buf *);
 struct kore_buf	*kore_buf_create(u_int32_t);
-void		kore_buf_append(struct kore_buf *, u_int8_t *, u_int32_t);
+void		kore_buf_append(struct kore_buf *, void *, u_int32_t);
 u_int8_t	*kore_buf_release(struct kore_buf *, u_int32_t *);
 void	kore_buf_appendf(struct kore_buf *, const char *, ...);
 void	kore_buf_appendv(struct kore_buf *, struct buf_vec *, u_int16_t);
 void	kore_buf_appendb(struct kore_buf *, struct kore_buf *);
 void	kore_buf_replace_string(struct kore_buf *, const char *,
-	    u_int8_t *, size_t);
+	    void *, size_t);
 
 struct spdy_header_block	*spdy_header_block_create(int);
 struct spdy_stream	*spdy_stream_lookup(struct connection *, u_int32_t);

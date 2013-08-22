@@ -30,7 +30,7 @@ kore_buf_create(u_int32_t initial)
 }
 
 void
-kore_buf_append(struct kore_buf *buf, u_int8_t *d, u_int32_t len)
+kore_buf_append(struct kore_buf *buf, void *d, u_int32_t len)
 {
 	if ((buf->offset + len) >= buf->length) {
 		buf->length += len + KORE_BUF_INCREMENT;
@@ -99,7 +99,7 @@ kore_buf_free(struct kore_buf *buf)
 
 void
 kore_buf_replace_string(struct kore_buf *b, const char *src,
-    u_int8_t *dst, size_t len)
+    void *dst, size_t len)
 {
 	u_int32_t	blen, off, off2;
 	size_t		nlen, klen;
