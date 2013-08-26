@@ -285,8 +285,7 @@ kore_base64_encode(u_int8_t *data, u_int32_t len, char **out)
 				if (idx >= len && i < padding)
 					break;
 
-				kore_buf_append(res,
-				    (u_int8_t *)&(b64table[n]), 1);
+				kore_buf_append(res, &(b64table[n]), 1);
 			}
 
 			b = 0;

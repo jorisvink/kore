@@ -274,7 +274,7 @@ http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 			    hdr->header, hdr->value);
 		}
 
-		kore_buf_append(buf, (u_int8_t *)"\r\n", 2);
+		kore_buf_append(buf, "\r\n", 2);
 		htext = kore_buf_release(buf, &hlen);
 		net_send_queue(req->owner, htext, hlen, 0, NULL, NULL);
 		kore_mem_free(htext);
