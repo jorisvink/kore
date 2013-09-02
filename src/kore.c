@@ -29,9 +29,11 @@ struct passwd		*pw = NULL;
 pid_t			kore_pid = -1;
 u_int16_t		cpu_count = 1;
 int			kore_debug = 0;
+void			(*kore_cb)(void);
 u_int8_t		worker_count = 0;
 char			*runas_user = NULL;
 char			*chroot_path = NULL;
+u_int64_t		kore_cb_interval = 0;
 char			*kore_pidfile = KORE_PIDFILE_DEFAULT;
 char			*kore_ssl_cipher_list = KORE_DEFAULT_CIPHER_LIST;
 
@@ -220,6 +222,8 @@ kore_server_sslstart(void)
 static void
 kore_server_start(void)
 {
+	u_int64_t	now, last_cb_run;
+
 	kore_mem_free(runas_user);
 
 	if (daemon(1, 1) == -1)
@@ -231,6 +235,9 @@ kore_server_start(void)
 	kore_log(LOG_NOTICE, "kore is starting up");
 	kore_platform_proctitle("kore [parent]");
 	kore_worker_init();
+
+	now = kore_time_ms();
+	last_cb_run = now;
 
 	for (;;) {
 		if (sig_recv != 0) {
@@ -246,6 +253,13 @@ kore_server_start(void)
 
 		if (!kore_accesslog_wait())
 			break;
+
+		now = kore_time_ms();
+		if ((now - last_cb_run) >= kore_cb_interval) {
+			last_cb_run = now;
+			kore_cb();
+		}
+
 		kore_worker_wait(0);
 	}
 }

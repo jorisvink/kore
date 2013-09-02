@@ -229,6 +229,7 @@ extern char	*runas_user;
 extern char	*kore_module_onload;
 extern char	*kore_pidfile;
 extern char	*config_file;
+extern char	*kore_cb_name;
 extern char	*kore_ssl_cipher_list;
 extern DH	*ssl_dhparam;
 extern int	ssl_no_compression;
@@ -237,8 +238,10 @@ extern u_int8_t			nlisteners;
 extern u_int64_t		spdy_idle_time;
 extern u_int16_t		cpu_count;
 extern u_int8_t			worker_count;
+extern u_int64_t		kore_cb_interval;
 extern u_int32_t		worker_max_connections;
 extern u_int32_t		worker_active_connections;
+extern void			(*kore_cb)(void);
 
 extern struct listener_head	listeners;
 extern struct kore_worker	*worker;

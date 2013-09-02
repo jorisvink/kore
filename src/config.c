@@ -15,6 +15,7 @@
  */
 
 #include <ctype.h>
+#include <limits.h>
 #include <fcntl.h>
 #include <pwd.h>
 
@@ -37,6 +38,8 @@ static int		configure_ssl_cipher(char **);
 static int		configure_ssl_dhparam(char **);
 static int		configure_ssl_no_compression(char **);
 static int		configure_spdy_idle_time(char **);
+static int		configure_kore_cb(char **);
+static int		configure_kore_cb_interval(char **);
 static void		domain_sslstart(void);
 
 static struct {
@@ -61,6 +64,8 @@ static struct {
 	{ "accesslog",			configure_accesslog },
 	{ "certfile",			configure_certfile },
 	{ "certkey",			configure_certkey },
+	{ "kore_cb",			configure_kore_cb },
+	{ "kore_cb_interval",		configure_kore_cb_interval },
 	{ NULL,				NULL },
 };
 
@@ -430,6 +435,43 @@ configure_max_connections(char **argv)
 	worker_max_connections = kore_strtonum(argv[1], 10, 1, 65535, &err);
 	if (err != KORE_RESULT_OK)
 		return (KORE_RESULT_ERROR);
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_kore_cb(char **argv)
+{
+	if (argv[1] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	if (kore_cb_name != NULL) {
+		kore_debug("kore_cb was already set");
+		return (KORE_RESULT_ERROR);
+	}
+
+	kore_cb_name = kore_strdup(argv[1]);
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_kore_cb_interval(char **argv)
+{
+	int		err;
+
+	if (argv[1] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	if (kore_cb_interval != 0) {
+		kore_debug("kore_cb_interval already given");
+		return (KORE_RESULT_ERROR);
+	}
+
+	kore_cb_interval = kore_strtonum(argv[1], 10, 1, LLONG_MAX, &err);
+	if (err != KORE_RESULT_OK) {
+		kore_debug("invalid value for kore_cb_interval");
+		return (KORE_RESULT_ERROR);
+	}
 
 	return (KORE_RESULT_OK);
 }

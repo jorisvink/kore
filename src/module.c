@@ -23,6 +23,8 @@
 static void		*mod_handle = NULL;
 static char		*mod_name = NULL;
 static time_t		mod_last_mtime = 0;
+
+char			*kore_cb_name = NULL;
 char			*kore_module_onload = NULL;
 
 void
@@ -52,6 +54,12 @@ kore_module_load(char *module_name)
 		if (onload == NULL)
 			fatal("onload '%s' not present", kore_module_onload);
 		onload();
+	}
+
+	if (kore_cb_name != NULL) {
+		kore_cb = dlsym(mod_handle, kore_cb_name);
+		if (kore_cb == NULL)
+			fatal("kore_cb '%s' not present", kore_cb_name);
 	}
 }
 
@@ -83,6 +91,12 @@ kore_module_reload(void)
 		if (onload == NULL)
 			fatal("onload '%s' not present", kore_module_onload);
 		onload();
+	}
+
+	if (kore_cb_name != NULL) {
+		kore_cb = dlsym(mod_handle, kore_cb_name);
+		if (kore_cb == NULL)
+			fatal("kore_cb '%s' not present", kore_cb_name);
 	}
 
 	kore_log(LOG_NOTICE, "reloaded '%s' module", mod_name);
