@@ -169,7 +169,7 @@ kore_worker_entry(struct kore_worker *kw)
 	int			quit;
 	char			buf[16];
 	struct connection	*c, *cnext;
-	u_int64_t		now, idle_check;
+	u_int64_t		now, idle_check, last_cb_run;
 
 	worker = kw;
 
@@ -208,6 +208,7 @@ kore_worker_entry(struct kore_worker *kw)
 	now = idle_check = 0;
 	kore_platform_event_init();
 	kore_accesslog_worker_init();
+	last_cb_run = kore_time_ms();
 
 	worker->accept_treshold = worker_max_connections / 10;
 	kore_log(LOG_NOTICE, "worker %d started (cpu#%d)", kw->id, kw->cpu);
@@ -248,6 +249,14 @@ kore_worker_entry(struct kore_worker *kw)
 				if (!(c->flags & CONN_IDLE_TIMER_ACT))
 					continue;
 				kore_connection_check_idletimer(now, c);
+			}
+		}
+
+		if (kore_cb != NULL && kore_cb_worker != -1 &&
+		    kore_cb_worker == worker->id) {
+			if ((now - last_cb_run) >= kore_cb_interval) {
+				last_cb_run = now;
+				kore_cb();
 			}
 		}
 

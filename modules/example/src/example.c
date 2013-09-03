@@ -25,6 +25,7 @@ int		serve_intro(struct http_request *);
 int		serve_b64test(struct http_request *);
 int		serve_spdyreset(struct http_request *);
 
+void		my_callback(void);
 void		test_base64(u_int8_t *, u_int32_t, struct kore_buf *);
 
 char *b64tests[] = {
@@ -147,4 +148,13 @@ test_base64(u_int8_t *src, u_int32_t slen, struct kore_buf *res)
 	}
 
 	kore_buf_appendf(res, "\n");
+}
+
+void
+my_callback(void)
+{
+	if (worker != NULL)
+		kore_log(LOG_NOTICE, "running on worker %d", worker->id);
+	else
+		kore_log(LOG_NOTICE, "running from parent");
 }

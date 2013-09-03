@@ -40,6 +40,7 @@ static int		configure_ssl_no_compression(char **);
 static int		configure_spdy_idle_time(char **);
 static int		configure_kore_cb(char **);
 static int		configure_kore_cb_interval(char **);
+static int		configure_kore_cb_worker(char **);
 static void		domain_sslstart(void);
 
 static struct {
@@ -65,6 +66,7 @@ static struct {
 	{ "certfile",			configure_certfile },
 	{ "certkey",			configure_certkey },
 	{ "kore_cb",			configure_kore_cb },
+	{ "kore_cb_worker",		configure_kore_cb_worker },
 	{ "kore_cb_interval",		configure_kore_cb_interval },
 	{ NULL,				NULL },
 };
@@ -470,6 +472,28 @@ configure_kore_cb_interval(char **argv)
 	kore_cb_interval = kore_strtonum(argv[1], 10, 1, LLONG_MAX, &err);
 	if (err != KORE_RESULT_OK) {
 		kore_debug("invalid value for kore_cb_interval");
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_kore_cb_worker(char **argv)
+{
+	int		err;
+
+	if (argv[1] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	if (kore_cb_worker != -1) {
+		kore_debug("kore_cb_worker already set");
+		return (KORE_RESULT_ERROR);
+	}
+
+	kore_cb_worker = kore_strtonum(argv[1], 10, 0, worker_count, &err);
+	if (err != KORE_RESULT_OK) {
+		kore_debug("invalid value for kore_cb_worker");
 		return (KORE_RESULT_ERROR);
 	}
 
