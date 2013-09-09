@@ -37,6 +37,7 @@ static int		spdy_zlib_deflate(struct connection *, u_int8_t *,
 			    size_t, u_int8_t **, u_int32_t *);
 
 u_int64_t		spdy_idle_time = 120000;
+int32_t			spdy_recv_wsize = 65536;
 
 int
 spdy_frame_recv(struct netbuf *nb)
@@ -130,7 +131,7 @@ spdy_frame_send(struct connection *c, u_int16_t type, u_int8_t flags,
     u_int32_t len, struct spdy_stream *s, u_int32_t misc)
 {
 	struct netbuf		*nnb;
-	u_int8_t		nb[12];
+	u_int8_t		nb[16];
 	u_int32_t		length;
 
 	kore_debug("spdy_frame_send(%p, %d, %d, %d, %p, %d)",
@@ -164,6 +165,16 @@ spdy_frame_send(struct connection *c, u_int16_t type, u_int8_t flags,
 		net_write32(&nb[4], len);
 		nb[4] = flags;
 		length = 8;
+		break;
+	case SPDY_CTRL_FRAME_WINDOW:
+		net_write16(&nb[0], 3);
+		nb[0] |= (1 << 7);
+		net_write16(&nb[2], type);
+		net_write32(&nb[4], len);
+		nb[4] = flags;
+		net_write32(&nb[8], s->stream_id);
+		net_write32(&nb[12], misc);
+		length = 16;
 		break;
 	case SPDY_DATA_FRAME:
 		net_write32(&nb[0], s->stream_id);
@@ -399,7 +410,8 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 	s->httpreq = NULL;
 	s->prio = syn.prio;
 	s->flags = ctrl.flags;
-	s->wsize = c->wsize_initial;
+	s->recv_wsize = spdy_recv_wsize;
+	s->send_wsize = c->wsize_initial;
 	s->stream_id = syn.stream_id;
 	s->hblock = spdy_header_block_create(SPDY_HBLOCK_DELAYED_ALLOC);
 
@@ -564,15 +576,15 @@ spdy_ctrl_frame_window(struct netbuf *nb)
 	}
 
 	kore_debug("SPDY_WINDOW_UPDATE: %d:%d", stream_id, window_size);
-	s->wsize += window_size;
-	if (s->wsize > 0 && c->flags & CONN_WRITE_BLOCK) {
+	s->send_wsize += window_size;
+	if (s->send_wsize > 0 && c->flags & CONN_WRITE_BLOCK) {
 		c->flags &= ~CONN_WRITE_BLOCK;
 		c->flags |= CONN_WRITE_POSSIBLE;
 
 		kore_connection_stop_idletimer(c);
 		c->idle_timer.length = spdy_idle_time;
 
-		kore_debug("can now send again (%d wsize)", s->wsize);
+		kore_debug("can now send again (%d wsize)", s->send_wsize);
 		return (net_send_flush(c));
 	}
 
@@ -614,6 +626,14 @@ spdy_data_frame_recv(struct netbuf *nb)
 	if (data.flags & FLAG_FIN) {
 		s->flags |= FLAG_FIN;
 		req->flags |= HTTP_REQUEST_COMPLETE;
+	}
+
+	s->recv_wsize -= data.length;
+	if (s->recv_wsize < (spdy_recv_wsize / 2)) {
+		spdy_frame_send(c, SPDY_CTRL_FRAME_WINDOW,
+		    0, 8, s, spdy_recv_wsize - s->recv_wsize);
+
+		s->recv_wsize += (spdy_recv_wsize - s->recv_wsize);
 	}
 
 	return (KORE_RESULT_OK);
@@ -667,11 +687,11 @@ spdy_goaway_send_done(struct netbuf *nb)
 static void
 spdy_update_wsize(struct connection *c, struct spdy_stream *s, u_int32_t len)
 {
-	s->wsize -= len;
+	s->send_wsize -= len;
 	kore_debug("spdy_update_wsize(): stream %d, window size %d",
-	    s->stream_id, s->wsize);
+	    s->stream_id, s->send_wsize);
 
-	if (s->wsize <= 0) {
+	if (s->send_wsize <= 0) {
 		kore_debug("window size <= 0 for stream %d", s->stream_id);
 		c->flags &= ~CONN_WRITE_POSSIBLE;
 		c->flags |= CONN_WRITE_BLOCK;
