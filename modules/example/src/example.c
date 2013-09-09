@@ -24,6 +24,7 @@ int		serve_index(struct http_request *);
 int		serve_intro(struct http_request *);
 int		serve_b64test(struct http_request *);
 int		serve_spdyreset(struct http_request *);
+int		serve_file_upload(struct http_request *);
 
 void		my_callback(void);
 void		test_base64(u_int8_t *, u_int32_t, struct kore_buf *);
@@ -119,6 +120,35 @@ serve_spdyreset(struct http_request *req)
 {
 	spdy_session_teardown(req->owner, SPDY_SESSION_ERROR_OK);
 	return (KORE_RESULT_OK);
+}
+
+int
+serve_file_upload(struct http_request *req)
+{
+	int			r;
+	char			*p;
+	u_int8_t		*d;
+	struct kore_buf		*b;
+	u_int32_t		len;
+
+	b = kore_buf_create(static_len_html_upload);
+	kore_buf_append(b, static_html_upload, static_len_html_upload);
+
+	if (req->method == HTTP_METHOD_POST) {
+		p = http_post_data_text(req);
+		kore_buf_replace_string(b, "$upload$", p, strlen(p));
+		kore_mem_free(p);
+	} else {
+		kore_buf_replace_string(b, "$upload$", NULL, 0);
+	}
+
+	d = kore_buf_release(b, &len);
+
+	http_response_header_add(req, "content-type", "text/html");
+	r = http_response(req, 200, d, len);
+	kore_mem_free(d);
+
+	return (r);
 }
 
 void

@@ -112,6 +112,9 @@ LIST_HEAD(listener_head, listener);
 
 #define KORE_IDLE_TIMER_MAX	20000
 
+/* XXX hackish. */
+struct http_request;
+
 struct connection {
 	u_int8_t		type;
 	int			fd;
@@ -144,6 +147,7 @@ struct connection {
 
 	u_int32_t			client_stream_id;
 	TAILQ_HEAD(, spdy_stream)	spdy_streams;
+	TAILQ_HEAD(, http_request)	http_requests;
 
 	TAILQ_ENTRY(connection)	list;
 };

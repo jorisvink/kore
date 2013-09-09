@@ -98,6 +98,8 @@ http_request_new(struct connection *c, struct spdy_stream *s, char *host,
 
 	http_request_count++;
 	TAILQ_INSERT_TAIL(&http_requests, req, list);
+	TAILQ_INSERT_TAIL(&(c->http_requests), req, olist);
+
 	return (KORE_RESULT_OK);
 }
 
@@ -176,6 +178,8 @@ http_request_free(struct http_request *req)
 	struct http_arg		*q, *qnext;
 	struct http_header	*hdr, *next;
 
+	TAILQ_REMOVE(&(req->owner->http_requests), req, olist);
+
 	for (hdr = TAILQ_FIRST(&(req->resp_headers)); hdr != NULL; hdr = next) {
 		next = TAILQ_NEXT(hdr, list);
 
@@ -203,6 +207,9 @@ http_request_free(struct http_request *req)
 			kore_mem_free(q->value);
 		kore_mem_free(q);
 	}
+
+	if (req->method == HTTP_METHOD_POST && req->post_data != NULL)
+		kore_buf_free(req->post_data);
 
 	if (req->agent != NULL)
 		kore_mem_free(req->agent);
@@ -316,7 +323,7 @@ http_header_recv(struct netbuf *nb)
 	struct http_request	*req;
 	struct netbuf		*nnb;
 	size_t			clen, len;
-	u_int8_t		*end_headers, ch;
+	u_int8_t		*end_headers, *end;
 	int			h, i, v, skip, bytes_left;
 	char			*request[4], *host[3], *hbuf;
 	char			*p, *headers[HTTP_REQ_HEADER_MAX];
@@ -324,23 +331,31 @@ http_header_recv(struct netbuf *nb)
 
 	kore_debug("http_header_recv(%p)", nb);
 
-	ch = nb->buf[nb->offset];
-	nb->buf[nb->offset] = '\0';
-
 	if (nb->len < 4)
 		return (KORE_RESULT_OK);
-	if ((end_headers = (u_int8_t *)strrchr((char *)nb->buf, '\r')) == NULL)
-		return (KORE_RESULT_OK);
-	if (strncmp(((char *)end_headers - 2), "\r\n\r\n", 4))
+
+	end = nb->buf + nb->offset;
+	for (end_headers = nb->buf; end_headers < end; end_headers++) {
+		if (*end_headers != '\r')
+			continue;
+
+		if ((end - end_headers) < 4)
+			return (KORE_RESULT_OK);
+
+		if (!memcmp(end_headers, "\r\n\r\n", 4))
+			break;
+	}
+
+	if (end_headers == end)
 		return (KORE_RESULT_OK);
 
-	nb->buf[nb->offset] = ch;
-	nb->buf[nb->len - 1] = '\0';
+	*end_headers = '\0';
+	end_headers += 4;
 	nb->flags |= NETBUF_FORCE_REMOVE;
-	end_headers += 2;
-
 	len = end_headers - nb->buf;
 	hbuf = (char *)nb->buf;
+
+	kore_debug("HTTP request:\n'%s'\n", hbuf);
 
 	h = kore_split_string(hbuf, "\r\n", headers, HTTP_REQ_HEADER_MAX);
 	if (h < 2)
@@ -424,7 +439,8 @@ http_header_recv(struct netbuf *nb)
 
 		bytes_left = clen - (nb->offset - len);
 		if (bytes_left > 0) {
-			kore_debug("need %ld more bytes for POST", bytes_left);
+			kore_debug("%ld/%ld (%ld - %ld) more bytes for POST",
+			    bytes_left, clen, nb->offset, len);
 			net_recv_queue(c, bytes_left,
 			    0, &nnb, http_post_data_recv);
 			nnb->extra = req;
@@ -578,6 +594,7 @@ http_post_data_text(struct http_request *req)
 	char		*text;
 
 	data = kore_buf_release(req->post_data, &len);
+	req->post_data = NULL;
 	len++;
 
 	text = kore_malloc(len);

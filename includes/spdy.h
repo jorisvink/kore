@@ -74,6 +74,7 @@ extern const unsigned char SPDY_dictionary_txt[];
 /* control frames */
 #define SPDY_CTRL_FRAME_SYN_STREAM	1
 #define SPDY_CTRL_FRAME_SYN_REPLY	2
+#define SPDY_CTRL_FRAME_RST_STREAM	3
 #define SPDY_CTRL_FRAME_SETTINGS	4
 #define SPDY_CTRL_FRAME_PING		6
 #define SPDY_CTRL_FRAME_GOAWAY		7

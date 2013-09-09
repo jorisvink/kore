@@ -81,6 +81,7 @@ kore_connection_accept(struct listener *l, struct connection **out)
 	TAILQ_INIT(&(c->send_queue));
 	TAILQ_INIT(&(c->recv_queue));
 	TAILQ_INIT(&(c->spdy_streams));
+	TAILQ_INIT(&(c->http_requests));
 
 	kore_worker_connection_add(c);
 	kore_connection_start_idletimer(c);
@@ -192,6 +193,7 @@ kore_connection_handle(struct connection *c)
 void
 kore_connection_remove(struct connection *c)
 {
+	struct http_request	*req;
 	struct netbuf		*nb, *next;
 	struct spdy_stream	*s, *snext;
 
@@ -208,6 +210,9 @@ kore_connection_remove(struct connection *c)
 		inflateEnd(&(c->z_inflate));
 	if (c->deflate_started)
 		deflateEnd(&(c->z_deflate));
+
+	TAILQ_FOREACH(req, &(c->http_requests), olist)
+		req->flags |= HTTP_REQUEST_DELETE;
 
 	for (nb = TAILQ_FIRST(&(c->send_queue)); nb != NULL; nb = next) {
 		next = TAILQ_NEXT(nb, list);

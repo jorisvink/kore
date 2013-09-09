@@ -19,6 +19,7 @@
 #include "http.h"
 
 static int		spdy_ctrl_frame_syn_stream(struct netbuf *);
+static int		spdy_ctrl_frame_rst_stream(struct netbuf *);
 static int		spdy_ctrl_frame_settings(struct netbuf *);
 static int		spdy_ctrl_frame_ping(struct netbuf *);
 static int		spdy_ctrl_frame_window(struct netbuf *);
@@ -72,6 +73,9 @@ spdy_frame_recv(struct netbuf *nb)
 		switch (ctrl.type) {
 		case SPDY_CTRL_FRAME_SYN_STREAM:
 			cb = spdy_ctrl_frame_syn_stream;
+			break;
+		case SPDY_CTRL_FRAME_RST_STREAM:
+			cb = spdy_ctrl_frame_rst_stream;
 			break;
 		case SPDY_CTRL_FRAME_SETTINGS:
 			cb = spdy_ctrl_frame_settings;
@@ -392,6 +396,7 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 	}
 
 	s = kore_malloc(sizeof(*s));
+	s->httpreq = NULL;
 	s->prio = syn.prio;
 	s->flags = ctrl.flags;
 	s->wsize = c->wsize_initial;
@@ -456,6 +461,29 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 	TAILQ_INSERT_TAIL(&(c->spdy_streams), s, list);
 	kore_debug("SPDY_SYN_STREAM: %d:%d:%d", s->stream_id,
 	    s->flags, s->prio);
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+spdy_ctrl_frame_rst_stream(struct netbuf *nb)
+{
+	struct spdy_stream	*s;
+	u_int32_t		stream_id;
+	struct connection	*c = (struct connection *)nb->owner;
+
+	stream_id = net_read32(nb->buf + SPDY_FRAME_SIZE);
+	if ((stream_id % 2) == 0) {
+		kore_debug("received RST for non-client stream %d", stream_id);
+		return (KORE_RESULT_ERROR);
+	}
+
+	if ((s = spdy_stream_lookup(c, stream_id)) == NULL) {
+		kore_debug("received RST for unknown stream %d", stream_id);
+		return (KORE_RESULT_ERROR);
+	}
+
+	spdy_stream_close(c, s);
 
 	return (KORE_RESULT_OK);
 }
@@ -594,6 +622,8 @@ spdy_data_frame_recv(struct netbuf *nb)
 static void
 spdy_stream_close(struct connection *c, struct spdy_stream *s)
 {
+	struct http_request		*req;
+
 	kore_debug("spdy_stream_close(%p, %p) <%d>", c, s, s->stream_id);
 
 	TAILQ_REMOVE(&(c->spdy_streams), s, list);
@@ -601,6 +631,11 @@ spdy_stream_close(struct connection *c, struct spdy_stream *s)
 		if (s->hblock->header_block != NULL)
 			kore_mem_free(s->hblock->header_block);
 		kore_mem_free(s->hblock);
+	}
+
+	if (s->httpreq != NULL) {
+		req = s->httpreq;
+		req->flags |= HTTP_REQUEST_DELETE;
 	}
 
 	kore_mem_free(s);
