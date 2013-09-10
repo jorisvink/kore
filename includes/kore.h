@@ -315,9 +315,11 @@ void		kore_log(int, const char *, ...);
 void		kore_strlcpy(char *, const char *, size_t);
 void		kore_server_disconnect(struct connection *);
 int		kore_split_string(char *, char *, char **, size_t);
+void		kore_strip_chars(char *, char, char **);
 long long	kore_strtonum(const char *, int, long long, long long, int *);
 int		kore_base64_encode(u_int8_t *, u_int32_t, char **);
 int		kore_base64_decode(char *, u_int8_t **, u_int32_t *);
+void		*kore_mem_find(void *, size_t, void *, u_int32_t);
 
 void		kore_domain_init(void);
 int		kore_domain_new(char *);

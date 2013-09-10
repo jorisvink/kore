@@ -138,6 +138,26 @@ kore_split_string(char *input, char *delim, char **out, size_t ele)
 	return (count);
 }
 
+void
+kore_strip_chars(char *in, char strip, char **out)
+{
+	u_int32_t	len;
+	char		*s, *p;
+
+	len = strlen(in);
+	*out = kore_malloc(len + 1);
+	p = *out;
+
+	for (s = in; s < (in + len); s++) {
+		if (*s == strip)
+			continue;
+
+		*p++ = *s;
+	}
+
+	*p = '\0';
+}
+
 time_t
 kore_date_to_time(char *http_date)
 {
@@ -346,6 +366,26 @@ kore_base64_decode(char *in, u_int8_t **out, u_int32_t *olen)
 
 	*out = kore_buf_release(res, olen);
 	return (KORE_RESULT_OK);
+}
+
+void *
+kore_mem_find(void *src, size_t slen, void *needle, u_int32_t len)
+{
+	u_int8_t	*p, *end;
+
+	end = (u_int8_t *)src + slen;
+	for (p = src; p < end; p++) {
+		if (*p != *(u_int8_t *)needle)
+			continue;
+
+		if ((end - p) < len)
+			return (NULL);
+
+		if (!memcmp(p, needle, len))
+			return (p);
+	}
+
+	return (NULL);
 }
 
 void

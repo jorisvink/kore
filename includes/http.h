@@ -37,6 +37,16 @@ struct http_arg {
 	TAILQ_ENTRY(http_arg)	list;
 };
 
+struct http_file {
+	char			*name;
+	char			*filename;
+
+	u_int8_t		*data;
+	u_int32_t		len;
+
+	TAILQ_ENTRY(http_file)	list;
+};
+
 #define HTTP_METHOD_GET		0
 #define HTTP_METHOD_POST	1
 
@@ -56,12 +66,14 @@ struct http_request {
 	struct spdy_stream	*stream;
 	struct kore_buf		*post_data;
 	void			*hdlr_extra;
+	u_int8_t		*multipart_body;
 
-	TAILQ_HEAD(, http_header)	req_headers;
-	TAILQ_HEAD(, http_header)	resp_headers;
-	TAILQ_HEAD(, http_arg)		arguments;
-	TAILQ_ENTRY(http_request)	list;
-	TAILQ_ENTRY(http_request)	olist;
+	TAILQ_HEAD(, http_header)		req_headers;
+	TAILQ_HEAD(, http_header)		resp_headers;
+	TAILQ_HEAD(, http_arg)			arguments;
+	TAILQ_HEAD(, http_file)			files;
+	TAILQ_ENTRY(http_request)		list;
+	TAILQ_ENTRY(http_request)		olist;
 };
 
 extern int	http_request_count;
@@ -81,10 +93,18 @@ int		http_argument_urldecode(char *);
 int		http_header_recv(struct netbuf *);
 int		http_generic_404(struct http_request *);
 char		*http_post_data_text(struct http_request *);
+u_int8_t	*http_post_data_bytes(struct http_request *, u_int32_t *);
 int		http_populate_arguments(struct http_request *);
+int		http_populate_multipart_form(struct http_request *, int *);
 void		http_argument_multiple_free(struct http_arg *);
+void		http_file_add(struct http_request *, char *, char *,
+		    u_int8_t *, u_int32_t);
+void		http_argument_add(struct http_request *, char *,
+		    char *, u_int32_t);
 int		http_argument_lookup(struct http_request *,
 		    const char *, char **);
+int		http_file_lookup(struct http_request *, char *, char **,
+		    u_int8_t **, u_int32_t *);
 int		http_argument_multiple_lookup(struct http_request *,
 		    struct http_arg *);
 

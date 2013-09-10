@@ -126,20 +126,34 @@ int
 serve_file_upload(struct http_request *req)
 {
 	int			r;
-	char			*p;
 	u_int8_t		*d;
 	struct kore_buf		*b;
 	u_int32_t		len;
+	char			*name, buf[BUFSIZ];
 
 	b = kore_buf_create(static_len_html_upload);
 	kore_buf_append(b, static_html_upload, static_len_html_upload);
 
 	if (req->method == HTTP_METHOD_POST) {
-		p = http_post_data_text(req);
-		kore_buf_replace_string(b, "$upload$", p, strlen(p));
-		kore_mem_free(p);
+		http_populate_multipart_form(req, &r);
+		if (http_argument_lookup(req, "firstname", &name)) {
+			kore_buf_replace_string(b, "$firstname$",
+			    name, strlen(name));
+			kore_mem_free(name);
+		} else {
+			kore_buf_replace_string(b, "$firstname$", NULL, 0);
+		}
+
+		if (http_file_lookup(req, "file", &name, &d, &len)) {
+			snprintf(buf, sizeof(buf), "%s is %d bytes", name, len);
+			kore_buf_replace_string(b,
+			    "$upload$", buf, strlen(buf));
+		} else {
+			kore_buf_replace_string(b, "$upload$", NULL, 0);
+		}
 	} else {
 		kore_buf_replace_string(b, "$upload$", NULL, 0);
+		kore_buf_replace_string(b, "$firstname$", NULL, 0);
 	}
 
 	d = kore_buf_release(b, &len);

@@ -68,12 +68,14 @@ http_request_new(struct connection *c, struct spdy_stream *s, char *host,
 	req->stream = s;
 	req->post_data = NULL;
 	req->hdlr_extra = NULL;
+	req->multipart_body = NULL;
 	kore_strlcpy(req->host, host, sizeof(req->host));
 	kore_strlcpy(req->path, path, sizeof(req->path));
 
 	TAILQ_INIT(&(req->resp_headers));
 	TAILQ_INIT(&(req->req_headers));
 	TAILQ_INIT(&(req->arguments));
+	TAILQ_INIT(&(req->files));
 
 	if (!strcasecmp(method, "get")) {
 		req->method = HTTP_METHOD_GET;
@@ -175,6 +177,7 @@ http_response_header_add(struct http_request *req, char *header, char *value)
 void
 http_request_free(struct http_request *req)
 {
+	struct http_file	*f, *fnext;
 	struct http_arg		*q, *qnext;
 	struct http_header	*hdr, *next;
 
@@ -203,13 +206,25 @@ http_request_free(struct http_request *req)
 
 		TAILQ_REMOVE(&(req->arguments), q, list);
 		kore_mem_free(q->name);
+
 		if (q->value != NULL)
 			kore_mem_free(q->value);
 		kore_mem_free(q);
 	}
 
+	for (f = TAILQ_FIRST(&(req->files)); f != NULL; f = fnext) {
+		fnext = TAILQ_NEXT(f, list);
+		TAILQ_REMOVE(&(req->files), f, list);
+
+		kore_mem_free(f->filename);
+		kore_mem_free(f->name);
+		kore_mem_free(f);
+	}
+
 	if (req->method == HTTP_METHOD_POST && req->post_data != NULL)
 		kore_buf_free(req->post_data);
+	if (req->method == HTTP_METHOD_POST && req->multipart_body != NULL)
+		kore_mem_free(req->multipart_body);
 
 	if (req->agent != NULL)
 		kore_mem_free(req->agent);
@@ -323,7 +338,7 @@ http_header_recv(struct netbuf *nb)
 	struct http_request	*req;
 	struct netbuf		*nnb;
 	size_t			clen, len;
-	u_int8_t		*end_headers, *end;
+	u_int8_t		*end_headers;
 	int			h, i, v, skip, bytes_left;
 	char			*request[4], *host[3], *hbuf;
 	char			*p, *headers[HTTP_REQ_HEADER_MAX];
@@ -334,19 +349,8 @@ http_header_recv(struct netbuf *nb)
 	if (nb->len < 4)
 		return (KORE_RESULT_OK);
 
-	end = nb->buf + nb->offset;
-	for (end_headers = nb->buf; end_headers < end; end_headers++) {
-		if (*end_headers != '\r')
-			continue;
-
-		if ((end - end_headers) < 4)
-			return (KORE_RESULT_OK);
-
-		if (!memcmp(end_headers, "\r\n\r\n", 4))
-			break;
-	}
-
-	if (end_headers == end)
+	end_headers = kore_mem_find(nb->buf, nb->offset, "\r\n\r\n", 4);
+	if (end_headers == NULL)
 		return (KORE_RESULT_OK);
 
 	*end_headers = '\0';
@@ -354,8 +358,6 @@ http_header_recv(struct netbuf *nb)
 	nb->flags |= NETBUF_FORCE_REMOVE;
 	len = end_headers - nb->buf;
 	hbuf = (char *)nb->buf;
-
-	kore_debug("HTTP request:\n'%s'\n", hbuf);
 
 	h = kore_split_string(hbuf, "\r\n", headers, HTTP_REQ_HEADER_MAX);
 	if (h < 2)
@@ -458,7 +460,7 @@ http_header_recv(struct netbuf *nb)
 int
 http_populate_arguments(struct http_request *req)
 {
-	struct http_arg		*q;
+	u_int32_t		len;
 	int			i, v, c, count;
 	char			*query, *args[HTTP_MAX_QUERY_ARGS], *val[3];
 
@@ -478,13 +480,12 @@ http_populate_arguments(struct http_request *req)
 			continue;
 		}
 
-		q = kore_malloc(sizeof(*q));
-		q->name = kore_strdup(val[0]);
-		if (c == 2)
-			q->value = kore_strdup(val[1]);
+		if (val[1] == NULL)
+			len = 0;
 		else
-			q->value = NULL;
-		TAILQ_INSERT_TAIL(&(req->arguments), q, list);
+			len = strlen(val[1]);
+
+		http_argument_add(req, val[0], val[1], len);
 		count++;
 	}
 
@@ -501,6 +502,7 @@ http_argument_lookup(struct http_request *req, const char *name, char **out)
 		if (!strcmp(q->name, name)) {
 			if (q->value == NULL)
 				return (KORE_RESULT_ERROR);
+
 			*out = kore_strdup(q->value);
 			return (KORE_RESULT_OK);
 		}
@@ -564,8 +566,8 @@ http_argument_multiple_lookup(struct http_request *req, struct http_arg *args)
 
 	c = 0;
 	for (i = 0; args[i].name != NULL; i++) {
-		if (!http_argument_lookup(req,
-		    args[i].name, &(args[i].value))) {
+		if (!http_argument_lookup(req, args[i].name,
+		    &(args[i].value))) {
 			args[i].value = NULL;
 		} else {
 			c++;
@@ -586,6 +588,201 @@ http_argument_multiple_free(struct http_arg *args)
 	}
 }
 
+void
+http_argument_add(struct http_request *req, char *name,
+    char *value, u_int32_t len)
+{
+	struct http_arg		*q;
+
+	q = kore_malloc(sizeof(struct http_arg));
+	q->name = kore_strdup(name);
+
+	if (len > 0) {
+		q->value = kore_malloc(len + 1);
+		kore_strlcpy(q->value, value, len + 1);
+	} else {
+		q->value = NULL;
+	}
+
+	TAILQ_INSERT_TAIL(&(req->arguments), q, list);
+}
+
+void
+http_file_add(struct http_request *req, char *name, char *filename,
+    u_int8_t *data, u_int32_t len)
+{
+	struct http_file	*f;
+
+	f = kore_malloc(sizeof(struct http_file));
+	f->len = len;
+	f->data = data;
+	f->name = kore_strdup(name);
+	f->filename = kore_strdup(filename);
+
+	TAILQ_INSERT_TAIL(&(req->files), f, list);
+}
+
+int
+http_file_lookup(struct http_request *req, char *name, char **fname,
+    u_int8_t **data, u_int32_t *len)
+{
+	struct http_file	*f;
+
+	TAILQ_FOREACH(f, &(req->files), list) {
+		if (!strcmp(f->name, name)) {
+			*len = f->len;
+			*data = f->data;
+			*fname = f->filename;
+			return (KORE_RESULT_OK);
+		}
+	}
+
+	return (KORE_RESULT_ERROR);
+}
+
+int
+http_populate_multipart_form(struct http_request *req, int *v)
+{
+	int		h, i, c;
+	u_int32_t	blen, slen, len;
+	u_int8_t	*s, *end, *e, *end_headers, *data;
+	char		*d, *val, *type, *boundary, *fname;
+	char		*headers[5], *args[5], *opt[5], *name;
+
+	*v = 0;
+
+	if (req->method != HTTP_METHOD_POST)
+		return (KORE_RESULT_ERROR);
+
+	if (!http_request_header_get(req, "content-type", &type))
+		return (KORE_RESULT_ERROR);
+
+	h = kore_split_string(type, ";", args, 3);
+	if (h != 2) {
+		kore_mem_free(type);
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (strcasecmp(args[0], "multipart/form-data")) {
+		kore_mem_free(type);
+		return (KORE_RESULT_ERROR);
+	}
+
+	if ((val = strchr(args[1], '=')) == NULL) {
+		kore_mem_free(type);
+		return (KORE_RESULT_ERROR);
+	}
+
+	val++;
+	slen = strlen(val);
+	boundary = kore_malloc(slen + 3);
+	snprintf(boundary, slen + 3, "--%s", val);
+	slen = strlen(boundary);
+
+	kore_mem_free(type);
+
+	req->multipart_body = http_post_data_bytes(req, &blen);
+	if (slen < 3 || blen < (slen * 2)) {
+		kore_mem_free(boundary);
+		return (KORE_RESULT_ERROR);
+	}
+
+	end = req->multipart_body + blen - 2;
+	if (end < req->multipart_body || (end - 2) < req->multipart_body) {
+		kore_mem_free(boundary);
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (memcmp((end - slen - 2), boundary, slen) ||
+	    memcmp((end - 2), "--", 2)) {
+		kore_mem_free(boundary);
+		return (KORE_RESULT_ERROR);
+	}
+
+	v = 0;
+	s = req->multipart_body + slen + 2;
+	while (s < end) {
+		e = kore_mem_find(s, end - s, boundary, slen);
+		if (e == NULL) {
+			kore_mem_free(boundary);
+			return (KORE_RESULT_ERROR);
+		}
+
+		*(e - 2) = '\0';
+		end_headers = kore_mem_find(s, (e - 2) - s, "\r\n\r\n", 4);
+		if (end_headers == NULL) {
+			kore_mem_free(boundary);
+			return (KORE_RESULT_ERROR);
+		}
+
+		*end_headers = '\0';
+		data = end_headers + 4;
+
+		h = kore_split_string((char *)s, "\r\n", headers, 5);
+		for (i = 0; i < h; i++) {
+			c = kore_split_string(headers[i], ":", args, 5);
+			if (c != 2)
+				continue;
+
+			/* Ignore other headers for now. */
+			if (strcasecmp(args[0], "content-disposition"))
+				continue;
+
+			for (d = args[1]; isspace(*d); d++)
+				;
+
+			c = kore_split_string(d, ";", opt, 5);
+			if (strcasecmp(opt[0], "form-data"))
+				continue;
+
+			if ((val = strchr(opt[1], '=')) == NULL)
+				continue;
+			if (strlen(val) < 3)
+				continue;
+
+			val++;
+			kore_strip_chars(val, '"', &name);
+
+			if (opt[2] == NULL) {
+				http_argument_add(req, name,
+				    (char *)data, (e - 2) - data);
+				kore_mem_free(name);
+				continue;
+			}
+
+			for (d = opt[2]; isspace(*d); d++)
+				;
+
+			len = MIN(strlen("filename="), strlen(d));
+			if (!strncasecmp(d, "filename=", len)) {
+				if ((val = strchr(d, '=')) == NULL) {
+					kore_mem_free(name);
+					continue;
+				}
+
+				val++;
+				kore_strip_chars(val, '"', &fname);
+				if (strlen(fname) > 0) {
+					http_file_add(req, name, fname,
+					    data, (e - 2) - data);
+				}
+
+				kore_mem_free(fname);
+			} else {
+				kore_debug("got unknown: %s", opt[2]);
+			}
+
+			kore_mem_free(name);
+		}
+
+		s = e + slen + 2;
+	}
+
+	kore_mem_free(boundary);
+
+	return (KORE_RESULT_OK);
+}
+
 char *
 http_post_data_text(struct http_request *req)
 {
@@ -602,6 +799,17 @@ http_post_data_text(struct http_request *req)
 	kore_mem_free(data);
 
 	return (text);
+}
+
+u_int8_t *
+http_post_data_bytes(struct http_request *req, u_int32_t *len)
+{
+	u_int8_t	*data;
+
+	data = kore_buf_release(req->post_data, len);
+	req->post_data = NULL;
+
+	return (data);
 }
 
 int
