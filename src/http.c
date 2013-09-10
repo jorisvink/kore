@@ -699,7 +699,6 @@ http_populate_multipart_form(struct http_request *req, int *v)
 		return (KORE_RESULT_ERROR);
 	}
 
-	v = 0;
 	s = req->multipart_body + slen + 2;
 	while (s < end) {
 		e = kore_mem_find(s, end - s, boundary, slen);
@@ -744,6 +743,7 @@ http_populate_multipart_form(struct http_request *req, int *v)
 			kore_strip_chars(val, '"', &name);
 
 			if (opt[2] == NULL) {
+				*v = *v + 1;
 				http_argument_add(req, name,
 				    (char *)data, (e - 2) - data);
 				kore_mem_free(name);
@@ -763,6 +763,7 @@ http_populate_multipart_form(struct http_request *req, int *v)
 				val++;
 				kore_strip_chars(val, '"', &fname);
 				if (strlen(fname) > 0) {
+					*v = *v + 1;
 					http_file_add(req, name, fname,
 					    data, (e - 2) - data);
 				}
