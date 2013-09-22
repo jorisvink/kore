@@ -595,8 +595,10 @@ static int
 spdy_data_frame_recv(struct netbuf *nb)
 {
 	struct spdy_stream		*s;
+	int				err;
 	struct http_request		*req;
 	struct spdy_data_frame		data;
+	char				*content;
 	struct connection		*c = (struct connection *)nb->owner;
 
 	data.stream_id = net_read32(nb->buf) & ~(1 << 31);
@@ -618,12 +620,46 @@ spdy_data_frame_recv(struct netbuf *nb)
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (req->post_data == NULL)
-		req->post_data = kore_buf_create(data.length);
+	if (req->post_data == NULL) {
+		if (!spdy_stream_get_header(s->hblock,
+		    "content-length", &content)) {
+			kore_debug("no content-length found for post");
+			return (KORE_RESULT_ERROR);
+		}
+
+		s->post_size = kore_strtonum(content, 10, 0, ULONG_MAX, &err);
+		if (err == KORE_RESULT_ERROR) {
+			kore_debug("bad content-length: %s", content);
+			kore_mem_free(content);
+			return (KORE_RESULT_ERROR);
+		}
+
+		kore_mem_free(content);
+
+		if (s->post_size > http_postbody_max) {
+			kore_log(LOG_NOTICE, "POST data too large (%ld > %ld)",
+			    s->post_size, http_postbody_max);
+			return (KORE_RESULT_ERROR);
+		}
+
+		req->post_data = kore_buf_create(s->post_size);
+	}
+
+	if ((req->post_data->offset + data.length) > s->post_size) {
+		kore_debug("POST would grow too large");
+		return (KORE_RESULT_ERROR);
+	}
+
 	kore_buf_append(req->post_data, (nb->buf + SPDY_FRAME_SIZE),
 	    data.length);
 
 	if (data.flags & FLAG_FIN) {
+		if (req->post_data->offset != s->post_size) {
+			kore_debug("FLAG_FIN before all POST data received");
+			return (KORE_RESULT_ERROR);
+		}
+
+		s->post_size = 0;
 		s->flags |= FLAG_FIN;
 		req->flags |= HTTP_REQUEST_COMPLETE;
 	}

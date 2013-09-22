@@ -194,8 +194,8 @@ TAILQ_HEAD(kore_domain_h, kore_domain);
 
 struct kore_buf {
 	u_int8_t		*data;
-	u_int32_t		length;
-	u_int32_t		offset;
+	u_int64_t		length;
+	u_int64_t		offset;
 };
 
 struct buf_vec {
@@ -316,7 +316,7 @@ void		kore_strlcpy(char *, const char *, size_t);
 void		kore_server_disconnect(struct connection *);
 int		kore_split_string(char *, char *, char **, size_t);
 void		kore_strip_chars(char *, char, char **);
-long long	kore_strtonum(const char *, int, long long, long long, int *);
+u_int64_t	kore_strtonum(const char *, int, u_int64_t, u_int64_t, int *);
 int		kore_base64_encode(u_int8_t *, u_int32_t, char **);
 int		kore_base64_decode(char *, u_int8_t **, u_int32_t *);
 void		*kore_mem_find(void *, size_t, void *, u_int32_t);

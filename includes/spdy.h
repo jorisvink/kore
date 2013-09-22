@@ -52,6 +52,7 @@ struct spdy_stream {
 	u_int32_t	stream_id;
 	u_int8_t	flags;
 	u_int8_t	prio;
+	u_int64_t	post_size;
 	int32_t		recv_wsize;
 	int32_t		send_wsize;
 

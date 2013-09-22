@@ -31,6 +31,8 @@ static struct kore_pool			http_request_pool;
 static struct kore_pool			http_header_pool;
 
 int		http_request_count;
+u_int16_t	http_header_max = HTTP_HEADER_MAX_LEN;
+u_int64_t	http_postbody_max = HTTP_POSTBODY_MAX_LEN;
 
 void
 http_init(void)
@@ -334,10 +336,11 @@ http_request_header_get(struct http_request *req, char *header, char **out)
 int
 http_header_recv(struct netbuf *nb)
 {
+	size_t			len;
+	u_int64_t		clen;
 	struct http_header	*hdr;
 	struct http_request	*req;
 	struct netbuf		*nnb;
-	size_t			clen, len;
 	u_int8_t		*end_headers;
 	int			h, i, v, skip, bytes_left;
 	char			*request[4], *host[3], *hbuf;
@@ -426,7 +429,7 @@ http_header_recv(struct netbuf *nb)
 			return (KORE_RESULT_ERROR);
 		}
 
-		clen = kore_strtonum(p, 10, 0, UINT_MAX, &v);
+		clen = kore_strtonum(p, 10, 0, ULONG_MAX, &v);
 		if (v == KORE_RESULT_ERROR) {
 			kore_mem_free(p);
 			kore_debug("content-length invalid: %s", p);
@@ -435,6 +438,14 @@ http_header_recv(struct netbuf *nb)
 		}
 
 		kore_mem_free(p);
+
+		if (clen > http_postbody_max) {
+			kore_log(LOG_NOTICE, "POST data too large (%ld > %ld)",
+			    clen, http_postbody_max);
+			req->flags |= HTTP_REQUEST_DELETE;
+			return (KORE_RESULT_ERROR);
+		}
+
 		req->post_data = kore_buf_create(clen);
 		kore_buf_append(req->post_data, end_headers,
 		    (nb->offset - len));
@@ -840,7 +851,7 @@ http_send_done(struct netbuf *nb)
 {
 	struct connection	*c = (struct connection *)nb->owner;
 
-	net_recv_queue(c, HTTP_HEADER_MAX_LEN,
+	net_recv_queue(c, http_header_max,
 	    NETBUF_CALL_CB_ALWAYS, NULL, http_header_recv);
 
 	return (KORE_RESULT_OK);

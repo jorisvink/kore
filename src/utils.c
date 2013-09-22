@@ -86,10 +86,10 @@ kore_strlcpy(char *dst, const char *src, size_t len)
 	}
 }
 
-long long
-kore_strtonum(const char *str, int base, long long min, long long max, int *err)
+u_int64_t
+kore_strtonum(const char *str, int base, u_int64_t min, u_int64_t max, int *err)
 {
-	long long	l;
+	u_int64_t	l;
 	char		*ep;
 
 	if (min > max) {

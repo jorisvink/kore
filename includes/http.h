@@ -18,6 +18,7 @@
 #define __H_HTTP_H
 
 #define HTTP_HEADER_MAX_LEN	4096
+#define HTTP_POSTBODY_MAX_LEN	10240000
 #define HTTP_URI_LEN		2000
 #define HTTP_USERAGENT_LEN	256
 #define HTTP_REQ_HEADER_MAX	25
@@ -76,7 +77,9 @@ struct http_request {
 	TAILQ_ENTRY(http_request)		olist;
 };
 
-extern int	http_request_count;
+extern int		http_request_count;
+extern u_int16_t	http_header_max;
+extern u_int64_t	http_postbody_max;
 
 void		http_init(void);
 void		http_process(void);
