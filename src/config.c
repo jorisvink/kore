@@ -202,7 +202,7 @@ configure_ssl_dhparam(char **argv)
 	}
 
 	if ((bio = BIO_new_file(argv[1], "r")) == NULL) {
-		kore_debug("%s did not exist", argv[1]);
+		printf("%s did not exist\n", argv[1]);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -210,7 +210,7 @@ configure_ssl_dhparam(char **argv)
 	BIO_free(bio);
 
 	if (ssl_dhparam == NULL) {
-		kore_debug("PEM_read_bio_DHparams(): %s", ssl_errno_s);
+		printf("PEM_read_bio_DHparams(): %s\n", ssl_errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -235,7 +235,7 @@ configure_spdy_idle_time(char **argv)
 
 	spdy_idle_time = kore_strtonum(argv[1], 10, 0, 65535, &err);
 	if (err != KORE_RESULT_OK) {
-		kore_debug("spdy_idle_time has invalid value: %s", argv[1]);
+		printf("spdy_idle_time has invalid value: %s\n", argv[1]);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -250,17 +250,17 @@ configure_domain(char **argv)
 		return (KORE_RESULT_ERROR);
 
 	if (current_domain != NULL) {
-		kore_debug("previous domain configuration not closed");
+		printf("previous domain configuration not closed\n");
 		return (KORE_RESULT_ERROR);
 	}
 
 	if (strcmp(argv[2], "{")) {
-		kore_debug("missing { for domain directive");
+		printf("missing { for domain directive\n");
 		return (KORE_RESULT_ERROR);
 	}
 
 	if (!kore_domain_new(argv[1])) {
-		kore_debug("could not create new domain %s", current_domain);
+		printf("could not create new domain %s\n", argv[1]);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -274,7 +274,7 @@ configure_handler(char **argv)
 	int		type;
 
 	if (current_domain == NULL) {
-		kore_debug("missing domain for page handler");
+		printf("missing domain for page handler\n");
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -342,7 +342,7 @@ configure_workers(char **argv)
 
 	worker_count = kore_strtonum(argv[1], 10, 1, 255, &err);
 	if (err != KORE_RESULT_OK) {
-		kore_debug("%s is not a correct worker number", argv[1]);
+		printf("%s is not a correct worker number\n", argv[1]);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -398,7 +398,7 @@ configure_certfile(char **argv)
 		return (KORE_RESULT_ERROR);
 
 	if (current_domain == NULL) {
-		kore_debug("missing domain for certfile");
+		printf("missing domain for certfile\n");
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -418,7 +418,7 @@ configure_certkey(char **argv)
 		return (KORE_RESULT_ERROR);
 
 	if (current_domain == NULL) {
-		kore_debug("missing domain for certkey");
+		printf("missing domain for certkey\n");
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -440,8 +440,10 @@ configure_max_connections(char **argv)
 		return (KORE_RESULT_ERROR);
 
 	worker_max_connections = kore_strtonum(argv[1], 10, 1, 65535, &err);
-	if (err != KORE_RESULT_OK)
+	if (err != KORE_RESULT_OK) {
+		printf("bad value for worker_max_connections: %s\n", argv[1]);
 		return (KORE_RESULT_ERROR);
+	}
 
 	return (KORE_RESULT_OK);
 }
@@ -476,7 +478,7 @@ configure_kore_cb_interval(char **argv)
 
 	kore_cb_interval = kore_strtonum(argv[1], 10, 1, LLONG_MAX, &err);
 	if (err != KORE_RESULT_OK) {
-		kore_debug("invalid value for kore_cb_interval");
+		printf("invalid value for kore_cb_interval: %s\n", argv[1]);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -498,7 +500,7 @@ configure_kore_cb_worker(char **argv)
 
 	kore_cb_worker = kore_strtonum(argv[1], 10, 0, worker_count, &err);
 	if (err != KORE_RESULT_OK) {
-		kore_debug("invalid value for kore_cb_worker");
+		printf("invalid value for kore_cb_worker: %s\n", argv[1]);
 		return (KORE_RESULT_ERROR);
 	}
 
