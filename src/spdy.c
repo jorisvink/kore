@@ -14,6 +14,8 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <limits.h>
+
 #include "spdy.h"
 #include "kore.h"
 #include "http.h"
