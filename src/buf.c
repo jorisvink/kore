@@ -98,8 +98,7 @@ kore_buf_free(struct kore_buf *buf)
 }
 
 void
-kore_buf_replace_string(struct kore_buf *b, const char *src,
-    void *dst, size_t len)
+kore_buf_replace_string(struct kore_buf *b, char *src, void *dst, size_t len)
 {
 	u_int32_t	blen, off, off2;
 	size_t		nlen, klen;
@@ -112,7 +111,8 @@ kore_buf_replace_string(struct kore_buf *b, const char *src,
 		nlen = blen + len;
 		p = (char *)b->data;
 
-		if ((key = strstr((p + off), src)) == NULL)
+		key = kore_mem_find(p + off, b->offset - off, src, klen);
+		if (key == NULL)
 			break;
 
 		end = key + klen;
