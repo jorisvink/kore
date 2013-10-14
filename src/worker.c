@@ -65,6 +65,7 @@ void
 kore_worker_init(void)
 {
 	size_t			len;
+	key_t			key;
 	u_int16_t		i, cpu;
 
 	if (worker_count == 0)
@@ -72,9 +73,14 @@ kore_worker_init(void)
 
 	len = sizeof(*accept_lock) +
 	    (sizeof(struct kore_worker) * worker_count);
-	shm_accept_key = shmget(KORE_SHM_KEY, len, IPC_CREAT | IPC_EXCL | 0700);
-	if (shm_accept_key == -1)
-		fatal("kore_worker_init(): shmget() %s", errno_s);
+
+	shm_accept_key = -1;
+	for (key = KORE_SHM_KEY; shm_accept_key == -1; key++) {
+		shm_accept_key = shmget(key, len, IPC_CREAT | IPC_EXCL | 0700);
+		if (shm_accept_key == -1 && errno != EEXIST)
+			fatal("kore_worker_init(): shmget() %s", errno_s);
+	}
+
 	if ((accept_lock = shmat(shm_accept_key, NULL, 0)) == NULL)
 		fatal("kore_worker_init(): shmat() %s", errno_s);
 
