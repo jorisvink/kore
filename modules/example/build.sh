@@ -27,23 +27,21 @@ CFLAGS="-I. -I${KORE_DIR}/includes -Wall -Wstrict-prototypes \
 LDFLAGS=-shared
 MODULE_BUILD_DATE=`date +"%Y-%m-%d %H:%M:%S"`
 
-# Functions used in the build process.
-function create_and_empty_dir {
-	if [ ! -d $1 ]; then
-		mkdir $1;
-	fi
-
-	rm -f $1/*
-}
-
 ### Begin building ####
 echo "Building module ${MODULE}..."
 rm -f ${MODULE}
 
 ${CC} ${CFLAGS} tools/inject.c -o tools/inject
 
-create_and_empty_dir ${SOURCE_DIR}/${MEDIA_DIR}
-create_and_empty_dir .objs
+if [ ! -d ${SOURCE_DIR}/${MEDIA_DIR} ]; then
+	mkdir ${SOURCE_DIR}/${MEDIA_DIR};
+fi
+rm -f ${SOURCE_DIR}/${MEDIA_DIR}/*
+
+if [ ! -d .objs ]; then
+	mkdir .objs;
+fi
+rm -f .objs/*
 
 rm -f static.h
 
