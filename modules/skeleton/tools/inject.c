@@ -27,6 +27,22 @@
 #include <string.h>
 #include <unistd.h>
 
+#if defined(OpenBSD)
+#define PRI_TIME_T		"d"
+#endif
+
+#if defined(linux)
+#if defined(__x86_64__)
+#define PRI_TIME_T		PRIu64
+#else
+#define PRI_TIME_T		"ld"
+#endif
+#endif
+
+#if defined(__MACH__)
+#define PRI_TIME_T		"ld"
+#endif
+
 int
 main(int argc, char *argv[])
 {
@@ -88,15 +104,11 @@ main(int argc, char *argv[])
 	close(fd);
 
 	printf("};\n\n");
-	printf("u_int32_t static_len_%s_%s = %" PRId64 ";\n",
-	    ext, argv[2], st.st_size);
+	printf("u_int32_t static_len_%s_%s = %" PRIu32 ";\n",
+	    ext, argv[2], (u_int32_t)st.st_size);
 
-#if defined(OpenBSD)
-	printf("time_t static_mtime_%s_%s = %d;\n", ext, argv[2], st.st_mtime);
-#else
-	printf("time_t static_mtime_%s_%s = %" PRId64 ";\n",
+	printf("time_t static_mtime_%s_%s = %" PRI_TIME_T ";\n",
 	    ext, argv[2], st.st_mtime);
-#endif
 
 	fprintf(hdr, "extern u_int8_t static_%s_%s[];\n", ext, argv[2]);
 	fprintf(hdr, "extern u_int32_t static_len_%s_%s;\n", ext, argv[2]);
