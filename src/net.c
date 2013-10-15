@@ -97,31 +97,30 @@ net_send(struct connection *c)
 
 	while (!TAILQ_EMPTY(&(c->send_queue))) {
 		nb = TAILQ_FIRST(&(c->send_queue));
-		if (nb->len == 0) {
-			kore_debug("net_send(): len is 0");
-			return (KORE_RESULT_ERROR);
-		}
+		if (nb->len != 0) {
+			r = SSL_write(c->ssl,
+			    (nb->buf + nb->offset), (nb->len - nb->offset));
 
-		r = SSL_write(c->ssl,
-		    (nb->buf + nb->offset), (nb->len - nb->offset));
+			kore_debug("net_send(%ld/%ld bytes), progress with %d",
+			    nb->offset, nb->len, r);
 
-		kore_debug("net_send(%ld/%ld bytes), progress with %d",
-		    nb->offset, nb->len, r);
-
-		if (r <= 0) {
-			r = SSL_get_error(c->ssl, r);
-			switch (r) {
-			case SSL_ERROR_WANT_READ:
-			case SSL_ERROR_WANT_WRITE:
-				c->flags &= ~CONN_WRITE_POSSIBLE;
-				return (KORE_RESULT_OK);
-			default:
-				kore_debug("SSL_write(): %s", ssl_errno_s);
-				return (KORE_RESULT_ERROR);
+			if (r <= 0) {
+				r = SSL_get_error(c->ssl, r);
+				switch (r) {
+				case SSL_ERROR_WANT_READ:
+				case SSL_ERROR_WANT_WRITE:
+					c->flags &= ~CONN_WRITE_POSSIBLE;
+					return (KORE_RESULT_OK);
+				default:
+					kore_debug("SSL_write(): %s",
+					    ssl_errno_s);
+					return (KORE_RESULT_ERROR);
+				}
 			}
+
+			nb->offset += (size_t)r;
 		}
 
-		nb->offset += (size_t)r;
 		if (nb->offset == nb->len) {
 			TAILQ_REMOVE(&(c->send_queue), nb, list);
 
