@@ -337,6 +337,7 @@ kore_base64_decode(char *in, u_int8_t **out, u_int32_t *olen)
 
 	i = 3;
 	b = 0;
+	d = 0;
 	len = strlen(in);
 	res = kore_buf_create(len);
 
