@@ -17,6 +17,7 @@
 #include <sys/param.h>
 
 #include <ctype.h>
+#include <inttypes.h>
 
 #include "spdy.h"
 #include "kore.h"
@@ -33,6 +34,7 @@ static struct kore_pool			http_header_pool;
 int		http_request_count;
 u_int64_t	http_hsts_enable = HTTP_HSTS_ENABLE;
 u_int16_t	http_header_max = HTTP_HEADER_MAX_LEN;
+u_int16_t	http_keepalive_time = HTTP_KEEPALIVE_TIME;
 u_int64_t	http_postbody_max = HTTP_POSTBODY_MAX_LEN;
 
 void
@@ -262,7 +264,7 @@ http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 
 		if (http_hsts_enable) {
 			snprintf(sbuf, sizeof(sbuf),
-			    "max-age=%lu", http_hsts_enable);
+			    "max-age=%" PRIu64, http_hsts_enable);
 			spdy_header_block_add(hblock,
 			    ":strict-transport-security", sbuf);
 		}
@@ -298,13 +300,19 @@ http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 		kore_buf_appendf(buf, "HTTP/1.1 %d %s\r\n",
 		    status, http_status_text(status));
 		kore_buf_appendf(buf, "Content-length: %d\r\n", len);
-		kore_buf_appendf(buf, "Connection: keep-alive\r\n");
-		kore_buf_appendf(buf, "Keep-Alive: timeout=20\r\n");
 		kore_buf_appendf(buf, "Server: %s\r\n", KORE_NAME_STRING);
 
+		if (http_keepalive_time) {
+			kore_buf_appendf(buf, "Connection: keep-alive\r\n");
+			kore_buf_appendf(buf, "Keep-Alive: timeout=%d\r\n",
+			    http_keepalive_time);
+		} else {
+			kore_buf_appendf(buf, "Connection: close\r\n");
+		}
+
 		if (http_hsts_enable) {
-			kore_buf_appendf(buf,
-			    "Strict-Transport-Security: max-age=%lu\r\n",
+			kore_buf_appendf(buf, "Strict-Transport-Security: ");
+			kore_buf_appendf(buf, "max-age=%" PRIu64 "\r\n",
 			    http_hsts_enable);
 		}
 

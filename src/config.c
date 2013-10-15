@@ -45,6 +45,7 @@ static int		configure_kore_cb_worker(char **);
 static int		configure_http_header_max(char **);
 static int		configure_http_postbody_max(char **);
 static int		configure_http_hsts_enable(char **);
+static int		configure_http_keepalive_time(char **);
 static void		domain_sslstart(void);
 
 static struct {
@@ -75,6 +76,7 @@ static struct {
 	{ "http_header_max",		configure_http_header_max },
 	{ "http_postbody_max",		configure_http_postbody_max },
 	{ "http_hsts_enable",		configure_http_hsts_enable },
+	{ "http_keepalive_time",	configure_http_keepalive_time },
 	{ NULL,				NULL },
 };
 
@@ -566,9 +568,31 @@ configure_http_hsts_enable(char **argv)
 		return (KORE_RESULT_ERROR);
 	}
 
-	http_hsts_enable = kore_strtonum(argv[1], 10, 1, ULONG_MAX, &err);
+	http_hsts_enable = kore_strtonum(argv[1], 10, 0, ULONG_MAX, &err);
 	if (err != KORE_RESULT_OK) {
 		printf("bad http_hsts_enable value: %s\n", argv[1]);
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_http_keepalive_time(char **argv)
+{
+	int		err;
+
+	if (argv[1] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	if (http_keepalive_time != HTTP_KEEPALIVE_TIME) {
+		kore_debug("http_keepalive_time already set");
+		return (KORE_RESULT_ERROR);
+	}
+
+	http_keepalive_time = kore_strtonum(argv[1], 10, 0, USHRT_MAX, &err);
+	if (err != KORE_RESULT_OK) {
+		printf("bad http_keepalive_time value: %s\n", argv[1]);
 		return (KORE_RESULT_ERROR);
 	}
 

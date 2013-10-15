@@ -152,6 +152,11 @@ kore_connection_handle(struct connection *c)
 				    NULL, spdy_frame_recv);
 			} else if (!memcmp(data, "http/1.1", MIN(8, len))) {
 				c->proto = CONN_PROTO_HTTP;
+				if (http_keepalive_time != 0) {
+					c->idle_timer.length =
+					    http_keepalive_time * 1000;
+				}
+
 				net_recv_queue(c, http_header_max,
 				    NETBUF_CALL_CB_ALWAYS, NULL,
 				    http_header_recv);
@@ -160,6 +165,11 @@ kore_connection_handle(struct connection *c)
 			}
 		} else {
 			c->proto = CONN_PROTO_HTTP;
+			if (http_keepalive_time != 0) {
+				c->idle_timer.length =
+				    http_keepalive_time * 1000;
+			}
+
 			net_recv_queue(c, http_header_max,
 			    NETBUF_CALL_CB_ALWAYS, NULL,
 			    http_header_recv);

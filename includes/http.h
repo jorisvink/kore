@@ -17,6 +17,7 @@
 #ifndef __H_HTTP_H
 #define __H_HTTP_H
 
+#define HTTP_KEEPALIVE_TIME	20
 #define HTTP_HSTS_ENABLE	31536000
 #define HTTP_HEADER_MAX_LEN	4096
 #define HTTP_POSTBODY_MAX_LEN	10240000
@@ -82,6 +83,7 @@ extern int		http_request_count;
 extern u_int16_t	http_header_max;
 extern u_int64_t	http_postbody_max;
 extern u_int64_t	http_hsts_enable;
+extern u_int16_t	http_keepalive_time;
 
 void		http_init(void);
 void		http_process(void);
