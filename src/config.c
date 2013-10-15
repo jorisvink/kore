@@ -44,6 +44,7 @@ static int		configure_kore_cb_interval(char **);
 static int		configure_kore_cb_worker(char **);
 static int		configure_http_header_max(char **);
 static int		configure_http_postbody_max(char **);
+static int		configure_http_hsts_enable(char **);
 static void		domain_sslstart(void);
 
 static struct {
@@ -73,6 +74,7 @@ static struct {
 	{ "kore_cb_interval",		configure_kore_cb_interval },
 	{ "http_header_max",		configure_http_header_max },
 	{ "http_postbody_max",		configure_http_postbody_max },
+	{ "http_hsts_enable",		configure_http_hsts_enable },
 	{ NULL,				NULL },
 };
 
@@ -545,6 +547,28 @@ configure_http_postbody_max(char **argv)
 	http_postbody_max = kore_strtonum(argv[1], 10, 1, ULONG_MAX, &err);
 	if (err != KORE_RESULT_OK) {
 		printf("bad http_postbody_max value: %s\n", argv[1]);
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_http_hsts_enable(char **argv)
+{
+	int		err;
+
+	if (argv[1] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	if (http_hsts_enable != HTTP_HSTS_ENABLE) {
+		kore_debug("http_hsts_enable already set");
+		return (KORE_RESULT_ERROR);
+	}
+
+	http_hsts_enable = kore_strtonum(argv[1], 10, 1, ULONG_MAX, &err);
+	if (err != KORE_RESULT_OK) {
+		printf("bad http_hsts_enable value: %s\n", argv[1]);
 		return (KORE_RESULT_ERROR);
 	}
 

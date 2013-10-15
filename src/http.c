@@ -31,6 +31,7 @@ static struct kore_pool			http_request_pool;
 static struct kore_pool			http_header_pool;
 
 int		http_request_count;
+u_int64_t	http_hsts_enable = HTTP_HSTS_ENABLE;
 u_int16_t	http_header_max = HTTP_HEADER_MAX_LEN;
 u_int64_t	http_postbody_max = HTTP_POSTBODY_MAX_LEN;
 
@@ -258,6 +259,14 @@ http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 		spdy_header_block_add(hblock, ":status", sbuf);
 		spdy_header_block_add(hblock, ":version", "HTTP/1.1");
 		spdy_header_block_add(hblock, ":server", KORE_NAME_STRING);
+
+		if (http_hsts_enable) {
+			snprintf(sbuf, sizeof(sbuf),
+			    "max-age=%lu", http_hsts_enable);
+			spdy_header_block_add(hblock,
+			    ":strict-transport-security", sbuf);
+		}
+
 		TAILQ_FOREACH(hdr, &(req->resp_headers), list)
 			spdy_header_block_add(hblock, hdr->header, hdr->value);
 
@@ -292,6 +301,12 @@ http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 		kore_buf_appendf(buf, "Connection: keep-alive\r\n");
 		kore_buf_appendf(buf, "Keep-Alive: timeout=20\r\n");
 		kore_buf_appendf(buf, "Server: %s\r\n", KORE_NAME_STRING);
+
+		if (http_hsts_enable) {
+			kore_buf_appendf(buf,
+			    "Strict-Transport-Security: max-age=%lu\r\n",
+			    http_hsts_enable);
+		}
 
 		TAILQ_FOREACH(hdr, &(req->resp_headers), list) {
 			kore_buf_appendf(buf, "%s: %s\r\n",
