@@ -163,11 +163,11 @@ kore_date_to_time(char *http_date)
 {
 	time_t			t;
 	int			err, i;
-	struct tm		tm, *gtm;
+	struct tm		tm, *ltm;
 	char			*args[7], *tbuf[5], *sdup;
 
 	time(&t);
-	gtm = gmtime(&t);
+	ltm = localtime(&t);
 	sdup = kore_strdup(http_date);
 
 	t = KORE_RESULT_ERROR;
@@ -177,8 +177,10 @@ kore_date_to_time(char *http_date)
 		goto out;
 	}
 
-	tm.tm_year = kore_strtonum(args[3], 10, 2013, 2068, &err) - 1900;
-	if (err == KORE_RESULT_ERROR || tm.tm_year < gtm->tm_year) {
+	memset(&tm, 0, sizeof(tm));
+
+	tm.tm_year = kore_strtonum(args[3], 10, 1900, 2068, &err) - 1900;
+	if (err == KORE_RESULT_ERROR || tm.tm_year < ltm->tm_year) {
 		kore_debug("misformed year in http-date: '%s'", http_date);
 		goto out;
 	}
@@ -206,13 +208,13 @@ kore_date_to_time(char *http_date)
 		goto out;
 	}
 
-	tm.tm_hour = kore_strtonum(tbuf[0], 10, 1, 23, &err);
+	tm.tm_hour = kore_strtonum(tbuf[0], 10, 0, 23, &err);
 	if (err == KORE_RESULT_ERROR) {
 		kore_debug("misformed hour in http-date: '%s'", http_date);
 		goto out;
 	}
 
-	tm.tm_min = kore_strtonum(tbuf[1], 10, 1, 59, &err);
+	tm.tm_min = kore_strtonum(tbuf[1], 10, 0, 59, &err);
 	if (err == KORE_RESULT_ERROR) {
 		kore_debug("misformed minutes in http-date: '%s'", http_date);
 		goto out;
@@ -224,7 +226,8 @@ kore_date_to_time(char *http_date)
 		goto out;
 	}
 
-	t = mktime(&tm);
+	tm.tm_isdst = ltm->tm_isdst;
+	t = mktime(&tm) + ltm->tm_gmtoff;
 	if (t == -1) {
 		t = 0;
 		kore_debug("mktime() on '%s' failed", http_date);
