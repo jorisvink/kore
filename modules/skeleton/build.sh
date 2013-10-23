@@ -18,7 +18,7 @@ SOURCE_DIR=src
 
 # The directory containing the Kore source code.
 KORE_DIR="notset"
-if [ ${KORE_DIR} == "notset" ]; then
+if [ ${KORE_DIR} = "notset" ]; then
 	echo "Please edit build.sh and set KORE_DIR properly";
 	exit;
 fi
