@@ -260,6 +260,7 @@ void		kore_worker_wait(int);
 void		kore_worker_init(void);
 void		kore_worker_shutdown(void);
 void		kore_worker_dispatch_signal(int);
+void		kore_worker_acceptlock_release(void);
 void		kore_worker_spawn(u_int16_t, u_int16_t);
 void		kore_worker_entry(struct kore_worker *);
 void		kore_worker_connection_add(struct connection *);

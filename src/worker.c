@@ -48,7 +48,6 @@ static int	worker_unlock(void);
 static void	worker_decide_next(void);
 
 static void	kore_worker_acceptlock_obtain(void);
-static void	kore_worker_acceptlock_release(void);
 
 static TAILQ_HEAD(, connection)		disconnected;
 static TAILQ_HEAD(, connection)		worker_clients;
@@ -236,10 +235,8 @@ kore_worker_entry(struct kore_worker *kw)
 
 		if (((worker->accepted >= worker->accept_treshold) ||
 		    (worker_active_connections >= worker_max_connections)) &&
-		    worker->has_lock) {
-			worker->accepted = 0;
+		    worker->has_lock)
 			kore_worker_acceptlock_release();
-		}
 
 		http_process();
 
@@ -381,6 +378,22 @@ kore_worker_wait(int final)
 	}
 }
 
+void
+kore_worker_acceptlock_release(void)
+{
+	if (worker_count == 1)
+		return;
+
+	if (worker->has_lock != 1)
+		return;
+
+	if (worker_unlock()) {
+		worker->accepted = 0;
+		worker->has_lock = 0;
+		kore_platform_disable_accept();
+	}
+}
+
 static void
 kore_worker_acceptlock_obtain(void)
 {
@@ -393,24 +406,6 @@ kore_worker_acceptlock_obtain(void)
 	if (worker_trylock()) {
 		worker->has_lock = 1;
 		kore_platform_enable_accept();
-	}
-}
-
-static void
-kore_worker_acceptlock_release(void)
-{
-	if (worker_count == 1)
-		return;
-
-	if (worker->has_lock != 1) {
-		kore_log(LOG_NOTICE,
-		    "kore_worker_acceptlock_release() != 1");
-		return;
-	}
-
-	if (worker_unlock()) {
-		worker->has_lock = 0;
-		kore_platform_disable_accept();
 	}
 }
 

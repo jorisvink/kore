@@ -25,6 +25,7 @@ int		serve_intro(struct http_request *);
 int		serve_b64test(struct http_request *);
 int		serve_spdyreset(struct http_request *);
 int		serve_file_upload(struct http_request *);
+int		serve_lock_test(struct http_request *);
 
 void		my_callback(void);
 void		test_base64(u_int8_t *, u_int32_t, struct kore_buf *);
@@ -163,6 +164,15 @@ serve_file_upload(struct http_request *req)
 	kore_mem_free(d);
 
 	return (r);
+}
+
+int
+serve_lock_test(struct http_request *req)
+{
+	kore_log(LOG_NOTICE, "lock-test called on worker %d", worker->id);
+	kore_worker_acceptlock_release();
+
+	return (http_response(req, 200, (u_int8_t *)"OK", 2));
 }
 
 void
