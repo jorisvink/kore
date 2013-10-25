@@ -17,32 +17,77 @@
 #include "kore.h"
 
 struct kore_pool		nb_pool;
+struct kore_pool		nsb_pool;
 
 void
 net_init(void)
 {
 	kore_pool_init(&nb_pool, "nb_pool", sizeof(struct netbuf), 1000);
+	kore_pool_init(&nsb_pool, "nsb_pool", NETBUF_SEND_PAYLOAD_MAX, 25);
 }
 
 void
 net_send_queue(struct connection *c, u_int8_t *data, u_int32_t len)
 {
+	u_int8_t		*p;
 	struct netbuf		*nb;
+	u_int32_t		avail, i, payload;
+
+	if (len > NETBUF_SEND_PAYLOAD_MAX) {
+		p = data;
+		avail = (len / NETBUF_SEND_PAYLOAD_MAX) + 1;
+		for (i = 0; i < avail && len != 0; i++) {
+			if (len > NETBUF_SEND_PAYLOAD_MAX)
+				payload = NETBUF_SEND_PAYLOAD_MAX;
+			else
+				payload = len;
+
+			net_send_queue(c, p, payload);
+
+			p += payload;
+			len -= payload;
+		}
+
+		return;
+	}
+
+	if (len > NETBUF_SEND_PAYLOAD_MAX) {
+		kore_log(LOG_NOTICE,
+		    "net_send_queue(): %d > NETBUF_SEND_PAYLOAD_MAX", len);
+		kore_connection_disconnect(c);
+		return;
+	}
+
+	nb = TAILQ_LAST(&(c->send_queue), netbuf_head);
+	if (nb != NULL && nb->b_len < nb->m_len) {
+		avail = nb->m_len - nb->b_len;
+		if (len < avail) {
+			memcpy(nb->buf + nb->b_len, data, len);
+			nb->b_len += len;
+			return;
+		} else if (len > avail) {
+			memcpy(nb->buf + nb->b_len, data, avail);
+			nb->b_len += avail;
+
+			len -= avail;
+			data += avail;
+			if (len == 0)
+				return;
+		}
+	}
 
 	nb = kore_pool_get(&nb_pool);
 	nb->flags = 0;
 	nb->cb = NULL;
-	nb->len = len;
 	nb->owner = c;
-	nb->offset = 0;
+	nb->s_off = 0;
+	nb->b_len = len;
 	nb->type = NETBUF_SEND;
+	nb->m_len = NETBUF_SEND_PAYLOAD_MAX;
+	nb->buf = kore_pool_get(&nsb_pool);
 
-	if (len > 0) {
-		nb->buf = kore_malloc(nb->len);
-		memcpy(nb->buf, data, nb->len);
-	} else {
-		nb->buf = NULL;
-	}
+	if (len > 0)
+		memcpy(nb->buf, data, nb->b_len);
 
 	TAILQ_INSERT_TAIL(&(c->send_queue), nb, list);
 }
@@ -55,12 +100,13 @@ net_recv_queue(struct connection *c, size_t len, int flags,
 
 	nb = kore_pool_get(&nb_pool);
 	nb->cb = cb;
-	nb->len = len;
+	nb->b_len = len;
+	nb->m_len = len;
 	nb->owner = c;
-	nb->offset = 0;
+	nb->s_off = 0;
 	nb->flags = flags;
 	nb->type = NETBUF_RECV;
-	nb->buf = kore_malloc(nb->len);
+	nb->buf = kore_malloc(nb->b_len);
 
 	TAILQ_INSERT_TAIL(&(c->recv_queue), nb, list);
 	if (out != NULL)
@@ -77,8 +123,9 @@ net_recv_expand(struct connection *c, struct netbuf *nb, size_t len,
 	}
 
 	nb->cb = cb;
-	nb->len += len;
-	nb->buf = kore_realloc(nb->buf, nb->len);
+	nb->b_len += len;
+	nb->m_len = nb->b_len;
+	nb->buf = kore_realloc(nb->buf, nb->b_len);
 
 	TAILQ_REMOVE(&(c->recv_queue), nb, list);
 	TAILQ_INSERT_HEAD(&(c->recv_queue), nb, list);
@@ -94,12 +141,12 @@ net_send(struct connection *c)
 
 	while (!TAILQ_EMPTY(&(c->send_queue))) {
 		nb = TAILQ_FIRST(&(c->send_queue));
-		if (nb->len != 0) {
+		if (nb->b_len != 0) {
 			r = SSL_write(c->ssl,
-			    (nb->buf + nb->offset), (nb->len - nb->offset));
+			    (nb->buf + nb->s_off), (nb->b_len - nb->s_off));
 
-			kore_debug("net_send(%ld/%ld bytes), progress with %d",
-			    nb->offset, nb->len, r);
+			kore_debug("net_send(%d/%d bytes), progress with %d",
+			    nb->s_off, nb->b_len, r);
 
 			if (r <= 0) {
 				r = SSL_get_error(c->ssl, r);
@@ -115,25 +162,14 @@ net_send(struct connection *c)
 				}
 			}
 
-			nb->offset += (size_t)r;
+			nb->s_off += (size_t)r;
 		}
 
-		if (nb->offset == nb->len) {
+		if (nb->s_off == nb->b_len) {
 			TAILQ_REMOVE(&(c->send_queue), nb, list);
 
-			if (nb->cb != NULL)
-				r = nb->cb(nb);
-			else
-				r = KORE_RESULT_OK;
-
-			if (nb->offset == nb->len) {
-				if (nb->buf != NULL)
-					kore_mem_free(nb->buf);
-				kore_pool_put(&nb_pool, nb);
-			}
-
-			if (r != KORE_RESULT_OK)
-				return (r);
+			kore_pool_put(&nsb_pool, nb->buf);
+			kore_pool_put(&nb_pool, nb);
 		}
 	}
 
@@ -168,10 +204,10 @@ net_recv(struct connection *c)
 		}
 
 		r = SSL_read(c->ssl,
-		    (nb->buf + nb->offset), (nb->len - nb->offset));
+		    (nb->buf + nb->s_off), (nb->b_len - nb->s_off));
 
 		kore_debug("net_recv(%ld/%ld bytes), progress with %d",
-		    nb->offset, nb->len, r);
+		    nb->s_off, nb->b_len, r);
 
 		if (r <= 0) {
 			r = SSL_get_error(c->ssl, r);
@@ -179,7 +215,7 @@ net_recv(struct connection *c)
 			case SSL_ERROR_WANT_READ:
 				c->flags &= ~CONN_READ_POSSIBLE;
 				if (nb->flags & NETBUF_CALL_CB_ALWAYS &&
-				    nb-> offset > 0)
+				    nb->s_off > 0)
 					goto handle;
 				return (KORE_RESULT_OK);
 			case SSL_ERROR_WANT_WRITE:
@@ -191,11 +227,11 @@ net_recv(struct connection *c)
 			}
 		}
 
-		nb->offset += (size_t)r;
-		if (nb->offset == nb->len) {
+		nb->s_off += (size_t)r;
+		if (nb->s_off == nb->b_len) {
 handle:
 			r = nb->cb(nb);
-			if (nb->offset == nb->len ||
+			if (nb->s_off == nb->b_len ||
 			    (nb->flags & NETBUF_FORCE_REMOVE)) {
 				TAILQ_REMOVE(&(c->recv_queue), nb, list);
 

@@ -114,8 +114,7 @@ spdy_frame_recv(struct netbuf *nb)
 	}
 
 	if (r == KORE_RESULT_OK) {
-		net_recv_queue(c, SPDY_FRAME_SIZE,
-		    0, NULL, spdy_frame_recv);
+		net_recv_queue(c, SPDY_FRAME_SIZE, 0, NULL, spdy_frame_recv);
 	} else {
 		r = KORE_RESULT_OK;
 		spdy_session_teardown(c, SPDY_SESSION_ERROR_PROTOCOL);

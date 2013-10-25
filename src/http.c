@@ -112,10 +112,13 @@ http_request_new(struct connection *c, struct spdy_stream *s, char *host,
 void
 http_process(void)
 {
-	struct http_request		*req, *next;
+	struct connection		*c, *cnext;
 	struct kore_module_handle	*hdlr;
+	TAILQ_HEAD(, connection)	flush_list;
+	struct http_request		*req, *next;
 	int				r, (*cb)(struct http_request *);
 
+	TAILQ_INIT(&flush_list);
 	for (req = TAILQ_FIRST(&http_requests); req != NULL; req = next) {
 		next = TAILQ_NEXT(req, list);
 
@@ -144,9 +147,11 @@ http_process(void)
 
 		switch (r) {
 		case KORE_RESULT_OK:
-			r = net_send_flush(req->owner);
-			if (r == KORE_RESULT_ERROR)
-				kore_connection_disconnect(req->owner);
+			if (!(req->owner->flags & CONN_WILL_FLUSH)) {
+				req->owner->flags |= CONN_WILL_FLUSH;
+				TAILQ_INSERT_TAIL(&flush_list,
+				    req->owner, flush_list);
+			}
 			break;
 		case KORE_RESULT_ERROR:
 			kore_connection_disconnect(req->owner);
@@ -162,6 +167,17 @@ http_process(void)
 			http_request_free(req);
 			http_request_count--;
 		}
+	}
+
+	for (c = TAILQ_FIRST(&flush_list); c != NULL; c = cnext) {
+		cnext = TAILQ_NEXT(c, flush_list);
+		TAILQ_REMOVE(&flush_list, c, flush_list);
+
+		r = net_send_flush(c);
+		if (r == KORE_RESULT_ERROR)
+			kore_connection_disconnect(c);
+		else
+			c->flags &= ~CONN_WILL_FLUSH;
 	}
 }
 
@@ -371,10 +387,10 @@ http_header_recv(struct netbuf *nb)
 
 	kore_debug("http_header_recv(%p)", nb);
 
-	if (nb->len < 4)
+	if (nb->b_len < 4)
 		return (KORE_RESULT_OK);
 
-	end_headers = kore_mem_find(nb->buf, nb->offset, "\r\n\r\n", 4);
+	end_headers = kore_mem_find(nb->buf, nb->s_off, "\r\n\r\n", 4);
 	if (end_headers == NULL)
 		return (KORE_RESULT_OK);
 
@@ -470,12 +486,12 @@ http_header_recv(struct netbuf *nb)
 
 		req->post_data = kore_buf_create(clen);
 		kore_buf_append(req->post_data, end_headers,
-		    (nb->offset - len));
+		    (nb->s_off - len));
 
-		bytes_left = clen - (nb->offset - len);
+		bytes_left = clen - (nb->s_off - len);
 		if (bytes_left > 0) {
 			kore_debug("%ld/%ld (%ld - %ld) more bytes for POST",
-			    bytes_left, clen, nb->offset, len);
+			    bytes_left, clen, nb->s_off, len);
 			net_recv_queue(c, bytes_left,
 			    0, &nnb, http_post_data_recv);
 			nnb->extra = req;
@@ -860,7 +876,7 @@ http_post_data_recv(struct netbuf *nb)
 {
 	struct http_request	*req = (struct http_request *)nb->extra;
 
-	kore_buf_append(req->post_data, nb->buf, nb->offset);
+	kore_buf_append(req->post_data, nb->buf, nb->s_off);
 	req->flags |= HTTP_REQUEST_COMPLETE;
 
 	kore_debug("post complete for request %p", req);

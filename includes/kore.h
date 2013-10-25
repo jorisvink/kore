@@ -65,8 +65,9 @@
 
 struct netbuf {
 	u_int8_t		*buf;
-	u_int32_t		offset;
-	u_int32_t		len;
+	u_int32_t		s_off;
+	u_int32_t		b_len;
+	u_int32_t		m_len;
 	u_int8_t		type;
 	u_int8_t		flags;
 
@@ -76,6 +77,8 @@ struct netbuf {
 
 	TAILQ_ENTRY(netbuf)	list;
 };
+
+TAILQ_HEAD(netbuf_head, netbuf);
 
 #define KORE_TYPE_LISTENER	1
 #define KORE_TYPE_CONNECTION	2
@@ -110,6 +113,7 @@ LIST_HEAD(listener_head, listener);
 #define CONN_WRITE_BLOCK	0x04
 #define CONN_IDLE_TIMER_ACT	0x10
 #define CONN_READ_BLOCK		0x20
+#define CONN_WILL_FLUSH		0x40
 
 #define KORE_IDLE_TIMER_MAX	20000
 
@@ -151,6 +155,7 @@ struct connection {
 	TAILQ_HEAD(, http_request)	http_requests;
 
 	TAILQ_ENTRY(connection)	list;
+	TAILQ_ENTRY(connection)	flush_list;
 };
 
 #define HANDLER_TYPE_STATIC	1
