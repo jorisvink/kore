@@ -29,9 +29,8 @@ net_init(void)
 void
 net_send_queue(struct connection *c, u_int8_t *data, u_int32_t len)
 {
-	u_int8_t		*p;
 	struct netbuf		*nb;
-	u_int32_t		avail, i, payload;
+	u_int32_t		avail;
 
 	nb = TAILQ_LAST(&(c->send_queue), netbuf_head);
 	if (nb != NULL && nb->b_len < nb->m_len) {
