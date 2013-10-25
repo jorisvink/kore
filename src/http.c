@@ -25,7 +25,6 @@
 
 static char		*http_status_text(int);
 static int		http_post_data_recv(struct netbuf *);
-static int		http_send_done(struct netbuf *);
 
 static TAILQ_HEAD(, http_request)	http_requests;
 static struct kore_pool			http_request_pool;
@@ -242,7 +241,6 @@ http_request_free(struct http_request *req)
 int
 http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 {
-	struct netbuf			*nb;
 	u_int32_t			hlen;
 	struct http_header		*hdr;
 	struct kore_buf			*buf;
@@ -281,15 +279,14 @@ http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 
 		spdy_frame_send(req->owner, SPDY_CTRL_FRAME_SYN_REPLY,
 		    0, hlen, req->stream, 0);
-		net_send_queue(req->owner, htext, hlen, 0, NULL, NULL);
+		net_send_queue(req->owner, htext, hlen);
 		kore_mem_free(htext);
 
 		if (len > 0) {
 			spdy_frame_send(req->owner, SPDY_DATA_FRAME,
 			    0, len, req->stream, 0);
-			net_send_queue(req->owner, d, len, 0, &nb,
-			    spdy_frame_data_done);
-			nb->extra = req->stream;
+			net_send_queue(req->owner, d, len);
+			spdy_update_wsize(req->owner, req->stream, len);
 		}
 
 		spdy_frame_send(req->owner, SPDY_DATA_FRAME,
@@ -323,10 +320,12 @@ http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 
 		kore_buf_append(buf, "\r\n", 2);
 		htext = kore_buf_release(buf, &hlen);
-		net_send_queue(req->owner, htext, hlen, 0, NULL, NULL);
+		net_send_queue(req->owner, htext, hlen);
 		kore_mem_free(htext);
 
-		net_send_queue(req->owner, d, len, 0, NULL, http_send_done);
+		net_send_queue(req->owner, d, len);
+		net_recv_queue(req->owner, http_header_max,
+		    NETBUF_CALL_CB_ALWAYS, NULL, http_header_recv);
 	}
 
 	return (KORE_RESULT_OK);
@@ -865,17 +864,6 @@ http_post_data_recv(struct netbuf *nb)
 	req->flags |= HTTP_REQUEST_COMPLETE;
 
 	kore_debug("post complete for request %p", req);
-
-	return (KORE_RESULT_OK);
-}
-
-static int
-http_send_done(struct netbuf *nb)
-{
-	struct connection	*c = (struct connection *)nb->owner;
-
-	net_recv_queue(c, http_header_max,
-	    NETBUF_CALL_CB_ALWAYS, NULL, http_header_recv);
 
 	return (KORE_RESULT_OK);
 }

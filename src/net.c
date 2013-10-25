@@ -25,17 +25,16 @@ net_init(void)
 }
 
 void
-net_send_queue(struct connection *c, u_int8_t *data, size_t len, int flags,
-    struct netbuf **out, int (*cb)(struct netbuf *))
+net_send_queue(struct connection *c, u_int8_t *data, u_int32_t len)
 {
 	struct netbuf		*nb;
 
 	nb = kore_pool_get(&nb_pool);
-	nb->cb = cb;
+	nb->flags = 0;
+	nb->cb = NULL;
 	nb->len = len;
 	nb->owner = c;
 	nb->offset = 0;
-	nb->flags = flags;
 	nb->type = NETBUF_SEND;
 
 	if (len > 0) {
@@ -46,8 +45,6 @@ net_send_queue(struct connection *c, u_int8_t *data, size_t len, int flags,
 	}
 
 	TAILQ_INSERT_TAIL(&(c->send_queue), nb, list);
-	if (out != NULL)
-		*out = nb;
 }
 
 void

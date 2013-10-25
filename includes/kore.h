@@ -58,6 +58,7 @@
 
 #define NETBUF_RECV		0
 #define NETBUF_SEND		1
+#define NETBUF_SEND_PAYLOAD_MAX	16384
 
 #define NETBUF_CALL_CB_ALWAYS	0x01
 #define NETBUF_FORCE_REMOVE	0x02
@@ -349,8 +350,7 @@ void		net_recv_queue(struct connection *, size_t, int,
 		    struct netbuf **, int (*cb)(struct netbuf *));
 int		net_recv_expand(struct connection *c, struct netbuf *, size_t,
 		    int (*cb)(struct netbuf *));
-void		net_send_queue(struct connection *, u_int8_t *, size_t, int,
-		    struct netbuf **, int (*cb)(struct netbuf *));
+void		net_send_queue(struct connection *, u_int8_t *, u_int32_t);
 
 void		kore_buf_free(struct kore_buf *);
 struct kore_buf	*kore_buf_create(u_int32_t);
@@ -363,9 +363,10 @@ void	kore_buf_replace_string(struct kore_buf *, char *, void *, size_t);
 
 struct spdy_header_block	*spdy_header_block_create(int);
 struct spdy_stream	*spdy_stream_lookup(struct connection *, u_int32_t);
-int			spdy_frame_data_done(struct netbuf *);
 int			spdy_stream_get_header(struct spdy_header_block *,
 			    char *, char **);
+void			spdy_update_wsize(struct connection *,
+			    struct spdy_stream *, u_int32_t);
 
 int		spdy_frame_recv(struct netbuf *);
 void		spdy_session_teardown(struct connection *c, u_int8_t);

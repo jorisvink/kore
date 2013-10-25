@@ -209,6 +209,9 @@ kore_connection_remove(struct connection *c)
 
 	kore_debug("kore_connection_remove(%p)", c);
 
+	/* XXX */
+	net_send_flush(c);
+
 	if (c->ssl != NULL)
 		SSL_free(c->ssl);
 	close(c->fd);
