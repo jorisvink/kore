@@ -112,13 +112,10 @@ http_request_new(struct connection *c, struct spdy_stream *s, char *host,
 void
 http_process(void)
 {
-	struct connection		*c, *cnext;
 	struct kore_module_handle	*hdlr;
-	TAILQ_HEAD(, connection)	flush_list;
 	struct http_request		*req, *next;
 	int				r, (*cb)(struct http_request *);
 
-	TAILQ_INIT(&flush_list);
 	for (req = TAILQ_FIRST(&http_requests); req != NULL; req = next) {
 		next = TAILQ_NEXT(req, list);
 
@@ -147,11 +144,9 @@ http_process(void)
 
 		switch (r) {
 		case KORE_RESULT_OK:
-			if (!(req->owner->flags & CONN_WILL_FLUSH)) {
-				req->owner->flags |= CONN_WILL_FLUSH;
-				TAILQ_INSERT_TAIL(&flush_list,
-				    req->owner, flush_list);
-			}
+			r = net_send_flush(req->owner);
+			if (r == KORE_RESULT_ERROR)
+				kore_connection_disconnect(req->owner);
 			break;
 		case KORE_RESULT_ERROR:
 			kore_connection_disconnect(req->owner);
@@ -167,17 +162,6 @@ http_process(void)
 			http_request_free(req);
 			http_request_count--;
 		}
-	}
-
-	for (c = TAILQ_FIRST(&flush_list); c != NULL; c = cnext) {
-		cnext = TAILQ_NEXT(c, flush_list);
-		TAILQ_REMOVE(&flush_list, c, flush_list);
-
-		r = net_send_flush(c);
-		if (r == KORE_RESULT_ERROR)
-			kore_connection_disconnect(c);
-		else
-			c->flags &= ~CONN_WILL_FLUSH;
 	}
 }
 

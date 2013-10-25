@@ -56,9 +56,9 @@
 #define kore_debug(fmt, ...)
 #endif
 
-#define NETBUF_RECV		0
-#define NETBUF_SEND		1
-#define NETBUF_SEND_PAYLOAD_MAX	16384
+#define NETBUF_RECV			0
+#define NETBUF_SEND			1
+#define NETBUF_SEND_PAYLOAD_MAX		4000
 
 #define NETBUF_CALL_CB_ALWAYS	0x01
 #define NETBUF_FORCE_REMOVE	0x02
@@ -113,7 +113,6 @@ LIST_HEAD(listener_head, listener);
 #define CONN_WRITE_BLOCK	0x04
 #define CONN_IDLE_TIMER_ACT	0x10
 #define CONN_READ_BLOCK		0x20
-#define CONN_WILL_FLUSH		0x40
 
 #define KORE_IDLE_TIMER_MAX	20000
 

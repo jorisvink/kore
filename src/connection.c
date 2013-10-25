@@ -17,6 +17,8 @@
 #include <sys/param.h>
 #include <sys/socket.h>
 
+#include <netinet/tcp.h>
+
 #include <fcntl.h>
 
 #include "kore.h"
@@ -209,9 +211,6 @@ kore_connection_remove(struct connection *c)
 
 	kore_debug("kore_connection_remove(%p)", c);
 
-	/* XXX */
-	net_send_flush(c);
-
 	if (c->ssl != NULL)
 		SSL_free(c->ssl);
 	close(c->fd);
@@ -230,8 +229,7 @@ kore_connection_remove(struct connection *c)
 	for (nb = TAILQ_FIRST(&(c->send_queue)); nb != NULL; nb = next) {
 		next = TAILQ_NEXT(nb, list);
 		TAILQ_REMOVE(&(c->send_queue), nb, list);
-		if (nb->buf != NULL)
-			kore_mem_free(nb->buf);
+		kore_mem_free(nb->buf);
 		kore_pool_put(&nb_pool, nb);
 	}
 
@@ -308,6 +306,13 @@ kore_connection_nonblock(int fd)
 	if (fcntl(fd, F_SETFL, flags) == -1) {
 		kore_debug("fcntl(): F_SETFL %s", errno_s);
 		return (KORE_RESULT_ERROR);
+	}
+
+	flags = 1;
+	if (setsockopt(fd, IPPROTO_TCP,
+	    TCP_NODELAY, (char *)&flags, sizeof(flags)) == -1) {
+		kore_log(LOG_NOTICE,
+		    "failed to set TCP_NODELAY on %d", fd);
 	}
 
 	return (KORE_RESULT_OK);

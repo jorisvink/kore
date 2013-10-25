@@ -14,16 +14,16 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <sys/param.h>
+
 #include "kore.h"
 
 struct kore_pool		nb_pool;
-struct kore_pool		nsb_pool;
 
 void
 net_init(void)
 {
 	kore_pool_init(&nb_pool, "nb_pool", sizeof(struct netbuf), 1000);
-	kore_pool_init(&nsb_pool, "nsb_pool", NETBUF_SEND_PAYLOAD_MAX, 25);
 }
 
 void
@@ -32,31 +32,6 @@ net_send_queue(struct connection *c, u_int8_t *data, u_int32_t len)
 	u_int8_t		*p;
 	struct netbuf		*nb;
 	u_int32_t		avail, i, payload;
-
-	if (len > NETBUF_SEND_PAYLOAD_MAX) {
-		p = data;
-		avail = (len / NETBUF_SEND_PAYLOAD_MAX) + 1;
-		for (i = 0; i < avail && len != 0; i++) {
-			if (len > NETBUF_SEND_PAYLOAD_MAX)
-				payload = NETBUF_SEND_PAYLOAD_MAX;
-			else
-				payload = len;
-
-			net_send_queue(c, p, payload);
-
-			p += payload;
-			len -= payload;
-		}
-
-		return;
-	}
-
-	if (len > NETBUF_SEND_PAYLOAD_MAX) {
-		kore_log(LOG_NOTICE,
-		    "net_send_queue(): %d > NETBUF_SEND_PAYLOAD_MAX", len);
-		kore_connection_disconnect(c);
-		return;
-	}
 
 	nb = TAILQ_LAST(&(c->send_queue), netbuf_head);
 	if (nb != NULL && nb->b_len < nb->m_len) {
@@ -83,9 +58,13 @@ net_send_queue(struct connection *c, u_int8_t *data, u_int32_t len)
 	nb->s_off = 0;
 	nb->b_len = len;
 	nb->type = NETBUF_SEND;
-	nb->m_len = NETBUF_SEND_PAYLOAD_MAX;
-	nb->buf = kore_pool_get(&nsb_pool);
 
+	if (nb->b_len < NETBUF_SEND_PAYLOAD_MAX)
+		nb->m_len = NETBUF_SEND_PAYLOAD_MAX;
+	else
+		nb->m_len = nb->b_len;
+
+	nb->buf = kore_malloc(nb->m_len);
 	if (len > 0)
 		memcpy(nb->buf, data, nb->b_len);
 
@@ -138,12 +117,14 @@ net_send(struct connection *c)
 {
 	int			r;
 	struct netbuf		*nb;
+	u_int32_t		len;
 
 	while (!TAILQ_EMPTY(&(c->send_queue))) {
 		nb = TAILQ_FIRST(&(c->send_queue));
 		if (nb->b_len != 0) {
-			r = SSL_write(c->ssl,
-			    (nb->buf + nb->s_off), (nb->b_len - nb->s_off));
+			len = MIN(NETBUF_SEND_PAYLOAD_MAX,
+			    nb->b_len - nb->s_off);
+			r = SSL_write(c->ssl, (nb->buf + nb->s_off), len);
 
 			kore_debug("net_send(%d/%d bytes), progress with %d",
 			    nb->s_off, nb->b_len, r);
@@ -168,7 +149,7 @@ net_send(struct connection *c)
 		if (nb->s_off == nb->b_len) {
 			TAILQ_REMOVE(&(c->send_queue), nb, list);
 
-			kore_pool_put(&nsb_pool, nb->buf);
+			kore_mem_free(nb->buf);
 			kore_pool_put(&nb_pool, nb);
 		}
 	}
