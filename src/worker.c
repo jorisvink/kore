@@ -381,8 +381,10 @@ kore_worker_wait(int final)
 void
 kore_worker_acceptlock_release(void)
 {
-	if (worker_count == 1)
+	if (worker_count == 1) {
+		worker->accepted = 0;
 		return;
+	}
 
 	if (worker->has_lock != 1)
 		return;
