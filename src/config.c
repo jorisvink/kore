@@ -46,6 +46,7 @@ static int		configure_http_header_max(char **);
 static int		configure_http_postbody_max(char **);
 static int		configure_http_hsts_enable(char **);
 static int		configure_http_keepalive_time(char **);
+static int		configure_validator(char **);
 static void		domain_sslstart(void);
 
 static struct {
@@ -77,6 +78,7 @@ static struct {
 	{ "http_postbody_max",		configure_http_postbody_max },
 	{ "http_hsts_enable",		configure_http_hsts_enable },
 	{ "http_keepalive_time",	configure_http_keepalive_time },
+	{ "validator",			configure_validator },
 	{ NULL,				NULL },
 };
 
@@ -593,6 +595,31 @@ configure_http_keepalive_time(char **argv)
 	http_keepalive_time = kore_strtonum(argv[1], 10, 0, USHRT_MAX, &err);
 	if (err != KORE_RESULT_OK) {
 		printf("bad http_keepalive_time value: %s\n", argv[1]);
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_validator(char **argv)
+{
+	u_int8_t	type;
+
+	if (argv[3] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	if (!strcmp(argv[2], "regex")) {
+		type = KORE_VALIDATOR_TYPE_REGEX;
+	} else if (!strcmp(argv[2], "function")) {
+		type = KORE_VALIDATOR_TYPE_FUNCTION;
+	} else {
+		printf("bad type for validator %s\n", argv[1]);
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (!kore_validator_add(argv[1], type, argv[3])) {
+		printf("bad validator specified: %s\n", argv[1]);
 		return (KORE_RESULT_ERROR);
 	}
 

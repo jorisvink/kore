@@ -1,0 +1,110 @@
+/*
+ * Copyright (c) 2013 Joris Vink <joris@coders.se>
+ *
+ * Permission to use, copy, modify, and distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+
+#include "kore.h"
+
+TAILQ_HEAD(, kore_validator)		validators;
+
+void
+kore_validator_init(void)
+{
+	TAILQ_INIT(&validators);
+}
+
+int
+kore_validator_add(char *name, u_int8_t type, char *arg)
+{
+	struct kore_validator		*val;
+
+	val = kore_malloc(sizeof(*val));
+	val->type = type;
+
+	switch (val->type) {
+	case KORE_VALIDATOR_TYPE_REGEX:
+		if (regcomp(&(val->rctx), arg, REG_NOSUB)) {
+			kore_mem_free(val);
+			kore_log(LOG_NOTICE,
+			    "validator %s has bad regex %s", name, arg);
+			return (KORE_RESULT_ERROR);
+		}
+		break;
+	case KORE_VALIDATOR_TYPE_FUNCTION:
+		if ((val->func = kore_module_getsym(arg)) == NULL) {
+			kore_mem_free(val);
+			kore_log(LOG_NOTICE,
+			    "validator %s has undefined callback %s",
+			    name, arg);
+			return (KORE_RESULT_ERROR);
+		}
+		break;
+	default:
+		kore_mem_free(val);
+		return (KORE_RESULT_ERROR);
+	}
+
+	val->arg = kore_strdup(arg);
+	val->name = kore_strdup(name);
+	TAILQ_INSERT_TAIL(&validators, val, list);
+
+	return (KORE_RESULT_OK);
+}
+
+int
+kore_validator_run(char *name, char *data)
+{
+	int				r;
+	struct kore_validator		*val;
+
+	TAILQ_FOREACH(val, &validators, list) {
+		if (strcmp(val->name, name))
+			continue;
+
+		switch (val->type) {
+		case KORE_VALIDATOR_TYPE_REGEX:
+			if (!regexec(&(val->rctx), data, 0, NULL, 0))
+				r = KORE_RESULT_OK;
+			else
+				r = KORE_RESULT_ERROR;
+			break;
+		case KORE_VALIDATOR_TYPE_FUNCTION:
+			r = val->func(data);
+			break;
+		default:
+			r = KORE_RESULT_ERROR;
+			kore_log(LOG_NOTICE, "invalid type %d for validator %s",
+			    val->type, val->name);
+			break;
+		}
+
+		return (r);
+	}
+
+	return (KORE_RESULT_ERROR);
+}
+
+void
+kore_validator_reload(void)
+{
+	struct kore_validator		*val;
+
+	TAILQ_FOREACH(val, &validators, list) {
+		if (val->type != KORE_VALIDATOR_TYPE_FUNCTION)
+			continue;
+
+		if ((val->func = kore_module_getsym(val->arg)) == NULL)
+			fatal("no function for validator %s found", val->name);
+	}
+}

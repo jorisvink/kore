@@ -26,8 +26,10 @@ int		serve_b64test(struct http_request *);
 int		serve_spdyreset(struct http_request *);
 int		serve_file_upload(struct http_request *);
 int		serve_lock_test(struct http_request *);
+int		serve_validator(struct http_request *);
 
 void		my_callback(void);
+int		v_example_func(char *);
 void		test_base64(u_int8_t *, u_int32_t, struct kore_buf *);
 
 char *b64tests[] = {
@@ -204,6 +206,27 @@ test_base64(u_int8_t *src, u_int32_t slen, struct kore_buf *res)
 	kore_buf_appendf(res, "\n");
 }
 
+int
+serve_validator(struct http_request *req)
+{
+	if (kore_validator_run("v_example", "test"))
+		kore_log(LOG_NOTICE, "v_example ok (expected)");
+	else
+		kore_log(LOG_NOTICE, "v_example failed");
+
+	if (kore_validator_run("v_regex", "/test/123"))
+		kore_log(LOG_NOTICE, "regex #1 ok");
+	else
+		kore_log(LOG_NOTICE, "regex #1 failed (expected)");
+
+	if (kore_validator_run("v_regex", "/test/joris"))
+		kore_log(LOG_NOTICE, "regex #2 ok (expected)");
+	else
+		kore_log(LOG_NOTICE, "regex #2 failed");
+
+	return (http_response(req, 200, (u_int8_t *)"OK", 2));
+}
+
 void
 my_callback(void)
 {
@@ -211,4 +234,15 @@ my_callback(void)
 		kore_log(LOG_NOTICE, "running on worker %d", worker->id);
 	else
 		kore_log(LOG_NOTICE, "running from parent");
+}
+
+int
+v_example_func(char *data)
+{
+	kore_log(LOG_NOTICE, "v_example_func called");
+
+	if (!strcmp(data, "test"))
+		return (KORE_RESULT_OK);
+
+	return (KORE_RESULT_ERROR);
 }

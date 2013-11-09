@@ -194,6 +194,19 @@ struct kore_domain {
 
 TAILQ_HEAD(kore_domain_h, kore_domain);
 
+#define KORE_VALIDATOR_TYPE_REGEX	1
+#define KORE_VALIDATOR_TYPE_FUNCTION	2
+
+struct kore_validator {
+	u_int8_t			type;
+	char				*name;
+	char				*arg;
+	regex_t				rctx;
+	int				(*func)(char *);
+
+	TAILQ_ENTRY(kore_validator)	list;
+};
+
 #define KORE_BUF_INITIAL	128
 #define KORE_BUF_INCREMENT	KORE_BUF_INITIAL
 
@@ -333,10 +346,16 @@ void		kore_module_load(char *);
 void		kore_module_reload(void);
 int		kore_module_loaded(void);
 void		kore_domain_closelogs(void);
+void		*kore_module_getsym(char *);
 void		kore_domain_sslstart(struct kore_domain *);
 int		kore_module_handler_new(char *, char *, char *, int);
 struct kore_domain		*kore_domain_lookup(const char *);
 struct kore_module_handle	*kore_module_handler_find(char *, char *);
+
+void		kore_validator_init(void);
+void		kore_validator_reload(void);
+int		kore_validator_add(char *, u_int8_t, char *);
+int		kore_validator_run(char *, char *);
 
 void		fatal(const char *, ...);
 void		kore_debug_internal(char *, int, const char *, ...);

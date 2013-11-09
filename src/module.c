@@ -86,6 +86,8 @@ kore_module_reload(void)
 		}
 	}
 
+	kore_validator_reload();
+
 	if (kore_module_onload != NULL) {
 		onload = dlsym(mod_handle, kore_module_onload);
 		if (onload == NULL)
@@ -168,4 +170,10 @@ kore_module_handler_find(char *domain, char *path)
 	}
 
 	return (NULL);
+}
+
+void *
+kore_module_getsym(char *symbol)
+{
+	return (dlsym(mod_handle, symbol));
 }
