@@ -34,7 +34,7 @@ kore_validator_add(char *name, u_int8_t type, char *arg)
 
 	switch (val->type) {
 	case KORE_VALIDATOR_TYPE_REGEX:
-		if (regcomp(&(val->rctx), arg, REG_NOSUB)) {
+		if (regcomp(&(val->rctx), arg, REG_EXTENDED | REG_NOSUB)) {
 			kore_mem_free(val);
 			kore_log(LOG_NOTICE,
 			    "validator %s has bad regex %s", name, arg);
@@ -65,34 +65,41 @@ kore_validator_add(char *name, u_int8_t type, char *arg)
 int
 kore_validator_run(char *name, char *data)
 {
-	int				r;
 	struct kore_validator		*val;
 
 	TAILQ_FOREACH(val, &validators, list) {
 		if (strcmp(val->name, name))
 			continue;
 
-		switch (val->type) {
-		case KORE_VALIDATOR_TYPE_REGEX:
-			if (!regexec(&(val->rctx), data, 0, NULL, 0))
-				r = KORE_RESULT_OK;
-			else
-				r = KORE_RESULT_ERROR;
-			break;
-		case KORE_VALIDATOR_TYPE_FUNCTION:
-			r = val->func(data);
-			break;
-		default:
-			r = KORE_RESULT_ERROR;
-			kore_log(LOG_NOTICE, "invalid type %d for validator %s",
-			    val->type, val->name);
-			break;
-		}
-
-		return (r);
+		return (kore_validator_check(val, data));
 	}
 
 	return (KORE_RESULT_ERROR);
+}
+
+int
+kore_validator_check(struct kore_validator *val, char *data)
+{
+	int		r;
+
+	switch (val->type) {
+	case KORE_VALIDATOR_TYPE_REGEX:
+		if (!regexec(&(val->rctx), data, 0, NULL, 0))
+			r = KORE_RESULT_OK;
+		else
+			r = KORE_RESULT_ERROR;
+		break;
+	case KORE_VALIDATOR_TYPE_FUNCTION:
+		r = val->func(data);
+		break;
+	default:
+		r = KORE_RESULT_ERROR;
+		kore_log(LOG_NOTICE, "invalid type %d for validator %s",
+		    val->type, val->name);
+		break;
+	}
+
+	return (r);
 }
 
 void
@@ -107,4 +114,17 @@ kore_validator_reload(void)
 		if ((val->func = kore_module_getsym(val->arg)) == NULL)
 			fatal("no function for validator %s found", val->name);
 	}
+}
+
+struct kore_validator *
+kore_validator_lookup(char *name)
+{
+	struct kore_validator		*val;
+
+	TAILQ_FOREACH(val, &validators, list) {
+		if (!strcmp(val->name, name))
+			return (val);
+	}
+
+	return (NULL);
 }

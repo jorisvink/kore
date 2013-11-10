@@ -25,6 +25,8 @@
 
 static char		*http_status_text(int);
 static int		http_post_data_recv(struct netbuf *);
+static void		http_validate_params(struct http_request *,
+			    struct kore_module_handle *);
 
 static TAILQ_HEAD(, http_request)	http_requests;
 static struct kore_pool			http_request_pool;
@@ -134,8 +136,13 @@ http_process(void)
 		if (hdlr == NULL) {
 			r = http_generic_404(req);
 		} else {
-			cb = hdlr->addr;
+			if (!TAILQ_EMPTY(&(hdlr->params)) &&
+			    !(req->flags & HTTP_REQUEST_PARSED_PARAMS)) {
+				http_validate_params(req, hdlr);
+				req->flags |= HTTP_REQUEST_PARSED_PARAMS;
+			}
 
+			cb = hdlr->addr;
 			worker->active_hdlr = hdlr;
 			r = cb(req);
 			worker->active_hdlr = NULL;
@@ -495,13 +502,15 @@ http_populate_arguments(struct http_request *req)
 {
 	u_int32_t		len;
 	int			i, v, c, count;
-	char			*query, *args[HTTP_MAX_QUERY_ARGS], *val[3];
+	char			*p, *query, *args[HTTP_MAX_QUERY_ARGS], *val[3];
 
 	if (req->method == HTTP_METHOD_POST) {
 		query = http_post_data_text(req);
 	} else {
-		kore_debug("HTTP_METHOD_GET not supported for arguments");
-		return (0);
+		if ((p = strchr(req->path, '?')) == NULL)
+			return (0);
+		p++;
+		query = kore_strdup(p);
 	}
 
 	count = 0;
@@ -866,6 +875,54 @@ http_post_data_recv(struct netbuf *nb)
 	kore_debug("post complete for request %p", req);
 
 	return (KORE_RESULT_OK);
+}
+
+static void
+http_validate_params(struct http_request *req, struct kore_module_handle *hdlr)
+{
+	int				r;
+	struct kore_handler_params	*p;
+	struct http_arg			*q, *next;
+
+	http_populate_arguments(req);
+
+	for (q = TAILQ_FIRST(&(req->arguments)); q != NULL; q = next) {
+		next = TAILQ_NEXT(q, list);
+
+		p = NULL;
+		TAILQ_FOREACH(p, &(hdlr->params), list) {
+			if (p->method != req->method)
+				continue;
+			if (!strcmp(p->name, q->name))
+				break;
+		}
+
+		if (q->value != NULL)
+			http_argument_urldecode(q->value);
+
+		r = KORE_RESULT_ERROR;
+		if (p != NULL && q->value != NULL) {
+			r = kore_validator_check(p->validator, q->value);
+			if (r != KORE_RESULT_OK) {
+				kore_log(LOG_NOTICE,
+				    "validator %s(%s) for %s failed",
+				    p->validator->name, p->name, req->path);
+			}
+		} else if (p == NULL) {
+			kore_log(LOG_NOTICE,
+			    "received unexpected parameter %s for %s",
+			    q->name, req->path);
+		}
+
+		if (r == KORE_RESULT_ERROR) {
+			TAILQ_REMOVE(&(req->arguments), q, list);
+			kore_mem_free(q->name);
+			if (q->value != NULL)
+				kore_mem_free(q->value);
+			kore_mem_free(q);
+			continue;
+		}
+	}
 }
 
 static char *

@@ -157,6 +157,14 @@ struct connection {
 	TAILQ_ENTRY(connection)	flush_list;
 };
 
+struct kore_handler_params {
+	char			*name;
+	u_int8_t		method;
+	struct kore_validator	*validator;
+
+	TAILQ_ENTRY(kore_handler_params)	list;
+};
+
 #define HANDLER_TYPE_STATIC	1
 #define HANDLER_TYPE_DYNAMIC	2
 
@@ -168,6 +176,7 @@ struct kore_module_handle {
 	int			errors;
 	regex_t			rctx;
 
+	TAILQ_HEAD(, kore_handler_params)	params;
 	TAILQ_ENTRY(kore_module_handle)		list;
 };
 
@@ -356,6 +365,8 @@ void		kore_validator_init(void);
 void		kore_validator_reload(void);
 int		kore_validator_add(char *, u_int8_t, char *);
 int		kore_validator_run(char *, char *);
+int		kore_validator_check(struct kore_validator *, char *);
+struct kore_validator	*kore_validator_lookup(char *);
 
 void		fatal(const char *, ...);
 void		kore_debug_internal(char *, int, const char *, ...);

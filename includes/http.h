@@ -53,8 +53,9 @@ struct http_file {
 #define HTTP_METHOD_GET		0
 #define HTTP_METHOD_POST	1
 
-#define HTTP_REQUEST_COMPLETE	0x01
-#define HTTP_REQUEST_DELETE	0x02
+#define HTTP_REQUEST_COMPLETE		0x01
+#define HTTP_REQUEST_DELETE		0x02
+#define HTTP_REQUEST_PARSED_PARAMS	0x04
 
 struct http_request {
 	u_int8_t		method;

@@ -27,6 +27,7 @@ int		serve_spdyreset(struct http_request *);
 int		serve_file_upload(struct http_request *);
 int		serve_lock_test(struct http_request *);
 int		serve_validator(struct http_request *);
+int		serve_params_test(struct http_request *);
 
 void		my_callback(void);
 int		v_example_func(char *);
@@ -225,6 +226,72 @@ serve_validator(struct http_request *req)
 		kore_log(LOG_NOTICE, "regex #2 failed");
 
 	return (http_response(req, 200, (u_int8_t *)"OK", 2));
+}
+
+int
+serve_params_test(struct http_request *req)
+{
+	struct kore_buf		*b;
+	u_int8_t		*d;
+	u_int32_t		len;
+	int			r, i;
+	char			*test, name[10];
+
+	b = kore_buf_create(static_len_html_params);
+	kore_buf_append(b, static_html_params, static_len_html_params);
+
+	/*
+	 * The GET parameters will be filtered out on POST.
+	 */
+	if (http_argument_lookup(req, "arg1", &test)) {
+		kore_buf_replace_string(b, "$arg1$", test, strlen(test));
+		kore_mem_free(test);
+	} else {
+		kore_buf_replace_string(b, "$arg1$", NULL, 0);
+	}
+
+	if (http_argument_lookup(req, "$arg2$", &test)) {
+		kore_buf_replace_string(b, "$arg2$", test, strlen(test));
+		kore_mem_free(test);
+	} else {
+		kore_buf_replace_string(b, "$arg2$", NULL, 0);
+	}
+
+	if (req->method == HTTP_METHOD_GET) {
+		kore_buf_replace_string(b, "$test1$", NULL, 0);
+		kore_buf_replace_string(b, "$test2$", NULL, 0);
+		kore_buf_replace_string(b, "$test3$", NULL, 0);
+
+		http_response_header_add(req, "content-type", "text/html");
+		d = kore_buf_release(b, &len);
+		r = http_response(req, 200, d, len);
+		kore_mem_free(d);
+
+		return (r);
+	}
+
+	/*
+	 * No need to call http_populate_arguments(), it's been done
+	 * by the parameter validation automatically.
+	 */
+	for (i = 1; i < 4; i++) {
+		snprintf(name, sizeof(name), "test%d", i);
+		if (http_argument_lookup(req, name, &test)) {
+			snprintf(name, sizeof(name), "$test%d$", i);
+			kore_buf_replace_string(b, name, test, strlen(test));
+			kore_mem_free(test);
+		} else {
+			snprintf(name, sizeof(name), "$test%d$", i);
+			kore_buf_replace_string(b, name, NULL, 0);
+		}
+	}
+
+	http_response_header_add(req, "content-type", "text/html");
+	d = kore_buf_release(b, &len);
+	r = http_response(req, 200, d, len);
+	kore_mem_free(d);
+
+	return (r);
 }
 
 void

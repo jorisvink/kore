@@ -133,11 +133,12 @@ kore_module_handler_new(char *path, char *domain, char *func, int type)
 	hdlr->errors = 0;
 	hdlr->addr = addr;
 	hdlr->type = type;
+	TAILQ_INIT(&(hdlr->params));
 	hdlr->path = kore_strdup(path);
 	hdlr->func = kore_strdup(func);
 
 	if (hdlr->type == HANDLER_TYPE_DYNAMIC) {
-		if (regcomp(&(hdlr->rctx), hdlr->path, REG_NOSUB)) {
+		if (regcomp(&(hdlr->rctx), hdlr->path, REG_EXTENDED | REG_NOSUB)) {
 			kore_mem_free(hdlr->func);
 			kore_mem_free(hdlr->path);
 			kore_mem_free(hdlr);

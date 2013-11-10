@@ -47,6 +47,8 @@ static int		configure_http_postbody_max(char **);
 static int		configure_http_hsts_enable(char **);
 static int		configure_http_keepalive_time(char **);
 static int		configure_validator(char **);
+static int		configure_params(char **);
+static int		configure_validate(char **);
 static void		domain_sslstart(void);
 
 static struct {
@@ -79,11 +81,15 @@ static struct {
 	{ "http_hsts_enable",		configure_http_hsts_enable },
 	{ "http_keepalive_time",	configure_http_keepalive_time },
 	{ "validator",			configure_validator },
+	{ "params",			configure_params },
+	{ "validate",			configure_validate },
 	{ NULL,				NULL },
 };
 
-char				*config_file = NULL;
-static struct kore_domain	*current_domain = NULL;
+char					*config_file = NULL;
+static u_int8_t				current_method = 0;
+static struct kore_domain		*current_domain = NULL;
+static struct kore_module_handle	*current_handler = NULL;
 
 void
 kore_parse_config(void)
@@ -113,6 +119,12 @@ kore_parse_config(void)
 		for (t = p; *t != '\0'; t++) {
 			if (*t == '\t')
 				*t = ' ';
+		}
+
+		if (!strcmp(p, "}") && current_handler != NULL) {
+			lineno++;
+			current_handler = NULL;
+			continue;
 		}
 
 		if (!strcmp(p, "}") && current_domain != NULL)
@@ -622,6 +634,78 @@ configure_validator(char **argv)
 		printf("bad validator specified: %s\n", argv[1]);
 		return (KORE_RESULT_ERROR);
 	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_params(char **argv)
+{
+	struct kore_module_handle	*hdlr;
+
+	if (current_domain == NULL) {
+		printf("params keyword used in wrong context\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (current_handler != NULL) {
+		printf("previous params block not closed\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (argv[2] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	if (!strcasecmp(argv[1], "post")) {
+		current_method = HTTP_METHOD_POST;
+	} else if (!strcasecmp(argv[1], "get")) {
+		current_method = HTTP_METHOD_GET;
+	} else {
+		printf("unknown method: %s in params block for %s\n",
+		    argv[1], argv[2]);
+		return (KORE_RESULT_ERROR);
+	}
+
+	/*
+	 * Find the handler ourselves, otherwise the regex is applied
+	 * in case of a dynamic page.
+	 */
+	TAILQ_FOREACH(hdlr, &(current_domain->handlers), list) {
+		if (!strcmp(hdlr->path, argv[2])) {
+			current_handler = hdlr;
+			return (KORE_RESULT_OK);
+		}
+	}
+
+	printf("params for unknown page handler: %s\n", argv[2]);
+	return (KORE_RESULT_ERROR);
+}
+
+static int
+configure_validate(char **argv)
+{
+	struct kore_handler_params	*p;
+	struct kore_validator		*val;
+
+	if (current_handler == NULL) {
+		printf("validate keyword used in wrong context\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (argv[2] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	if ((val = kore_validator_lookup(argv[2])) == NULL) {
+		printf("unknown validator %s for %s\n", argv[2], argv[1]);
+		return (KORE_RESULT_ERROR);
+	}
+
+	p = kore_malloc(sizeof(*p));
+	p->validator = val;
+	p->method = current_method;
+	p->name = kore_strdup(argv[1]);
+
+	TAILQ_INSERT_TAIL(&(current_handler->params), p, list);
 
 	return (KORE_RESULT_OK);
 }
