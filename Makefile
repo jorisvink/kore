@@ -13,6 +13,10 @@ CFLAGS+=-Wmissing-declarations -Wshadow -Wpointer-arith -Wcast-qual
 CFLAGS+=-Wsign-compare -Iincludes -g
 LDFLAGS+=-rdynamic -lssl -lcrypto -lz
 
+ifneq (, "$(DEBUG)")
+	CFLAGS+=-DKORE_DEBUG
+endif
+
 OSNAME=$(shell uname -s | sed -e 's/[-_].*//g' | tr A-Z a-z)
 ifeq ("$(OSNAME)", "darwin")
 	CFLAGS+=-I/opt/local/include/
