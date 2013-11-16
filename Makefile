@@ -13,19 +13,20 @@ CFLAGS+=-Wmissing-declarations -Wshadow -Wpointer-arith -Wcast-qual
 CFLAGS+=-Wsign-compare -Iincludes -g
 LDFLAGS+=-rdynamic -lssl -lcrypto -lz
 
-default:
-	@echo "Please specify a build target [linux | bsd | osx]"
+OSNAME=$(shell uname -s | sed -e 's/[-_].*//g' | tr A-Z a-z)
+ifeq ("$(OSNAME)", "darwin")
+	CFLAGS+=-I/opt/local/include/
+	LDFLAGS+=-L/opt/local/lib
+	S_SRC+=src/bsd.c
+else ifeq ("$(OSNAME)", "linux")
+	CFLAGS+=-D_GNU_SOURCE=1
+	LDFLAGS+=-ldl
+	S_SRC+=src/linux.c
+else
+	S_SRC+=src/bsd.c
+endif
 
-linux:
-	@LDFLAGS="-ldl" CFLAGS="-D_GNU_SOURCE=1" S_SRC=src/linux.c make kore
-
-bsd:
-	@S_SRC=src/bsd.c make kore
-
-osx:
-	@LDFLAGS="-L/opt/local/lib" CFLAGS="-I/opt/local/include/" make bsd
-
-kore: $(S_OBJS)
+all: $(S_OBJS)
 	$(CC) $(CFLAGS) $(S_OBJS) $(LDFLAGS) -o $(BIN)
 
 .c.o:
@@ -33,3 +34,5 @@ kore: $(S_OBJS)
 
 clean:
 	rm -f src/*.o $(BIN)
+
+.PHONY: clean
