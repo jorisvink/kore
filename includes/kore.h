@@ -255,6 +255,7 @@ struct kore_pool {
 
 extern pid_t	kore_pid;
 extern int	kore_debug;
+extern int	skip_chroot;
 extern char	*chroot_path;
 extern char	*runas_user;
 extern char	*kore_module_onload;

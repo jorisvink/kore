@@ -29,6 +29,7 @@ struct passwd		*pw = NULL;
 pid_t			kore_pid = -1;
 u_int16_t		cpu_count = 1;
 int			kore_debug = 0;
+int			skip_chroot = 0;
 u_int8_t		worker_count = 0;
 char			*runas_user = NULL;
 char			*chroot_path = NULL;
@@ -46,7 +47,7 @@ static void	kore_server_sslstart(void);
 static void
 usage(void)
 {
-	fprintf(stderr, "Usage: kore [-c config] [-d]\n");
+	fprintf(stderr, "Usage: kore [-c config] [-dn]\n");
 	exit(1);
 }
 
@@ -56,10 +57,7 @@ main(int argc, char *argv[])
 	int			ch;
 	struct listener		*l;
 
-	if (getuid() != 0)
-		fatal("kore must be started as root");
-
-	while ((ch = getopt(argc, argv, "c:d")) != -1) {
+	while ((ch = getopt(argc, argv, "c:dn")) != -1) {
 		switch (ch) {
 		case 'c':
 			config_file = optarg;
@@ -70,6 +68,9 @@ main(int argc, char *argv[])
 #else
 			printf("kore not compiled with debug support\n");
 #endif
+			break;
+		case 'n':
+			skip_chroot = 1;
 			break;
 		default:
 			usage();

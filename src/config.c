@@ -155,6 +155,9 @@ kore_parse_config(void)
 		fatal("missing a username to run as");
 	if ((pw = getpwnam(runas_user)) == NULL)
 		fatal("user '%s' does not exist", runas_user);
+
+	if (getuid() != 0 && skip_chroot == 0)
+		fatal("Cannot chroot(), use -n to skip it");
 }
 
 static int
