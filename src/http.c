@@ -55,6 +55,7 @@ int
 http_request_new(struct connection *c, struct spdy_stream *s, char *host,
     char *method, char *path, struct http_request **out)
 {
+	char				*p;
 	struct http_request		*req;
 
 	kore_debug("http_request_new(%p, %p, %s, %s, %s)", c, s,
@@ -75,6 +76,10 @@ http_request_new(struct connection *c, struct spdy_stream *s, char *host,
 	req->post_data = NULL;
 	req->hdlr_extra = NULL;
 	req->multipart_body = NULL;
+
+	if ((p = strrchr(host, ':')) != NULL)
+		*p = '\0';
+
 	kore_strlcpy(req->host, host, sizeof(req->host));
 	kore_strlcpy(req->path, path, sizeof(req->path));
 
