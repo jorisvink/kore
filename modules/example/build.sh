@@ -24,8 +24,15 @@ CC=gcc
 CFLAGS="-I. -I${KORE_DIR}/includes -Wall -Wstrict-prototypes \
 	-Wmissing-prototypes -Wmissing-declarations -Wshadow \
 	-Wpointer-arith -Wcast-qual -Wsign-compare -g"
-LDFLAGS=-shared
-MODULE_BUILD_DATE=`date +"%Y-%m-%d %H:%M:%S"`
+
+OSNAME=$(uname -s | sed -e 's/[-_].*//g' | tr A-Z a-z)
+if [ "${OSNAME}" = "darwin" ]; then
+	LDFLAGS="-dynamiclib -undefined suppress -flat_namespace"
+else
+	LDFLAGS="-shared"
+fi
+
+MODULE_BUILD_DATE=$(date +"%Y-%m-%d %H:%M:%S")
 
 ### Begin building ####
 echo "Building module ${MODULE}..."
