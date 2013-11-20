@@ -403,7 +403,8 @@ configure_accesslog(char **argv)
 	}
 
 	current_domain->accesslog = open(argv[1],
-	    O_CREAT | O_APPEND | O_WRONLY, 0755);
+	    O_CREAT | O_APPEND | O_WRONLY,
+	    S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 	if (current_domain->accesslog == -1) {
 		kore_debug("open(%s): %s", argv[1], errno_s);
 		return (KORE_RESULT_ERROR);
