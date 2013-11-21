@@ -13,7 +13,7 @@ CFLAGS+=-Wmissing-declarations -Wshadow -Wpointer-arith -Wcast-qual
 CFLAGS+=-Wsign-compare -Iincludes -g
 LDFLAGS+=-rdynamic -lssl -lcrypto -lz
 
-ifneq (, "$(DEBUG)")
+ifneq ("$(DEBUG)", "")
 	CFLAGS+=-DKORE_DEBUG
 endif
 
