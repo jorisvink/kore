@@ -2,16 +2,10 @@ Kore TODO list
 ===============
 
 - Websocket support.
-- GET arguments (only POST supported).
-- POST multiform/form-data support.
+- Better param syntax
 - Auxiliary library framework.
 	- Provide more API functions for generic stuff such as
 	  session handler, page building, etc etc.
-- Ability to load one module per domain instead of one global module.
 - API to programmatically configure, start and stop Kore.
 - Find that one memory leak that's causing me agony beyond belief.
 - Get my hands on a 48 core server to test stuff on.
-
-Ideas
-=====
-- If a page handler keeps causing issues, show a generic error page?
