@@ -193,11 +193,6 @@ net_recv(struct connection *c)
 			r = SSL_get_error(c->ssl, r);
 			switch (r) {
 			case SSL_ERROR_WANT_READ:
-				c->flags &= ~CONN_READ_POSSIBLE;
-				if (nb->flags & NETBUF_CALL_CB_ALWAYS &&
-				    nb->s_off > 0)
-					goto handle;
-				return (KORE_RESULT_OK);
 			case SSL_ERROR_WANT_WRITE:
 				c->flags &= ~CONN_READ_POSSIBLE;
 				return (KORE_RESULT_OK);
@@ -208,8 +203,8 @@ net_recv(struct connection *c)
 		}
 
 		nb->s_off += (size_t)r;
-		if (nb->s_off == nb->b_len) {
-handle:
+		if (nb->s_off == nb->b_len ||
+		    (nb->flags & NETBUF_CALL_CB_ALWAYS)) {
 			r = nb->cb(nb);
 			if (nb->s_off == nb->b_len ||
 			    (nb->flags & NETBUF_FORCE_REMOVE)) {
