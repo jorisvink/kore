@@ -115,6 +115,7 @@ kore_worker_spawn(u_int16_t id, u_int16_t cpu)
 	kw->load = 0;
 	kw->accepted = 0;
 	kw->has_lock = 0;
+	kw->busy_warn = 0;
 	kw->active_hdlr = NULL;
 
 	kw->pid = fork();
@@ -232,8 +233,7 @@ kore_worker_entry(struct kore_worker *kw)
 			sig_recv = 0;
 		}
 
-		if (!worker->has_lock &&
-		    (worker_active_connections < worker_max_connections))
+		if (!worker->has_lock)
 			kore_worker_acceptlock_obtain();
 
 		kore_platform_event_wait();
@@ -411,8 +411,20 @@ kore_worker_acceptlock_obtain(void)
 	}
 
 	if (worker_trylock()) {
-		worker->has_lock = 1;
-		kore_platform_enable_accept();
+		if (worker_active_connections >= worker_max_connections) {
+			worker->accepted = 0;
+			worker_unlock();
+
+			if (worker->busy_warn == 0) {
+				kore_log(LOG_NOTICE,
+				    "skipping accept lock, too busy");
+				worker->busy_warn = 1;
+			}
+		} else {
+			worker->has_lock = 1;
+			worker->busy_warn = 0;
+			kore_platform_enable_accept();
+		}
 	}
 }
 

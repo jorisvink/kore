@@ -186,6 +186,7 @@ struct kore_worker {
 	u_int16_t			load;
 	pid_t				pid;
 	u_int8_t			has_lock;
+	u_int8_t			busy_warn;
 	u_int16_t			accepted;
 	u_int16_t			accept_treshold;
 	struct kore_module_handle	*active_hdlr;
