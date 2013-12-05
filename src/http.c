@@ -889,7 +889,8 @@ http_validate_params(struct http_request *req, struct kore_module_handle *hdlr)
 	struct kore_handler_params	*p;
 	struct http_arg			*q, *next;
 
-	http_populate_arguments(req);
+	if (!http_populate_multipart_form(req, &r))
+		http_populate_arguments(req);
 
 	for (q = TAILQ_FIRST(&(req->arguments)); q != NULL; q = next) {
 		next = TAILQ_NEXT(q, list);
