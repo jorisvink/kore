@@ -263,8 +263,8 @@ kore_worker_entry(struct kore_worker *kw)
 		if (kore_cb != NULL && kore_cb_worker != -1 &&
 		    kore_cb_worker == worker->id) {
 			if ((now - last_cb_run) >= kore_cb_interval) {
-				last_cb_run = now;
 				kore_cb();
+				last_cb_run = now;
 			}
 		}
 
