@@ -270,7 +270,11 @@ http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 		hblock = spdy_header_block_create(SPDY_HBLOCK_NORMAL);
 		spdy_header_block_add(hblock, ":status", sbuf);
 		spdy_header_block_add(hblock, ":version", "HTTP/1.1");
-		spdy_header_block_add(hblock, ":server", KORE_NAME_STRING);
+
+		snprintf(sbuf, sizeof(sbuf), "%s (%d.%d-%s)",
+		    KORE_NAME_STRING, KORE_VERSION_MAJOR, KORE_VERSION_MINOR,
+		    KORE_VERSION_STATE);
+		spdy_header_block_add(hblock, ":server", sbuf);
 
 		if (http_hsts_enable) {
 			snprintf(sbuf, sizeof(sbuf),
@@ -309,7 +313,9 @@ http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 		kore_buf_appendf(buf, "HTTP/1.1 %d %s\r\n",
 		    status, http_status_text(status));
 		kore_buf_appendf(buf, "Content-length: %d\r\n", len);
-		kore_buf_appendf(buf, "Server: %s\r\n", KORE_NAME_STRING);
+		kore_buf_appendf(buf, "Server: %s (%d.%d-%s)\r\n",
+		    KORE_NAME_STRING, KORE_VERSION_MAJOR, KORE_VERSION_MINOR,
+		    KORE_VERSION_STATE);
 
 		if (http_keepalive_time) {
 			kore_buf_appendf(buf, "Connection: keep-alive\r\n");
