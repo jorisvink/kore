@@ -250,7 +250,7 @@ serve_params_test(struct http_request *req)
 		kore_buf_replace_string(b, "$arg1$", NULL, 0);
 	}
 
-	if (http_argument_lookup(req, "$arg2$", &test)) {
+	if (http_argument_lookup(req, "arg2", &test)) {
 		kore_buf_replace_string(b, "$arg2$", test, strlen(test));
 		kore_mem_free(test);
 	} else {
