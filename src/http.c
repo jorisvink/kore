@@ -25,8 +25,13 @@
 
 static char		*http_status_text(int);
 static int		http_post_data_recv(struct netbuf *);
-static void		http_validate_params(struct http_request *,
-			    struct kore_module_handle *);
+static char		*http_post_data_text(struct http_request *);
+static u_int8_t		*http_post_data_bytes(struct http_request *,
+			    u_int32_t *);
+static void		http_argument_add(struct http_request *, char *,
+			    void *, u_int32_t, int);
+static void		http_file_add(struct http_request *, char *, char *,
+			    u_int8_t *, u_int32_t);
 
 static TAILQ_HEAD(, http_request)	http_requests;
 static struct kore_pool			http_request_pool;
@@ -141,12 +146,7 @@ http_process(void)
 		if (hdlr == NULL) {
 			r = http_generic_404(req);
 		} else {
-			if (!TAILQ_EMPTY(&(hdlr->params)) &&
-			    !(req->flags & HTTP_REQUEST_PARSED_PARAMS)) {
-				http_validate_params(req, hdlr);
-				req->flags |= HTTP_REQUEST_PARSED_PARAMS;
-			}
-
+			req->hdlr = hdlr;
 			cb = hdlr->addr;
 			worker->active_hdlr = hdlr;
 			r = cb(req);
@@ -225,6 +225,9 @@ http_request_free(struct http_request *req)
 
 		if (q->value != NULL)
 			kore_mem_free(q->value);
+		if (q->s_value != NULL)
+			kore_mem_free(q->s_value);
+
 		kore_mem_free(q);
 	}
 
@@ -533,13 +536,12 @@ http_populate_arguments(struct http_request *req)
 			continue;
 		}
 
-		if (val[1] == NULL)
-			len = 0;
-		else
+		if (val[1] != NULL) {
 			len = strlen(val[1]);
-
-		http_argument_add(req, val[0], val[1], len);
-		count++;
+			http_argument_add(req, val[0], val[1],
+			    len, HTTP_ARG_TYPE_STRING);
+			count++;
+		}
 	}
 
 	kore_mem_free(query);
@@ -547,17 +549,46 @@ http_populate_arguments(struct http_request *req)
 }
 
 int
-http_argument_lookup(struct http_request *req, const char *name, char **out)
+http_argument_get(struct http_request *req, const char *name,
+    void **out, u_int32_t *len, int type)
 {
 	struct http_arg		*q;
 
+	if (len != NULL)
+		*len = 0;
+
 	TAILQ_FOREACH(q, &(req->arguments), list) {
 		if (!strcmp(q->name, name)) {
-			if (q->value == NULL)
+			switch (type) {
+			case HTTP_ARG_TYPE_RAW:
+				if (len != NULL)
+					*len = q->len;
+				*out = q->value;
+				return (KORE_RESULT_OK);
+			case HTTP_ARG_TYPE_BYTE:
+				COPY_ARG_TYPE(q->value, len, u_int8_t, out);
+				return (KORE_RESULT_OK);
+			case HTTP_ARG_TYPE_INT16:
+				COPY_AS_INTTYPE(SHRT_MIN, SHRT_MAX, int16_t);
+				return (KORE_RESULT_OK);
+			case HTTP_ARG_TYPE_UINT16:
+				COPY_AS_INTTYPE(0, USHRT_MAX, u_int16_t);
+				return (KORE_RESULT_OK);
+			case HTTP_ARG_TYPE_INT32:
+				COPY_AS_INTTYPE(INT_MIN, INT_MAX, int32_t);
+				return (KORE_RESULT_OK);
+			case HTTP_ARG_TYPE_UINT32:
+				COPY_AS_INTTYPE(0, UINT_MAX, u_int32_t);
+				return (KORE_RESULT_OK);
+			case HTTP_ARG_TYPE_STRING:
+				CACHE_STRING();
+				*out = q->s_value;
+				if (len != NULL)
+					*len = q->s_len - 1;
+				return (KORE_RESULT_OK);
+			default:
 				return (KORE_RESULT_ERROR);
-
-			*out = kore_strdup(q->value);
-			return (KORE_RESULT_OK);
+			}
 		}
 	}
 
@@ -610,69 +641,6 @@ http_argument_urldecode(char *arg)
 
 	*in = '\0';
 	return (KORE_RESULT_OK);
-}
-
-int
-http_argument_multiple_lookup(struct http_request *req, struct http_arg *args)
-{
-	int		i, c;
-
-	c = 0;
-	for (i = 0; args[i].name != NULL; i++) {
-		if (!http_argument_lookup(req, args[i].name,
-		    &(args[i].value))) {
-			args[i].value = NULL;
-		} else {
-			c++;
-		}
-	}
-
-	return (c);
-}
-
-void
-http_argument_multiple_free(struct http_arg *args)
-{
-	int		i;
-
-	for (i = 0; args[i].name != NULL; i++) {
-		if (args[i].value != NULL)
-			kore_mem_free(args[i].value);
-	}
-}
-
-void
-http_argument_add(struct http_request *req, char *name,
-    char *value, u_int32_t len)
-{
-	struct http_arg		*q;
-
-	q = kore_malloc(sizeof(struct http_arg));
-	q->name = kore_strdup(name);
-
-	if (len > 0) {
-		q->value = kore_malloc(len + 1);
-		kore_strlcpy(q->value, value, len + 1);
-	} else {
-		q->value = NULL;
-	}
-
-	TAILQ_INSERT_TAIL(&(req->arguments), q, list);
-}
-
-void
-http_file_add(struct http_request *req, char *name, char *filename,
-    u_int8_t *data, u_int32_t len)
-{
-	struct http_file	*f;
-
-	f = kore_malloc(sizeof(struct http_file));
-	f->len = len;
-	f->data = data;
-	f->name = kore_strdup(name);
-	f->filename = kore_strdup(filename);
-
-	TAILQ_INSERT_TAIL(&(req->files), f, list);
 }
 
 int
@@ -798,7 +766,7 @@ http_populate_multipart_form(struct http_request *req, int *v)
 			if (opt[2] == NULL) {
 				*v = *v + 1;
 				http_argument_add(req, name,
-				    (char *)data, (e - 2) - data);
+				    data, (e - 2) - data, HTTP_ARG_TYPE_STRING);
 				kore_mem_free(name);
 				continue;
 			}
@@ -837,7 +805,87 @@ http_populate_multipart_form(struct http_request *req, int *v)
 	return (KORE_RESULT_OK);
 }
 
-char *
+int
+http_generic_404(struct http_request *req)
+{
+	kore_debug("http_generic_404(%s, %d, %s)",
+	    req->host, req->method, req->path);
+
+	return (http_response(req, 404, NULL, 0));
+}
+
+static void
+http_argument_add(struct http_request *req, char *name,
+    void *value, u_int32_t len, int type)
+{
+	struct http_arg			*q;
+	struct kore_handler_params	*p;
+
+	if (len == 0 || value == NULL) {
+		kore_debug("http_argument_add: with NULL value");
+		return;
+	}
+
+	TAILQ_FOREACH(p, &(req->hdlr->params), list) {
+		if (p->method != req->method)
+			continue;
+
+		if (!strcmp(p->name, name)) {
+			if (type == HTTP_ARG_TYPE_STRING) {
+				http_argument_urldecode(value);
+				len = strlen(value);
+			}
+
+			if (!kore_validator_check(p->validator, value)) {
+				kore_log(LOG_NOTICE,
+				    "validator %s (%s) for %s failed",
+				    p->validator->name, p->name, req->path);
+			} else {
+				q = kore_malloc(sizeof(struct http_arg));
+				q->len = len;
+				q->s_value = NULL;
+				q->name = kore_strdup(name);
+				q->value = kore_malloc(len);
+				memcpy(q->value, value, len);
+				TAILQ_INSERT_TAIL(&(req->arguments), q, list);
+			}
+
+			return;
+		}
+	}
+
+	kore_log(LOG_NOTICE, "unexpected parameter %s for %s", name, req->path);
+}
+
+static void
+http_file_add(struct http_request *req, char *name, char *filename,
+    u_int8_t *data, u_int32_t len)
+{
+	struct http_file	*f;
+
+	f = kore_malloc(sizeof(struct http_file));
+	f->len = len;
+	f->data = data;
+	f->name = kore_strdup(name);
+	f->filename = kore_strdup(filename);
+
+	TAILQ_INSERT_TAIL(&(req->files), f, list);
+}
+
+static int
+http_post_data_recv(struct netbuf *nb)
+{
+	struct http_request	*req = (struct http_request *)nb->extra;
+
+	kore_buf_append(req->post_data, nb->buf, nb->s_off);
+	req->flags |= HTTP_REQUEST_COMPLETE;
+
+	kore_debug("post complete for request %p", req);
+
+	return (KORE_RESULT_OK);
+}
+
+static char *
 http_post_data_text(struct http_request *req)
 {
 	u_int32_t	len;
@@ -855,7 +903,7 @@ http_post_data_text(struct http_request *req)
 	return (text);
 }
 
-u_int8_t *
+static u_int8_t *
 http_post_data_bytes(struct http_request *req, u_int32_t *len)
 {
 	u_int8_t	*data;
@@ -864,77 +912,6 @@ http_post_data_bytes(struct http_request *req, u_int32_t *len)
 	req->post_data = NULL;
 
 	return (data);
-}
-
-int
-http_generic_404(struct http_request *req)
-{
-	kore_debug("http_generic_404(%s, %d, %s)",
-	    req->host, req->method, req->path);
-
-	return (http_response(req, 404, NULL, 0));
-}
-
-static int
-http_post_data_recv(struct netbuf *nb)
-{
-	struct http_request	*req = (struct http_request *)nb->extra;
-
-	kore_buf_append(req->post_data, nb->buf, nb->s_off);
-	req->flags |= HTTP_REQUEST_COMPLETE;
-
-	kore_debug("post complete for request %p", req);
-
-	return (KORE_RESULT_OK);
-}
-
-static void
-http_validate_params(struct http_request *req, struct kore_module_handle *hdlr)
-{
-	int				r;
-	struct kore_handler_params	*p;
-	struct http_arg			*q, *next;
-
-	if (!http_populate_multipart_form(req, &r))
-		http_populate_arguments(req);
-
-	for (q = TAILQ_FIRST(&(req->arguments)); q != NULL; q = next) {
-		next = TAILQ_NEXT(q, list);
-
-		p = NULL;
-		TAILQ_FOREACH(p, &(hdlr->params), list) {
-			if (p->method != req->method)
-				continue;
-			if (!strcmp(p->name, q->name))
-				break;
-		}
-
-		if (q->value != NULL)
-			http_argument_urldecode(q->value);
-
-		r = KORE_RESULT_ERROR;
-		if (p != NULL && q->value != NULL) {
-			r = kore_validator_check(p->validator, q->value);
-			if (r != KORE_RESULT_OK) {
-				kore_log(LOG_NOTICE,
-				    "validator %s(%s) for %s failed",
-				    p->validator->name, p->name, req->path);
-			}
-		} else if (p == NULL) {
-			kore_log(LOG_NOTICE,
-			    "received unexpected parameter %s for %s",
-			    q->name, req->path);
-		}
-
-		if (r == KORE_RESULT_ERROR) {
-			TAILQ_REMOVE(&(req->arguments), q, list);
-			kore_mem_free(q->name);
-			if (q->value != NULL)
-				kore_mem_free(q->value);
-			kore_mem_free(q);
-			continue;
-		}
-	}
 }
 
 static char *

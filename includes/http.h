@@ -26,6 +26,14 @@
 #define HTTP_REQ_HEADER_MAX	25
 #define HTTP_MAX_QUERY_ARGS	10
 
+#define HTTP_ARG_TYPE_RAW	0
+#define HTTP_ARG_TYPE_BYTE	1
+#define HTTP_ARG_TYPE_INT16	2
+#define HTTP_ARG_TYPE_UINT16	3
+#define HTTP_ARG_TYPE_INT32	4
+#define HTTP_ARG_TYPE_UINT32	5
+#define HTTP_ARG_TYPE_STRING	6
+
 struct http_header {
 	char			*header;
 	char			*value;
@@ -35,10 +43,64 @@ struct http_header {
 
 struct http_arg {
 	char			*name;
-	char			*value;
+	void			*value;
+	u_int32_t		len;
+
+	char			*s_value;
+	u_int32_t		s_len;
 
 	TAILQ_ENTRY(http_arg)	list;
 };
+
+#define COPY_ARG_TYPE(v, l, t, o)			\
+	do {						\
+		if (l != NULL)				\
+			*l = sizeof(t);			\
+		*(t **)o = *(t **)v;			\
+	} while (0);
+
+#define COPY_ARG_INT(min, max, type)					\
+	do {								\
+		int err;						\
+		int64_t nval;						\
+		nval = kore_strtonum(q->s_value, 10, min, max, &err);	\
+		if (err != KORE_RESULT_OK)				\
+			return (KORE_RESULT_ERROR);			\
+		COPY_ARG_TYPE(&nval, len, type, out);			\
+	} while (0);
+
+#define CACHE_STRING()							\
+	do {								\
+		if (q->s_value == NULL) {				\
+			q->s_len = q->len + 1;				\
+			q->s_value = kore_malloc(q->s_len);		\
+			kore_strlcpy(q->s_value, q->value, q->s_len);	\
+		}							\
+	} while (0);
+
+#define COPY_AS_INTTYPE(min, max, type)					\
+	do {								\
+		CACHE_STRING();						\
+		COPY_ARG_INT(min, max, type);				\
+	} while (0);
+
+#define http_argument_type(r, n, o, l, t)				\
+	http_argument_get(r, n, (void **)o, l, t)
+
+#define http_argument_get_string(n, o, l)				\
+	http_argument_type(req, n, o, l, HTTP_ARG_TYPE_STRING)
+
+#define http_argument_get_uint16(n, o)					\
+	http_argument_type(req, n, o, NULL, HTTP_ARG_TYPE_UINT16)
+
+#define http_argument_get_int16(n, o)					\
+	http_argument_type(req, n, o, NULL, HTTP_ARG_TYPE_INT16)
+
+#define http_argument_get_uint32(n, o)					\
+	http_argument_type(req, n, o, NULL, HTTP_ARG_TYPE_UINT32)
+
+#define http_argument_get_int32(n, o)					\
+	http_argument_type(req, n, o, NULL, HTTP_ARG_TYPE_INT32)
 
 struct http_file {
 	char			*name;
@@ -55,22 +117,22 @@ struct http_file {
 
 #define HTTP_REQUEST_COMPLETE		0x01
 #define HTTP_REQUEST_DELETE		0x02
-#define HTTP_REQUEST_PARSED_PARAMS	0x04
 
 struct http_request {
-	u_int8_t		method;
-	u_int8_t		flags;
-	int			status;
-	u_int64_t		start;
-	u_int64_t		end;
-	char			host[KORE_DOMAINNAME_LEN];
-	char			path[HTTP_URI_LEN];
-	char			*agent;
-	struct connection	*owner;
-	struct spdy_stream	*stream;
-	struct kore_buf		*post_data;
-	void			*hdlr_extra;
-	u_int8_t		*multipart_body;
+	u_int8_t			method;
+	u_int8_t			flags;
+	int				status;
+	u_int64_t			start;
+	u_int64_t			end;
+	char				host[KORE_DOMAINNAME_LEN];
+	char				path[HTTP_URI_LEN];
+	char				*agent;
+	struct connection		*owner;
+	struct spdy_stream		*stream;
+	struct kore_buf			*post_data;
+	void				*hdlr_extra;
+	u_int8_t			*multipart_body;
+	struct kore_module_handle	*hdlr;
 
 	TAILQ_HEAD(, http_header)		req_headers;
 	TAILQ_HEAD(, http_header)		resp_headers;
@@ -100,23 +162,25 @@ int		http_request_new(struct connection *, struct spdy_stream *,
 int		http_argument_urldecode(char *);
 int		http_header_recv(struct netbuf *);
 int		http_generic_404(struct http_request *);
-char		*http_post_data_text(struct http_request *);
-u_int8_t	*http_post_data_bytes(struct http_request *, u_int32_t *);
 int		http_populate_arguments(struct http_request *);
 int		http_populate_multipart_form(struct http_request *, int *);
-void		http_argument_multiple_free(struct http_arg *);
-void		http_file_add(struct http_request *, char *, char *,
-		    u_int8_t *, u_int32_t);
-void		http_argument_add(struct http_request *, char *,
-		    char *, u_int32_t);
-int		http_argument_lookup(struct http_request *,
-		    const char *, char **);
+int		http_argument_get(struct http_request *,
+		    const char *, void **, u_int32_t *, int);
 int		http_file_lookup(struct http_request *, char *, char **,
 		    u_int8_t **, u_int32_t *);
-int		http_argument_multiple_lookup(struct http_request *,
-		    struct http_arg *);
 
 void		kore_accesslog(struct http_request *);
+
+static inline char *
+http_argument_string(struct http_request *r, char *n)
+{
+	char		*str;
+
+	if (http_argument_get(r, n, (void **)&str, NULL, HTTP_ARG_TYPE_STRING))
+		return (str);
+
+	return (NULL);
+}
 
 enum http_status_code {
 	HTTP_STATUS_CONTINUE			= 100,

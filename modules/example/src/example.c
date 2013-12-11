@@ -140,10 +140,8 @@ serve_file_upload(struct http_request *req)
 
 	if (req->method == HTTP_METHOD_POST) {
 		http_populate_multipart_form(req, &r);
-		if (http_argument_lookup(req, "firstname", &name)) {
-			kore_buf_replace_string(b, "$firstname$",
-			    name, strlen(name));
-			kore_mem_free(name);
+		if (http_argument_get_string("firstname", &name, &len)) {
+			kore_buf_replace_string(b, "$firstname$", name, len);
 		} else {
 			kore_buf_replace_string(b, "$firstname$", NULL, 0);
 		}
@@ -237,22 +235,22 @@ serve_params_test(struct http_request *req)
 	int			r, i;
 	char			*test, name[10];
 
+	http_populate_arguments(req);
+
 	b = kore_buf_create(static_len_html_params);
 	kore_buf_append(b, static_html_params, static_len_html_params);
 
 	/*
 	 * The GET parameters will be filtered out on POST.
 	 */
-	if (http_argument_lookup(req, "arg1", &test)) {
-		kore_buf_replace_string(b, "$arg1$", test, strlen(test));
-		kore_mem_free(test);
+	if (http_argument_get_string("arg1", &test, &len)) {
+		kore_buf_replace_string(b, "$arg1$", test, len);
 	} else {
 		kore_buf_replace_string(b, "$arg1$", NULL, 0);
 	}
 
-	if (http_argument_lookup(req, "arg2", &test)) {
-		kore_buf_replace_string(b, "$arg2$", test, strlen(test));
-		kore_mem_free(test);
+	if (http_argument_get_string("arg2", &test, &len)) {
+		kore_buf_replace_string(b, "$arg2$", test, len);
 	} else {
 		kore_buf_replace_string(b, "$arg2$", NULL, 0);
 	}
@@ -262,6 +260,11 @@ serve_params_test(struct http_request *req)
 		kore_buf_replace_string(b, "$test2$", NULL, 0);
 		kore_buf_replace_string(b, "$test3$", NULL, 0);
 
+		if (http_argument_get_uint16("id", &r))
+			kore_log(LOG_NOTICE, "id: %d", r);
+		else
+			kore_log(LOG_NOTICE, "No id set");
+
 		http_response_header_add(req, "content-type", "text/html");
 		d = kore_buf_release(b, &len);
 		r = http_response(req, 200, d, len);
@@ -270,16 +273,11 @@ serve_params_test(struct http_request *req)
 		return (r);
 	}
 
-	/*
-	 * No need to call http_populate_arguments(), it's been done
-	 * by the parameter validation automatically.
-	 */
 	for (i = 1; i < 4; i++) {
 		snprintf(name, sizeof(name), "test%d", i);
-		if (http_argument_lookup(req, name, &test)) {
+		if (http_argument_get_string(name, &test, &len)) {
 			snprintf(name, sizeof(name), "$test%d$", i);
-			kore_buf_replace_string(b, name, test, strlen(test));
-			kore_mem_free(test);
+			kore_buf_replace_string(b, name, test, len);
 		} else {
 			snprintf(name, sizeof(name), "$test%d$", i);
 			kore_buf_replace_string(b, name, NULL, 0);
