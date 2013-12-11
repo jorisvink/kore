@@ -138,7 +138,8 @@ kore_module_handler_new(char *path, char *domain, char *func, int type)
 	hdlr->func = kore_strdup(func);
 
 	if (hdlr->type == HANDLER_TYPE_DYNAMIC) {
-		if (regcomp(&(hdlr->rctx), hdlr->path, REG_EXTENDED | REG_NOSUB)) {
+		if (regcomp(&(hdlr->rctx), hdlr->path,
+		    REG_EXTENDED | REG_NOSUB)) {
 			kore_mem_free(hdlr->func);
 			kore_mem_free(hdlr->path);
 			kore_mem_free(hdlr);
