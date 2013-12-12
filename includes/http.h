@@ -171,17 +171,6 @@ int		http_file_lookup(struct http_request *, char *, char **,
 
 void		kore_accesslog(struct http_request *);
 
-static inline char *
-http_argument_string(struct http_request *r, char *n)
-{
-	char		*str;
-
-	if (http_argument_get(r, n, (void **)&str, NULL, HTTP_ARG_TYPE_STRING))
-		return (str);
-
-	return (NULL);
-}
-
 enum http_status_code {
 	HTTP_STATUS_CONTINUE			= 100,
 	HTTP_STATUS_SWITCHING_PROTOCOLS		= 101,
