@@ -19,6 +19,7 @@ Features
 - SSL connections only
 - Virtual host support
 - Easy to use configuration
+- Builtin parameter validation
 - Loads your site as a precompiled C module
 - Event driven architecture and worker processes for throughput
 - Modules can be reloaded on-the-fly even while serving content
