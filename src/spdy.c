@@ -632,7 +632,7 @@ spdy_data_frame_recv(struct netbuf *nb)
 			return (KORE_RESULT_ERROR);
 		}
 
-		s->post_size = kore_strtonum(content, 10, 0, ULONG_MAX, &err);
+		s->post_size = kore_strtonum(content, 10, 0, LLONG_MAX, &err);
 		if (err == KORE_RESULT_ERROR) {
 			kore_debug("bad content-length: %s", content);
 			kore_mem_free(content);
