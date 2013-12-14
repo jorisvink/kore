@@ -49,6 +49,7 @@ static int		configure_http_keepalive_time(char **);
 static int		configure_validator(char **);
 static int		configure_params(char **);
 static int		configure_validate(char **);
+static int		configure_require_client_cert(char **);
 static void		domain_sslstart(void);
 
 static struct {
@@ -73,6 +74,7 @@ static struct {
 	{ "accesslog",			configure_accesslog },
 	{ "certfile",			configure_certfile },
 	{ "certkey",			configure_certkey },
+	{ "require_client_cert",	configure_require_client_cert },
 	{ "kore_cb",			configure_kore_cb },
 	{ "kore_cb_worker",		configure_kore_cb_worker },
 	{ "kore_cb_interval",		configure_kore_cb_interval },
@@ -315,6 +317,29 @@ configure_handler(char **argv)
 		return (KORE_RESULT_ERROR);
 	}
 
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_require_client_cert(char **argv)
+{
+	if (current_domain == NULL) {
+		printf("missing domain page require_client_cert\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (argv[1] == NULL) {
+		printf("missing argument for require_client_cert\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (current_domain->cafile != NULL) {
+		printf("require_client_cert already set for %s\n",
+		    current_domain->domain);
+		return (KORE_RESULT_ERROR);
+	}
+
+	current_domain->cafile = kore_strdup(argv[1]);
 	return (KORE_RESULT_OK);
 }
 

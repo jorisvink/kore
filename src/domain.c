@@ -16,6 +16,8 @@
 
 #include "kore.h"
 
+#define SSL_SESSION_ID		"kore_ssl_sessionid"
+
 struct kore_domain_h		domains;
 struct kore_domain		*primary_dom = NULL;
 DH				*ssl_dhparam = NULL;
@@ -39,9 +41,10 @@ kore_domain_new(char *domain)
 
 	dom = kore_malloc(sizeof(*dom));
 	dom->accesslog = -1;
-	dom->certfile = NULL;
+	dom->cafile = NULL;
 	dom->certkey = NULL;
 	dom->ssl_ctx = NULL;
+	dom->certfile = NULL;
 	dom->domain = kore_strdup(domain);
 	TAILQ_INIT(&(dom->handlers));
 	TAILQ_INSERT_TAIL(&domains, dom, list);
@@ -55,6 +58,8 @@ kore_domain_new(char *domain)
 void
 kore_domain_sslstart(struct kore_domain *dom)
 {
+	STACK_OF(X509_NAME)	*certs;
+
 #if !defined(OPENSSL_NO_EC)
 	EC_KEY		*ecdh;
 #endif
@@ -92,6 +97,22 @@ kore_domain_sslstart(struct kore_domain *dom)
 
 	if (ssl_no_compression)
 		SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_COMPRESSION);
+
+	if (dom->cafile != NULL) {
+		if ((certs = SSL_load_client_CA_file(dom->cafile)) == NULL) {
+			fatal("SSL_load_client_CA_file(%s): %s",
+			    dom->cafile, ssl_errno_s);
+		}
+
+		SSL_CTX_load_verify_locations(dom->ssl_ctx, dom->cafile, NULL);
+		SSL_CTX_set_verify_depth(dom->ssl_ctx, 1);
+		SSL_CTX_set_client_CA_list(dom->ssl_ctx, certs);
+		SSL_CTX_set_verify(dom->ssl_ctx, SSL_VERIFY_PEER |
+		    SSL_VERIFY_FAIL_IF_NO_PEER_CERT, NULL);
+	}
+
+	SSL_CTX_set_session_id_context(dom->ssl_ctx,
+	    (unsigned char *)SSL_SESSION_ID, strlen(SSL_SESSION_ID));
 
 	SSL_CTX_set_mode(dom->ssl_ctx, SSL_MODE_RELEASE_BUFFERS);
 	SSL_CTX_set_mode(dom->ssl_ctx, SSL_MODE_ENABLE_PARTIAL_WRITE);

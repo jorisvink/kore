@@ -199,6 +199,7 @@ struct kore_domain {
 	char					*domain;
 	char					*certfile;
 	char					*certkey;
+	char					*cafile;
 	int					accesslog;
 	SSL_CTX					*ssl_ctx;
 	TAILQ_HEAD(, kore_module_handle)	handlers;

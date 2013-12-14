@@ -135,6 +135,14 @@ kore_ssl_sni_cb(SSL *ssl, int *ad, void *arg)
 	if (sname != NULL && (dom = kore_domain_lookup(sname)) != NULL) {
 		kore_debug("kore_ssl_sni_cb(): Using %s CTX", sname);
 		SSL_set_SSL_CTX(ssl, dom->ssl_ctx);
+
+		if (dom->cafile != NULL) {
+			SSL_set_verify(ssl, SSL_VERIFY_PEER |
+			    SSL_VERIFY_FAIL_IF_NO_PEER_CERT, NULL);
+		} else {
+			SSL_set_verify(ssl, SSL_VERIFY_NONE, NULL);
+		}
+
 		return (SSL_TLSEXT_ERR_OK);
 	}
 
