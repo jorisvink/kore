@@ -24,7 +24,6 @@
 
 static int		configure_bind(char **);
 static int		configure_load(char **);
-static int		configure_onload(char **);
 static int		configure_handler(char **);
 static int		configure_domain(char **);
 static int		configure_chroot(char **);
@@ -58,7 +57,6 @@ static struct {
 } config_names[] = {
 	{ "bind",			configure_bind },
 	{ "load",			configure_load },
-	{ "onload",			configure_onload },
 	{ "static",			configure_handler },
 	{ "dynamic",			configure_handler },
 	{ "ssl_cipher",			configure_ssl_cipher },
@@ -148,7 +146,8 @@ kore_parse_config(void)
 
 	if (!kore_module_loaded())
 		fatal("no site module was loaded");
-
+	if (kore_cb_name != NULL && kore_cb == NULL)
+		fatal("no '%s' symbol found for kore_cb", kore_cb_name);
 	if (LIST_EMPTY(&listeners))
 		fatal("no listeners defined");
 	if (chroot_path == NULL)
@@ -177,22 +176,7 @@ configure_load(char **argv)
 	if (argv[1] == NULL)
 		return (KORE_RESULT_ERROR);
 
-	kore_module_load(argv[1]);
-	return (KORE_RESULT_OK);
-}
-
-static int
-configure_onload(char **argv)
-{
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
-
-	if (kore_module_onload != NULL) {
-		kore_debug("duplicate onload directive found");
-		return (KORE_RESULT_ERROR);
-	}
-
-	kore_module_onload = kore_strdup(argv[1]);
+	kore_module_load(argv[1], argv[2]);
 	return (KORE_RESULT_OK);
 }
 

@@ -171,6 +171,15 @@ struct kore_handler_params {
 #define HANDLER_TYPE_STATIC	1
 #define HANDLER_TYPE_DYNAMIC	2
 
+struct kore_module {
+	void			*handle;
+	char			*path;
+	char			*onload;
+	time_t			mtime;
+
+	TAILQ_ENTRY(kore_module)	list;
+};
+
 struct kore_module_handle {
 	char			*path;
 	char			*func;
@@ -263,7 +272,6 @@ extern int	kore_debug;
 extern int	skip_chroot;
 extern char	*chroot_path;
 extern char	*runas_user;
-extern char	*kore_module_onload;
 extern char	*kore_pidfile;
 extern char	*config_file;
 extern char	*kore_cb_name;
@@ -357,11 +365,12 @@ void		*kore_mem_find(void *, size_t, void *, u_int32_t);
 
 void		kore_domain_init(void);
 int		kore_domain_new(char *);
-void		kore_module_load(char *);
+void		kore_module_init(void);
 void		kore_module_reload(void);
 int		kore_module_loaded(void);
 void		kore_domain_closelogs(void);
 void		*kore_module_getsym(char *);
+void		kore_module_load(char *, char *);
 void		kore_domain_sslstart(struct kore_domain *);
 int		kore_module_handler_new(char *, char *, char *, int);
 struct kore_domain		*kore_domain_lookup(const char *);

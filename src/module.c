@@ -20,94 +20,118 @@
 
 #include "kore.h"
 
-static void		*mod_handle = NULL;
-static char		*mod_name = NULL;
-static time_t		mod_last_mtime = 0;
-
-char			*kore_cb_name = NULL;
-char			*kore_module_onload = NULL;
+static TAILQ_HEAD(, kore_module)	modules;
+char					*kore_cb_name = NULL;
 
 void
-kore_module_load(char *module_name)
+kore_module_init(void)
+{
+	TAILQ_INIT(&modules);
+	TAILQ_INIT(&domains);
+}
+
+void
+kore_module_load(char *path, char *onload)
 {
 	struct stat		st;
-	void			(*onload)(void);
+	struct kore_module	*module;
+	void			(*cb)(void);
 
-	kore_debug("kore_module_load(%s)", module_name);
+	kore_debug("kore_module_load(%s, %s)", path, onload);
 
-	if (mod_handle != NULL)
-		fatal("site module already loaded, skipping %s", module_name);
+	if (stat(path, &st) == -1)
+		fatal("stat(%s): %s", path, errno_s);
 
-	if (stat(module_name, &st) == -1)
-		fatal("stat(%s): %s", module_name, errno_s);
+	module = kore_malloc(sizeof(struct kore_module));
+	module->path = kore_strdup(path);
+	module->mtime = st.st_mtime;
+	module->onload = NULL;
 
-	mod_last_mtime = st.st_mtime;
-	mod_handle = dlopen(module_name, RTLD_NOW);
-	if (mod_handle == NULL)
-		fatal("%s", dlerror());
+	module->handle = dlopen(module->path, RTLD_NOW | RTLD_GLOBAL);
+	if (module->handle == NULL)
+		fatal("%s: %s", path, dlerror());
 
-	TAILQ_INIT(&domains);
-	mod_name = kore_strdup(module_name);
-
-	if (kore_module_onload != NULL) {
-		onload = dlsym(mod_handle, kore_module_onload);
-		if (onload == NULL)
-			fatal("onload '%s' not present", kore_module_onload);
-		onload();
+	if (onload != NULL) {
+		module->onload = kore_strdup(onload);
+		cb = dlsym(module->handle, onload);
+		if (cb == NULL)
+			fatal("%s: onload '%s' not present", path, onload);
+		cb();
 	}
 
-	if (kore_cb_name != NULL) {
-		kore_cb = dlsym(mod_handle, kore_cb_name);
-		if (kore_cb == NULL)
-			fatal("kore_cb '%s' not present", kore_cb_name);
-	}
+	if (kore_cb_name != NULL && kore_cb == NULL)
+		kore_cb = dlsym(module->handle, kore_cb_name);
+
+	TAILQ_INSERT_TAIL(&modules, module, list);
 }
 
 void
 kore_module_reload(void)
 {
+	struct stat			st;
 	struct kore_domain		*dom;
 	struct kore_module_handle	*hdlr;
+	struct kore_module		*module;
 	void				(*onload)(void);
 
-	if (dlclose(mod_handle))
-		fatal("cannot close existing module: %s", dlerror());
+	kore_cb = NULL;
 
-	mod_handle = dlopen(mod_name, RTLD_NOW);
-	if (mod_handle == NULL)
-		fatal("kore_module_reload(): %s", dlerror());
+	TAILQ_FOREACH(module, &modules, list) {
+		if (stat(module->path, &st) == -1) {
+			kore_log(LOG_NOTICE, "stat(%s): %s, skipping reload",
+			    module->path, errno_s);
+			continue;
+		}
+
+		if (module->mtime == st.st_mtime)
+			continue;
+
+		module->mtime = st.st_mtime;
+		if (dlclose(module->handle))
+			fatal("cannot close existing module: %s", dlerror());
+
+		module->handle = dlopen(module->path, RTLD_NOW | RTLD_GLOBAL);
+		if (module->handle == NULL)
+			fatal("kore_module_reload(): %s", dlerror());
+
+		if (module->onload != NULL) {
+			onload = dlsym(module->handle, module->onload);
+			if (onload == NULL) {
+				fatal("%s: onload '%s' not present",
+				    module->path, module->onload);
+			}
+
+			onload();
+		}
+
+		if (kore_cb_name != NULL && kore_cb == NULL)
+			kore_cb = dlsym(module->handle, kore_cb_name);
+
+		kore_log(LOG_NOTICE, "reloaded '%s' module", module->path);
+	}
+
+	if (kore_cb_name != NULL && kore_cb == NULL)
+		fatal("no kore_cb %s found in loaded modules", kore_cb_name);
 
 	TAILQ_FOREACH(dom, &domains, list) {
 		TAILQ_FOREACH(hdlr, &(dom->handlers), list) {
-			hdlr->errors = 0;
-			hdlr->addr = dlsym(mod_handle, hdlr->func);
+			hdlr->addr = kore_module_getsym(hdlr->func);
 			if (hdlr->func == NULL)
 				fatal("no function '%s' found", hdlr->func);
+			hdlr->errors = 0;
 		}
 	}
 
 	kore_validator_reload();
-
-	if (kore_module_onload != NULL) {
-		onload = dlsym(mod_handle, kore_module_onload);
-		if (onload == NULL)
-			fatal("onload '%s' not present", kore_module_onload);
-		onload();
-	}
-
-	if (kore_cb_name != NULL) {
-		kore_cb = dlsym(mod_handle, kore_cb_name);
-		if (kore_cb == NULL)
-			fatal("kore_cb '%s' not present", kore_cb_name);
-	}
-
-	kore_log(LOG_NOTICE, "reloaded '%s' module", mod_name);
 }
 
 int
 kore_module_loaded(void)
 {
-	return (mod_handle != NULL ? KORE_RESULT_OK : KORE_RESULT_ERROR);
+	if (TAILQ_EMPTY(&modules))
+		return (0);
+
+	return (1);
 }
 
 int
@@ -120,7 +144,7 @@ kore_module_handler_new(char *path, char *domain, char *func, int type)
 	kore_debug("kore_module_handler_new(%s, %s, %s, %d)", path,
 	    domain, func, type);
 
-	addr = dlsym(mod_handle, func);
+	addr = kore_module_getsym(func);
 	if (addr == NULL) {
 		kore_debug("function '%s' not found", func);
 		return (KORE_RESULT_ERROR);
@@ -177,5 +201,14 @@ kore_module_handler_find(char *domain, char *path)
 void *
 kore_module_getsym(char *symbol)
 {
-	return (dlsym(mod_handle, symbol));
+	void			*ptr;
+	struct kore_module	*module;
+
+	TAILQ_FOREACH(module, &modules, list) {
+		ptr = dlsym(module->handle, symbol);
+		if (ptr != NULL)
+			return (ptr);
+	}
+
+	return (NULL);
 }
