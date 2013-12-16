@@ -573,7 +573,7 @@ configure_http_postbody_max(char **argv)
 		return (KORE_RESULT_ERROR);
 	}
 
-	http_postbody_max = kore_strtonum(argv[1], 10, 1, ULONG_MAX, &err);
+	http_postbody_max = kore_strtonum(argv[1], 10, 1, LONG_MAX, &err);
 	if (err != KORE_RESULT_OK) {
 		printf("bad http_postbody_max value: %s\n", argv[1]);
 		return (KORE_RESULT_ERROR);
@@ -595,7 +595,7 @@ configure_http_hsts_enable(char **argv)
 		return (KORE_RESULT_ERROR);
 	}
 
-	http_hsts_enable = kore_strtonum(argv[1], 10, 0, ULONG_MAX, &err);
+	http_hsts_enable = kore_strtonum(argv[1], 10, 0, LONG_MAX, &err);
 	if (err != KORE_RESULT_OK) {
 		printf("bad http_hsts_enable value: %s\n", argv[1]);
 		return (KORE_RESULT_ERROR);
