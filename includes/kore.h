@@ -171,10 +171,15 @@ struct kore_handler_params {
 #define HANDLER_TYPE_STATIC	1
 #define HANDLER_TYPE_DYNAMIC	2
 
+#define KORE_MODULE_LOAD	1
+#define KORE_MODULE_UNLOAD	2
+
 struct kore_module {
 	void			*handle;
 	char			*path;
 	char			*onload;
+	void			(*ocb)(int);
+
 	time_t			mtime;
 
 	TAILQ_ENTRY(kore_module)	list;

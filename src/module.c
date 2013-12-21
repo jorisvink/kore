@@ -35,7 +35,6 @@ kore_module_load(char *path, char *onload)
 {
 	struct stat		st;
 	struct kore_module	*module;
-	void			(*cb)(void);
 
 	kore_debug("kore_module_load(%s, %s)", path, onload);
 
@@ -53,10 +52,10 @@ kore_module_load(char *path, char *onload)
 
 	if (onload != NULL) {
 		module->onload = kore_strdup(onload);
-		cb = dlsym(module->handle, onload);
-		if (cb == NULL)
+		module->ocb = dlsym(module->handle, onload);
+		if (module->ocb == NULL)
 			fatal("%s: onload '%s' not present", path, onload);
-		cb();
+		module->ocb(KORE_MODULE_LOAD);
 	}
 
 	if (kore_cb_name != NULL && kore_cb == NULL)
@@ -72,7 +71,6 @@ kore_module_reload(void)
 	struct kore_domain		*dom;
 	struct kore_module_handle	*hdlr;
 	struct kore_module		*module;
-	void				(*onload)(void);
 
 	kore_cb = NULL;
 
@@ -86,6 +84,8 @@ kore_module_reload(void)
 		if (module->mtime == st.st_mtime)
 			continue;
 
+		module->ocb(KORE_MODULE_UNLOAD);
+
 		module->mtime = st.st_mtime;
 		if (dlclose(module->handle))
 			fatal("cannot close existing module: %s", dlerror());
@@ -95,13 +95,13 @@ kore_module_reload(void)
 			fatal("kore_module_reload(): %s", dlerror());
 
 		if (module->onload != NULL) {
-			onload = dlsym(module->handle, module->onload);
-			if (onload == NULL) {
+			module->ocb = dlsym(module->handle, module->onload);
+			if (module->ocb == NULL) {
 				fatal("%s: onload '%s' not present",
 				    module->path, module->onload);
 			}
 
-			onload();
+			module->ocb(KORE_MODULE_LOAD);
 		}
 
 		if (kore_cb_name != NULL && kore_cb == NULL)

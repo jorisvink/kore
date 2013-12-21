@@ -19,6 +19,7 @@
 
 #include "static.h"
 
+void		example_load(int);
 int		serve_style_css(struct http_request *);
 int		serve_index(struct http_request *);
 int		serve_intro(struct http_request *);
@@ -43,6 +44,22 @@ char *b64tests[] = {
 	"I am a nobody, nobody is perfect, therefor I am.",
 	NULL
 };
+
+void
+example_load(int state)
+{
+	switch (state) {
+	case KORE_MODULE_LOAD:
+		kore_log(LOG_NOTICE, "module loading");
+		break;
+	case KORE_MODULE_UNLOAD:
+		kore_log(LOG_NOTICE, "module unloading");
+		break;
+	default:
+		kore_log(LOG_NOTICE, "state %d unknown!", state);
+		break;
+	}
+}
 
 int
 serve_style_css(struct http_request *req)
