@@ -84,7 +84,8 @@ kore_module_reload(void)
 		if (module->mtime == st.st_mtime)
 			continue;
 
-		module->ocb(KORE_MODULE_UNLOAD);
+		if (module->ocb != NULL)
+			module->ocb(KORE_MODULE_UNLOAD);
 
 		module->mtime = st.st_mtime;
 		if (dlclose(module->handle))
