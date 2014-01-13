@@ -80,6 +80,7 @@ http_request_new(struct connection *c, struct spdy_stream *s, char *host,
 	req->stream = s;
 	req->post_data = NULL;
 	req->hdlr_extra = NULL;
+	req->query_string = NULL;
 	req->multipart_body = NULL;
 
 	if ((p = strrchr(host, ':')) != NULL)
@@ -87,6 +88,9 @@ http_request_new(struct connection *c, struct spdy_stream *s, char *host,
 
 	kore_strlcpy(req->host, host, sizeof(req->host));
 	kore_strlcpy(req->path, path, sizeof(req->path));
+
+	if ((req->query_string = strchr(req->path, '?')) != NULL)
+		*(req->query_string)++ = '\0';
 
 	TAILQ_INIT(&(req->resp_headers));
 	TAILQ_INIT(&(req->req_headers));
@@ -516,15 +520,14 @@ http_populate_arguments(struct http_request *req)
 {
 	u_int32_t		len;
 	int			i, v, c, count;
-	char			*p, *query, *args[HTTP_MAX_QUERY_ARGS], *val[3];
+	char			*query, *args[HTTP_MAX_QUERY_ARGS], *val[3];
 
 	if (req->method == HTTP_METHOD_POST) {
 		query = http_post_data_text(req);
 	} else {
-		if ((p = strchr(req->path, '?')) == NULL)
+		if (req->query_string == NULL)
 			return (0);
-		p++;
-		query = kore_strdup(p);
+		query = kore_strdup(req->query_string);
 	}
 
 	count = 0;

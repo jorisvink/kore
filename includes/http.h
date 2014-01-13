@@ -131,6 +131,7 @@ struct http_request {
 	struct spdy_stream		*stream;
 	struct kore_buf			*post_data;
 	void				*hdlr_extra;
+	char				*query_string;
 	u_int8_t			*multipart_body;
 	struct kore_module_handle	*hdlr;
 
