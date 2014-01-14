@@ -181,10 +181,13 @@ spdy_frame_send(struct connection *c, u_int16_t type, u_int8_t flags,
 		break;
 	}
 
-	if (s != NULL && type == SPDY_DATA_FRAME && (flags & FLAG_FIN))
+	if (s != NULL && type == SPDY_DATA_FRAME && (flags & FLAG_FIN)) {
+		s->send_size += length;
 		s->flags |= SPDY_KORE_FIN;
-
-	net_send_queue(c, nb, length, NULL);
+		net_send_queue(c, nb, length, s);
+	} else {
+		net_send_queue(c, nb, length, NULL);
+	}
 }
 
 struct spdy_stream *

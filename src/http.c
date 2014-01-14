@@ -306,7 +306,7 @@ http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 		kore_mem_free(htext);
 
 		if (len > 0) {
-			req->stream->send_size = len;
+			req->stream->send_size += len;
 			spdy_frame_send(req->owner, SPDY_DATA_FRAME,
 			    0, len, req->stream, 0);
 			net_send_queue(req->owner, d, len, req->stream);
