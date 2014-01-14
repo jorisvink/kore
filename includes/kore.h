@@ -66,6 +66,10 @@
 #define NETBUF_CALL_CB_ALWAYS	0x01
 #define NETBUF_FORCE_REMOVE	0x02
 
+/* XXX hackish. */
+struct http_request;
+struct spdy_stream;
+
 struct netbuf {
 	u_int8_t		*buf;
 	u_int32_t		s_off;
@@ -75,6 +79,8 @@ struct netbuf {
 	u_int8_t		flags;
 
 	void			*owner;
+	struct spdy_stream	*stream;
+
 	void			*extra;
 	int			(*cb)(struct netbuf *);
 
@@ -118,9 +124,6 @@ LIST_HEAD(listener_head, listener);
 #define CONN_READ_BLOCK		0x20
 
 #define KORE_IDLE_TIMER_MAX	20000
-
-/* XXX hackish. */
-struct http_request;
 
 struct connection {
 	u_int8_t		type;
@@ -404,7 +407,8 @@ void		net_recv_queue(struct connection *, size_t, int,
 		    struct netbuf **, int (*cb)(struct netbuf *));
 int		net_recv_expand(struct connection *c, struct netbuf *, size_t,
 		    int (*cb)(struct netbuf *));
-void		net_send_queue(struct connection *, u_int8_t *, u_int32_t);
+void		net_send_queue(struct connection *, u_int8_t *,
+		    u_int32_t, struct spdy_stream *);
 
 void		kore_buf_free(struct kore_buf *);
 struct kore_buf	*kore_buf_create(u_int32_t);

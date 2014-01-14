@@ -27,13 +27,14 @@ net_init(void)
 }
 
 void
-net_send_queue(struct connection *c, u_int8_t *data, u_int32_t len)
+net_send_queue(struct connection *c, u_int8_t *data, u_int32_t len,
+    struct spdy_stream *s)
 {
 	struct netbuf		*nb;
 	u_int32_t		avail;
 
 	nb = TAILQ_LAST(&(c->send_queue), netbuf_head);
-	if (nb != NULL && nb->b_len < nb->m_len) {
+	if (nb != NULL && nb->b_len < nb->m_len && nb->stream == s) {
 		avail = nb->m_len - nb->b_len;
 		if (len < avail) {
 			memcpy(nb->buf + nb->b_len, data, len);
@@ -55,6 +56,7 @@ net_send_queue(struct connection *c, u_int8_t *data, u_int32_t len)
 	nb->cb = NULL;
 	nb->owner = c;
 	nb->s_off = 0;
+	nb->stream = s;
 	nb->b_len = len;
 	nb->type = NETBUF_SEND;
 
@@ -82,6 +84,7 @@ net_recv_queue(struct connection *c, size_t len, int flags,
 	nb->m_len = len;
 	nb->owner = c;
 	nb->s_off = 0;
+	nb->stream = NULL;
 	nb->flags = flags;
 	nb->type = NETBUF_RECV;
 	nb->buf = kore_malloc(nb->b_len);
@@ -143,6 +146,9 @@ net_send(struct connection *c)
 			}
 
 			nb->s_off += (size_t)r;
+
+			if (nb->stream != NULL)
+				spdy_update_wsize(c, nb->stream, r);
 		}
 
 		if (nb->s_off == nb->b_len) {

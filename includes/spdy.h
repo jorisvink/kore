@@ -53,6 +53,8 @@ struct spdy_stream {
 	u_int8_t	flags;
 	u_int8_t	prio;
 	u_int64_t	post_size;
+	u_int64_t	send_size;
+
 	int32_t		recv_wsize;
 	int32_t		send_wsize;
 
@@ -104,5 +106,8 @@ extern const unsigned char SPDY_dictionary_txt[];
 
 #define SPDY_HBLOCK_NORMAL		0
 #define SPDY_HBLOCK_DELAYED_ALLOC	1
+
+/* internal flags (make sure they don't clash with SPDY stream flags) */
+#define SPDY_KORE_FIN			0x10
 
 #endif /* !__H_SPDY_H */

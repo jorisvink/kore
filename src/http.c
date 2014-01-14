@@ -302,14 +302,14 @@ http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 
 		spdy_frame_send(req->owner, SPDY_CTRL_FRAME_SYN_REPLY,
 		    0, hlen, req->stream, 0);
-		net_send_queue(req->owner, htext, hlen);
+		net_send_queue(req->owner, htext, hlen, NULL);
 		kore_mem_free(htext);
 
 		if (len > 0) {
+			req->stream->send_size = len;
 			spdy_frame_send(req->owner, SPDY_DATA_FRAME,
 			    0, len, req->stream, 0);
-			net_send_queue(req->owner, d, len);
-			spdy_update_wsize(req->owner, req->stream, len);
+			net_send_queue(req->owner, d, len, req->stream);
 		}
 
 		spdy_frame_send(req->owner, SPDY_DATA_FRAME,
@@ -345,10 +345,10 @@ http_response(struct http_request *req, int status, u_int8_t *d, u_int32_t len)
 
 		kore_buf_append(buf, "\r\n", 2);
 		htext = kore_buf_release(buf, &hlen);
-		net_send_queue(req->owner, htext, hlen);
+		net_send_queue(req->owner, htext, hlen, NULL);
 		kore_mem_free(htext);
 
-		net_send_queue(req->owner, d, len);
+		net_send_queue(req->owner, d, len, NULL);
 		net_recv_queue(req->owner, http_header_max,
 		    NETBUF_CALL_CB_ALWAYS, NULL, http_header_recv);
 	}

@@ -181,13 +181,10 @@ spdy_frame_send(struct connection *c, u_int16_t type, u_int8_t flags,
 		break;
 	}
 
-	if (s != NULL && type == SPDY_DATA_FRAME) {
-		net_send_queue(c, nb, length);
-		if ((flags & FLAG_FIN) && (s->flags & FLAG_FIN))
-			spdy_stream_close(c, s);
-	} else {
-		net_send_queue(c, nb, length);
-	}
+	if (s != NULL && type == SPDY_DATA_FRAME && (flags & FLAG_FIN))
+		s->flags |= SPDY_KORE_FIN;
+
+	net_send_queue(c, nb, length, NULL);
 }
 
 struct spdy_stream *
@@ -339,7 +336,7 @@ spdy_session_teardown(struct connection *c, u_int8_t err)
 	net_write32((u_int8_t *)&d[4], err);
 
 	spdy_frame_send(c, SPDY_CTRL_FRAME_GOAWAY, 0, 8, NULL, 0);
-	net_send_queue(c, d, sizeof(d));
+	net_send_queue(c, d, sizeof(d), NULL);
 
 	c->flags &= ~CONN_READ_POSSIBLE;
 	c->flags |= CONN_READ_BLOCK;
@@ -352,6 +349,17 @@ void
 spdy_update_wsize(struct connection *c, struct spdy_stream *s, u_int32_t len)
 {
 	s->send_wsize -= len;
+	s->send_size -= (u_int64_t)len;
+
+	if (s->send_size == 0) {
+		if (s->flags & (SPDY_KORE_FIN | FLAG_FIN)) {
+			spdy_stream_close(c, s);
+			return;
+		}
+
+		kore_log(LOG_NOTICE, "A spdy stream was empty but not closed");
+	}
+
 	kore_debug("spdy_update_wsize(): stream %d, window size %d",
 	    s->stream_id, s->send_wsize);
 
@@ -412,6 +420,7 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 	}
 
 	s = kore_malloc(sizeof(*s));
+	s->send_size = 0;
 	s->httpreq = NULL;
 	s->prio = syn.prio;
 	s->flags = ctrl.flags;
