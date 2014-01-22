@@ -171,11 +171,23 @@ struct kore_handler_params {
 	TAILQ_ENTRY(kore_handler_params)	list;
 };
 
-#define HANDLER_TYPE_STATIC	1
-#define HANDLER_TYPE_DYNAMIC	2
+#define KORE_AUTH_TYPE_COOKIE		1
+
+struct kore_auth {
+	u_int8_t		type;
+	char			*name;
+	char			*value;
+	char			*redirect;
+	struct kore_validator	*validator;
+
+	TAILQ_ENTRY(kore_auth)	list;
+};
 
 #define KORE_MODULE_LOAD	1
 #define KORE_MODULE_UNLOAD	2
+
+#define HANDLER_TYPE_STATIC	1
+#define HANDLER_TYPE_DYNAMIC	2
 
 struct kore_module {
 	void			*handle;
@@ -195,6 +207,7 @@ struct kore_module_handle {
 	int			type;
 	int			errors;
 	regex_t			rctx;
+	struct kore_auth	*auth;
 
 	TAILQ_HEAD(, kore_handler_params)	params;
 	TAILQ_ENTRY(kore_module_handle)		list;
@@ -329,6 +342,13 @@ void		kore_accesslog_init(void);
 int		kore_accesslog_wait(void);
 void		kore_accesslog_worker_init(void);
 
+int		kore_auth(struct http_request *, struct kore_auth *);
+int		kore_auth_cookie(struct http_request *, struct kore_auth *);
+
+void			kore_auth_init(void);
+int			kore_auth_new(char *);
+struct kore_auth	*kore_auth_lookup(char *);
+
 int		kore_ssl_sni_cb(SSL *, int *, void *);
 int		kore_server_bind(const char *, const char *);
 int		kore_ssl_npn_cb(SSL *, const u_char **, unsigned int *, void *);
@@ -380,7 +400,7 @@ void		kore_domain_closelogs(void);
 void		*kore_module_getsym(char *);
 void		kore_module_load(char *, char *);
 void		kore_domain_sslstart(struct kore_domain *);
-int		kore_module_handler_new(char *, char *, char *, int);
+int		kore_module_handler_new(char *, char *, char *, char *, int);
 struct kore_domain		*kore_domain_lookup(const char *);
 struct kore_module_handle	*kore_module_handler_find(char *, char *);
 

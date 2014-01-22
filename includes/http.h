@@ -25,6 +25,7 @@
 #define HTTP_USERAGENT_LEN	256
 #define HTTP_REQ_HEADER_MAX	25
 #define HTTP_MAX_QUERY_ARGS	10
+#define HTTP_MAX_COOKIES	10
 
 #define HTTP_ARG_TYPE_RAW	0
 #define HTTP_ARG_TYPE_BYTE	1
@@ -133,7 +134,9 @@ struct http_request {
 	void				*hdlr_extra;
 	char				*query_string;
 	u_int8_t			*multipart_body;
+
 	struct kore_module_handle	*hdlr;
+
 
 	TAILQ_HEAD(, http_header)		req_headers;
 	TAILQ_HEAD(, http_header)		resp_headers;

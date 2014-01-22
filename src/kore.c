@@ -87,6 +87,7 @@ main(int argc, char *argv[])
 
 	kore_log_init();
 	kore_mem_init();
+	kore_auth_init();
 	kore_domain_init();
 	kore_module_init();
 	kore_validator_init();

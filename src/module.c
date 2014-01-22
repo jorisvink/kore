@@ -136,14 +136,16 @@ kore_module_loaded(void)
 }
 
 int
-kore_module_handler_new(char *path, char *domain, char *func, int type)
+kore_module_handler_new(char *path, char *domain, char *func,
+    char *auth, int type)
 {
+	struct kore_auth		*ap;
 	void				*addr;
 	struct kore_domain		*dom;
 	struct kore_module_handle	*hdlr;
 
-	kore_debug("kore_module_handler_new(%s, %s, %s, %d)", path,
-	    domain, func, type);
+	kore_debug("kore_module_handler_new(%s, %s, %s, %s, %d)", path,
+	    domain, func, auth, type);
 
 	addr = kore_module_getsym(func);
 	if (addr == NULL) {
@@ -154,7 +156,15 @@ kore_module_handler_new(char *path, char *domain, char *func, int type)
 	if ((dom = kore_domain_lookup(domain)) == NULL)
 		return (KORE_RESULT_ERROR);
 
+	if (auth != NULL) {
+		if ((ap = kore_auth_lookup(auth)) == NULL)
+			fatal("no authentication block '%s' found", auth);
+	} else {
+		ap = NULL;
+	}
+
 	hdlr = kore_malloc(sizeof(*hdlr));
+	hdlr->auth = ap;
 	hdlr->errors = 0;
 	hdlr->addr = addr;
 	hdlr->type = type;

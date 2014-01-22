@@ -20,6 +20,7 @@
 #include "static.h"
 
 void		example_load(int);
+
 int		serve_style_css(struct http_request *);
 int		serve_index(struct http_request *);
 int		serve_intro(struct http_request *);
@@ -29,9 +30,12 @@ int		serve_file_upload(struct http_request *);
 int		serve_lock_test(struct http_request *);
 int		serve_validator(struct http_request *);
 int		serve_params_test(struct http_request *);
+int		serve_private(struct http_request *);
+int		serve_private_test(struct http_request *);
 
 void		my_callback(void);
 int		v_example_func(char *);
+int		v_session_validate(char *);
 void		test_base64(u_int8_t *, u_int32_t, struct kore_buf *);
 
 char *b64tests[] = {
@@ -309,6 +313,33 @@ serve_params_test(struct http_request *req)
 	return (r);
 }
 
+int
+serve_private(struct http_request *req)
+{
+	int		r;
+
+	http_response_header_add(req, "content-type", "text/html");
+	http_response_header_add(req, "set-cookie", "session_id=test123");
+
+	r = http_response(req, 200, static_html_private,
+	    static_len_html_private);
+
+	return (r);
+}
+
+int
+serve_private_test(struct http_request *req)
+{
+	int		r;
+
+	http_response_header_add(req, "content-type", "text/html");
+
+	r = http_response(req, 200, static_html_private_test,
+	    static_len_html_private_test);
+
+	return (r);
+}
+
 void
 my_callback(void)
 {
@@ -324,6 +355,17 @@ v_example_func(char *data)
 	kore_log(LOG_NOTICE, "v_example_func called");
 
 	if (!strcmp(data, "test"))
+		return (KORE_RESULT_OK);
+
+	return (KORE_RESULT_ERROR);
+}
+
+int
+v_session_validate(char *data)
+{
+	kore_log(LOG_NOTICE, "v_session_validate: %s", data);
+
+	if (!strcmp(data, "test123"))
 		return (KORE_RESULT_OK);
 
 	return (KORE_RESULT_ERROR);

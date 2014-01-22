@@ -150,11 +150,24 @@ http_process(void)
 		if (hdlr == NULL) {
 			r = http_generic_404(req);
 		} else {
-			req->hdlr = hdlr;
-			cb = hdlr->addr;
-			worker->active_hdlr = hdlr;
-			r = cb(req);
-			worker->active_hdlr = NULL;
+			if (hdlr->auth != NULL)
+				r = kore_auth(req, hdlr->auth);
+			else
+				r = KORE_RESULT_OK;
+
+			if (r == KORE_RESULT_OK) {
+				req->hdlr = hdlr;
+				cb = hdlr->addr;
+				worker->active_hdlr = hdlr;
+				r = cb(req);
+				worker->active_hdlr = NULL;
+			} else {
+				/*
+				 * Set r to KORE_RESULT_OK so we can properly
+				 * flush the result from kore_auth().
+				 */
+				r = KORE_RESULT_OK;
+			}
 		}
 		req->end = kore_time_ms();
 

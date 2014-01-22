@@ -22,6 +22,8 @@
 #include "kore.h"
 #include "http.h"
 
+/* XXX - This is becoming a clusterfuck. Fix it. */
+
 static int		configure_bind(char **);
 static int		configure_load(char **);
 static int		configure_handler(char **);
@@ -49,6 +51,12 @@ static int		configure_validator(char **);
 static int		configure_params(char **);
 static int		configure_validate(char **);
 static int		configure_require_client_cert(char **);
+static int		configure_authentication(char **);
+static int		configure_authentication_uri(char **);
+static int		configure_authentication_type(char **);
+static int		configure_authentication_value(char **);
+static int		configure_authentication_validator(char **);
+
 static void		domain_sslstart(void);
 
 static struct {
@@ -83,11 +91,17 @@ static struct {
 	{ "validator",			configure_validator },
 	{ "params",			configure_params },
 	{ "validate",			configure_validate },
+	{ "authentication",		configure_authentication },
+	{ "authentication_uri",		configure_authentication_uri },
+	{ "authentication_type",	configure_authentication_type },
+	{ "authentication_value",	configure_authentication_value },
+	{ "authentication_validator",	configure_authentication_validator },
 	{ NULL,				NULL },
 };
 
 char					*config_file = NULL;
 static u_int8_t				current_method = 0;
+static struct kore_auth			*current_auth = NULL;
 static struct kore_domain		*current_domain = NULL;
 static struct kore_module_handle	*current_handler = NULL;
 
@@ -124,6 +138,17 @@ kore_parse_config(void)
 		if (!strcmp(p, "}") && current_handler != NULL) {
 			lineno++;
 			current_handler = NULL;
+			continue;
+		}
+
+		if (!strcmp(p, "}") && current_auth != NULL) {
+			if (current_auth->validator == NULL) {
+				fatal("no authentication validator for %s",
+				    current_auth->name);
+			}
+
+			lineno++;
+			current_auth = NULL;
 			continue;
 		}
 
@@ -296,7 +321,7 @@ configure_handler(char **argv)
 		return (KORE_RESULT_ERROR);
 
 	if (!kore_module_handler_new(argv[1],
-	    current_domain->domain, argv[2], type)) {
+	    current_domain->domain, argv[2], argv[3], type)) {
 		kore_debug("cannot create handler for %s", argv[1]);
 		return (KORE_RESULT_ERROR);
 	}
@@ -719,6 +744,130 @@ configure_validate(char **argv)
 	p->name = kore_strdup(argv[1]);
 
 	TAILQ_INSERT_TAIL(&(current_handler->params), p, list);
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_authentication(char **argv)
+{
+	if (argv[2] == NULL) {
+		printf("Missing name for authentication block\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (current_auth != NULL) {
+		printf("Previous authentication block not closed\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (strcmp(argv[2], "{")) {
+		printf("missing { for authentication block\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (!kore_auth_new(argv[1]))
+		return (KORE_RESULT_ERROR);
+
+	current_auth = kore_auth_lookup(argv[1]);
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_authentication_type(char **argv)
+{
+	if (current_auth == NULL) {
+		printf("authentication_type outside authentication block\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (argv[1] == NULL) {
+		printf("missing parameter for authentication_type\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (!strcmp(argv[1], "cookie")) {
+		current_auth->type = KORE_AUTH_TYPE_COOKIE;
+	} else {
+		printf("unknown authentication type '%s'\n", argv[1]);
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_authentication_value(char **argv)
+{
+	if (current_auth == NULL) {
+		printf("authentication_value outside authentication block\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (argv[1] == NULL) {
+		printf("missing parameter for authentication_value\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (current_auth->value != NULL) {
+		printf("duplicate authentication_value found\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	current_auth->value = kore_strdup(argv[1]);
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_authentication_validator(char **argv)
+{
+	struct kore_validator		*val;
+
+	if (current_auth == NULL) {
+		printf("authentication_validator outside authentication\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (argv[1] == NULL) {
+		printf("missing parameter for authentication_validator\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (current_auth->validator != NULL) {
+		printf("duplicate authentication_validator found\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if ((val = kore_validator_lookup(argv[1])) == NULL) {
+		printf("authentication validator '%s' not found\n", argv[1]);
+		return (KORE_RESULT_ERROR);
+	}
+
+	current_auth->validator = val;
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_authentication_uri(char **argv)
+{
+	if (current_auth == NULL) {
+		printf("authentication_uri outside authentication block\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (argv[1] == NULL) {
+		printf("missing parameter for authentication_uri\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (current_auth->redirect != NULL) {
+		printf("duplicate authentication_uri found\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	current_auth->redirect = kore_strdup(argv[1]);
 
 	return (KORE_RESULT_OK);
 }
