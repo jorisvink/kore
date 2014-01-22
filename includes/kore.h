@@ -172,6 +172,7 @@ struct kore_handler_params {
 };
 
 #define KORE_AUTH_TYPE_COOKIE		1
+#define KORE_AUTH_TYPE_HEADER		2
 
 struct kore_auth {
 	u_int8_t		type;
@@ -342,9 +343,7 @@ void		kore_accesslog_init(void);
 int		kore_accesslog_wait(void);
 void		kore_accesslog_worker_init(void);
 
-int		kore_auth(struct http_request *, struct kore_auth *);
-int		kore_auth_cookie(struct http_request *, struct kore_auth *);
-
+int			kore_auth(struct http_request *, struct kore_auth *);
 void			kore_auth_init(void);
 int			kore_auth_new(char *);
 struct kore_auth	*kore_auth_lookup(char *);

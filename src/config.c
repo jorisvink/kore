@@ -789,6 +789,8 @@ configure_authentication_type(char **argv)
 
 	if (!strcmp(argv[1], "cookie")) {
 		current_auth->type = KORE_AUTH_TYPE_COOKIE;
+	} else if (!strcmp(argv[1], "header")) {
+		current_auth->type = KORE_AUTH_TYPE_HEADER;
 	} else {
 		printf("unknown authentication type '%s'\n", argv[1]);
 		return (KORE_RESULT_ERROR);

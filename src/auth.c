@@ -23,6 +23,9 @@
 
 TAILQ_HEAD(, kore_auth)		auth_list;
 
+static int	kore_auth_cookie(struct http_request *, struct kore_auth *);
+static int	kore_auth_header(struct http_request *, struct kore_auth *);
+
 void
 kore_auth_init(void)
 {
@@ -60,6 +63,9 @@ kore_auth(struct http_request *req, struct kore_auth *auth)
 	case KORE_AUTH_TYPE_COOKIE:
 		r = kore_auth_cookie(req, auth);
 		break;
+	case KORE_AUTH_TYPE_HEADER:
+		r = kore_auth_header(req, auth);
+		break;
 	default:
 		kore_log(LOG_NOTICE, "unknown auth type %d", auth->type);
 		return (KORE_RESULT_ERROR);
@@ -83,7 +89,7 @@ kore_auth(struct http_request *req, struct kore_auth *auth)
 	return (KORE_RESULT_ERROR);
 }
 
-int
+static int
 kore_auth_cookie(struct http_request *req, struct kore_auth *auth)
 {
 	int		i, v;
@@ -119,6 +125,21 @@ kore_auth_cookie(struct http_request *req, struct kore_auth *auth)
 	kore_mem_free(cookie);
 
 	return (i);
+}
+
+static int
+kore_auth_header(struct http_request *req, struct kore_auth *auth)
+{
+	int		r;
+	char		*header;
+
+	if (!http_request_header_get(req, auth->value, &header))
+		return (KORE_RESULT_ERROR);
+
+	r = kore_validator_check(auth->validator, header);
+	kore_mem_free(header);
+
+	return (r);
 }
 
 struct kore_auth *
