@@ -180,7 +180,7 @@ kore_date_to_time(char *http_date)
 	memset(&tm, 0, sizeof(tm));
 
 	tm.tm_year = kore_strtonum(args[3], 10, 1900, 2068, &err) - 1900;
-	if (err == KORE_RESULT_ERROR || tm.tm_year < ltm->tm_year) {
+	if (err == KORE_RESULT_ERROR) {
 		kore_debug("misformed year in http-date: '%s'", http_date);
 		goto out;
 	}
