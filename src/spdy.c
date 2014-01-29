@@ -383,7 +383,7 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 	struct spdy_syn_stream		syn;
 	struct spdy_ctrl_frame		ctrl;
 	u_int8_t			*src;
-	char				*host, *method, *path;
+	char				*host, *method, *path, *version;
 	struct connection		*c = (struct connection *)nb->owner;
 
 	ctrl.version = net_read16(nb->buf) & 0x7fff;
@@ -449,6 +449,7 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 	path = NULL;
 	host = NULL;
 	method = NULL;
+	version = NULL;
 
 #define GET_HEADER(n, r)					\
 	if (!spdy_stream_get_header(s->hblock, n, r)) {		\
@@ -469,8 +470,9 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 	GET_HEADER(":path", &path);
 	GET_HEADER(":method", &method);
 	GET_HEADER(":host", &host);
+	GET_HEADER(":version", &version);
 
-	if (!http_request_new(c, s, host, method, path,
+	if (!http_request_new(c, s, host, method, path, version,
 	    (struct http_request **)&(s->httpreq))) {
 		kore_mem_free(path);
 		kore_mem_free(method);
@@ -478,13 +480,13 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 		kore_mem_free(s->hblock->header_block);
 		kore_mem_free(s->hblock);
 		kore_mem_free(s);
-		spdy_session_teardown(c, SPDY_SESSION_ERROR_INTERNAL);
 		return (KORE_RESULT_OK);
 	}
 
 	kore_mem_free(path);
-	kore_mem_free(method);
 	kore_mem_free(host);
+	kore_mem_free(method);
+	kore_mem_free(version);
 
 	c->client_stream_id = s->stream_id;
 	TAILQ_INSERT_TAIL(&(c->spdy_streams), s, list);
@@ -631,7 +633,7 @@ spdy_data_frame_recv(struct netbuf *nb)
 	}
 
 	req = (struct http_request *)s->httpreq;
-	if (req->method != HTTP_METHOD_POST) {
+	if (req->method != HTTP_METHOD_POST || req == NULL) {
 		kore_debug("data frame for non post received");
 		/* stream error */
 		return (KORE_RESULT_ERROR);

@@ -156,12 +156,11 @@ void		http_init(void);
 void		http_process(void);
 time_t		http_date_to_time(char *);
 void		http_request_free(struct http_request *);
-int		http_response(struct http_request *, int,
-		    u_int8_t *, u_int32_t);
+void		http_response(struct http_request *, int, void *, u_int32_t);
 int		http_request_header_get(struct http_request *, char *, char **);
 void		http_response_header_add(struct http_request *, char *, char *);
 int		http_request_new(struct connection *, struct spdy_stream *,
-		    char *, char *, char *, struct http_request **);
+		    char *, char *, char *, char *, struct http_request **);
 
 int		http_argument_urldecode(char *);
 int		http_header_recv(struct netbuf *);

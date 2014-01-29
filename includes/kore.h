@@ -122,6 +122,7 @@ LIST_HEAD(listener_head, listener);
 #define CONN_WRITE_BLOCK	0x04
 #define CONN_IDLE_TIMER_ACT	0x10
 #define CONN_READ_BLOCK		0x20
+#define CONN_CLOSE_EMPTY	0x40
 
 #define KORE_IDLE_TIMER_MAX	20000
 

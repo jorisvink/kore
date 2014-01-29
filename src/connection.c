@@ -212,8 +212,11 @@ kore_connection_remove(struct connection *c)
 
 	kore_debug("kore_connection_remove(%p)", c);
 
-	if (c->ssl != NULL)
+	if (c->ssl != NULL) {
+		SSL_shutdown(c->ssl);
 		SSL_free(c->ssl);
+	}
+
 	close(c->fd);
 
 	if (c->hdlr_extra != NULL)

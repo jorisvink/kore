@@ -173,6 +173,9 @@ net_send_flush(struct connection *c)
 			return (KORE_RESULT_ERROR);
 	}
 
+	if ((c->flags & CONN_CLOSE_EMPTY) && TAILQ_EMPTY(&(c->send_queue)))
+		kore_connection_disconnect(c);
+
 	return (KORE_RESULT_OK);
 }
 

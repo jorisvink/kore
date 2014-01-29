@@ -68,7 +68,6 @@ example_load(int state)
 int
 serve_style_css(struct http_request *req)
 {
-	int		ret;
 	char		*date;
 	time_t		tstamp;
 
@@ -81,48 +80,41 @@ serve_style_css(struct http_request *req)
 	}
 
 	if (tstamp != 0 && tstamp <= static_mtime_css_style) {
-		ret = http_response(req, 304, NULL, 0);
+		http_response(req, 304, NULL, 0);
 	} else {
 		date = kore_time_to_date(static_mtime_css_style);
 		if (date != NULL)
 			http_response_header_add(req, "last-modified", date);
 
 		http_response_header_add(req, "content-type", "text/css");
-		ret = http_response(req, 200, static_css_style,
-		    static_len_css_style);
+		http_response(req, 200, static_css_style, static_len_css_style);
 	}
 
-	return (ret);
+	return (KORE_RESULT_OK);
 }
 
 int
 serve_index(struct http_request *req)
 {
-	int		ret;
-
 	http_response_header_add(req, "content-type", "text/html");
-	ret = http_response(req, 200, static_html_index,
-	    static_len_html_index);
+	http_response(req, 200, static_html_index, static_len_html_index);
 
-	return (ret);
+	return (KORE_RESULT_OK);
 }
 
 int
 serve_intro(struct http_request *req)
 {
-	int		ret;
-
 	http_response_header_add(req, "content-type", "image/jpg");
-	ret = http_response(req, 200, static_jpg_intro,
-	    static_len_jpg_intro);
+	http_response(req, 200, static_jpg_intro, static_len_jpg_intro);
 
-	return (ret);
+	return (KORE_RESULT_OK);
 }
 
 int
 serve_b64test(struct http_request *req)
 {
-	int			i, ret;
+	int			i;
 	u_int32_t		len;
 	struct kore_buf		*res;
 	u_int8_t		*data;
@@ -134,10 +126,10 @@ serve_b64test(struct http_request *req)
 	data = kore_buf_release(res, &len);
 
 	http_response_header_add(req, "content-type", "text/plain");
-	ret = http_response(req, 200, data, len);
+	http_response(req, 200, data, len);
 	kore_mem_free(data);
 
-	return (ret);
+	return (KORE_RESULT_OK);
 }
 
 int
@@ -182,10 +174,10 @@ serve_file_upload(struct http_request *req)
 	d = kore_buf_release(b, &len);
 
 	http_response_header_add(req, "content-type", "text/html");
-	r = http_response(req, 200, d, len);
+	http_response(req, 200, d, len);
 	kore_mem_free(d);
 
-	return (r);
+	return (KORE_RESULT_OK);
 }
 
 int
@@ -194,7 +186,8 @@ serve_lock_test(struct http_request *req)
 	kore_log(LOG_NOTICE, "lock-test called on worker %d", worker->id);
 	kore_worker_acceptlock_release();
 
-	return (http_response(req, 200, (u_int8_t *)"OK", 2));
+	http_response(req, 200, "OK", 2);
+	return (KORE_RESULT_OK);
 }
 
 void
@@ -244,7 +237,9 @@ serve_validator(struct http_request *req)
 	else
 		kore_log(LOG_NOTICE, "regex #2 failed");
 
-	return (http_response(req, 200, (u_int8_t *)"OK", 2));
+	http_response(req, 200, "OK", 2);
+
+	return (KORE_RESULT_OK);
 }
 
 int
@@ -288,10 +283,10 @@ serve_params_test(struct http_request *req)
 
 		http_response_header_add(req, "content-type", "text/html");
 		d = kore_buf_release(b, &len);
-		r = http_response(req, 200, d, len);
+		http_response(req, 200, d, len);
 		kore_mem_free(d);
 
-		return (r);
+		return (KORE_RESULT_OK);
 	}
 
 	for (i = 1; i < 4; i++) {
@@ -307,37 +302,31 @@ serve_params_test(struct http_request *req)
 
 	http_response_header_add(req, "content-type", "text/html");
 	d = kore_buf_release(b, &len);
-	r = http_response(req, 200, d, len);
+	http_response(req, 200, d, len);
 	kore_mem_free(d);
 
-	return (r);
+	return (KORE_RESULT_OK);
 }
 
 int
 serve_private(struct http_request *req)
 {
-	int		r;
-
 	http_response_header_add(req, "content-type", "text/html");
 	http_response_header_add(req, "set-cookie", "session_id=test123");
+	http_response(req, 200, static_html_private, static_len_html_private);
 
-	r = http_response(req, 200, static_html_private,
-	    static_len_html_private);
-
-	return (r);
+	return (KORE_RESULT_OK);
 }
 
 int
 serve_private_test(struct http_request *req)
 {
-	int		r;
-
 	http_response_header_add(req, "content-type", "text/html");
 
-	r = http_response(req, 200, static_html_private_test,
+	http_response(req, 200, static_html_private_test,
 	    static_len_html_private_test);
 
-	return (r);
+	return (KORE_RESULT_OK);
 }
 
 void
