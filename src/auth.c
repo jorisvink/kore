@@ -121,7 +121,7 @@ kore_auth_cookie(struct http_request *req, struct kore_auth *auth)
 		return (KORE_RESULT_ERROR);
 	}
 
-	i = kore_validator_check(auth->validator, ++value);
+	i = kore_validator_check(req, auth->validator, ++value);
 	kore_mem_free(cookie);
 
 	return (i);
@@ -136,7 +136,7 @@ kore_auth_header(struct http_request *req, struct kore_auth *auth)
 	if (!http_request_header_get(req, auth->value, &header))
 		return (KORE_RESULT_ERROR);
 
-	r = kore_validator_check(auth->validator, header);
+	r = kore_validator_check(req, auth->validator, header);
 	kore_mem_free(header);
 
 	return (r);

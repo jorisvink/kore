@@ -801,7 +801,7 @@ http_argument_add(struct http_request *req, char *name,
 				len = strlen(value);
 			}
 
-			if (!kore_validator_check(p->validator, value)) {
+			if (!kore_validator_check(req, p->validator, value)) {
 				kore_log(LOG_NOTICE,
 				    "validator %s (%s) for %s failed",
 				    p->validator->name, p->name, req->path);

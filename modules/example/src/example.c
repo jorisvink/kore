@@ -34,8 +34,8 @@ int		serve_private(struct http_request *);
 int		serve_private_test(struct http_request *);
 
 void		my_callback(void);
-int		v_example_func(char *);
-int		v_session_validate(char *);
+int		v_example_func(struct http_request *, char *);
+int		v_session_validate(struct http_request *, char *);
 void		test_base64(u_int8_t *, u_int32_t, struct kore_buf *);
 
 char *b64tests[] = {
@@ -222,17 +222,17 @@ test_base64(u_int8_t *src, u_int32_t slen, struct kore_buf *res)
 int
 serve_validator(struct http_request *req)
 {
-	if (kore_validator_run("v_example", "test"))
+	if (kore_validator_run(NULL, "v_example", "test"))
 		kore_log(LOG_NOTICE, "v_example ok (expected)");
 	else
 		kore_log(LOG_NOTICE, "v_example failed");
 
-	if (kore_validator_run("v_regex", "/test/123"))
+	if (kore_validator_run(NULL, "v_regex", "/test/123"))
 		kore_log(LOG_NOTICE, "regex #1 ok");
 	else
 		kore_log(LOG_NOTICE, "regex #1 failed (expected)");
 
-	if (kore_validator_run("v_regex", "/test/joris"))
+	if (kore_validator_run(NULL, "v_regex", "/test/joris"))
 		kore_log(LOG_NOTICE, "regex #2 ok (expected)");
 	else
 		kore_log(LOG_NOTICE, "regex #2 failed");
@@ -339,7 +339,7 @@ my_callback(void)
 }
 
 int
-v_example_func(char *data)
+v_example_func(struct http_request *req, char *data)
 {
 	kore_log(LOG_NOTICE, "v_example_func called");
 
@@ -350,7 +350,7 @@ v_example_func(char *data)
 }
 
 int
-v_session_validate(char *data)
+v_session_validate(struct http_request *req, char *data)
 {
 	kore_log(LOG_NOTICE, "v_session_validate: %s", data);
 

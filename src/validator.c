@@ -63,7 +63,7 @@ kore_validator_add(char *name, u_int8_t type, char *arg)
 }
 
 int
-kore_validator_run(char *name, char *data)
+kore_validator_run(struct http_request *req, char *name, char *data)
 {
 	struct kore_validator		*val;
 
@@ -71,14 +71,15 @@ kore_validator_run(char *name, char *data)
 		if (strcmp(val->name, name))
 			continue;
 
-		return (kore_validator_check(val, data));
+		return (kore_validator_check(req, val, data));
 	}
 
 	return (KORE_RESULT_ERROR);
 }
 
 int
-kore_validator_check(struct kore_validator *val, char *data)
+kore_validator_check(struct http_request *req, struct kore_validator *val,
+    char *data)
 {
 	int		r;
 
@@ -90,7 +91,7 @@ kore_validator_check(struct kore_validator *val, char *data)
 			r = KORE_RESULT_ERROR;
 		break;
 	case KORE_VALIDATOR_TYPE_FUNCTION:
-		r = val->func(data);
+		r = val->func(req, data);
 		break;
 	default:
 		r = KORE_RESULT_ERROR;
