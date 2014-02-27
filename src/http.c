@@ -919,6 +919,9 @@ http_response_spdy(struct http_request *req, struct connection *c,
 	    KORE_VERSION_STATE);
 	spdy_header_block_add(hblock, ":server", sbuf);
 
+	if (status == HTTP_STATUS_METHOD_NOT_ALLOWED)
+		spdy_header_block_add(hblock, ":allow", "get, post");
+
 	if (http_hsts_enable) {
 		snprintf(sbuf, sizeof(sbuf),
 		    "max-age=%" PRIu64, http_hsts_enable);
@@ -968,6 +971,9 @@ http_response_normal(struct http_request *req, struct connection *c,
 	kore_buf_appendf(buf, "Server: %s (%d.%d-%s)\r\n",
 	    KORE_NAME_STRING, KORE_VERSION_MAJOR, KORE_VERSION_MINOR,
 	    KORE_VERSION_STATE);
+
+	if (status == HTTP_STATUS_METHOD_NOT_ALLOWED)
+		kore_buf_appendf(buf, "Allow: GET, POST\r\n");
 
 	if (c->flags & CONN_CLOSE_EMPTY)
 		connection_close = 1;
