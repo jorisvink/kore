@@ -174,6 +174,7 @@ struct kore_handler_params {
 
 #define KORE_AUTH_TYPE_COOKIE		1
 #define KORE_AUTH_TYPE_HEADER		2
+#define KORE_AUTH_TYPE_REQUEST		3
 
 struct kore_auth {
 	u_int8_t		type;
@@ -409,7 +410,7 @@ void		kore_validator_reload(void);
 int		kore_validator_add(char *, u_int8_t, char *);
 int		kore_validator_run(struct http_request *, char *, char *);
 int		kore_validator_check(struct http_request *,
-		    struct kore_validator *, char *);
+		    struct kore_validator *, void *);
 struct kore_validator	*kore_validator_lookup(char *);
 
 void		fatal(const char *, ...);
