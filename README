@@ -1,39 +1,44 @@
-Hi.
+About
+-----
+Kore (https://kore.io) is a fast webserver written in C for web applications
+developed in C. It provides a small set of API functions you can use to build
+a dynamic library which is loaded into Kore directly.
 
-Kore is a fast webserver that facilitates creating dynamic websites in the
-C programming language. It takes away the bottleneck of constantly loading
-items from disk or executing non compiled code (PHP, Perl, ...).
-
-Kore provides you with a set of API functions you can use to build your site
-which is then loaded into the webserver as a loadable C module. Because of
-this pages are mapped to functions that are directly called from the worker
-processes allowing for the potential of great speed. 
-
-As little overhead as possible.
+Kore is an ideal candidate for developing robust, fast and safe web applications.
 
 Features
-- Supports SNI
-- Supports SPDY/3
-- Supports HTTP/1.1
-- Secure by default
-- SSL connections only
-- Virtual host support
-- Easy to use configuration
-- Builtin parameter validation
-- Loads your site as a precompiled C module
-- Event driven architecture and worker processes for throughput
-- Modules can be reloaded on-the-fly even while serving content
+--------
+* Supports SNI
+* Supports SPDY/3
+* Supports HTTP/1.1
+* Built-in parameter validation
+* Only HTTPS connections allowed
+* Multiple modules can be loaded at once
+* Load your web application as a precompiled C library
+* Event driven architecture with per CPU core worker processes
+* Modules can be reloaded on-the-fly, even while serving content
 
 License
-- Kore is licensed under the ISC license.
+-------
+* Kore is licensed under the ISC license
 
 Platforms supported
-- Linux
-- OpenBSD
-- FreeBSD
-- OSX
+-------------------
+* Linux
+* OpenBSD
+* FreeBSD
+* OSX
 
-Right now Kore development is a moving process, so expect bugs.
-If you run into said bugs please contact me at joris@coders.se.
+See https://kore.io/doc/#section1.1 for more information.
+
+Releases
+--------
+* [2014-03-01] Version 1.1 - https://kore.io/release/kore-1.1-stable.tgz
+
+Bugs, contributions and more
+----------------------------
+
+If you run into any bugs, have suggestions or patches please
+contact me at joris@coders.se.
 
 More information can be found on https://kore.io/
