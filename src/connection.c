@@ -70,6 +70,7 @@ kore_connection_accept(struct listener *l, struct connection **out)
 	c->owner = l;
 	c->ssl = NULL;
 	c->flags = 0;
+	c->cert = NULL;
 	c->hdlr_extra = NULL;
 	c->inflate_started = 0;
 	c->deflate_started = 0;
@@ -108,6 +109,7 @@ kore_connection_handle(struct connection *c)
 	int			r;
 	u_int32_t		len;
 	const u_char		*data;
+	char			cn[X509_CN_LENGTH];
 
 	kore_debug("kore_connection_handle(%p)", c);
 
@@ -135,6 +137,21 @@ kore_connection_handle(struct connection *c)
 				return (KORE_RESULT_OK);
 			default:
 				kore_debug("SSL_accept(): %s", ssl_errno_s);
+				return (KORE_RESULT_ERROR);
+			}
+		}
+
+		if (SSL_get_verify_mode(c->ssl) & SSL_VERIFY_PEER) {
+			c->cert = SSL_get_peer_certificate(c->ssl);
+			if (c->cert == NULL) {
+				kore_log(LOG_NOTICE,
+				    "no client certificate presented?");
+				return (KORE_RESULT_ERROR);
+			}
+
+			if (X509_GET_CN(c->cert, cn, sizeof(cn)) == -1) {
+				kore_log(LOG_NOTICE,
+				    "no CN found in client certificate");
 				return (KORE_RESULT_ERROR);
 			}
 		}
@@ -218,6 +235,9 @@ kore_connection_remove(struct connection *c)
 		SSL_shutdown(c->ssl);
 		SSL_free(c->ssl);
 	}
+
+	if (c->cert != NULL)
+		X509_free(c->cert);
 
 	close(c->fd);
 

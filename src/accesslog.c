@@ -34,6 +34,7 @@ struct kore_log_packet {
 	char		host[KORE_DOMAINNAME_LEN];
 	char		path[HTTP_URI_LEN];
 	char		agent[HTTP_USERAGENT_LEN];
+	char		cn[X509_CN_LENGTH];
 };
 
 void
@@ -55,13 +56,12 @@ kore_accesslog_wait(void)
 {
 	ssize_t			len;
 	time_t			now;
-	size_t			slen;
-	int			nfds;
 	struct kore_domain	*dom;
 	struct pollfd		pfd[1];
+	int			nfds, l;
 	struct kore_log_packet	logpacket;
 	char			addr[INET6_ADDRSTRLEN];
-	char			*method, buf[4096], *tbuf;
+	char			*method, *buf, *tbuf, *cn;
 
 	pfd[0].fd = accesslog_fd[0];
 	pfd[0].events = POLLIN;
@@ -94,10 +94,22 @@ kore_accesslog_wait(void)
 		return (KORE_RESULT_OK);
 	}
 
-	if (logpacket.method == HTTP_METHOD_GET)
+	switch (logpacket.method) {
+	case HTTP_METHOD_GET:
 		method = "GET";
-	else
+		break;
+	case HTTP_METHOD_POST:
 		method = "POST";
+		break;
+	default:
+		method = "UNKNOWN";
+		break;
+	}
+
+	if (logpacket.cn[0] != '\0')
+		cn = logpacket.cn;
+	else
+		cn = "none";
 
 	if (inet_ntop(logpacket.addrtype, &(logpacket.addr),
 	    addr, sizeof(addr)) == NULL)
@@ -105,20 +117,25 @@ kore_accesslog_wait(void)
 
 	time(&now);
 	tbuf = kore_time_to_date(now);
-	snprintf(buf, sizeof(buf), "[%s] %s %d %s %s (w#%d) (%dms) (%s)\n",
-	    tbuf, addr, logpacket.status, method,
-	    logpacket.path, logpacket.worker_id, logpacket.time_req,
-	    logpacket.agent);
-	slen = strlen(buf);
+	l = asprintf(&buf, "[%s] %s %d %s %s (w#%d) (%dms) (%s) (%s)\n",
+	    tbuf, addr, logpacket.status, method, logpacket.path,
+	    logpacket.worker_id, logpacket.time_req, cn, logpacket.agent);
+	if (l == -1) {
+		kore_log(LOG_WARNING,
+		    "kore_accesslog_wait(): asprintf() == -1");
+		return (KORE_RESULT_ERROR);
+	}
 
-	len = write(dom->accesslog, buf, slen);
+	len = write(dom->accesslog, buf, l);
+	free(buf);
+
 	if (len == -1) {
 		kore_log(LOG_WARNING,
 		    "kore_accesslog_wait(): write(): %s", errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
-	if ((size_t)len != slen)
+	if (len != l)
 		kore_log(LOG_NOTICE, "accesslog: %s", buf);
 
 	return (KORE_RESULT_OK);
@@ -155,6 +172,14 @@ kore_accesslog(struct http_request *req)
 	} else {
 		kore_strlcpy(logpacket.agent, "unknown",
 		    sizeof(logpacket.agent));
+	}
+
+	memset(logpacket.cn, '\0', sizeof(logpacket.cn));
+	if (req->owner->cert != NULL) {
+		if (X509_GET_CN(req->owner->cert,
+		    logpacket.cn, sizeof(logpacket.cn)) == -1) {
+			kore_log(LOG_WARNING, "client cert without a CN?");
+		}
 	}
 
 	len = send(accesslog_fd[1], &logpacket, sizeof(logpacket), 0);

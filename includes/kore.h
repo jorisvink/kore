@@ -66,6 +66,12 @@
 #define NETBUF_CALL_CB_ALWAYS	0x01
 #define NETBUF_FORCE_REMOVE	0x02
 
+#define X509_GET_CN(c, o, l)					\
+	X509_NAME_get_text_by_NID(X509_get_subject_name(c),	\
+	    NID_commonName, o, l)
+
+#define X509_CN_LENGTH		(ub_common_name + 1)
+
 /* XXX hackish. */
 struct http_request;
 struct spdy_stream;
@@ -135,6 +141,7 @@ struct connection {
 	SSL			*ssl;
 	u_int8_t		flags;
 	void			*hdlr_extra;
+	X509			*cert;
 
 	u_int8_t		addrtype;
 	union {
