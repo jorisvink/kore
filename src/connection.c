@@ -164,7 +164,9 @@ kore_connection_handle(struct connection *c)
 				    NETBUF_CALL_CB_ALWAYS, NULL,
 				    http_header_recv);
 			} else {
-				kore_debug("npn: received unknown protocol");
+				kore_log(LOG_NOTICE,
+				    "npn: received unknown protocol");
+				return (KORE_RESULT_ERROR);
 			}
 		} else {
 			c->proto = CONN_PROTO_HTTP;
