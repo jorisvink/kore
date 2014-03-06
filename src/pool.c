@@ -54,6 +54,8 @@ kore_pool_get(struct kore_pool *pool)
 	}
 
 	entry = LIST_FIRST(&(pool->freelist));
+	if (entry->state != POOL_ELEMENT_FREE)
+		fatal("%s: element %p was not free", pool->name, ptr);
 	LIST_REMOVE(entry, list);
 
 	entry->state = POOL_ELEMENT_BUSY;
