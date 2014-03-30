@@ -22,6 +22,7 @@
 void		kore_pgsql_init(void);
 void		kore_pgsql_handle(void *, int);
 void		kore_pgsql_cleanup(struct http_request *);
+void		kore_pgsql_continue(struct http_request *, int);
 int		kore_pgsql_query(struct http_request *, char *, int);
 
 int		kore_pgsql_ntuples(struct http_request *, int);
@@ -30,6 +31,7 @@ struct kore_pgsql {
 	u_int8_t		state;
 	char			*error;
 	PGresult		*result;
+	void			*conn;
 };
 
 #define KORE_PGSQL_STATE_INIT		1
@@ -49,12 +51,25 @@ struct kore_pgsql {
 		case KORE_PGSQL_STATE_ERROR:				\
 		case KORE_PGSQL_STATE_RESULT:				\
 			s;						\
-			return (KORE_RESULT_RETRY);			\
 		case KORE_PGSQL_STATE_COMPLETE:				\
 			break;						\
 		default:						\
+			kore_pgsql_continue(r, i);			\
 			return (KORE_RESULT_RETRY);			\
 		}							\
+		if (r->pgsql[i]->state == KORE_PGSQL_STATE_ERROR ||	\
+		    r->pgsql[i]->state == KORE_PGSQL_STATE_RESULT) {	\
+			kore_pgsql_continue(r, i);			\
+			return (KORE_RESULT_RETRY);			\
+		}							\
+	} while (0);
+
+#define KORE_PGSQL_EXEC(r, q, i)					\
+	do {								\
+		if (r->pgsql[i] == NULL)				\
+			kore_pgsql_query(r, q, i);			\
+		if (r->pgsql[i] == NULL)				\
+			return (KORE_RESULT_RETRY);			\
 	} while (0);
 
 #endif

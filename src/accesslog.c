@@ -162,7 +162,7 @@ kore_accesslog(struct http_request *req)
 	logpacket.method = req->method;
 	logpacket.worker_id = worker->id;
 	logpacket.worker_cpu = worker->cpu;
-	logpacket.time_req = req->end - req->start;
+	logpacket.time_req = req->total;
 	kore_strlcpy(logpacket.host, req->host, sizeof(logpacket.host));
 	kore_strlcpy(logpacket.path, req->path, sizeof(logpacket.path));
 

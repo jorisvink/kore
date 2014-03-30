@@ -86,12 +86,10 @@ http_request_new(struct connection *c, struct spdy_stream *s, char *host,
 		return (KORE_RESULT_ERROR);
 	}
 
-#if 0
 	if (strcasecmp(version, "http/1.1")) {
 		http_error_response(c, 505);
 		return (KORE_RESULT_ERROR);
 	}
-#endif
 
 	if (!strcasecmp(method, "get")) {
 		m = HTTP_METHOD_GET;
@@ -106,6 +104,7 @@ http_request_new(struct connection *c, struct spdy_stream *s, char *host,
 
 	req = kore_pool_get(&http_request_pool);
 	req->end = 0;
+	req->total = 0;
 	req->start = 0;
 	req->owner = c;
 	req->status = 0;
@@ -200,6 +199,7 @@ http_process(void)
 			}
 		}
 		req->end = kore_time_ms();
+		req->total += req->end - req->start;
 
 		switch (r) {
 		case KORE_RESULT_OK:

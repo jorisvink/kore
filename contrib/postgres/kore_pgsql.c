@@ -91,6 +91,7 @@ kore_pgsql_query(struct http_request *req, char *query, int idx)
 	conn->flags &= ~PGSQL_CONN_FREE;
 	TAILQ_REMOVE(&pgsql_conn_free, conn, list);
 
+	req->pgsql[idx]->conn = conn;
 	conn->job = kore_malloc(sizeof(struct pgsql_job));
 	conn->job->query = kore_strdup(query);
 	conn->job->start = kore_time_ms();
@@ -107,18 +108,23 @@ kore_pgsql_query(struct http_request *req, char *query, int idx)
 		fatal("PQsocket returned < 0 fd on open connection");
 
 	kore_platform_schedule_read(fd, conn);
+	req->pgsql[idx]->state = KORE_PGSQL_STATE_WAIT;
 	kore_debug("query '%s' for %p sent on %p", query, req, conn);
 
-	req->pgsql[idx]->state = KORE_PGSQL_STATE_WAIT;
 	return (KORE_RESULT_OK);
 }
 
 void
 kore_pgsql_handle(void *c, int err)
 {
+	int			i;
 	struct http_request	*req;
 	struct pgsql_conn	*conn = (struct pgsql_conn *)c;
-	int			fd, i, (*cb)(struct http_request *);
+
+	if (err) {
+		pgsql_conn_cleanup(conn);
+		return;
+	}
 
 	i = conn->job->idx;
 	req = conn->job->req;
@@ -126,7 +132,7 @@ kore_pgsql_handle(void *c, int err)
 
 	if (!PQconsumeInput(conn->db)) {
 		req->pgsql[i]->state = KORE_PGSQL_STATE_ERROR;
-		req->pgsql[i]->error = PQerrorMessage(conn->db);
+		req->pgsql[i]->error = kore_strdup(PQerrorMessage(conn->db));
 	} else {
 		if (PQisBusy(conn->db)) {
 			req->pgsql[i]->state = KORE_PGSQL_STATE_WAIT;
@@ -152,23 +158,34 @@ kore_pgsql_handle(void *c, int err)
 					req->pgsql[i]->state =
 					    KORE_PGSQL_STATE_ERROR;
 					req->pgsql[i]->error =
-					    PQresultErrorMessage(req->pgsql[i]->result);
+					    kore_strdup(PQresultErrorMessage(req->pgsql[i]->result));
 					break;
 				}
 			}
 		}
 	}
 
-	if (req->pgsql[i]->state == KORE_PGSQL_STATE_ERROR ||
-	    req->pgsql[i]->state == KORE_PGSQL_STATE_RESULT) {
-		cb = req->hdlr->addr;
-		cb(req);
+	if (req->pgsql[i]->state == KORE_PGSQL_STATE_WAIT)
+		req->flags |= HTTP_REQUEST_SLEEPING;
+	else
+		req->flags &= ~HTTP_REQUEST_SLEEPING;
+}
+
+void
+kore_pgsql_continue(struct http_request *req, int i)
+{
+	int				fd;
+	struct pgsql_conn		*conn;
+
+	if (req->pgsql[i]->error) {
+		kore_mem_free(req->pgsql[i]->error);
+		req->pgsql[i]->error = NULL;
 	}
 
-	req->pgsql[i]->error = NULL;
 	if (req->pgsql[i]->result)
 		PQclear(req->pgsql[i]->result);
 
+	conn = req->pgsql[i]->conn;
 	switch (req->pgsql[i]->state) {
 	case KORE_PGSQL_STATE_INIT:
 	case KORE_PGSQL_STATE_WAIT:
@@ -205,12 +222,13 @@ kore_pgsql_cleanup(struct http_request *req)
 		if (req->pgsql[i] == NULL)
 			continue;
 
-		kore_debug("cleaning up pgsql result %d for %p", i, req);
-
 		if (req->pgsql[i]->result != NULL) {
 			kore_log(LOG_NOTICE, "cleaning up leaked pgsql result");
 			PQclear(req->pgsql[i]->result);
 		}
+
+		if (req->pgsql[i]->error != NULL)
+			kore_mem_free(req->pgsql[i]->error);
 
 		kore_mem_free(req->pgsql[i]);
 		req->pgsql[i] = NULL;
@@ -235,12 +253,13 @@ pgsql_conn_create(struct http_request *req, int idx)
 
 	conn->db = PQconnectdb("host=/tmp/ user=joris");
 	if (conn->db == NULL || (PQstatus(conn->db) != CONNECTION_OK)) {
+		req->pgsql[idx]->state = KORE_PGSQL_STATE_ERROR;
+		req->pgsql[idx]->error = kore_strdup(PQerrorMessage(conn->db));
 		pgsql_conn_cleanup(conn);
 		return (KORE_RESULT_ERROR);
 	}
 
 	conn->job = NULL;
-	pgsql_conn_count++;
 	conn->flags = PGSQL_CONN_FREE;
 	conn->type = KORE_TYPE_PGSQL_CONN;
 	TAILQ_INSERT_TAIL(&pgsql_conn_free, conn, list);
@@ -251,8 +270,8 @@ pgsql_conn_create(struct http_request *req, int idx)
 static void
 pgsql_conn_cleanup(struct pgsql_conn *conn)
 {
+	int			i;
 	struct http_request	*req;
-	int			i, (*cb)(struct http_request *);
 
 	kore_debug("pgsql_conn_cleanup(): %p", conn);
 
@@ -264,12 +283,7 @@ pgsql_conn_cleanup(struct pgsql_conn *conn)
 		req = conn->job->req;
 
 		req->pgsql[i]->state = KORE_PGSQL_STATE_ERROR;
-		req->pgsql[i]->error = PQerrorMessage(conn->db);
-
-		cb = req->hdlr->addr;
-		cb(req);
-
-		req->pgsql[i]->state = KORE_PGSQL_STATE_COMPLETE;
+		req->pgsql[i]->error = kore_strdup(PQerrorMessage(conn->db));
 		req->flags &= ~HTTP_REQUEST_SLEEPING;
 
 		kore_mem_free(conn->job->query);

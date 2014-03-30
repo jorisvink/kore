@@ -341,6 +341,8 @@ serve_pgsql_test(struct http_request *req)
 			kore_log(LOG_NOTICE, "pgsql: %s",
 			    (req->pgsql[0]->error) ?
 			    req->pgsql[0]->error : "unknown");
+			http_response(req, 500, "fail", 4);
+			return (KORE_RESULT_OK);
 		} else {
 			//r = kore_pgsql_ntuples(req, 0);
 		}

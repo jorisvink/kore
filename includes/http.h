@@ -129,6 +129,7 @@ struct http_request {
 	int				status;
 	u_int64_t			start;
 	u_int64_t			end;
+	u_int64_t			total;
 	char				host[KORE_DOMAINNAME_LEN];
 	char				path[HTTP_URI_LEN];
 	char				*agent;
