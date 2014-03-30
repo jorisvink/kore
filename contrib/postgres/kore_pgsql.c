@@ -44,8 +44,10 @@ struct pgsql_conn {
 	TAILQ_ENTRY(pgsql_conn)		list;
 };
 
-static void			pgsql_conn_cleanup(struct pgsql_conn *);
-static int			pgsql_conn_create(struct http_request *, int);
+static void	pgsql_conn_cleanup(struct pgsql_conn *);
+static int	pgsql_conn_create(struct http_request *, int);
+static void	pgsql_read_result(struct http_request *, int,
+		    struct pgsql_conn *);
 
 static TAILQ_HEAD(, pgsql_conn)		pgsql_conn_free;
 static u_int16_t			pgsql_conn_count;
@@ -134,35 +136,7 @@ kore_pgsql_handle(void *c, int err)
 		req->pgsql[i]->state = KORE_PGSQL_STATE_ERROR;
 		req->pgsql[i]->error = kore_strdup(PQerrorMessage(conn->db));
 	} else {
-		if (PQisBusy(conn->db)) {
-			req->pgsql[i]->state = KORE_PGSQL_STATE_WAIT;
-		} else {
-			req->pgsql[i]->result = PQgetResult(conn->db);
-			if (req->pgsql[i]->result == NULL) {
-				req->pgsql[i]->state = KORE_PGSQL_STATE_DONE;
-			} else {
-				switch (PQresultStatus(req->pgsql[i]->result)) {
-				case PGRES_COMMAND_OK:
-				case PGRES_TUPLES_OK:
-				case PGRES_COPY_OUT:
-				case PGRES_COPY_IN:
-				case PGRES_NONFATAL_ERROR:
-				case PGRES_COPY_BOTH:
-				case PGRES_SINGLE_TUPLE:
-					req->pgsql[i]->state =
-					    KORE_PGSQL_STATE_RESULT;
-					break;
-				case PGRES_EMPTY_QUERY:
-				case PGRES_BAD_RESPONSE:
-				case PGRES_FATAL_ERROR:
-					req->pgsql[i]->state =
-					    KORE_PGSQL_STATE_ERROR;
-					req->pgsql[i]->error =
-					    kore_strdup(PQresultErrorMessage(req->pgsql[i]->result));
-					break;
-				}
-			}
-		}
+		pgsql_read_result(req, i, conn);
 	}
 
 	if (req->pgsql[i]->state == KORE_PGSQL_STATE_WAIT)
@@ -296,4 +270,41 @@ pgsql_conn_cleanup(struct pgsql_conn *conn)
 
 	pgsql_conn_count--;
 	kore_mem_free(conn);
+}
+
+static void
+pgsql_read_result(struct http_request *req, int i, struct pgsql_conn *conn)
+{
+	if (PQisBusy(conn->db)) {
+		req->pgsql[i]->state = KORE_PGSQL_STATE_WAIT;
+		return;
+	}
+
+	req->pgsql[i]->result = PQgetResult(conn->db);
+	if (req->pgsql[i]->result == NULL) {
+		req->pgsql[i]->state = KORE_PGSQL_STATE_DONE;
+		return;
+	}
+
+	switch (PQresultStatus(req->pgsql[i]->result)) {
+	case PGRES_COPY_OUT:
+	case PGRES_COPY_IN:
+	case PGRES_NONFATAL_ERROR:
+	case PGRES_COPY_BOTH:
+		break;
+	case PGRES_COMMAND_OK:
+		req->pgsql[i]->state = KORE_PGSQL_STATE_DONE;
+		break;
+	case PGRES_TUPLES_OK:
+	case PGRES_SINGLE_TUPLE:
+		req->pgsql[i]->state = KORE_PGSQL_STATE_RESULT;
+		break;
+	case PGRES_EMPTY_QUERY:
+	case PGRES_BAD_RESPONSE:
+	case PGRES_FATAL_ERROR:
+		req->pgsql[i]->state = KORE_PGSQL_STATE_ERROR;
+		req->pgsql[i]->error =
+		    kore_strdup(PQresultErrorMessage(req->pgsql[i]->result));
+		break;
+	}
 }
