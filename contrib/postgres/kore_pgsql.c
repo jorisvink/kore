@@ -165,8 +165,9 @@ kore_pgsql_continue(struct http_request *req, int i)
 	case KORE_PGSQL_STATE_WAIT:
 		break;
 	case KORE_PGSQL_STATE_DONE:
-		req->pgsql[i]->state = KORE_PGSQL_STATE_COMPLETE;
+		req->pgsql[i]->conn = NULL;
 		req->flags &= ~HTTP_REQUEST_SLEEPING;
+		req->pgsql[i]->state = KORE_PGSQL_STATE_COMPLETE;
 
 		kore_mem_free(conn->job->query);
 		kore_mem_free(conn->job);
@@ -190,7 +191,8 @@ kore_pgsql_continue(struct http_request *req, int i)
 void
 kore_pgsql_cleanup(struct http_request *req)
 {
-	int		i;
+	int			i;
+	struct pgsql_conn	*conn;
 
 	for (i = 0; i < HTTP_PGSQL_MAX; i++) {
 		if (req->pgsql[i] == NULL)
@@ -203,6 +205,12 @@ kore_pgsql_cleanup(struct http_request *req)
 
 		if (req->pgsql[i]->error != NULL)
 			kore_mem_free(req->pgsql[i]->error);
+
+		if (req->pgsql[i]->conn != NULL) {
+			conn = req->pgsql[i]->conn;
+			while (PQgetResult(conn->db) != NULL)
+				;
+		}
 
 		kore_mem_free(req->pgsql[i]);
 		req->pgsql[i] = NULL;
