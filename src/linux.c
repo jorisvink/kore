@@ -21,6 +21,10 @@
 
 #include "kore.h"
 
+#if defined(KORE_USE_PGSQL)
+#include "contrib/postgres/kore_pgsql.h"
+#endif
+
 static int			efd = -1;
 static u_int32_t		event_count = 0;
 static struct epoll_event	*events = NULL;
@@ -92,12 +96,20 @@ kore_platform_event_wait(void)
 			if (type == KORE_TYPE_LISTENER)
 				fatal("failed on listener socket");
 
+#if defined(KORE_USE_PGSQL)
+			if (type == KORE_TYPE_PGSQL_CONN) {
+				kore_pgsql_handle(events[i].data.ptr, 1);
+				continue;
+			}
+#endif
+
 			c = (struct connection *)events[i].data.ptr;
 			kore_connection_disconnect(c);
 			continue;
 		}
 
-		if (type == KORE_TYPE_LISTENER) {
+		switch (type) {
+		case KORE_TYPE_LISTENER:
 			l = (struct listener *)events[i].data.ptr;
 
 			while ((worker->accepted < worker->accept_treshold) &&
@@ -111,7 +123,8 @@ kore_platform_event_wait(void)
 				kore_platform_event_schedule(c->fd,
 				    EPOLLIN | EPOLLOUT | EPOLLET, 0, c);
 			}
-		} else {
+			break;
+		case KORE_TYPE_CONNECTION:
 			c = (struct connection *)events[i].data.ptr;
 			if (events[i].events & EPOLLIN &&
 			    !(c->flags & CONN_READ_BLOCK))
@@ -122,6 +135,14 @@ kore_platform_event_wait(void)
 
 			if (!kore_connection_handle(c))
 				kore_connection_disconnect(c);
+			break;
+#if defined(KORE_USE_PGSQL)
+		case KORE_TYPE_PGSQL_CONN:
+			kore_pgsql_handle(events[i].data.ptr, 0);
+			break;
+#endif
+		default:
+			fatal("wrong type in event %d", type);
 		}
 	}
 }
@@ -144,6 +165,19 @@ kore_platform_event_schedule(int fd, int type, int flags, void *udata)
 			fatal("epoll_ctl() ADD: %s", errno_s);
 		}
 	}
+}
+
+void
+kore_platform_schedule_read(int fd, void *data)
+{
+	kore_platform_event_schedule(fd, EPOLLIN | EPOLLET, 0, data);
+}
+
+void
+kore_platform_disable_read(int fd)
+{
+	if (epoll_ctl(efd, EPOLL_CTL_DEL, fd, NULL) == -1)
+		fatal("kore_platform_disable_read: %s", errno_s);
 }
 
 void

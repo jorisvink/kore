@@ -23,6 +23,10 @@
 #include "kore.h"
 #include "http.h"
 
+#if defined(KORE_USE_PGSQL)
+#include "contrib/postgres/kore_pgsql.h"
+#endif
+
 static char		*http_status_text(int);
 static int		http_post_data_recv(struct netbuf *);
 static char		*http_post_data_text(struct http_request *);
@@ -82,10 +86,12 @@ http_request_new(struct connection *c, struct spdy_stream *s, char *host,
 		return (KORE_RESULT_ERROR);
 	}
 
+#if 0
 	if (strcasecmp(version, "http/1.1")) {
 		http_error_response(c, 505);
 		return (KORE_RESULT_ERROR);
 	}
+#endif
 
 	if (!strcasecmp(method, "get")) {
 		m = HTTP_METHOD_GET;
@@ -105,6 +111,7 @@ http_request_new(struct connection *c, struct spdy_stream *s, char *host,
 	req->status = 0;
 	req->stream = s;
 	req->method = m;
+	req->hdlr = NULL;
 	req->agent = NULL;
 	req->flags = flags;
 	req->post_data = NULL;
@@ -132,7 +139,7 @@ http_request_new(struct connection *c, struct spdy_stream *s, char *host,
 	}
 
 	http_request_count++;
-	TAILQ_INSERT_TAIL(&http_requests, req, list);
+	TAILQ_INSERT_HEAD(&http_requests, req, list);
 	TAILQ_INSERT_TAIL(&(c->http_requests), req, olist);
 
 	if (out != NULL)
@@ -158,15 +165,22 @@ http_process(void)
 			continue;
 		}
 
+		if (req->flags & HTTP_REQUEST_SLEEPING)
+			continue;
+
 		if (!(req->flags & HTTP_REQUEST_COMPLETE))
 			continue;
 
-		hdlr = kore_module_handler_find(req->host, req->path);
+		if (req->hdlr != NULL)
+			hdlr = req->hdlr;
+		else
+			hdlr = kore_module_handler_find(req->host, req->path);
+
 		req->start = kore_time_ms();
 		if (hdlr == NULL) {
 			r = http_generic_404(req);
 		} else {
-			if (hdlr->auth != NULL)
+			if (req->hdlr != hdlr && hdlr->auth != NULL)
 				r = kore_auth(req, hdlr->auth);
 			else
 				r = KORE_RESULT_OK;
@@ -272,6 +286,10 @@ http_request_free(struct http_request *req)
 		kore_mem_free(f->name);
 		kore_mem_free(f);
 	}
+
+#if defined(KORE_USE_PGSQL)
+	kore_pgsql_cleanup(req);
+#endif
 
 	if (req->method == HTTP_METHOD_POST && req->post_data != NULL)
 		kore_buf_free(req->post_data);

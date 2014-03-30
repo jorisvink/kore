@@ -18,6 +18,12 @@ ifneq ("$(DEBUG)", "")
 	CFLAGS+=-DKORE_DEBUG
 endif
 
+ifneq ("$(PGSQL)", "")
+	S_SRC+=contrib/postgres/kore_pgsql.c
+	LDFLAGS+=-lpq
+	CFLAGS+=-DKORE_USE_PGSQL
+endif
+
 OSNAME=$(shell uname -s | sed -e 's/[-_].*//g' | tr A-Z a-z)
 ifeq ("$(OSNAME)", "darwin")
 	CFLAGS+=-I/opt/local/include/
@@ -38,6 +44,7 @@ all: $(S_OBJS)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -f src/*.o $(BIN)
+	find . -type f -name \*.o -exec rm {} \;
+	rm -f $(BIN)
 
 .PHONY: clean

@@ -25,6 +25,10 @@
 #include "kore.h"
 #include "http.h"
 
+#if defined(KORE_USE_PGSQL)
+#include "contrib/postgres/kore_pgsql.h"
+#endif
+
 #if defined(WORKER_DEBUG)
 #define worker_debug(fmt, ...)		printf(fmt, ##__VA_ARGS__)
 #else
@@ -220,6 +224,10 @@ kore_worker_entry(struct kore_worker *kw)
 	kore_platform_event_init();
 	kore_accesslog_worker_init();
 	last_cb_run = kore_time_ms();
+
+#if defined(KORE_USE_PGSQL)
+	kore_pgsql_init();
+#endif
 
 	worker->accept_treshold = worker_max_connections / 10;
 	kore_log(LOG_NOTICE, "worker %d started (cpu#%d)", kw->id, kw->cpu);
