@@ -16,7 +16,6 @@
 
 #include "kore.h"
 #include "http.h"
-#include "contrib/postgres/kore_pgsql.h"
 
 #include "static.h"
 
@@ -33,7 +32,6 @@ int		serve_validator(struct http_request *);
 int		serve_params_test(struct http_request *);
 int		serve_private(struct http_request *);
 int		serve_private_test(struct http_request *);
-int		serve_pgsql_test(struct http_request *);
 
 void		my_callback(void);
 int		v_example_func(struct http_request *, char *);
@@ -327,29 +325,6 @@ serve_private_test(struct http_request *req)
 
 	http_response(req, 200, static_html_private_test,
 	    static_len_html_private_test);
-
-	return (KORE_RESULT_OK);
-}
-
-int
-serve_pgsql_test(struct http_request *req)
-{
-	//int		r;
-
-	KORE_PGSQL(req, "SELECT * FROM test", 0, {
-		if (req->pgsql[0]->state == KORE_PGSQL_STATE_ERROR) {
-			kore_log(LOG_NOTICE, "pgsql: %s",
-			    (req->pgsql[0]->error) ?
-			    req->pgsql[0]->error : "unknown");
-			http_response(req, 500, "fail", 4);
-			return (KORE_RESULT_OK);
-		} else {
-			//r = kore_pgsql_ntuples(req, 0);
-		}
-	});
-
-	/* Query successfully completed */
-	http_response(req, 200, "ok", 2);
 
 	return (KORE_RESULT_OK);
 }
