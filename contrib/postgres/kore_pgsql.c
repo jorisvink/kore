@@ -233,7 +233,7 @@ pgsql_conn_create(struct http_request *req, int idx)
 	kore_debug("pgsql_conn_create(): %p", conn);
 	memset(conn, 0, sizeof(*conn));
 
-	conn->db = PQconnectdb("host=/tmp/ user=joris");
+	conn->db = PQconnectdb("host=/var/run/postgresql/ user=joris");
 	if (conn->db == NULL || (PQstatus(conn->db) != CONNECTION_OK)) {
 		req->pgsql[idx]->state = KORE_PGSQL_STATE_ERROR;
 		req->pgsql[idx]->error = kore_strdup(PQerrorMessage(conn->db));

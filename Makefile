@@ -21,7 +21,7 @@ endif
 ifneq ("$(PGSQL)", "")
 	S_SRC+=contrib/postgres/kore_pgsql.c
 	LDFLAGS+=-lpq
-	CFLAGS+=-DKORE_USE_PGSQL
+	CFLAGS+=-I$(shell pg_config --includedir) -DKORE_USE_PGSQL
 endif
 
 OSNAME=$(shell uname -s | sed -e 's/[-_].*//g' | tr A-Z a-z)

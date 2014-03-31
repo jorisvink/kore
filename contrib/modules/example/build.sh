@@ -17,7 +17,7 @@ MEDIA_DIR=media
 SOURCE_DIR=src
 
 # The directory containing the Kore source code.
-KORE_DIR=../../
+KORE_DIR=../../../
 
 # Compiler settings.
 CC=gcc
