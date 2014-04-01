@@ -25,7 +25,8 @@ int		serve_pgsql_test(struct http_request *);
 int
 serve_pgsql_test(struct http_request *req)
 {
-	//int		r;
+	int		r, i;
+	char		*col1, *col2;
 
 	KORE_PGSQL(req, "SELECT * FROM test", 0, {
 		if (req->pgsql[0]->state == KORE_PGSQL_STATE_ERROR) {
@@ -34,8 +35,14 @@ serve_pgsql_test(struct http_request *req)
 			    req->pgsql[0]->error : "unknown");
 			http_response(req, 500, "fail", 4);
 			return (KORE_RESULT_OK);
-		} else {
-			//r = kore_pgsql_ntuples(req, 0);
+		}
+
+		r = kore_pgsql_ntuples(req->pgsql[0]);
+		for (i = 0; i < r; i++) {
+			col1 = kore_pgsql_getvalue(req->pgsql[0], i, 0);
+			col2 = kore_pgsql_getvalue(req->pgsql[0], i, 1);
+
+			kore_log(LOG_NOTICE, "%s and %s", col1, col2);
 		}
 	});
 
