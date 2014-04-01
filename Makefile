@@ -20,7 +20,7 @@ endif
 
 ifneq ("$(PGSQL)", "")
 	S_SRC+=contrib/postgres/kore_pgsql.c
-	LDFLAGS+=-lpq
+	LDFLAGS+=-L$(shell pg_config --libdir) -lpq
 	CFLAGS+=-I$(shell pg_config --includedir) -DKORE_USE_PGSQL
 endif
 
