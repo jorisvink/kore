@@ -79,6 +79,7 @@ kore_pgsql_query(struct http_request *req, char *query, int idx)
 	req->pgsql[idx]->state = KORE_PGSQL_STATE_INIT;
 	req->pgsql[idx]->result = NULL;
 	req->pgsql[idx]->error = NULL;
+	req->pgsql[idx]->conn = NULL;
 
 	if (TAILQ_EMPTY(&pgsql_conn_free)) {
 		if (pgsql_conn_create(req, idx) == KORE_RESULT_ERROR)
@@ -212,15 +213,22 @@ kore_pgsql_cleanup(struct http_request *req)
 				;
 		}
 
+		req->pgsql[i]->conn = NULL;
 		kore_mem_free(req->pgsql[i]);
 		req->pgsql[i] = NULL;
 	}
 }
 
 int
-kore_pgsql_ntuples(struct http_request *req, int idx)
+kore_pgsql_ntuples(struct kore_pgsql *pgsql)
 {
-	return (PQntuples(req->pgsql[idx]->result));
+	return (PQntuples(pgsql->result));
+}
+
+char *
+kore_pgsql_getvalue(struct kore_pgsql *pgsql, int row, int col)
+{
+	return (PQgetvalue(pgsql->result, row, col));
 }
 
 static int
@@ -233,7 +241,8 @@ pgsql_conn_create(struct http_request *req, int idx)
 	kore_debug("pgsql_conn_create(): %p", conn);
 	memset(conn, 0, sizeof(*conn));
 
-	conn->db = PQconnectdb("host=/var/run/postgresql/ user=joris");
+	/* XXX don't forget to make this configurable. */
+	conn->db = PQconnectdb("host=/tmp/ user=joris");
 	if (conn->db == NULL || (PQstatus(conn->db) != CONNECTION_OK)) {
 		req->pgsql[idx]->state = KORE_PGSQL_STATE_ERROR;
 		req->pgsql[idx]->error = kore_strdup(PQerrorMessage(conn->db));
@@ -264,6 +273,7 @@ pgsql_conn_cleanup(struct pgsql_conn *conn)
 		i = conn->job->idx;
 		req = conn->job->req;
 
+		req->pgsql[i]->conn = NULL;
 		req->pgsql[i]->state = KORE_PGSQL_STATE_ERROR;
 		req->pgsql[i]->error = kore_strdup(PQerrorMessage(conn->db));
 		req->flags &= ~HTTP_REQUEST_SLEEPING;
