@@ -19,20 +19,21 @@
 
 #include <libpq-fe.h>
 
-void		kore_pgsql_init(void);
-void		kore_pgsql_handle(void *, int);
-void		kore_pgsql_cleanup(struct http_request *);
-void		kore_pgsql_continue(struct http_request *, int);
-int		kore_pgsql_query(struct http_request *, char *, int);
-
-int		kore_pgsql_ntuples(struct http_request *, int);
-
 struct kore_pgsql {
 	u_int8_t		state;
 	char			*error;
 	PGresult		*result;
 	void			*conn;
 };
+
+void		kore_pgsql_init(void);
+void		kore_pgsql_handle(void *, int);
+void		kore_pgsql_cleanup(struct http_request *);
+void		kore_pgsql_continue(struct http_request *, int);
+int		kore_pgsql_query(struct http_request *, char *, int);
+
+int		kore_pgsql_ntuples(struct kore_pgsql *);
+char		*kore_pgsql_getvalue(struct kore_pgsql *, int, int);
 
 #define KORE_PGSQL_STATE_INIT		1
 #define KORE_PGSQL_STATE_WAIT		2
