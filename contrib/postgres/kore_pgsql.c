@@ -219,6 +219,13 @@ kore_pgsql_cleanup(struct http_request *req)
 	}
 }
 
+void
+kore_pgsql_logerror(struct kore_pgsql *pgsql)
+{
+	kore_log(LOG_NOTICE, "pgsql error: %s",
+	    (pgsql->error) ? pgsql->error : "unknown");
+}
+
 int
 kore_pgsql_ntuples(struct kore_pgsql *pgsql)
 {

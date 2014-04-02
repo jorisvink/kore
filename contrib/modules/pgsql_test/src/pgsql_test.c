@@ -30,10 +30,8 @@ serve_pgsql_test(struct http_request *req)
 
 	KORE_PGSQL(req, "SELECT * FROM test", 0, {
 		if (req->pgsql[0]->state == KORE_PGSQL_STATE_ERROR) {
-			kore_log(LOG_NOTICE, "pgsql: %s",
-			    (req->pgsql[0]->error) ?
-			    req->pgsql[0]->error : "unknown");
-			http_response(req, 500, "fail", 4);
+			kore_pgsql_logerror(req->pgsql[0]);
+			http_response(req, 500, "fail\n", 5);
 			return (KORE_RESULT_OK);
 		}
 
@@ -46,8 +44,19 @@ serve_pgsql_test(struct http_request *req)
 		}
 	});
 
+	KORE_PGSQL(req, "SELECT * FROM foobar", 1, {
+		if (req->pgsql[1]->state != KORE_PGSQL_STATE_ERROR) {
+			kore_log(LOG_NOTICE, "expected error, got %d",
+			    req->pgsql[1]->state);
+			http_response(req, 500, "fail2\n", 6);
+			return (KORE_RESULT_OK);
+		} else {
+			kore_pgsql_logerror(req->pgsql[1]);
+		}
+	});
+
 	/* Query successfully completed */
-	http_response(req, 200, "ok", 2);
+	http_response(req, 200, "ok\n", 3);
 
 	return (KORE_RESULT_OK);
 }

@@ -33,6 +33,7 @@ void		kore_pgsql_continue(struct http_request *, int);
 int		kore_pgsql_query(struct http_request *, char *, int);
 
 int		kore_pgsql_ntuples(struct kore_pgsql *);
+void		kore_pgsql_logerror(struct kore_pgsql *);
 char		*kore_pgsql_getvalue(struct kore_pgsql *, int, int);
 
 #define KORE_PGSQL_STATE_INIT		1
