@@ -1,4 +1,5 @@
 kore
 *.o
 *.swp
+*.module
 cert
