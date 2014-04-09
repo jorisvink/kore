@@ -127,9 +127,8 @@ kore_accesslog_wait(void)
 	}
 
 	len = write(dom->accesslog, buf, l);
-	free(buf);
-
 	if (len == -1) {
+		free(buf);
 		kore_log(LOG_WARNING,
 		    "kore_accesslog_wait(): write(): %s", errno_s);
 		return (KORE_RESULT_ERROR);
@@ -138,6 +137,7 @@ kore_accesslog_wait(void)
 	if (len != l)
 		kore_log(LOG_NOTICE, "accesslog: %s", buf);
 
+	free(buf);
 	return (KORE_RESULT_OK);
 }
 
