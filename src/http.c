@@ -364,15 +364,17 @@ http_header_recv(struct netbuf *nb)
 	if (nb->b_len < 4)
 		return (KORE_RESULT_OK);
 
+	skip = 4;
 	end_headers = kore_mem_find(nb->buf, nb->s_off, "\r\n\r\n", 4);
 	if (end_headers == NULL) {
 		end_headers = kore_mem_find(nb->buf, nb->s_off, "\n\n", 2);
 		if (end_headers == NULL)
 			return (KORE_RESULT_OK);
+		skip = 2;
 	}
 
 	*end_headers = '\0';
-	end_headers += 4;
+	end_headers += skip;
 	nb->flags |= NETBUF_FORCE_REMOVE;
 	len = end_headers - nb->buf;
 	hbuf = (char *)nb->buf;
@@ -389,6 +391,7 @@ http_header_recv(struct netbuf *nb)
 		return (KORE_RESULT_OK);
 	}
 
+	skip = 0;
 	host[0] = NULL;
 	for (i = 0; i < h; i++) {
 		if (strncasecmp(headers[i], "host",
