@@ -463,6 +463,8 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 			kore_mem_free(host);			\
 		if (method != NULL)				\
 			kore_mem_free(method);			\
+		if (version != NULL)				\
+			kore_mem_free(version);			\
 		spdy_session_teardown(c, SPDY_SESSION_ERROR_PROTOCOL);	\
 		return (KORE_RESULT_OK);			\
 	}
@@ -477,6 +479,7 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 		kore_mem_free(path);
 		kore_mem_free(method);
 		kore_mem_free(host);
+		kore_mem_free(version);
 		kore_mem_free(s->hblock->header_block);
 		kore_mem_free(s->hblock);
 		kore_mem_free(s);
