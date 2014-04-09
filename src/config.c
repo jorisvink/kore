@@ -171,6 +171,8 @@ kore_parse_config(void)
 		lineno++;
 	}
 
+	fclose(fp);
+
 	if (!kore_module_loaded())
 		fatal("no site module was loaded");
 	if (kore_cb_name != NULL && kore_cb == NULL)
