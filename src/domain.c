@@ -114,7 +114,18 @@ kore_domain_sslstart(struct kore_domain *dom)
 	SSL_CTX_set_session_id_context(dom->ssl_ctx,
 	    (unsigned char *)SSL_SESSION_ID, strlen(SSL_SESSION_ID));
 
+	/*
+	 * Force OpenSSL to not use its freelists. Even without using
+	 * SSL_MODE_RELEASE_BUFFERS there are times it will use the
+	 * freelists. So forcefully putting its max length to 0 is the
+	 * only we choice we seem to have.
+	 *
+	 * Note that OpenBSD has since heartbleed removed freelists
+	 * from its OpenSSL in base so we don't need to care about it.
+	 */
+#if !defined(OpenBSD) || (OpenBSD < 201405)
 	dom->ssl_ctx->freelist_max_len = 0;
+#endif
 	SSL_CTX_set_mode(dom->ssl_ctx, SSL_MODE_ENABLE_PARTIAL_WRITE);
 
 	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_SSLv2);
