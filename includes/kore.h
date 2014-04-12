@@ -17,6 +17,10 @@
 #ifndef __H_KORE_H
 #define __H_KORE_H
 
+#if defined(__APPLE__)
+#define daemon portability_is_king
+#endif
+
 #include <sys/types.h>
 #include <sys/queue.h>
 
@@ -32,6 +36,11 @@
 #include <syslog.h>
 #include <unistd.h>
 #include <zlib.h>
+
+#if defined(__APPLE__)
+#undef daemon
+extern int daemon(int, int);
+#endif
 
 #include "spdy.h"
 
