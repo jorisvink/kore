@@ -46,7 +46,13 @@ char		*kore_pgsql_getvalue(struct kore_pgsql *, int, int);
 #define KORE_PGSQL(r, q, i, s)						\
 	do {								\
 		if (r->pgsql[i] == NULL)				\
-			kore_pgsql_query(r, q, i);			\
+			if (!kore_pgsql_query(r, q, i)) {		\
+				if (r->pgsql[i] == NULL)		\
+					return (KORE_RESULT_RETRY);	\
+				s;					\
+				r->pgsql[i]->state =			\
+				    KORE_PGSQL_STATE_COMPLETE;		\
+			}						\
 		if (r->pgsql[i] == NULL)				\
 			return (KORE_RESULT_RETRY);			\
 		switch (r->pgsql[i]->state) {				\
