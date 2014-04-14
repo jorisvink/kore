@@ -51,10 +51,14 @@ static void	pgsql_read_result(struct http_request *, int,
 
 static TAILQ_HEAD(, pgsql_conn)		pgsql_conn_free;
 static u_int16_t			pgsql_conn_count;
+char					*pgsql_conn_string = NULL;
 
 void
 kore_pgsql_init(void)
 {
+	if (pgsql_conn_string == NULL)
+		fatal("No pgsql connection string set");
+
 	pgsql_conn_count = 0;
 	TAILQ_INIT(&pgsql_conn_free);
 }
@@ -248,8 +252,7 @@ pgsql_conn_create(struct http_request *req, int idx)
 	kore_debug("pgsql_conn_create(): %p", conn);
 	memset(conn, 0, sizeof(*conn));
 
-	/* XXX don't forget to make this configurable. */
-	conn->db = PQconnectdb("host=/tmp/ user=joris");
+	conn->db = PQconnectdb(pgsql_conn_string);
 	if (conn->db == NULL || (PQstatus(conn->db) != CONNECTION_OK)) {
 		req->pgsql[idx]->state = KORE_PGSQL_STATE_ERROR;
 		req->pgsql[idx]->error = kore_strdup(PQerrorMessage(conn->db));

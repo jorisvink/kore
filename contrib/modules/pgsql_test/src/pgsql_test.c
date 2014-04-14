@@ -20,7 +20,20 @@
 
 #include "static.h"
 
+void		pgsql_load(int);
 int		serve_pgsql_test(struct http_request *);
+
+void
+pgsql_load(int state)
+{
+	switch (state) {
+	case KORE_MODULE_LOAD:
+		pgsql_conn_string = "Your connection string";
+		break;
+	default:
+		break;
+	}
+}
 
 int
 serve_pgsql_test(struct http_request *req)

@@ -26,6 +26,8 @@ struct kore_pgsql {
 	void			*conn;
 };
 
+extern char	*pgsql_conn_string;
+
 void		kore_pgsql_init(void);
 void		kore_pgsql_handle(void *, int);
 void		kore_pgsql_cleanup(struct http_request *);
