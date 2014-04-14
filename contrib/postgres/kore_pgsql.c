@@ -56,9 +56,6 @@ char					*pgsql_conn_string = NULL;
 void
 kore_pgsql_init(void)
 {
-	if (pgsql_conn_string == NULL)
-		fatal("No pgsql connection string set");
-
 	pgsql_conn_count = 0;
 	TAILQ_INIT(&pgsql_conn_free);
 }
@@ -246,6 +243,9 @@ static int
 pgsql_conn_create(struct http_request *req, int idx)
 {
 	struct pgsql_conn	*conn;
+
+	if (pgsql_conn_string == NULL)
+		fatal("pgsql_conn_create: no connection string");
 
 	pgsql_conn_count++;
 	conn = kore_malloc(sizeof(*conn));
