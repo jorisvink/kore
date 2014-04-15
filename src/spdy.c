@@ -658,6 +658,11 @@ spdy_data_frame_recv(struct netbuf *nb)
 
 		kore_mem_free(content);
 
+		if (s->post_size == 0) {
+			req->flags |= HTTP_REQUEST_COMPLETE;
+			return (KORE_RESULT_OK);
+		}
+
 		if (s->post_size > http_postbody_max) {
 			kore_log(LOG_NOTICE, "POST data too large (%ld > %ld)",
 			    s->post_size, http_postbody_max);

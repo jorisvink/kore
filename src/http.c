@@ -466,6 +466,11 @@ http_header_recv(struct netbuf *nb)
 
 		kore_mem_free(p);
 
+		if (clen == 0) {
+			req->flags |= HTTP_REQUEST_COMPLETE;
+			return (KORE_RESULT_OK);
+		}
+
 		if (clen > http_postbody_max) {
 			kore_log(LOG_NOTICE, "POST data too large (%ld > %ld)",
 			    clen, http_postbody_max);
@@ -504,6 +509,8 @@ http_populate_arguments(struct http_request *req)
 	char			*query, *args[HTTP_MAX_QUERY_ARGS], *val[3];
 
 	if (req->method == HTTP_METHOD_POST) {
+		if (req->post_data == NULL)
+			return (0);
 		query = http_post_data_text(req);
 	} else {
 		if (req->query_string == NULL)
@@ -878,6 +885,9 @@ http_post_data_text(struct http_request *req)
 	u_int8_t	*data;
 	char		*text;
 
+	if (req->post_data == NULL)
+		return (NULL);
+
 	data = kore_buf_release(req->post_data, &len);
 	req->post_data = NULL;
 	len++;
@@ -893,6 +903,9 @@ static u_int8_t *
 http_post_data_bytes(struct http_request *req, u_int32_t *len)
 {
 	u_int8_t	*data;
+
+	if (req->post_data == NULL)
+		return (NULL);
 
 	data = kore_buf_release(req->post_data, len);
 	req->post_data = NULL;
