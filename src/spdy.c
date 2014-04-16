@@ -636,7 +636,7 @@ spdy_data_frame_recv(struct netbuf *nb)
 	}
 
 	req = (struct http_request *)s->httpreq;
-	if (req->method != HTTP_METHOD_POST || req == NULL) {
+	if (req == NULL || req->method != HTTP_METHOD_POST) {
 		kore_debug("data frame for non post received");
 		/* stream error */
 		return (KORE_RESULT_ERROR);
