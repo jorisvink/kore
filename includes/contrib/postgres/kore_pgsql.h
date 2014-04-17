@@ -74,12 +74,4 @@ char		*kore_pgsql_getvalue(struct kore_pgsql *, int, int);
 		}							\
 	} while (0);
 
-#define KORE_PGSQL_EXEC(r, q, i)					\
-	do {								\
-		if (r->pgsql[i] == NULL)				\
-			kore_pgsql_query(r, q, i);			\
-		if (r->pgsql[i] == NULL)				\
-			return (KORE_RESULT_RETRY);			\
-	} while (0);
-
 #endif

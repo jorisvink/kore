@@ -150,9 +150,7 @@ http_request_new(struct connection *c, struct spdy_stream *s, char *host,
 void
 http_process(void)
 {
-	struct kore_module_handle	*hdlr;
 	struct http_request		*req, *next;
-	int				r, (*cb)(struct http_request *);
 
 	for (req = TAILQ_FIRST(&http_requests); req != NULL; req = next) {
 		next = TAILQ_NEXT(req, list);
@@ -170,57 +168,72 @@ http_process(void)
 		if (!(req->flags & HTTP_REQUEST_COMPLETE))
 			continue;
 
-		if (req->hdlr != NULL)
-			hdlr = req->hdlr;
+		http_process_request(req, 0);
+	}
+}
+
+void
+http_process_request(struct http_request *req, int retry_only)
+{
+	struct kore_module_handle	*hdlr;
+	int				r, (*cb)(struct http_request *);
+
+	kore_debug("http_process_request: %p->%p (%s)",
+	    req->owner, req, req->path);
+
+	if (req->flags & HTTP_REQUEST_DELETE)
+		return;
+
+	if (req->hdlr != NULL)
+		hdlr = req->hdlr;
+	else
+		hdlr = kore_module_handler_find(req->host, req->path);
+
+	req->start = kore_time_ms();
+	if (hdlr == NULL) {
+		r = http_generic_404(req);
+	} else {
+		if (req->hdlr != hdlr && hdlr->auth != NULL)
+			r = kore_auth(req, hdlr->auth);
 		else
-			hdlr = kore_module_handler_find(req->host, req->path);
+			r = KORE_RESULT_OK;
 
-		req->start = kore_time_ms();
-		if (hdlr == NULL) {
-			r = http_generic_404(req);
+		if (r == KORE_RESULT_OK) {
+			req->hdlr = hdlr;
+			cb = hdlr->addr;
+			worker->active_hdlr = hdlr;
+			r = cb(req);
+			worker->active_hdlr = NULL;
 		} else {
-			if (req->hdlr != hdlr && hdlr->auth != NULL)
-				r = kore_auth(req, hdlr->auth);
-			else
-				r = KORE_RESULT_OK;
-
-			if (r == KORE_RESULT_OK) {
-				req->hdlr = hdlr;
-				cb = hdlr->addr;
-				worker->active_hdlr = hdlr;
-				r = cb(req);
-				worker->active_hdlr = NULL;
-			} else {
-				/*
-				 * Set r to KORE_RESULT_OK so we can properly
-				 * flush the result from kore_auth().
-				 */
-				r = KORE_RESULT_OK;
-			}
+			/*
+			 * Set r to KORE_RESULT_OK so we can properly
+			 * flush the result from kore_auth().
+			 */
+			r = KORE_RESULT_OK;
 		}
-		req->end = kore_time_ms();
-		req->total += req->end - req->start;
+	}
+	req->end = kore_time_ms();
+	req->total += req->end - req->start;
 
-		switch (r) {
-		case KORE_RESULT_OK:
-			r = net_send_flush(req->owner);
-			if (r == KORE_RESULT_ERROR)
-				kore_connection_disconnect(req->owner);
-			break;
-		case KORE_RESULT_ERROR:
+	if (retry_only == 1 && r != KORE_RESULT_RETRY)
+		fatal("http_process_request: expected RETRY but got %d", r);
+
+	switch (r) {
+	case KORE_RESULT_OK:
+		r = net_send_flush(req->owner);
+		if (r == KORE_RESULT_ERROR)
 			kore_connection_disconnect(req->owner);
-			break;
-		case KORE_RESULT_RETRY:
-			break;
-		}
+		break;
+	case KORE_RESULT_ERROR:
+		kore_connection_disconnect(req->owner);
+		break;
+	case KORE_RESULT_RETRY:
+		break;
+	}
 
-		if (r != KORE_RESULT_RETRY) {
-			kore_accesslog(req);
-
-			TAILQ_REMOVE(&http_requests, req, list);
-			http_request_free(req);
-			http_request_count--;
-		}
+	if (r != KORE_RESULT_RETRY && !(req->flags & HTTP_REQUEST_DELETE)) {
+		kore_accesslog(req);
+		req->flags |= HTTP_REQUEST_DELETE;
 	}
 }
 
@@ -243,6 +256,8 @@ http_request_free(struct http_request *req)
 	struct http_file	*f, *fnext;
 	struct http_arg		*q, *qnext;
 	struct http_header	*hdr, *next;
+
+	kore_debug("http_request_free: %p->%p", req->owner, req);
 
 	TAILQ_REMOVE(&(req->owner->http_requests), req, olist);
 

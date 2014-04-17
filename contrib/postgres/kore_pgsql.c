@@ -132,7 +132,8 @@ kore_pgsql_handle(void *c, int err)
 
 	i = conn->job->idx;
 	req = conn->job->req;
-	kore_debug("kore_pgsql_handle(): %p (%d)", req, i);
+	kore_debug("kore_pgsql_handle: %p (%d) (%d)",
+	    req, i, req->pgsql[i]->state);
 
 	if (!PQconsumeInput(conn->db)) {
 		req->pgsql[i]->state = KORE_PGSQL_STATE_ERROR;
@@ -141,10 +142,12 @@ kore_pgsql_handle(void *c, int err)
 		pgsql_read_result(req, i, conn);
 	}
 
-	if (req->pgsql[i]->state == KORE_PGSQL_STATE_WAIT)
+	if (req->pgsql[i]->state == KORE_PGSQL_STATE_WAIT) {
 		req->flags |= HTTP_REQUEST_SLEEPING;
-	else
+	} else {
 		req->flags &= ~HTTP_REQUEST_SLEEPING;
+		http_process_request(req, 1);
+	}
 }
 
 void
@@ -152,6 +155,9 @@ kore_pgsql_continue(struct http_request *req, int i)
 {
 	int				fd;
 	struct pgsql_conn		*conn;
+
+	kore_debug("kore_pgsql_continue: %p->%p (%d) (%d)",
+	    req->owner, req, i, req->pgsql[i]->state);
 
 	if (req->pgsql[i]->error) {
 		kore_mem_free(req->pgsql[i]->error);
@@ -180,6 +186,8 @@ kore_pgsql_continue(struct http_request *req, int i)
 
 		fd = PQsocket(conn->db);
 		kore_platform_disable_read(fd);
+
+		http_process_request(req, 0);
 		break;
 	case KORE_PGSQL_STATE_ERROR:
 	case KORE_PGSQL_STATE_RESULT:
