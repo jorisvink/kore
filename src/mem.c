@@ -28,7 +28,7 @@
 
 struct meminfo {
 	u_int16_t		magic;
-} __attribute__((__packed__));
+};
 
 void
 kore_mem_init(void)

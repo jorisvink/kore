@@ -287,15 +287,14 @@ struct buf_vec {
 
 struct kore_pool_region {
 	void			*start;
-
 	LIST_ENTRY(kore_pool_region)	list;
-} __attribute__((__packed__));
+};
 
 struct kore_pool_entry {
 	u_int8_t			state;
 	struct kore_pool_region		*region;
 	LIST_ENTRY(kore_pool_entry)	list;
-} __attribute__((__packed__));
+};
 
 struct kore_pool {
 	u_int32_t		elen;
@@ -306,7 +305,7 @@ struct kore_pool {
 
 	LIST_HEAD(, kore_pool_region)	regions;
 	LIST_HEAD(, kore_pool_entry)	freelist;
-} __attribute__((__packed__));
+};
 
 extern pid_t	kore_pid;
 extern int	kore_debug;
