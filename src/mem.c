@@ -120,8 +120,10 @@ kore_strdup(const char *str)
 	return (nstr);
 }
 
+#if defined(KORE_PEDANTIC_MALLOC)
 void
 explicit_bzero(void *addr, size_t len)
 {
 	bzero(addr, len);
 }
+#endif
