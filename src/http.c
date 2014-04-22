@@ -198,18 +198,25 @@ http_process_request(struct http_request *req, int retry_only)
 		else
 			r = KORE_RESULT_OK;
 
-		if (r == KORE_RESULT_OK) {
+		switch (r) {
+		case KORE_RESULT_OK:
 			req->hdlr = hdlr;
 			cb = hdlr->addr;
 			worker->active_hdlr = hdlr;
 			r = cb(req);
 			worker->active_hdlr = NULL;
-		} else {
+			break;
+		case KORE_RESULT_RETRY:
+			break;
+		case KORE_RESULT_ERROR:
 			/*
 			 * Set r to KORE_RESULT_OK so we can properly
 			 * flush the result from kore_auth().
 			 */
 			r = KORE_RESULT_OK;
+			break;
+		default:
+			fatal("kore_auth() returned unknown %d", r);
 		}
 	}
 	req->end = kore_time_ms();
