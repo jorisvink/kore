@@ -35,7 +35,7 @@ static struct {
 	{ NULL,		0 },
 };
 
-static char b64table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+static char b64table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 void
 kore_debug_internal(char *file, int line, const char *fmt, ...)
@@ -345,6 +345,9 @@ kore_base64_decode(char *in, u_int8_t **out, u_int32_t *olen)
 	res = kore_buf_create(len);
 
 	for (idx = 0; idx < len; idx++) {
+		if (in[idx] == '=')
+			break;
+
 		for (o = 0; o < sizeof(b64table); o++) {
 			if (b64table[o] == in[idx]) {
 				d = o;
@@ -352,9 +355,8 @@ kore_base64_decode(char *in, u_int8_t **out, u_int32_t *olen)
 			}
 		}
 
-		/* XXX - This could be bad? */
 		if (o == sizeof(b64table))
-			d = 0;
+			fatal("bad b64 character: %c", in[idx]);
 
 		b |= (d & 0x3f) << (i * 6);
 		if (i-- == 0) {
@@ -365,6 +367,14 @@ kore_base64_decode(char *in, u_int8_t **out, u_int32_t *olen)
 
 			b = 0;
 			i = 3;
+		}
+	}
+
+	o = len - idx;
+	if (o > 0) {
+		for (i = 2; i >= o; i--) {
+			n = (b >> (8 * i));
+			kore_buf_append(res, &n, 1);
 		}
 	}
 
