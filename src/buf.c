@@ -53,29 +53,26 @@ kore_buf_appendb(struct kore_buf *buf, struct kore_buf *src)
 }
 
 void
-kore_buf_appendv(struct kore_buf *buf, struct buf_vec *v, u_int16_t count)
+kore_buf_appendv(struct kore_buf *buf, const char *fmt, va_list args)
 {
-	u_int16_t		i;
-	struct buf_vec		*p;
+	int		l;
+	char		b[4096];
 
-	p = v;
-	for (i = 0; i < count; i++) {
-		kore_buf_append(buf, p->data, p->length);
-		p++;
-	}
+	l = vsnprintf(b, sizeof(b), fmt, args);
+	if (l == -1 || (size_t)l >= sizeof(b))
+		fatal("kore_buf_appendv(): error or truncation");
+
+	kore_buf_append(buf, (u_int8_t *)b, l);
 }
 
 void
 kore_buf_appendf(struct kore_buf *buf, const char *fmt, ...)
 {
 	va_list		args;
-	char		b[2048];
 
 	va_start(args, fmt);
-	vsnprintf(b, sizeof(b), fmt, args);
+	kore_buf_appendv(buf, fmt, args);
 	va_end(args);
-
-	kore_buf_append(buf, (u_int8_t *)b, strlen(b));
 }
 
 u_int8_t *
