@@ -387,6 +387,10 @@ void		*kore_realloc(void *, size_t);
 void		kore_mem_free(void *);
 void		kore_mem_init(void);
 
+#if defined(KORE_PEDANTIC_MALLOC)
+void		explicit_bzero(void *, size_t);
+#endif
+
 void		*kore_pool_get(struct kore_pool *);
 void		kore_pool_put(struct kore_pool *, void *);
 void		kore_pool_init(struct kore_pool *, char *,

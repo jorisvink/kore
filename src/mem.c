@@ -55,6 +55,10 @@ kore_malloc(size_t len)
 	mem = KORE_MEMINFO(addr);
 	mem->magic = KORE_MEM_MAGIC;
 
+#if defined(KORE_PEDANTIC_MALLOC)
+	explicit_bzero(addr, len);
+#endif
+
 	return (addr);
 }
 
@@ -95,6 +99,10 @@ kore_mem_free(void *ptr)
 	if (mem->magic != KORE_MEM_MAGIC)
 		fatal("kore_mem_free(): magic boundary not found");
 
+#if defined(KORE_PEDANTIC_MALLOC)
+	explicit_bzero(ptr, KORE_MEMSIZE(ptr));
+#endif
+
 	addr = (u_int8_t *)ptr - sizeof(u_int32_t);
 	free(addr);
 }
@@ -110,4 +118,10 @@ kore_strdup(const char *str)
 	kore_strlcpy(nstr, str, len);
 
 	return (nstr);
+}
+
+void
+explicit_bzero(void *addr, size_t len)
+{
+	bzero(addr, len);
 }

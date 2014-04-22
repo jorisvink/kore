@@ -63,6 +63,10 @@ kore_pool_get(struct kore_pool *pool)
 
 	pool->inuse++;
 
+#if defined(KORE_PEDANTIC_MALLOC)
+	explicit_bzero(ptr, pool->elen);
+#endif
+
 	return (ptr);
 }
 
@@ -70,6 +74,10 @@ void
 kore_pool_put(struct kore_pool *pool, void *ptr)
 {
 	struct kore_pool_entry		*entry;
+
+#if defined(KORE_PEDANTIC_MALLOC)
+	explicit_bzero(ptr, pool->elen);
+#endif
 
 	entry = (struct kore_pool_entry *)
 	    ((u_int8_t *)ptr - sizeof(struct kore_pool_entry));

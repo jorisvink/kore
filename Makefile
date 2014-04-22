@@ -18,6 +18,10 @@ ifneq ("$(DEBUG)", "")
 	CFLAGS+=-DKORE_DEBUG
 endif
 
+ifneq ("$(KORE_PEDANTIC_MALLOC)", "")
+	CFLAGS+=-DKORE_PEDANTIC_MALLOC
+endif
+
 ifneq ("$(PGSQL)", "")
 	S_SRC+=contrib/postgres/kore_pgsql.c
 	LDFLAGS+=-L$(shell pg_config --libdir) -lpq
