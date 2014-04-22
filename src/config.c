@@ -26,6 +26,7 @@
 
 /* XXX - This is becoming a clusterfuck. Fix it. */
 
+static int		configure_include(char **);
 static int		configure_bind(char **);
 static int		configure_load(char **);
 static int		configure_handler(char **);
@@ -60,11 +61,13 @@ static int		configure_authentication_value(char **);
 static int		configure_authentication_validator(char **);
 
 static void		domain_sslstart(void);
+static void		kore_parse_config_file(char *);
 
 static struct {
 	const char		*name;
 	int			(*configure)(char **);
 } config_names[] = {
+	{ "include",			configure_include },
 	{ "bind",			configure_bind },
 	{ "load",			configure_load },
 	{ "static",			configure_handler },
@@ -110,15 +113,39 @@ static struct kore_module_handle	*current_handler = NULL;
 void
 kore_parse_config(void)
 {
+	if (config_file == NULL)
+		fatal("specify a configuration file with -c");
+
+	kore_parse_config_file(config_file);
+
+	if (!kore_module_loaded())
+		fatal("no site module was loaded");
+	if (kore_cb_name != NULL && kore_cb == NULL)
+		fatal("no '%s' symbol found for kore_cb", kore_cb_name);
+	if (LIST_EMPTY(&listeners))
+		fatal("no listeners defined");
+	if (chroot_path == NULL)
+		fatal("missing a chroot path");
+	if (runas_user == NULL)
+		fatal("missing a username to run as");
+	if ((pw = getpwnam(runas_user)) == NULL)
+		fatal("user '%s' does not exist", runas_user);
+
+	if (getuid() != 0 && skip_chroot == 0)
+		fatal("Cannot chroot(), use -n to skip it");
+}
+
+static void
+kore_parse_config_file(char *fpath)
+{
 	FILE		*fp;
 	int		i, lineno;
 	char		buf[BUFSIZ], *p, *t, *argv[5];
 
-	if (config_file == NULL)
-		fatal("specify a configuration file with -c");
+	if ((fp = fopen(fpath, "r")) == NULL)
+		fatal("configuration given cannot be opened: %s", fpath);
 
-	if ((fp = fopen(config_file, "r")) == NULL)
-		fatal("configuration given cannot be opened: %s", config_file);
+	kore_debug("parsing configuration file '%s'", fpath);
 
 	lineno = 1;
 	while (fgets(buf, sizeof(buf), fp) != NULL) {
@@ -172,22 +199,18 @@ kore_parse_config(void)
 	}
 
 	fclose(fp);
+}
 
-	if (!kore_module_loaded())
-		fatal("no site module was loaded");
-	if (kore_cb_name != NULL && kore_cb == NULL)
-		fatal("no '%s' symbol found for kore_cb", kore_cb_name);
-	if (LIST_EMPTY(&listeners))
-		fatal("no listeners defined");
-	if (chroot_path == NULL)
-		fatal("missing a chroot path");
-	if (runas_user == NULL)
-		fatal("missing a username to run as");
-	if ((pw = getpwnam(runas_user)) == NULL)
-		fatal("user '%s' does not exist", runas_user);
+static int
+configure_include(char **argv)
+{
+	if (argv[1] == NULL) {
+		printf("No file given in include directive\n");
+		return (KORE_RESULT_ERROR);
+	}
 
-	if (getuid() != 0 && skip_chroot == 0)
-		fatal("Cannot chroot(), use -n to skip it");
+	kore_parse_config_file(argv[1]);
+	return (KORE_RESULT_OK);
 }
 
 static int
