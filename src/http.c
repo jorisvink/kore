@@ -235,13 +235,11 @@ http_process_request(struct http_request *req, int retry_only)
 		kore_connection_disconnect(req->owner);
 		break;
 	case KORE_RESULT_RETRY:
-		break;
+		return;
 	}
 
-	if (r != KORE_RESULT_RETRY && !(req->flags & HTTP_REQUEST_DELETE)) {
-		kore_accesslog(req);
-		req->flags |= HTTP_REQUEST_DELETE;
-	}
+	kore_accesslog(req);
+	req->flags |= HTTP_REQUEST_DELETE;
 }
 
 void
