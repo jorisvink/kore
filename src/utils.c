@@ -333,45 +333,56 @@ kore_base64_encode(u_int8_t *data, u_int32_t len, char **out)
 int
 kore_base64_decode(char *in, u_int8_t **out, u_int32_t *olen)
 {
-	int			i;
+	int			i, c;
 	struct kore_buf		*res;
 	u_int8_t		d, n, o;
 	u_int32_t		b, len, idx;
 
-	i = 3;
+	i = 4;
 	b = 0;
 	d = 0;
 	len = strlen(in);
 	res = kore_buf_create(len);
 
 	for (idx = 0; idx < len; idx++) {
-		if (in[idx] == '=')
+		c = in[idx];
+		if (c == '=')
 			break;
 
 		for (o = 0; o < sizeof(b64table); o++) {
-			if (b64table[o] == in[idx]) {
+			if (b64table[o] == c) {
 				d = o;
 				break;
 			}
 		}
 
-		if (o == sizeof(b64table))
-			fatal("bad b64 character: %c", in[idx]);
+		if (o == sizeof(b64table)) {
+			*out = NULL;
+			kore_buf_free(res);
+			return (KORE_RESULT_ERROR);
+		}
 
-		b |= (d & 0x3f) << (i * 6);
-		if (i-- == 0) {
+		b |= (d & 0x3f) << ((i - 1) * 6);
+		i--;
+		if (i == 0) {
 			for (i = 2; i >= 0; i--) {
 				n = (b >> (8 * i));
 				kore_buf_append(res, &n, 1);
 			}
 
 			b = 0;
-			i = 3;
+			i = 4;
 		}
 	}
 
-	o = len - idx;
-	if (o > 0) {
+	if (c == '=') {
+		if (i > 2) {
+			*out = NULL;
+			kore_buf_free(res);
+			return (KORE_RESULT_ERROR);
+		}
+
+		o = i;
 		for (i = 2; i >= o; i--) {
 			n = (b >> (8 * i));
 			kore_buf_append(res, &n, 1);
