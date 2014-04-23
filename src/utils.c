@@ -77,12 +77,16 @@ kore_strlcpy(char *dst, const char *src, size_t len)
 {
 	char		*d = dst;
 	const char	*s = src;
+	const char	*end = dst + len - 1;
 
-	while ((*d++ = *s++) != '\0') {
-		if (d == (dst + len - 1)) {
+	while ((*d = *s) != '\0') {
+		if (d == end) {
 			*d = '\0';
 			break;
 		}
+
+		d++;
+		s++;
 	}
 }
 
