@@ -44,6 +44,9 @@ kore_malloc(size_t len)
 	u_int8_t		*addr;
 	u_int32_t		*plen;
 
+	if (len == 0)
+		fatal("kore_malloc(): zero size");
+
 	mlen = sizeof(u_int32_t) + len + sizeof(struct meminfo);
 	if ((ptr = malloc(mlen)) == NULL)
 		fatal("kore_malloc(%d): %d", len, errno);
@@ -68,6 +71,9 @@ kore_realloc(void *ptr, size_t len)
 	struct meminfo		*mem;
 	void			*nptr;
 
+	if (len == 0)
+		fatal("kore_realloc(): zero size");
+
 	if (ptr == NULL) {
 		nptr = kore_malloc(len);
 	} else {
@@ -86,6 +92,11 @@ kore_realloc(void *ptr, size_t len)
 void *
 kore_calloc(size_t memb, size_t len)
 {
+	if (memb == 0 || len == 0)
+		fatal("kore_calloc(): zero size");
+	if (SIZE_MAX / memb < len)
+		fatal("kore_calloc: memb * len > SIZE_MAX");
+
 	return (kore_malloc(memb * len));
 }
 
