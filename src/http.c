@@ -675,7 +675,7 @@ http_file_lookup(struct http_request *req, char *name, char **fname,
 int
 http_populate_multipart_form(struct http_request *req, int *v)
 {
-	int		h, i, c;
+	int		h, i, c, l;
 	u_int32_t	blen, slen, len;
 	u_int8_t	*s, *end, *e, *end_headers, *data;
 	char		*d, *val, *type, *boundary, *fname;
@@ -708,9 +708,14 @@ http_populate_multipart_form(struct http_request *req, int *v)
 	val++;
 	slen = strlen(val);
 	boundary = kore_malloc(slen + 3);
-	snprintf(boundary, slen + 3, "--%s", val);
-	slen = strlen(boundary);
+	l = snprintf(boundary, slen + 3, "--%s", val);
+	if (l == -1 || (size_t)l >= sizeof(boundary)) {
+		kore_mem_free(boundary);
+		kore_mem_free(type);
+		return (KORE_RESULT_ERROR);
+	}
 
+	slen = l;
 	kore_mem_free(type);
 
 	req->multipart_body = http_post_data_bytes(req, &blen);
@@ -962,13 +967,14 @@ http_response_spdy(struct http_request *req, struct connection *c,
 	struct spdy_header_block	*hblock;
 	char				sbuf[512];
 
-	snprintf(sbuf, sizeof(sbuf), "%d %s", status, http_status_text(status));
+	(void)snprintf(sbuf, sizeof(sbuf), "%d %s",
+	    status, http_status_text(status));
 
 	hblock = spdy_header_block_create(SPDY_HBLOCK_NORMAL);
 	spdy_header_block_add(hblock, ":status", sbuf);
 	spdy_header_block_add(hblock, ":version", "HTTP/1.1");
 
-	snprintf(sbuf, sizeof(sbuf), "%s (%d.%d-%s)",
+	(void)snprintf(sbuf, sizeof(sbuf), "%s (%d.%d-%s)",
 	    KORE_NAME_STRING, KORE_VERSION_MAJOR, KORE_VERSION_MINOR,
 	    KORE_VERSION_STATE);
 	spdy_header_block_add(hblock, ":server", sbuf);
@@ -977,7 +983,7 @@ http_response_spdy(struct http_request *req, struct connection *c,
 		spdy_header_block_add(hblock, ":allow", "get, post");
 
 	if (http_hsts_enable) {
-		snprintf(sbuf, sizeof(sbuf),
+		(void)snprintf(sbuf, sizeof(sbuf),
 		    "max-age=%" PRIu64, http_hsts_enable);
 		spdy_header_block_add(hblock,
 		    ":strict-transport-security", sbuf);

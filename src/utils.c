@@ -44,7 +44,7 @@ kore_debug_internal(char *file, int line, const char *fmt, ...)
 	char		buf[2048];
 
 	va_start(args, fmt);
-	vsnprintf(buf, sizeof(buf), fmt, args);
+	(void)vsnprintf(buf, sizeof(buf), fmt, args);
 	va_end(args);
 
 	printf("[%d] %s:%d - %s\n", kore_pid, file, line, buf);
@@ -63,7 +63,7 @@ kore_log(int prio, const char *fmt, ...)
 	char		buf[2048];
 
 	va_start(args, fmt);
-	vsnprintf(buf, sizeof(buf), fmt, args);
+	(void)vsnprintf(buf, sizeof(buf), fmt, args);
 	va_end(args);
 
 	if (worker != NULL)
@@ -424,7 +424,7 @@ fatal(const char *fmt, ...)
 	char		buf[2048];
 
 	va_start(args, fmt);
-	vsnprintf(buf, sizeof(buf), fmt, args);
+	(void)vsnprintf(buf, sizeof(buf), fmt, args);
 	va_end(args);
 
 	kore_log(LOG_ERR, "%s", buf);

@@ -202,7 +202,7 @@ kore_worker_entry(struct kore_worker *kw)
 			fatal("unable to drop privileges");
 	}
 
-	snprintf(buf, sizeof(buf), "kore [wrk %d]", kw->id);
+	(void)snprintf(buf, sizeof(buf), "kore [wrk %d]", kw->id);
 	kore_platform_proctitle(buf);
 	kore_platform_worker_setcpu(kw);
 
