@@ -56,13 +56,18 @@ spdy_frame_recv(struct netbuf *nb)
 		ctrl.flags = *(u_int8_t *)(nb->buf + 4);
 		ctrl.length = net_read32(nb->buf + 4) & 0xffffff;
 
-		kore_debug("type is %d", ctrl.type);
-		kore_debug("version is %d", ctrl.version);
-		kore_debug("length is %d", ctrl.length);
-		kore_debug("flags are %d", ctrl.flags);
+		kore_debug("type is %u", ctrl.type);
+		kore_debug("version is %u", ctrl.version);
+		kore_debug("length is %u", ctrl.length);
+		kore_debug("flags are %u", ctrl.flags);
+
+		if ((int)ctrl.length < 0) {
+			spdy_session_teardown(c, SPDY_SESSION_ERROR_PROTOCOL);
+			return (KORE_RESULT_OK);
+		}
 
 		if (ctrl.version != 3) {
-			kore_debug("protocol mismatch (recv version %d)",
+			kore_debug("protocol mismatch (recv version %u)",
 			    ctrl.version);
 
 			spdy_session_teardown(c, SPDY_SESSION_ERROR_PROTOCOL);
@@ -93,7 +98,7 @@ spdy_frame_recv(struct netbuf *nb)
 		if (cb != NULL) {
 			r = net_recv_expand(c, nb, ctrl.length, cb);
 		} else {
-			kore_debug("no callback for type %d", ctrl.type);
+			kore_debug("no callback for type %u", ctrl.type);
 			r = KORE_RESULT_OK;
 		}
 	} else {
@@ -107,9 +112,12 @@ spdy_frame_recv(struct netbuf *nb)
 		} else {
 			data.flags = *(u_int8_t *)(nb->buf + 4);
 			data.length = net_read32(nb->buf + 4) & 0xffffff;
-
-			r = net_recv_expand(c, nb, data.length,
-			    spdy_data_frame_recv);
+			if ((int)data.length < 0) {
+				r = KORE_RESULT_ERROR;
+			} else {
+				r = net_recv_expand(c, nb, data.length,
+				    spdy_data_frame_recv);
+			}
 		}
 	}
 
@@ -130,7 +138,7 @@ spdy_frame_send(struct connection *c, u_int16_t type, u_int8_t flags,
 	u_int8_t		nb[16];
 	u_int32_t		length;
 
-	kore_debug("spdy_frame_send(%p, %d, %d, %d, %p, %d)",
+	kore_debug("spdy_frame_send(%p, %u, %u, %u, %p, %u)",
 	    c, type, flags, len, s, misc);
 
 	length = 0;
@@ -299,14 +307,14 @@ spdy_stream_get_header(struct spdy_header_block *s, char *header, char **out)
 
 	for (i = 0; i < s->header_pairs; i++) {
 		nlen = net_read32(p);
-		if ((p + nlen + 4) > end) {
-			kore_debug("nlen out of bounds on %d (%d)", i, nlen);
+		if ((int)nlen < 0 || (p + nlen + 4) > end) {
+			kore_debug("nlen out of bounds on %u (%u)", i, nlen);
 			return (KORE_RESULT_ERROR);
 		}
 
 		vlen = net_read32(p + nlen + 4);
-		if ((p + nlen + vlen + 8) > end) {
-			kore_debug("vlen out of bounds on %d (%d)", i, vlen);
+		if ((int)vlen < 0 || (p + nlen + vlen + 8) > end) {
+			kore_debug("vlen out of bounds on %u (%u)", i, vlen);
 			return (KORE_RESULT_ERROR);
 		}
 
@@ -320,7 +328,7 @@ spdy_stream_get_header(struct spdy_header_block *s, char *header, char **out)
 			return (KORE_RESULT_OK);
 		}
 
-		kore_debug("pair name %d bytes, value %d bytes", nlen, vlen);
+		kore_debug("pair name %u bytes, value %u bytes", nlen, vlen);
 
 		p += nlen + vlen + 8;
 	}
@@ -333,7 +341,7 @@ spdy_session_teardown(struct connection *c, u_int8_t err)
 {
 	u_int8_t	d[8];
 
-	kore_debug("spdy_session_teardown(%p, %d)", c, err);
+	kore_debug("spdy_session_teardown(%p, %u)", c, err);
 
 	net_write32((u_int8_t *)&d[0], c->client_stream_id);
 	net_write32((u_int8_t *)&d[4], err);
@@ -363,11 +371,11 @@ spdy_update_wsize(struct connection *c, struct spdy_stream *s, u_int32_t len)
 		kore_log(LOG_NOTICE, "A spdy stream was empty but not closed");
 	}
 
-	kore_debug("spdy_update_wsize(): stream %d, window size %d",
+	kore_debug("spdy_update_wsize(): stream %u, window size %d",
 	    s->stream_id, s->send_wsize);
 
 	if (s->send_wsize <= 0) {
-		kore_debug("window size <= 0 for stream %d", s->stream_id);
+		kore_debug("window size <= 0 for stream %u", s->stream_id);
 		c->flags &= ~CONN_WRITE_POSSIBLE;
 		c->flags |= CONN_WRITE_BLOCK;
 
@@ -397,27 +405,30 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 	syn.slot = net_read16(nb->buf + 16) & 0x7;
 
 	kore_debug("spdy_ctrl_frame_syn_stream()");
-	kore_debug("stream_id: %d", syn.stream_id);
-	kore_debug("length   : %d", ctrl.length);
+	kore_debug("stream_id: %u", syn.stream_id);
+	kore_debug("length   : %u", ctrl.length);
 
-	/* XXX need to send protocol error. */
+	if ((int)ctrl.length < 0) {
+		spdy_session_teardown(c, SPDY_SESSION_ERROR_PROTOCOL);
+		return (KORE_RESULT_OK);
+	}
+
 	if ((syn.stream_id % 2) == 0 || syn.stream_id == 0) {
-		kore_debug("client sent incorrect id for SPDY_SYN_STREAM (%d)",
+		kore_debug("client sent incorrect id for SPDY_SYN_STREAM (%u)",
 		    syn.stream_id);
 		spdy_session_teardown(c, SPDY_SESSION_ERROR_PROTOCOL);
 		return (KORE_RESULT_OK);
 	}
 
-	/* XXX need to send protocol error. */
 	if (syn.stream_id < c->client_stream_id) {
-		kore_debug("client sent incorrect id SPDY_SYN_STREAM (%d < %d)",
+		kore_debug("client sent incorrect id SPDY_SYN_STREAM (%u < %u)",
 		    syn.stream_id, c->client_stream_id);
 		spdy_session_teardown(c, SPDY_SESSION_ERROR_PROTOCOL);
 		return (KORE_RESULT_OK);
 	}
 
 	if ((s = spdy_stream_lookup(c, syn.stream_id)) != NULL) {
-		kore_debug("duplicate SPDY_SYN_STREAM (%d)", syn.stream_id);
+		kore_debug("duplicate SPDY_SYN_STREAM (%u)", syn.stream_id);
 		spdy_session_teardown(c, SPDY_SESSION_ERROR_PROTOCOL);
 		return (KORE_RESULT_OK);
 	}
@@ -433,7 +444,7 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 	s->hblock = spdy_header_block_create(SPDY_HBLOCK_DELAYED_ALLOC);
 
 	src = (nb->buf + SPDY_FRAME_SIZE + SPDY_SYNFRAME_SIZE);
-	kore_debug("compressed headers are %d bytes long", ctrl.length - 10);
+	kore_debug("compressed headers are %u bytes long", ctrl.length - 10);
 	if (!spdy_zlib_inflate(c, src, (ctrl.length - SPDY_SYNFRAME_SIZE),
 	    &(s->hblock->header_block), &(s->hblock->header_block_len))) {
 		kore_mem_free(s->hblock->header_block);
@@ -444,7 +455,15 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 	}
 
 	s->hblock->header_pairs = net_read32(s->hblock->header_block);
-	kore_debug("got %d headers", s->hblock->header_pairs);
+	if ((int)s->hblock->header_pairs < 0) {
+		kore_mem_free(s->hblock->header_block);
+		kore_mem_free(s->hblock);
+		kore_mem_free(s);
+		spdy_session_teardown(c, SPDY_SESSION_ERROR_PROTOCOL);
+		return (KORE_RESULT_OK);
+	}
+
+	kore_debug("got %u headers", s->hblock->header_pairs);
 
 	path = NULL;
 	host = NULL;
@@ -493,7 +512,7 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 
 	c->client_stream_id = s->stream_id;
 	TAILQ_INSERT_TAIL(&(c->spdy_streams), s, list);
-	kore_debug("SPDY_SYN_STREAM: %d:%d:%d", s->stream_id,
+	kore_debug("SPDY_SYN_STREAM: %u:%u:%u", s->stream_id,
 	    s->flags, s->prio);
 
 	return (KORE_RESULT_OK);
@@ -508,12 +527,12 @@ spdy_ctrl_frame_rst_stream(struct netbuf *nb)
 
 	stream_id = net_read32(nb->buf + SPDY_FRAME_SIZE);
 	if ((stream_id % 2) == 0) {
-		kore_debug("received RST for non-client stream %d", stream_id);
+		kore_debug("received RST for non-client stream %u", stream_id);
 		return (KORE_RESULT_ERROR);
 	}
 
 	if ((s = spdy_stream_lookup(c, stream_id)) == NULL) {
-		kore_debug("received RST for unknown stream %d", stream_id);
+		kore_debug("received RST for unknown stream %u", stream_id);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -530,11 +549,16 @@ spdy_ctrl_frame_settings(struct netbuf *nb)
 	struct connection	*c = (struct connection *)nb->owner;
 
 	ecount = net_read32(nb->buf + SPDY_FRAME_SIZE);
-	kore_debug("SPDY_SETTINGS: %d settings present", ecount);
-
 	length = net_read32(nb->buf + 4) & 0xffffff;
+	if ((int)ecount < 0 || (int)length < 0) {
+		spdy_session_teardown(c, SPDY_SESSION_ERROR_PROTOCOL);
+		return (KORE_RESULT_OK);
+	}
+
+	kore_debug("SPDY_SETTINGS: %u settings present", ecount);
+
 	if (length != ((ecount * 8) + 4)) {
-		kore_debug("ecount is not correct (%d != %d)", length,
+		kore_debug("ecount is not correct (%u != %u)", length,
 		    (ecount * 8) + 4);
 		spdy_session_teardown(c, SPDY_SESSION_ERROR_PROTOCOL);
 		return (KORE_RESULT_OK);
@@ -545,12 +569,17 @@ spdy_ctrl_frame_settings(struct netbuf *nb)
 		id = net_read32(buf) & 0xffffff;
 		val = net_read32(buf + 4);
 
+		if ((int)val < 0) {
+			buf += 8;
+			continue;
+		}
+
 		switch (id) {
 		case SETTINGS_INITIAL_WINDOW_SIZE:
 			c->wsize_initial = val;
 			break;
 		default:
-			kore_debug("no handling for setting %d:%d", id, val);
+			kore_debug("no handling for setting %u:%u", id, val);
 			break;
 		}
 
@@ -567,11 +596,11 @@ spdy_ctrl_frame_ping(struct netbuf *nb)
 	struct connection	*c = (struct connection *)nb->owner;
 
 	id = ntohl(*(u_int32_t *)(nb->buf + SPDY_FRAME_SIZE));
-	kore_debug("SPDY_PING: %d", id);
+	kore_debug("SPDY_PING: %u", id);
 
 	/* XXX todo - check if we sent the ping. */
 	if ((id % 2) == 0) {
-		kore_debug("received malformed client PING (%d)", id);
+		kore_debug("received malformed client PING (%u)", id);
 		spdy_session_teardown(c, SPDY_SESSION_ERROR_PROTOCOL);
 		return (KORE_RESULT_OK);
 	}
@@ -592,12 +621,12 @@ spdy_ctrl_frame_window(struct netbuf *nb)
 
 	if ((s = spdy_stream_lookup(c, stream_id)) == NULL) {
 		kore_debug("received WINDOW_UPDATE for nonexistant stream");
-		kore_debug("stream_id: %d", stream_id);
+		kore_debug("stream_id: %u", stream_id);
 		spdy_session_teardown(c, SPDY_SESSION_ERROR_PROTOCOL);
 		return (KORE_RESULT_OK);
 	}
 
-	kore_debug("SPDY_WINDOW_UPDATE: %d:%d", stream_id, window_size);
+	kore_debug("SPDY_WINDOW_UPDATE: %u:%u", stream_id, window_size);
 	s->send_wsize += window_size;
 	if (s->send_wsize > 0 && c->flags & CONN_WRITE_BLOCK) {
 		c->flags &= ~CONN_WRITE_BLOCK;
@@ -606,7 +635,7 @@ spdy_ctrl_frame_window(struct netbuf *nb)
 		kore_connection_stop_idletimer(c);
 		c->idle_timer.length = spdy_idle_time;
 
-		kore_debug("can now send again (%d wsize)", s->send_wsize);
+		kore_debug("can now send again (%u wsize)", s->send_wsize);
 		return (net_send_flush(c));
 	}
 
@@ -626,8 +655,11 @@ spdy_data_frame_recv(struct netbuf *nb)
 	data.stream_id = net_read32(nb->buf) & ~(1 << 31);
 	data.flags = *(u_int8_t *)(nb->buf + 4);
 	data.length = net_read32(nb->buf + 4) & 0xffffff;
-	kore_debug("SPDY_SESSION_DATA: %d:%d:%d", data.stream_id,
+	kore_debug("SPDY_SESSION_DATA: %u:%u:%u", data.stream_id,
 	    data.flags, data.length);
+
+	if ((int)data.length < 0)
+		return (KORE_RESULT_ERROR);
 
 	if ((s = spdy_stream_lookup(c, data.stream_id)) == NULL) {
 		kore_debug("session data for non-existant stream");
