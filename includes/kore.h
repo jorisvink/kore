@@ -107,6 +107,7 @@ TAILQ_HEAD(netbuf_head, netbuf);
 #define KORE_TYPE_LISTENER	1
 #define KORE_TYPE_CONNECTION	2
 #define KORE_TYPE_PGSQL_CONN	3
+#define KORE_TYPE_TASK		4
 
 struct listener {
 	u_int8_t		type;

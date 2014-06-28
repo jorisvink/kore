@@ -29,6 +29,10 @@
 #include "contrib/postgres/kore_pgsql.h"
 #endif
 
+#if defined(KORE_USE_TASKS)
+#include "kore_tasks.h"
+#endif
+
 #if defined(WORKER_DEBUG)
 #define worker_debug(fmt, ...)		printf(fmt, ##__VA_ARGS__)
 #else
@@ -227,6 +231,10 @@ kore_worker_entry(struct kore_worker *kw)
 
 #if defined(KORE_USE_PGSQL)
 	kore_pgsql_init();
+#endif
+
+#if defined(KORE_USE_TASKS)
+	kore_task_init();
 #endif
 
 	worker->accept_treshold = worker_max_connections / 10;

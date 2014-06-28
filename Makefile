@@ -28,6 +28,12 @@ ifneq ("$(PGSQL)", "")
 	CFLAGS+=-I$(shell pg_config --includedir) -DKORE_USE_PGSQL
 endif
 
+ifneq ("$(TASKS)", "")
+	S_SRC+=contrib/tasks/kore_tasks.c
+	LDFLAGS+=-lpthread
+	CFLAGS+=-DKORE_USE_TASKS
+endif
+
 OSNAME=$(shell uname -s | sed -e 's/[-_].*//g' | tr A-Z a-z)
 ifeq ("$(OSNAME)", "darwin")
 	CFLAGS+=-I/opt/local/include/

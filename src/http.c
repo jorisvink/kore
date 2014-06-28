@@ -27,6 +27,10 @@
 #include "contrib/postgres/kore_pgsql.h"
 #endif
 
+#if defined(KORE_USE_TASKS)
+#include "kore_tasks.h"
+#endif
+
 static char		*http_status_text(int);
 static int		http_post_data_recv(struct netbuf *);
 static char		*http_post_data_text(struct http_request *);
@@ -136,6 +140,10 @@ http_request_new(struct connection *c, struct spdy_stream *s, char *host,
 		if (!http_request_header_get(req, "user-agent", &(req->agent)))
 			req->agent = kore_strdup("unknown");
 	}
+
+#if defined(KORE_USE_TASKS)
+	kore_task_setup(req);
+#endif
 
 	http_request_count++;
 	TAILQ_INSERT_HEAD(&http_requests, req, list);

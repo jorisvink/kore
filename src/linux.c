@@ -25,6 +25,10 @@
 #include "contrib/postgres/kore_pgsql.h"
 #endif
 
+#if defined(KORE_USE_TASKS)
+#include "kore_tasks.h"
+#endif
+
 static int			efd = -1;
 static u_int32_t		event_count = 0;
 static struct epoll_event	*events = NULL;
@@ -103,6 +107,12 @@ kore_platform_event_wait(void)
 			}
 #endif
 
+#if defined(KORE_USE_TASKS)
+			if (type == KORE_TYPE_TASK) {
+				kore_task_handle(events[i].data.ptr, 1);
+				continue;
+			}
+#endif
 			c = (struct connection *)events[i].data.ptr;
 			kore_connection_disconnect(c);
 			continue;
@@ -139,6 +149,11 @@ kore_platform_event_wait(void)
 #if defined(KORE_USE_PGSQL)
 		case KORE_TYPE_PGSQL_CONN:
 			kore_pgsql_handle(events[i].data.ptr, 0);
+			break;
+#endif
+#if defined(KORE_USE_TASK)
+		case KORE_TYPE_TASK:
+			kore_task_handle(events[i].data.ptr, 0);
 			break;
 #endif
 		default:
