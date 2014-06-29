@@ -17,11 +17,19 @@
 #ifndef __H_KORE_TASKS
 #define __H_KORE_TASKS
 
+#define KORE_TASK_STATE_CREATED		1
+#define KORE_TASK_STATE_RUNNING		2
+#define KORE_TASK_STATE_FINISHED	3
+
+struct http_request;
+
 struct kore_task {
-	u_int8_t	type;
-	int		fds[2];
-	void		*owner;
-	void		(*entry)(struct kore_task *);
+	u_int8_t		type;
+	u_int8_t		state;
+
+	struct http_request	*req;
+	int			fds[2];
+	void			(*entry)(struct kore_task *);
 
 	struct kore_task_thread		*thread;
 	TAILQ_ENTRY(kore_task)		list;
@@ -40,8 +48,12 @@ struct kore_task_thread {
 void		kore_task_init(void);
 void		kore_task_finish(struct kore_task *);
 void		kore_task_destroy(struct kore_task *);
+int		kore_task_finished(struct kore_task *);
 void		kore_task_handle(struct kore_task *, int);
-void		kore_task_create(struct http_request *,
+
+void		kore_task_bind_request(struct kore_task *,
+		    struct http_request *);
+void		kore_task_create(struct kore_task **,
 		    void (*entry)(struct kore_task *));
 
 u_int32_t	kore_task_channel_read(struct kore_task *, void *, u_int32_t);

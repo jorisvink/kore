@@ -40,10 +40,8 @@ static void	task_thread_spawn(struct kore_task_thread **);
 	do {							\
 		if (pthread_self() == t) {			\
 			f = i;					\
-			kore_debug("fd for thread");		\
 		} else {					\
 			f = o;					\
-			kore_debug("fd for worker");		\
 		}						\
 	} while (0);
 
@@ -57,24 +55,20 @@ kore_task_init(void)
 }
 
 void
-kore_task_create(struct http_request *req, void (*entry)(struct kore_task *))
+kore_task_create(struct kore_task **out, void (*entry)(struct kore_task *))
 {
+	struct kore_task		*t;
 	struct kore_task_thread		*tt;
 
-	if (req->task != NULL)
-		return;
+	t = kore_malloc(sizeof(struct kore_task));
+	t->entry = entry;
+	t->type = KORE_TYPE_TASK;
+	t->state = KORE_TASK_STATE_CREATED;
 
-	req->flags |= HTTP_REQUEST_SLEEPING;
-
-	req->task = kore_malloc(sizeof(struct kore_task));
-	req->task->owner = req;
-	req->task->entry = entry;
-	req->task->type = KORE_TYPE_TASK;
-
-	if (socketpair(AF_UNIX, SOCK_STREAM, 0, req->task->fds) == -1)
+	if (socketpair(AF_UNIX, SOCK_STREAM, 0,t->fds) == -1)
 		fatal("kore_task_create: socketpair() %s", errno_s);
 
-	kore_platform_schedule_read(req->task->fds[0], req->task);
+	kore_platform_schedule_read(t->fds[0], t);
 
 	pthread_mutex_lock(&task_thread_lock);
 	if (TAILQ_EMPTY(&task_threads))
@@ -85,20 +79,47 @@ kore_task_create(struct http_request *req, void (*entry)(struct kore_task *))
 	pthread_mutex_unlock(&task_thread_lock);
 	pthread_mutex_lock(&(tt->lock));
 
-	req->task->thread = tt;
-	TAILQ_INSERT_TAIL(&(tt->tasks), req->task, list);
+	t->thread = tt;
+	TAILQ_INSERT_TAIL(&(tt->tasks), t, list);
 
 	pthread_mutex_unlock(&(tt->lock));
 	pthread_cond_signal(&(tt->cond));
+
+	if (out != NULL)
+		*out = t;
+}
+
+void
+kore_task_bind_request(struct kore_task *t, struct http_request *req)
+{
+	kore_debug("kore_task_bind_request: %p bound to %p", req, t);
+
+	t->req = req;
+	req->task = t;
+	req->flags |= HTTP_REQUEST_SLEEPING;
 }
 
 void
 kore_task_destroy(struct kore_task *t)
 {
-	if (t->fds[1] != -1)
-		close(t->fds[1]);
+	kore_debug("kore_task_destroy: %p", t);
+
+	if (t->req != NULL)
+		t->req->task = NULL;
+
 	close(t->fds[0]);
+	close(t->fds[1]);		/* This might already be closed. */
+
 	kore_mem_free(t);
+}
+
+int
+kore_task_finished(struct kore_task *t)
+{
+	if (t->state == KORE_TASK_STATE_FINISHED)
+		return (1);
+
+	return (0);
 }
 
 void
@@ -107,7 +128,6 @@ kore_task_finish(struct kore_task *t)
 	kore_debug("kore_task_finished: %p", t);
 
 	close(t->fds[1]);
-	t->fds[1] = -1;
 }
 
 void
@@ -142,13 +162,15 @@ kore_task_channel_read(struct kore_task *t, void *out, u_int32_t len)
 void
 kore_task_handle(struct kore_task *t, int finished)
 {
-	struct http_request	*req = t->owner;
-
 	kore_debug("kore_task_handle: %p, %d", t, finished);
 
 	if (finished) {
-		/* XXX - How do we deal with req being gone? */
-		req->flags &= ~HTTP_REQUEST_SLEEPING;
+		t->state = KORE_TASK_STATE_FINISHED;
+		if (t->req != NULL) {
+			t->req->flags &= ~HTTP_REQUEST_SLEEPING;
+			if (t->req->flags & HTTP_REQUEST_DELETE)
+				kore_task_destroy(t);
+		}
 	}
 }
 
@@ -240,7 +262,10 @@ task_thread(void *arg)
 		pthread_mutex_unlock(&task_thread_lock);
 
 		kore_debug("task_thread#%d: executing %p", tt->idx, t);
+
+		t->state = KORE_TASK_STATE_RUNNING;
 		t->entry(t);
+		kore_task_finish(t);
 
 		pthread_mutex_lock(&task_thread_lock);
 		TAILQ_INSERT_HEAD(&task_threads, tt, list);

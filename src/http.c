@@ -164,6 +164,11 @@ http_process(void)
 		next = TAILQ_NEXT(req, list);
 
 		if (req->flags & HTTP_REQUEST_DELETE) {
+#if defined(KORE_USE_TASKS)
+			if (req->task != NULL &&
+			    req->task->state != KORE_TASK_STATE_FINISHED)
+				continue;
+#endif
 			TAILQ_REMOVE(&http_requests, req, list);
 			http_request_free(req);
 			http_request_count--;
@@ -272,8 +277,6 @@ http_request_free(struct http_request *req)
 
 	kore_debug("http_request_free: %p->%p", req->owner, req);
 
-	TAILQ_REMOVE(&(req->owner->http_requests), req, olist);
-
 	for (hdr = TAILQ_FIRST(&(req->resp_headers)); hdr != NULL; hdr = next) {
 		next = TAILQ_NEXT(hdr, list);
 
@@ -317,11 +320,6 @@ http_request_free(struct http_request *req)
 
 #if defined(KORE_USE_PGSQL)
 	kore_pgsql_cleanup(req);
-#endif
-
-#if defined(KORE_USE_TASKS)
-	if (req->task != NULL)
-		kore_task_destroy(req->task);
 #endif
 
 	if (req->method == HTTP_METHOD_POST && req->post_data != NULL)

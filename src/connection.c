@@ -225,9 +225,9 @@ kore_connection_handle(struct connection *c)
 void
 kore_connection_remove(struct connection *c)
 {
-	struct http_request	*req;
 	struct netbuf		*nb, *next;
 	struct spdy_stream	*s, *snext;
+	struct http_request	*req, *rnext;
 
 	kore_debug("kore_connection_remove(%p)", c);
 
@@ -249,8 +249,11 @@ kore_connection_remove(struct connection *c)
 	if (c->deflate_started)
 		deflateEnd(&(c->z_deflate));
 
-	TAILQ_FOREACH(req, &(c->http_requests), olist)
+	for (req = TAILQ_FIRST(&(c->http_requests)); req != NULL; req = rnext) {
+		rnext = TAILQ_NEXT(req, olist);
 		req->flags |= HTTP_REQUEST_DELETE;
+		TAILQ_REMOVE(&(c->http_requests), req, olist);
+	}
 
 	for (nb = TAILQ_FIRST(&(c->send_queue)); nb != NULL; nb = next) {
 		next = TAILQ_NEXT(nb, list);
