@@ -257,7 +257,7 @@ kore_server_start(void)
 			if (sig_recv == SIGHUP || sig_recv == SIGQUIT) {
 				kore_worker_dispatch_signal(sig_recv);
 				if (sig_recv == SIGHUP)
-					kore_module_reload();
+					kore_module_reload(0);
 				if (sig_recv == SIGQUIT)
 					break;
 			}

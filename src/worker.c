@@ -239,11 +239,12 @@ kore_worker_entry(struct kore_worker *kw)
 
 	worker->accept_treshold = worker_max_connections / 10;
 	kore_log(LOG_NOTICE, "worker %d started (cpu#%d)", kw->id, kw->cpu);
+	kore_module_onload();
 
 	for (;;) {
 		if (sig_recv != 0) {
 			if (sig_recv == SIGHUP)
-				kore_module_reload();
+				kore_module_reload(1);
 			else if (sig_recv == SIGQUIT)
 				quit = 1;
 			sig_recv = 0;

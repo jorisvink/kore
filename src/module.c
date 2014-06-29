@@ -55,7 +55,6 @@ kore_module_load(char *path, char *onload)
 		module->ocb = dlsym(module->handle, onload);
 		if (module->ocb == NULL)
 			fatal("%s: onload '%s' not present", path, onload);
-		module->ocb(KORE_MODULE_LOAD);
 	}
 
 	if (kore_cb_name != NULL && kore_cb == NULL)
@@ -65,7 +64,20 @@ kore_module_load(char *path, char *onload)
 }
 
 void
-kore_module_reload(void)
+kore_module_onload(void)
+{
+	struct kore_module	*module;
+
+	TAILQ_FOREACH(module, &modules, list) {
+		if (module->ocb == NULL)
+			continue;
+
+		module->ocb(KORE_MODULE_LOAD);
+	}
+}
+
+void
+kore_module_reload(int cbs)
 {
 	struct stat			st;
 	struct kore_domain		*dom;
@@ -84,7 +96,7 @@ kore_module_reload(void)
 		if (module->mtime == st.st_mtime)
 			continue;
 
-		if (module->ocb != NULL)
+		if (module->ocb != NULL && cbs == 1)
 			module->ocb(KORE_MODULE_UNLOAD);
 
 		module->mtime = st.st_mtime;
@@ -102,7 +114,8 @@ kore_module_reload(void)
 				    module->path, module->onload);
 			}
 
-			module->ocb(KORE_MODULE_LOAD);
+			if (cbs)
+				module->ocb(KORE_MODULE_LOAD);
 		}
 
 		if (kore_cb_name != NULL && kore_cb == NULL)
