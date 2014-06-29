@@ -121,7 +121,6 @@ struct http_file {
 #define HTTP_REQUEST_SLEEPING		0x04
 
 #define HTTP_PGSQL_MAX			20
-#define HTTP_TASK_MAX			10
 struct kore_pgsql;
 struct kore_task;
 
@@ -143,8 +142,8 @@ struct http_request {
 	u_int8_t			*multipart_body;
 
 	struct kore_module_handle	*hdlr;
+	struct kore_task		*task;
 	struct kore_pgsql		*pgsql[HTTP_PGSQL_MAX];
-	struct kore_task		*tasks[HTTP_TASK_MAX];
 
 	TAILQ_HEAD(, http_header)		req_headers;
 	TAILQ_HEAD(, http_header)		resp_headers;

@@ -97,24 +97,26 @@ kore_platform_event_wait(void)
 
 		if (events[i].events & EPOLLERR ||
 		    events[i].events & EPOLLHUP) {
-			if (type == KORE_TYPE_LISTENER)
+			switch (type) {
+			case KORE_TYPE_LISTENER:
 				fatal("failed on listener socket");
-
+				/* NOTREACHED */
 #if defined(KORE_USE_PGSQL)
-			if (type == KORE_TYPE_PGSQL_CONN) {
+			case KORE_TYPE_PGSQL_CONN:
 				kore_pgsql_handle(events[i].data.ptr, 1);
-				continue;
-			}
+				break;
 #endif
-
 #if defined(KORE_USE_TASKS)
-			if (type == KORE_TYPE_TASK) {
+			case KORE_TYPE_TASK:
 				kore_task_handle(events[i].data.ptr, 1);
-				continue;
-			}
+				break;
 #endif
-			c = (struct connection *)events[i].data.ptr;
-			kore_connection_disconnect(c);
+			default:
+				c = (struct connection *)events[i].data.ptr;
+				kore_connection_disconnect(c);
+				break;
+			}
+
 			continue;
 		}
 
@@ -151,7 +153,7 @@ kore_platform_event_wait(void)
 			kore_pgsql_handle(events[i].data.ptr, 0);
 			break;
 #endif
-#if defined(KORE_USE_TASK)
+#if defined(KORE_USE_TASKS)
 		case KORE_TYPE_TASK:
 			kore_task_handle(events[i].data.ptr, 0);
 			break;

@@ -19,18 +19,20 @@
 
 struct kore_task {
 	u_int8_t	type;
-
 	int		fds[2];
 	void		*owner;
-	void		*thread;
 	void		(*entry)(struct kore_task *);
 
-	TAILQ_ENTRY(kore_task)	list;
+	struct kore_task_thread		*thread;
+	TAILQ_ENTRY(kore_task)		list;
 };
 
 struct kore_task_thread {
-	u_int8_t	idx;
-	pthread_t	tid;
+	u_int8_t		idx;
+	pthread_t		tid;
+	pthread_mutex_t		lock;
+	pthread_cond_t		cond;
+	TAILQ_HEAD(, kore_task)	tasks;
 
 	TAILQ_ENTRY(kore_task_thread)	list;
 };
@@ -38,13 +40,11 @@ struct kore_task_thread {
 void		kore_task_init(void);
 void		kore_task_finish(struct kore_task *);
 void		kore_task_destroy(struct kore_task *);
-void		kore_task_setup(struct http_request *);
 void		kore_task_handle(struct kore_task *, int);
-void		kore_task_create(struct http_request *, int,
+void		kore_task_create(struct http_request *,
 		    void (*entry)(struct kore_task *));
 
+u_int32_t	kore_task_channel_read(struct kore_task *, void *, u_int32_t);
 void		kore_task_channel_write(struct kore_task *, void *, u_int32_t);
-void		kore_task_channel_read(struct kore_task *,
-		    u_int8_t **, u_int32_t *);
 
 #endif

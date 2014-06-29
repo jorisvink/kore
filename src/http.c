@@ -142,7 +142,7 @@ http_request_new(struct connection *c, struct spdy_stream *s, char *host,
 	}
 
 #if defined(KORE_USE_TASKS)
-	kore_task_setup(req);
+	req->task = NULL;
 #endif
 
 	http_request_count++;
@@ -317,6 +317,11 @@ http_request_free(struct http_request *req)
 
 #if defined(KORE_USE_PGSQL)
 	kore_pgsql_cleanup(req);
+#endif
+
+#if defined(KORE_USE_TASKS)
+	if (req->task != NULL)
+		kore_task_destroy(req->task);
 #endif
 
 	if (req->method == HTTP_METHOD_POST && req->post_data != NULL)

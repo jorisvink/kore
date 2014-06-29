@@ -111,7 +111,7 @@ kore_connection_handle(struct connection *c)
 	const u_char		*data;
 	char			cn[X509_CN_LENGTH];
 
-	kore_debug("kore_connection_handle(%p)", c);
+	kore_debug("kore_connection_handle(%p) -> %d", c, c->state);
 
 	kore_connection_stop_idletimer(c);
 
