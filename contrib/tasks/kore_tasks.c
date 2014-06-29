@@ -61,14 +61,14 @@ kore_task_create(struct kore_task **out, void (*entry)(struct kore_task *))
 	struct kore_task_thread		*tt;
 
 	t = kore_malloc(sizeof(struct kore_task));
+
+	t->req = NULL;
 	t->entry = entry;
 	t->type = KORE_TYPE_TASK;
 	t->state = KORE_TASK_STATE_CREATED;
 
 	if (socketpair(AF_UNIX, SOCK_STREAM, 0,t->fds) == -1)
 		fatal("kore_task_create: socketpair() %s", errno_s);
-
-	kore_platform_schedule_read(t->fds[0], t);
 
 	pthread_mutex_lock(&task_thread_lock);
 	if (TAILQ_EMPTY(&task_threads))
@@ -97,6 +97,8 @@ kore_task_bind_request(struct kore_task *t, struct http_request *req)
 	t->req = req;
 	req->task = t;
 	req->flags |= HTTP_REQUEST_SLEEPING;
+
+	kore_platform_schedule_read(t->fds[0], t);
 }
 
 void
