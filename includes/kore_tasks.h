@@ -47,6 +47,7 @@ struct kore_task_thread {
 };
 
 void		kore_task_init(void);
+void		kore_task_run(struct kore_task *);
 void		kore_task_finish(struct kore_task *);
 void		kore_task_destroy(struct kore_task *);
 int		kore_task_finished(struct kore_task *);

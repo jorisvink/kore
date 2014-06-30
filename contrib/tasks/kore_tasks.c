@@ -58,7 +58,6 @@ void
 kore_task_create(struct kore_task **out, int (*entry)(struct kore_task *))
 {
 	struct kore_task		*t;
-	struct kore_task_thread		*tt;
 
 	t = kore_malloc(sizeof(struct kore_task));
 
@@ -69,6 +68,15 @@ kore_task_create(struct kore_task **out, int (*entry)(struct kore_task *))
 
 	if (socketpair(AF_UNIX, SOCK_STREAM, 0,t->fds) == -1)
 		fatal("kore_task_create: socketpair() %s", errno_s);
+
+	if (out != NULL)
+		*out = t;
+}
+
+void
+kore_task_run(struct kore_task *t)
+{
+	struct kore_task_thread		*tt;
 
 	pthread_mutex_lock(&task_thread_lock);
 	if (TAILQ_EMPTY(&task_threads))
@@ -84,9 +92,6 @@ kore_task_create(struct kore_task **out, int (*entry)(struct kore_task *))
 
 	pthread_mutex_unlock(&(tt->lock));
 	pthread_cond_signal(&(tt->cond));
-
-	if (out != NULL)
-		*out = t;
 }
 
 void
