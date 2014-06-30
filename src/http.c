@@ -24,7 +24,7 @@
 #include "http.h"
 
 #if defined(KORE_USE_PGSQL)
-#include "contrib/postgres/kore_pgsql.h"
+#include "kore_pgsql.h"
 #endif
 
 #if defined(KORE_USE_TASKS)

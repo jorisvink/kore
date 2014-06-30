@@ -16,7 +16,7 @@
 
 #include "kore.h"
 #include "http.h"
-#include "contrib/postgres/kore_pgsql.h"
+#include "kore_pgsql.h"
 
 #include "static.h"
 

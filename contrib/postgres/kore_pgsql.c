@@ -21,7 +21,7 @@
 
 #include "kore.h"
 #include "http.h"
-#include "contrib/postgres/kore_pgsql.h"
+#include "kore_pgsql.h"
 
 struct pgsql_job {
 	u_int8_t		idx;

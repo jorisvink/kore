@@ -18,13 +18,13 @@
 #include <sys/event.h>
 
 #ifdef __MACH__
-    #include <sys/sysctl.h>
+#include <sys/sysctl.h>
 #endif
 
 #include "kore.h"
 
 #if defined(KORE_USE_PGSQL)
-#include "contrib/postgres/kore_pgsql.h"
+#include "kore_pgsql.h"
 #endif
 
 static int			kfd = -1;
