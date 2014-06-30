@@ -55,7 +55,7 @@ kore_task_init(void)
 }
 
 void
-kore_task_create(struct kore_task **out, void (*entry)(struct kore_task *))
+kore_task_create(struct kore_task **out, int (*entry)(struct kore_task *))
 {
 	struct kore_task		*t;
 	struct kore_task_thread		*tt;
@@ -127,8 +127,7 @@ kore_task_finished(struct kore_task *t)
 void
 kore_task_finish(struct kore_task *t)
 {
-	kore_debug("kore_task_finished: %p", t);
-
+	kore_debug("kore_task_finished: %p (%d)", t, t->result);
 	close(t->fds[1]);
 }
 
@@ -148,15 +147,19 @@ u_int32_t
 kore_task_channel_read(struct kore_task *t, void *out, u_int32_t len)
 {
 	int		fd;
-	u_int32_t	dlen;
+	u_int32_t	dlen, bytes;
 
 	kore_debug("kore_task_channel_read: %p -> %p (%ld)", t, out, len);
 
 	THREAD_FD_ASSIGN(t->thread->tid, fd, t->fds[1], t->fds[0]);
 	task_channel_read(fd, &dlen, sizeof(dlen));
+
 	if (dlen > len)
-		fatal("task_channel_read: buffer too small, wanted %d", dlen);
-	task_channel_read(fd, out, dlen);
+		bytes = len;
+	else
+		bytes = dlen;
+
+	task_channel_read(fd, out, bytes);
 
 	return (dlen);
 }
@@ -266,7 +269,7 @@ task_thread(void *arg)
 		kore_debug("task_thread#%d: executing %p", tt->idx, t);
 
 		t->state = KORE_TASK_STATE_RUNNING;
-		t->entry(t);
+		t->result = t->entry(t);
 		kore_task_finish(t);
 
 		pthread_mutex_lock(&task_thread_lock);
