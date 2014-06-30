@@ -27,6 +27,10 @@
 #include "kore_pgsql.h"
 #endif
 
+#if defined(KORE_USE_TASKS)
+#include "kore_tasks.h"
+#endif
+
 static int			kfd = -1;
 static struct kevent		*events;
 static u_int32_t		nchanges;
@@ -108,18 +112,26 @@ kore_platform_event_wait(void)
 
 		if (events[i].flags & EV_EOF ||
 		    events[i].flags & EV_ERROR) {
-			if (type == KORE_TYPE_LISTENER)
+			switch (type) {
+			case KORE_TYPE_LISTENER:
 				fatal("error on server socket");
-
+				/* NOTREACHED */
 #if defined(KORE_USE_PGSQL)
-			if (type == KORE_TYPE_PGSQL_CONN) {
+			case KORE_TYPE_PGSQL_CONN:
 				kore_pgsql_handle(events[i].udata, 1);
-				continue;
-			}
+				break;
 #endif
+#if defined(KORE_USE_TASKS)
+			case KORE_TYPE_TASK:
+				kore_task_handle(events[i].udata, 1);
+				break;
+#endif
+			default:
+				c = (struct connection *)events[i].udata;
+				kore_connection_disconnect(c);
+				break;
+			}
 
-			c = (struct connection *)events[i].udata;
-			kore_connection_disconnect(c);
 			continue;
 		}
 
@@ -163,6 +175,11 @@ kore_platform_event_wait(void)
 #if defined(KORE_USE_PGSQL)
 		case KORE_TYPE_PGSQL_CONN:
 			kore_pgsql_handle(events[i].udata, 0);
+			break;
+#endif
+#if defined(KORE_USE_TASKS)
+		case KORE_TYPE_TASK:
+			kore_task_handle(events[i].udata, 0);
 			break;
 #endif
 		default:
