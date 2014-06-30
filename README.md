@@ -11,6 +11,7 @@ Features
 * Supports SNI
 * Supports SPDY/3
 * Supports HTTP/1.1
+* Lightweight background tasks
 * Built-in parameter validation
 * Only HTTPS connections allowed
 * Multiple modules can be loaded at once
