@@ -23,13 +23,13 @@ ifneq ("$(KORE_PEDANTIC_MALLOC)", "")
 endif
 
 ifneq ("$(PGSQL)", "")
-	S_SRC+=contrib/postgres/kore_pgsql.c
+	S_SRC+=src/pgsql.c
 	LDFLAGS+=-L$(shell pg_config --libdir) -lpq
 	CFLAGS+=-I$(shell pg_config --includedir) -DKORE_USE_PGSQL
 endif
 
 ifneq ("$(TASKS)", "")
-	S_SRC+=contrib/tasks/kore_tasks.c
+	S_SRC+=src/tasks.c
 	LDFLAGS+=-lpthread
 	CFLAGS+=-DKORE_USE_TASKS
 endif
