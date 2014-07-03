@@ -37,6 +37,47 @@ Releases
 --------
 * [2014-03-01] Version 1.1 - https://kore.io/release/kore-1.1-stable.tgz
 
+Building Kore
+-------------
+
+Requirements
+* libz
+* openssl >= 1.0.1g
+
+Requirements for background tasks:
+* pthreads
+
+Requirements for pgsql:
+* libpq
+
+Normal compilation and installation:
+
+```
+# git clone https://github.com/jorisvink/kore.git
+# cd kore
+# make
+# make install
+```
+
+If you would like to build a specific flavor, you can enable
+those by setting a shell environment variable before running **_make_**.
+
+* TASKS=1 (compiles in task support)
+* PGSQL=1 (compiles in pgsql support)
+* DEBUG=1 (enables use of -d for debug)
+* KORE_PEDANTIC_MALLOC=1 (zero all allocated memory)
+
+Example libraries
+-----------------
+
+You can find example libraries under **_contrib/examples/_**.
+
+The examples should be compiled using the supplied **build.sh** scripts
+and assume you have installed the header files using make install.
+
+I apologize for unclear examples or documentation, I am working on
+improving those. In the mean time feel free to jump in and help out!
+
 Bugs, contributions and more
 ----------------------------
 
