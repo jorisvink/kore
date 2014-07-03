@@ -332,7 +332,9 @@ pgsql_read_result(struct http_request *req, int i, struct pgsql_conn *conn)
 		req->pgsql[i]->state = KORE_PGSQL_STATE_DONE;
 		break;
 	case PGRES_TUPLES_OK:
+#if PG_VERSION_NUM >= 90200
 	case PGRES_SINGLE_TUPLE:
+#endif
 		req->pgsql[i]->state = KORE_PGSQL_STATE_RESULT;
 		break;
 	case PGRES_EMPTY_QUERY:
