@@ -76,7 +76,7 @@ The examples should be compiled using the supplied **build.sh** scripts
 and assume you have installed the header files using make install.
 
 I apologize for unclear examples or documentation, I am working on
-improving those. In the mean time feel free to jump in and help out!
+improving those.
 
 Bugs, contributions and more
 ----------------------------
