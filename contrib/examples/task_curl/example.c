@@ -109,7 +109,7 @@ page_handler(struct http_request *req)
 	 * and should be treated carefully.
 	 */
 	len = kore_task_channel_read(req->task, result, sizeof(result));
-	if (len >= sizeof(result)) {
+	if (len > sizeof(result)) {
 		http_response(req, 500, NULL, 0);
 	} else {
 		http_response(req, 200, result, len);
@@ -167,7 +167,7 @@ run_curl(struct kore_task *t)
 	 * that was written to it by page_handler().
 	 */
 	len = kore_task_channel_read(t, user, sizeof(user));
-	if (len >= sizeof(user))
+	if (len > sizeof(user))
 		return (KORE_RESULT_ERROR);
 
 	l = snprintf(fields, sizeof(fields), "user=%.*s", len, user);
