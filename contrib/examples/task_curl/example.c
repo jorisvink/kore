@@ -40,7 +40,7 @@
 
 #include "kore.h"
 #include "http.h"
-#include "kore_tasks.h"
+#include "tasks.h"
 
 int		run_curl(struct kore_task *);
 int		post_back(struct http_request *);
