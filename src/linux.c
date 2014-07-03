@@ -22,11 +22,11 @@
 #include "kore.h"
 
 #if defined(KORE_USE_PGSQL)
-#include "kore_pgsql.h"
+#include "pgsql.h"
 #endif
 
 #if defined(KORE_USE_TASKS)
-#include "kore_tasks.h"
+#include "tasks.h"
 #endif
 
 static int			efd = -1;

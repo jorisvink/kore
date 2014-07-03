@@ -24,11 +24,11 @@
 #include "http.h"
 
 #if defined(KORE_USE_PGSQL)
-#include "kore_pgsql.h"
+#include "pgsql.h"
 #endif
 
 #if defined(KORE_USE_TASKS)
-#include "kore_tasks.h"
+#include "tasks.h"
 #endif
 
 static char		*http_status_text(int);

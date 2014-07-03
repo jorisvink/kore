@@ -24,7 +24,7 @@
 
 #include "kore.h"
 #include "http.h"
-#include "kore_tasks.h"
+#include "tasks.h"
 
 static u_int8_t				threads;
 static pthread_mutex_t			task_thread_lock;
