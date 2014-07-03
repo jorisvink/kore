@@ -44,10 +44,10 @@ Requirements
 * libz
 * openssl >= 1.0.1g
 
-Requirements for background tasks:
+Requirements for background tasks
 * pthreads
 
-Requirements for pgsql:
+Requirements for pgsql
 * libpq
 
 Normal compilation and installation:
