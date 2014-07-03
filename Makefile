@@ -2,6 +2,7 @@
 
 CC=gcc
 BIN=kore
+INSTALL_DIR=/usr/local/bin
 
 S_SRC+=	src/kore.c src/accesslog.c src/auth.c src/buf.c src/config.c \
 	src/connection.c src/domain.c src/http.c src/mem.c src/module.c \
@@ -49,6 +50,12 @@ endif
 
 all: $(S_OBJS)
 	$(CC) $(CFLAGS) $(S_OBJS) $(LDFLAGS) -o $(BIN)
+
+install:
+	install -m 555 $(BIN) $(INSTALL_DIR)/$(BIN)
+
+uninstall:
+	rm -f $(INSTALL_DIR)/$(BIN)
 
 .c.o:
 	$(CC) $(CFLAGS) -c $< -o $@
