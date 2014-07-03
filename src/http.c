@@ -720,7 +720,7 @@ http_populate_multipart_form(struct http_request *req, int *v)
 	slen = strlen(val);
 	boundary = kore_malloc(slen + 3);
 	l = snprintf(boundary, slen + 3, "--%s", val);
-	if (l == -1 || (size_t)l >= sizeof(boundary)) {
+	if (l == -1) {
 		kore_mem_free(boundary);
 		kore_mem_free(type);
 		return (KORE_RESULT_ERROR);
