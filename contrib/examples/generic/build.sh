@@ -16,12 +16,9 @@ MEDIA_DIR=media
 # The directory containing your module source.
 SOURCE_DIR=src
 
-# The directory containing the Kore source code.
-KORE_DIR=../../../
-
 # Compiler settings.
 CC=gcc
-CFLAGS="-I. -I${KORE_DIR}/includes -Wall -Wstrict-prototypes \
+CFLAGS="-I. -I/usr/local/includes -Wall -Wstrict-prototypes \
 	-Wmissing-prototypes -Wmissing-declarations -Wshadow \
 	-Wpointer-arith -Wcast-qual -Wsign-compare -g"
 

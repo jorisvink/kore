@@ -38,9 +38,9 @@
 
 #include <curl/curl.h>
 
-#include "kore.h"
-#include "http.h"
-#include "tasks.h"
+#include <kore/kore.h>
+#include <kore/http.h>
+#include <kore/tasks.h>
 
 int		run_curl(struct kore_task *);
 int		post_back(struct http_request *);

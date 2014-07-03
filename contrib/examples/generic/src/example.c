@@ -14,8 +14,8 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include "kore.h"
-#include "http.h"
+#include <kore/kore.h>
+#include <kore/http.h>
 
 #include "static.h"
 

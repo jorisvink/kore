@@ -3,7 +3,7 @@
 # Copyright (c) 2013 Joris Vink <joris@coders.se>
 #
 # Kore module build script, use this as a base for building
-# your own modules for kore.
+# your own modules for kore or just roll your own.
 
 # The name of the module you will be building
 MODULE=site.module
@@ -16,16 +16,9 @@ MEDIA_DIR=media
 # The directory containing your module source.
 SOURCE_DIR=src
 
-# The directory containing the Kore source code.
-KORE_DIR="notset"
-if [ ${KORE_DIR} = "notset" ]; then
-	echo "Please edit build.sh and set KORE_DIR properly";
-	exit;
-fi
-
 # Compiler settings.
 CC=gcc
-CFLAGS="-I. -I${KORE_DIR}/includes -Wall -Wstrict-prototypes \
+CFLAGS="-I. -I/usr/local/includes -Wall -Wstrict-prototypes \
 	-Wmissing-prototypes -Wmissing-declarations -Wshadow \
 	-Wpointer-arith -Wcast-qual -Wsign-compare -g"
 
