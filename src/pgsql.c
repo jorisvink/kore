@@ -53,6 +53,7 @@ static void	pgsql_read_result(struct http_request *, int,
 static TAILQ_HEAD(, pgsql_conn)		pgsql_conn_free;
 static u_int16_t			pgsql_conn_count;
 char					*pgsql_conn_string = NULL;
+u_int16_t				pgsql_conn_max = PGSQL_CONN_MAX;
 
 void
 kore_pgsql_init(void)
@@ -73,7 +74,7 @@ kore_pgsql_query(struct http_request *req, char *query, int idx)
 		fatal("kore_pgsql_query: %d already exists", idx);
 
 	if (TAILQ_EMPTY(&pgsql_conn_free)) {
-		if (pgsql_conn_count >= PGSQL_CONN_MAX)
+		if (pgsql_conn_count >= pgsql_conn_max)
 			return (KORE_RESULT_ERROR);
 	}
 

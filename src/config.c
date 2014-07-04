@@ -24,6 +24,10 @@
 #include "kore.h"
 #include "http.h"
 
+#if defined(KORE_USE_PGSQL)
+#include "pgsql.h"
+#endif
+
 /* XXX - This is becoming a clusterfuck. Fix it. */
 
 static int		configure_include(char **);
@@ -59,6 +63,10 @@ static int		configure_authentication_uri(char **);
 static int		configure_authentication_type(char **);
 static int		configure_authentication_value(char **);
 static int		configure_authentication_validator(char **);
+
+#if defined(KORE_USE_PGSQL)
+static int		configure_pgsql_conn_max(char **);
+#endif
 
 static void		domain_sslstart(void);
 static void		kore_parse_config_file(char *);
@@ -101,6 +109,9 @@ static struct {
 	{ "authentication_type",	configure_authentication_type },
 	{ "authentication_value",	configure_authentication_value },
 	{ "authentication_validator",	configure_authentication_validator },
+#if defined(KORE_USE_PGSQL)
+	{ "pgsql_conn_max",		configure_pgsql_conn_max },
+#endif
 	{ NULL,				NULL },
 };
 
@@ -907,3 +918,26 @@ domain_sslstart(void)
 	kore_domain_sslstart(current_domain);
 	current_domain = NULL;
 }
+
+#if defined(KORE_USE_PGSQL)
+
+static int
+configure_pgsql_conn_max(char **argv)
+{
+	int		err;
+
+	if (argv[1] == NULL) {
+		printf("missing parameter for pgsql_conn_max\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	pgsql_conn_max = kore_strtonum(argv[1], 10, 0, USHRT_MAX, &err);
+	if (err != KORE_RESULT_OK) {
+		printf("bad value for pgsql_conn_max: %s\n", argv[1]);
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+#endif

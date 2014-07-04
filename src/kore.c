@@ -246,6 +246,13 @@ kore_server_start(void)
 	kore_write_kore_pid();
 
 	kore_log(LOG_NOTICE, "kore is starting up");
+#if defined(KORE_USE_PGSQL)
+	kore_log(LOG_NOTICE, "pgsql built-in enabled");
+#endif
+#if defined(KORE_USE_TASKS)
+	kore_log(LOG_NOTICE, "tasks built-in enabled");
+#endif
+
 	kore_platform_proctitle("kore [parent]");
 	kore_worker_init();
 
