@@ -102,8 +102,8 @@ kore_task_bind_request(struct kore_task *t, struct http_request *req)
 
 	t->req = req;
 	req->task = t;
-	req->flags |= HTTP_REQUEST_SLEEPING;
 
+	http_request_sleep(req);
 	kore_platform_schedule_read(t->fds[0], t);
 }
 
@@ -173,10 +173,12 @@ kore_task_handle(struct kore_task *t, int finished)
 {
 	kore_debug("kore_task_handle: %p, %d", t, finished);
 
+	if (t->req != NULL)
+		http_request_wakeup(t->req);
+
 	if (finished) {
 		kore_task_set_state(t, KORE_TASK_STATE_FINISHED);
 		if (t->req != NULL) {
-			t->req->flags &= ~HTTP_REQUEST_SLEEPING;
 			if (t->req->flags & HTTP_REQUEST_DELETE)
 				kore_task_destroy(t);
 		}

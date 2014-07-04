@@ -89,7 +89,7 @@ kore_pgsql_query(struct http_request *req, char *query, int idx)
 			return (KORE_RESULT_ERROR);
 	}
 
-	req->flags |= HTTP_REQUEST_SLEEPING;
+	http_request_sleep(req);
 	conn = TAILQ_FIRST(&pgsql_conn_free);
 	if (!(conn->flags & PGSQL_CONN_FREE))
 		fatal("received a pgsql conn that was not free?");
@@ -145,9 +145,9 @@ kore_pgsql_handle(void *c, int err)
 	}
 
 	if (req->pgsql[i]->state == KORE_PGSQL_STATE_WAIT) {
-		req->flags |= HTTP_REQUEST_SLEEPING;
+		http_request_sleep(req);
 	} else {
-		req->flags &= ~HTTP_REQUEST_SLEEPING;
+		http_request_wakeup(req);
 		http_process_request(req, 1);
 	}
 }
@@ -175,8 +175,8 @@ kore_pgsql_continue(struct http_request *req, int i)
 	case KORE_PGSQL_STATE_WAIT:
 		break;
 	case KORE_PGSQL_STATE_DONE:
+		http_request_wakeup(req);
 		req->pgsql[i]->conn = NULL;
-		req->flags &= ~HTTP_REQUEST_SLEEPING;
 		req->pgsql[i]->state = KORE_PGSQL_STATE_COMPLETE;
 
 		kore_mem_free(conn->job->query);
@@ -292,11 +292,11 @@ pgsql_conn_cleanup(struct pgsql_conn *conn)
 	if (conn->job) {
 		i = conn->job->idx;
 		req = conn->job->req;
+		http_request_wakeup(req);
 
 		req->pgsql[i]->conn = NULL;
 		req->pgsql[i]->state = KORE_PGSQL_STATE_ERROR;
 		req->pgsql[i]->error = kore_strdup(PQerrorMessage(conn->db));
-		req->flags &= ~HTTP_REQUEST_SLEEPING;
 
 		kore_mem_free(conn->job->query);
 		kore_mem_free(conn->job);

@@ -47,6 +47,7 @@ static void		http_response_spdy(struct http_request *,
 			    struct connection *, int, void *, u_int32_t);
 
 static TAILQ_HEAD(, http_request)	http_requests;
+static TAILQ_HEAD(, http_request)	http_requests_sleeping;
 static struct kore_pool			http_request_pool;
 static struct kore_pool			http_header_pool;
 
@@ -61,6 +62,7 @@ http_init(void)
 {
 	http_request_count = 0;
 	TAILQ_INIT(&http_requests);
+	TAILQ_INIT(&http_requests_sleeping);
 
 	kore_pool_init(&http_request_pool, "http_request_pool",
 	    sizeof(struct http_request), worker_max_connections);
@@ -156,6 +158,30 @@ http_request_new(struct connection *c, struct spdy_stream *s, char *host,
 }
 
 void
+http_request_sleep(struct http_request *req)
+{
+	if (!(req->flags & HTTP_REQUEST_SLEEPING)) {
+		kore_debug("http_request_sleep: %p napping", req);
+
+		req->flags |= HTTP_REQUEST_SLEEPING;
+		TAILQ_REMOVE(&http_requests, req, list);
+		TAILQ_INSERT_TAIL(&http_requests_sleeping, req, list);
+	}
+}
+
+void
+http_request_wakeup(struct http_request *req)
+{
+	if (req->flags & HTTP_REQUEST_SLEEPING) {
+		kore_debug("http_request_wakeup: %p woke up", req);
+
+		req->flags &= ~HTTP_REQUEST_SLEEPING;
+		TAILQ_REMOVE(&http_requests_sleeping, req, list);
+		TAILQ_INSERT_TAIL(&http_requests, req, list);
+	}
+}
+
+void
 http_process(void)
 {
 	struct http_request		*req, *next;
@@ -168,8 +194,9 @@ http_process(void)
 			continue;
 		}
 
+		/* Sleeping requests should be in http_requests_sleeping. */
 		if (req->flags & HTTP_REQUEST_SLEEPING)
-			continue;
+			fatal("http_process: sleeping request on list");
 
 		if (!(req->flags & HTTP_REQUEST_COMPLETE))
 			continue;
