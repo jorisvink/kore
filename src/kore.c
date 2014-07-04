@@ -40,6 +40,7 @@ char			*kore_pidfile = KORE_PIDFILE_DEFAULT;
 char			*kore_ssl_cipher_list = KORE_DEFAULT_CIPHER_LIST;
 
 static void	usage(void);
+static void	version(void);
 static void	kore_server_start(void);
 static void	kore_write_kore_pid(void);
 static void	kore_server_sslstart(void);
@@ -47,8 +48,24 @@ static void	kore_server_sslstart(void);
 static void
 usage(void)
 {
-	fprintf(stderr, "Usage: kore [-c config] [-dn]\n");
+	fprintf(stderr, "Usage: kore [-c config] [-dnv]\n");
 	exit(1);
+}
+
+static void
+version(void)
+{
+	printf("kore %d.%d-%s ", KORE_VERSION_MAJOR,
+	    KORE_VERSION_MINOR, KORE_VERSION_STATE);
+#if defined(KORE_USE_PGSQL)
+	printf("pgsql ");
+#endif
+#if defined(KORE_USE_TASKS)
+	printf("tasks ");
+#endif
+	printf("\n");
+
+	exit(0);
 }
 
 int
@@ -57,7 +74,7 @@ main(int argc, char *argv[])
 	int			ch;
 	struct listener		*l;
 
-	while ((ch = getopt(argc, argv, "c:dn")) != -1) {
+	while ((ch = getopt(argc, argv, "c:dnv")) != -1) {
 		switch (ch) {
 		case 'c':
 			config_file = optarg;
@@ -71,6 +88,9 @@ main(int argc, char *argv[])
 			break;
 		case 'n':
 			skip_chroot = 1;
+			break;
+		case 'v':
+			version();
 			break;
 		default:
 			usage();
