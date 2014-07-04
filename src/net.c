@@ -27,25 +27,27 @@ net_init(void)
 }
 
 void
-net_send_queue(struct connection *c, u_int8_t *data, u_int32_t len,
+net_send_queue(struct connection *c, void *data, u_int32_t len,
     struct spdy_stream *s)
 {
+	u_int8_t		*d;
 	struct netbuf		*nb;
 	u_int32_t		avail;
 
+	d = data;
 	nb = TAILQ_LAST(&(c->send_queue), netbuf_head);
 	if (nb != NULL && nb->b_len < nb->m_len && nb->stream == s) {
 		avail = nb->m_len - nb->b_len;
 		if (len < avail) {
-			memcpy(nb->buf + nb->b_len, data, len);
+			memcpy(nb->buf + nb->b_len, d, len);
 			nb->b_len += len;
 			return;
 		} else if (len > avail) {
-			memcpy(nb->buf + nb->b_len, data, avail);
+			memcpy(nb->buf + nb->b_len, d, avail);
 			nb->b_len += avail;
 
 			len -= avail;
-			data += avail;
+			d += avail;
 			if (len == 0)
 				return;
 		}
@@ -67,7 +69,7 @@ net_send_queue(struct connection *c, u_int8_t *data, u_int32_t len,
 
 	nb->buf = kore_malloc(nb->m_len);
 	if (len > 0)
-		memcpy(nb->buf, data, nb->b_len);
+		memcpy(nb->buf, d, nb->b_len);
 
 	TAILQ_INSERT_TAIL(&(c->send_queue), nb, list);
 }

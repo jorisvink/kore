@@ -448,7 +448,7 @@ void		net_recv_queue(struct connection *, size_t, int,
 		    struct netbuf **, int (*cb)(struct netbuf *));
 int		net_recv_expand(struct connection *c, struct netbuf *, size_t,
 		    int (*cb)(struct netbuf *));
-void		net_send_queue(struct connection *, u_int8_t *,
+void		net_send_queue(struct connection *, void *,
 		    u_int32_t, struct spdy_stream *);
 
 void		kore_buf_free(struct kore_buf *);
