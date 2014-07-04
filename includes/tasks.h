@@ -20,13 +20,15 @@
 #define KORE_TASK_STATE_CREATED		1
 #define KORE_TASK_STATE_RUNNING		2
 #define KORE_TASK_STATE_FINISHED	3
+#define KORE_TASK_STATE_ABORT		4
 
 struct http_request;
 
 struct kore_task {
 	u_int8_t		type;
-	volatile u_int8_t	state;
-	volatile int		result;
+	int			state;
+	int			result;
+	pthread_rwlock_t	lock;
 
 	struct http_request	*req;
 	int			fds[2];
@@ -60,5 +62,11 @@ void		kore_task_create(struct kore_task **,
 
 u_int32_t	kore_task_channel_read(struct kore_task *, void *, u_int32_t);
 void		kore_task_channel_write(struct kore_task *, void *, u_int32_t);
+
+void		kore_task_set_state(struct kore_task *, int);
+void		kore_task_set_result(struct kore_task *, int);
+
+int		kore_task_state(struct kore_task *);
+int		kore_task_result(struct kore_task *);
 
 #endif

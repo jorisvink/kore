@@ -94,7 +94,7 @@ page_handler(struct http_request *req)
 	 * When we come back here, our background task is finished
 	 * and we can check its result.
 	 */
-	if (req->task->result != KORE_RESULT_OK) {
+	if (kore_task_result(req->task) != KORE_RESULT_OK) {
 		kore_task_destroy(req->task);
 		http_response(req, 500, NULL, 0);
 		return (KORE_RESULT_OK);

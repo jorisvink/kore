@@ -65,6 +65,7 @@ kore_task_create(struct kore_task **out, int (*entry)(struct kore_task *))
 	t->entry = entry;
 	t->type = KORE_TYPE_TASK;
 	t->state = KORE_TASK_STATE_CREATED;
+	pthread_rwlock_init(&(t->lock), NULL);
 
 	if (socketpair(AF_UNIX, SOCK_STREAM, 0,t->fds) == -1)
 		fatal("kore_task_create: socketpair() %s", errno_s);
@@ -117,16 +118,14 @@ kore_task_destroy(struct kore_task *t)
 	close(t->fds[0]);
 	close(t->fds[1]);		/* This might already be closed. */
 
+	pthread_rwlock_destroy(&(t->lock));
 	kore_mem_free(t);
 }
 
 int
 kore_task_finished(struct kore_task *t)
 {
-	if (t->state == KORE_TASK_STATE_FINISHED)
-		return (1);
-
-	return (0);
+	return ((kore_task_state(t) == KORE_TASK_STATE_FINISHED));
 }
 
 void
@@ -175,13 +174,53 @@ kore_task_handle(struct kore_task *t, int finished)
 	kore_debug("kore_task_handle: %p, %d", t, finished);
 
 	if (finished) {
-		t->state = KORE_TASK_STATE_FINISHED;
+		kore_task_set_state(t, KORE_TASK_STATE_FINISHED);
 		if (t->req != NULL) {
 			t->req->flags &= ~HTTP_REQUEST_SLEEPING;
 			if (t->req->flags & HTTP_REQUEST_DELETE)
 				kore_task_destroy(t);
 		}
 	}
+}
+
+int
+kore_task_state(struct kore_task *t)
+{
+	int	s;
+
+	pthread_rwlock_rdlock(&(t->lock));
+	s = t->state;
+	pthread_rwlock_unlock(&(t->lock));
+
+	return (s);
+}
+
+void
+kore_task_set_state(struct kore_task *t, int state)
+{
+	pthread_rwlock_wrlock(&(t->lock));
+	t->state = state;
+	pthread_rwlock_unlock(&(t->lock));
+}
+
+int
+kore_task_result(struct kore_task *t)
+{
+	int	r;
+
+	pthread_rwlock_rdlock(&(t->lock));
+	r = t->result;
+	pthread_rwlock_unlock(&(t->lock));
+
+	return (r);
+}
+
+void
+kore_task_set_result(struct kore_task *t, int result)
+{
+	pthread_rwlock_wrlock(&(t->lock));
+	t->result = result;
+	pthread_rwlock_unlock(&(t->lock));
 }
 
 static void
@@ -273,8 +312,8 @@ task_thread(void *arg)
 
 		kore_debug("task_thread#%d: executing %p", tt->idx, t);
 
-		t->state = KORE_TASK_STATE_RUNNING;
-		t->result = t->entry(t);
+		kore_task_set_state(t, KORE_TASK_STATE_RUNNING);
+		kore_task_set_result(t, t->entry(t));
 		kore_task_finish(t);
 
 		pthread_mutex_lock(&task_thread_lock);

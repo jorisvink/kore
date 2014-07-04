@@ -164,14 +164,7 @@ http_process(void)
 		next = TAILQ_NEXT(req, list);
 
 		if (req->flags & HTTP_REQUEST_DELETE) {
-#if defined(KORE_USE_TASKS)
-			if (req->task != NULL &&
-			    req->task->state != KORE_TASK_STATE_FINISHED)
-				continue;
-#endif
-			TAILQ_REMOVE(&http_requests, req, list);
 			http_request_free(req);
-			http_request_count--;
 			continue;
 		}
 
@@ -275,7 +268,17 @@ http_request_free(struct http_request *req)
 	struct http_arg		*q, *qnext;
 	struct http_header	*hdr, *next;
 
+#if defined(KORE_USE_TASKS)
+	if (req->task != NULL && !kore_task_finished(req->task)) {
+		if (kore_task_state(req->task) != KORE_TASK_STATE_ABORT)
+			kore_task_set_state(req->task, KORE_TASK_STATE_ABORT);
+		return;
+	}
+#endif
+
 	kore_debug("http_request_free: %p->%p", req->owner, req);
+
+	TAILQ_REMOVE(&http_requests, req, list);
 
 	for (hdr = TAILQ_FIRST(&(req->resp_headers)); hdr != NULL; hdr = next) {
 		next = TAILQ_NEXT(hdr, list);
@@ -333,6 +336,7 @@ http_request_free(struct http_request *req)
 		kore_mem_free(req->hdlr_extra);
 
 	kore_pool_put(&http_request_pool, req);
+	http_request_count--;
 }
 
 void
@@ -1082,8 +1086,10 @@ http_response_normal(struct http_request *req, struct connection *c,
 		}
 	}
 
-	kore_buf_appendf(buf, "Content-length: %d\r\n", len);
-	kore_buf_append(buf, "\r\n", 2);
+	if (len > 0) {
+		kore_buf_appendf(buf, "Content-length: %d\r\n", len);
+		kore_buf_append(buf, "\r\n", 2);
+	}
 
 	htext = kore_buf_release(buf, &hlen);
 	net_send_queue(c, htext, hlen, NULL);
