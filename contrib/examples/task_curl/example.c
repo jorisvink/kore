@@ -22,9 +22,6 @@
  * This illustrates how Kore its background tasks in effect work and
  * how to operate on the channel in order to pass data back and forth.
  *
- * The page_handler() page handler is not called until the background
- * task it fired off has completed.
- *
  * You need libcurl installed for this to build (including headers)
  *
  * Compile using build.sh, afterwards start using:
@@ -72,7 +69,7 @@ page_handler(struct http_request *req)
 		 *
 		 * Binding a task to a request means Kore will reschedule
 		 * the page handler for that request to refire after the
-		 * task has completed.
+		 * task has completed or when it writes on the task channel.
 		 */
 		kore_task_create(&req->task, run_curl);
 		kore_task_bind_request(req->task, req);
@@ -91,8 +88,19 @@ page_handler(struct http_request *req)
 	}
 
 	/*
-	 * When we come back here, our background task is finished
-	 * and we can check its result.
+	 * Our page handler is scheduled to be called when either the
+	 * task finishes or has written data onto the channel.
+	 *
+	 * In order to distuingish between the two we can inspect the
+	 * state of the task.
+	 */
+	if (kore_task_state(req->task) != KORE_TASK_STATE_FINISHED) {
+		http_request_sleep(req);
+		return (KORE_RESULT_RETRY);
+	}
+
+	/*
+	 * Task is finished, check the result.
 	 */
 	if (kore_task_result(req->task) != KORE_RESULT_OK) {
 		kore_task_destroy(req->task);
