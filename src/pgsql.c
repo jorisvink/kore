@@ -18,7 +18,7 @@
 #include <sys/queue.h>
 
 #include <libpq-fe.h>
-#include <postgresql/pg_config.h>
+#include <pg_config.h>
 
 #include "kore.h"
 #include "http.h"
