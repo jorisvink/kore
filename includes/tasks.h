@@ -17,6 +17,8 @@
 #ifndef __H_KORE_TASKS
 #define __H_KORE_TASKS
 
+#include <pthread.h>
+
 #define KORE_TASK_STATE_CREATED		1
 #define KORE_TASK_STATE_RUNNING		2
 #define KORE_TASK_STATE_FINISHED	3
