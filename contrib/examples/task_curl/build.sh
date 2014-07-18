@@ -13,11 +13,11 @@ SOURCE_DIR=.
 
 # Compiler settings.
 CC=gcc
-CFLAGS="-I. -I/usr/local/includes -Wall -Wstrict-prototypes \
+CFLAGS="-I. -I/usr/local/include -Wall -Wstrict-prototypes \
 	-Wmissing-prototypes -Wmissing-declarations -Wshadow \
 	-Wpointer-arith -Wcast-qual -Wsign-compare -g"
 
-LDFLAGS="-shared -lcurl"
+LDFLAGS="-L/usr/local/lib -shared -lcurl"
 
 MODULE_BUILD_DATE=$(date +"%Y-%m-%d %H:%M:%S")
 

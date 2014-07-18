@@ -7,7 +7,7 @@ MODULE=pgsql_test.module
 SOURCE_DIR=.
 PGDIR=$(pg_config --includedir)
 CC=gcc
-CFLAGS="-I. -I/usr/local/includes -I${PGDIR} \
+CFLAGS="-I. -I/usr/local/include -I${PGDIR} \
 	-Wall -Wstrict-prototypes -Wmissing-prototypes \
 	-Wmissing-declarations -Wshadow -Wpointer-arith -Wcast-qual \
 	-Wsign-compare -g"
