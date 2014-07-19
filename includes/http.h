@@ -34,6 +34,8 @@
 #define HTTP_ARG_TYPE_INT32	4
 #define HTTP_ARG_TYPE_UINT32	5
 #define HTTP_ARG_TYPE_STRING	6
+#define HTTP_ARG_TYPE_INT64	7
+#define HTTP_ARG_TYPE_UINT64	8
 
 struct http_header {
 	char			*header;
@@ -102,6 +104,13 @@ struct http_arg {
 
 #define http_argument_get_int32(n, o)					\
 	http_argument_type(req, n, o, NULL, HTTP_ARG_TYPE_INT32)
+
+#define http_argument_get_uint64(n, o)					\
+	http_argument_type(req, n, o, NULL, HTTP_ARG_TYPE_UINT64)
+
+#define http_argument_get_int64(n, o)					\
+	http_argument_type(req, n, o, NULL, HTTP_ARG_TYPE_INT64)
+
 
 struct http_file {
 	char			*name;
