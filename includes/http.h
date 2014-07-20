@@ -62,6 +62,16 @@ struct http_arg {
 		*(t **)o = *(t **)v;			\
 	} while (0);
 
+#define COPY_ARG_INT64(type, sign)					\
+	do {								\
+		int err;						\
+		type nval;						\
+		nval = (type)kore_strtonum64(q->s_value, sign, &err);	\
+		if (err != KORE_RESULT_OK)				\
+			return (KORE_RESULT_ERROR);			\
+		COPY_ARG_TYPE(&nval, len, type, out);			\
+	} while (0);
+
 #define COPY_ARG_INT(min, max, type)					\
 	do {								\
 		int err;						\
@@ -79,6 +89,12 @@ struct http_arg {
 			q->s_value = kore_malloc(q->s_len);		\
 			kore_strlcpy(q->s_value, q->value, q->s_len);	\
 		}							\
+	} while (0);
+
+#define COPY_AS_INTTYPE_64(type, sign)					\
+	do {								\
+		CACHE_STRING();						\
+		COPY_ARG_INT64(type, sign);				\
 	} while (0);
 
 #define COPY_AS_INTTYPE(min, max, type)					\

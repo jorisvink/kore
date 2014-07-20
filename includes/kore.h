@@ -401,6 +401,7 @@ time_t		kore_date_to_time(char *);
 char		*kore_time_to_date(time_t);
 char		*kore_strdup(const char *);
 void		kore_log(int, const char *, ...);
+u_int64_t	kore_strtonum64(const char *, int, int *);
 void		kore_strlcpy(char *, const char *, size_t);
 void		kore_server_disconnect(struct connection *);
 int		kore_split_string(char *, char *, char **, size_t);

@@ -634,11 +634,11 @@ http_argument_get(struct http_request *req, const char *name,
 				COPY_AS_INTTYPE(0, UINT_MAX, u_int32_t);
 				return (KORE_RESULT_OK);
 			case HTTP_ARG_TYPE_INT64:
-				COPY_AS_INTTYPE(LONG_MIN, LONG_MAX, u_int64_t);
-				break;
+				COPY_AS_INTTYPE_64(int64_t, 1);
+				return (KORE_RESULT_OK);
 			case HTTP_ARG_TYPE_UINT64:
-				COPY_AS_INTTYPE(0, ULONG_MAX, u_int64_t);
-				break;
+				COPY_AS_INTTYPE_64(u_int64_t, 0);
+				return (KORE_RESULT_OK);
 			case HTTP_ARG_TYPE_STRING:
 				CACHE_STRING();
 				*out = q->s_value;
