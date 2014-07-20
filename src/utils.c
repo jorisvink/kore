@@ -129,29 +129,43 @@ u_int64_t
 kore_strtonum64(const char *str, int sign, int *err)
 {
 	u_int64_t	l;
+	long long	ll;
 	char		*ep;
+	int		check;
 
-	errno = 0;
-	l = strtoull(str, &ep, 10);
-	if (errno != 0 || str == ep || *ep != '\0') {
+	check = 1;
+
+	ll = strtoll(str, &ep, 10);
+	if ((errno == EINVAL || errno == ERANGE) &&
+	    (ll == LLONG_MIN || ll == LLONG_MAX)) {
+		if (sign) {
+			*err = KORE_RESULT_ERROR;
+			return (0);
+		}
+
+		check = 0;
+	}
+
+	if (!sign) {
+		l = strtoull(str, &ep, 10);
+		if ((errno == EINVAL || errno == ERANGE) && l == ULONG_MAX) {
+			*err = KORE_RESULT_ERROR;
+			return (0);
+		}
+
+		if (check && ll < 0) {
+			*err = KORE_RESULT_ERROR;
+			return (0);
+		}
+	}
+
+	if (str == ep || *ep != '\0') {
 		*err = KORE_RESULT_ERROR;
 		return (0);
 	}
 
-	if (sign) {
-		if ((int64_t)l < LLONG_MIN || l > LLONG_MAX) {
-			*err = KORE_RESULT_ERROR;
-			return (0);
-		}
-	} else {
-		if (l > ULLONG_MAX) {
-			*err = KORE_RESULT_ERROR;
-			return (0);
-		}
-	}
-
 	*err = KORE_RESULT_OK;
-	return (l);
+	return ((sign) ? (u_int64_t)ll : l);
 }
 
 int
