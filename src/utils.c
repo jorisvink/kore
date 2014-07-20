@@ -144,7 +144,7 @@ kore_strtonum64(const char *str, int sign, int *err)
 			return (0);
 		}
 	} else {
-		if ((int64_t)l < 0 || l > ULLONG_MAX) {
+		if (l > ULLONG_MAX) {
 			*err = KORE_RESULT_ERROR;
 			return (0);
 		}
