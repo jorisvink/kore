@@ -17,6 +17,7 @@
 #include <sys/param.h>
 
 #include <stdlib.h>
+#include <stdint.h>
 
 #include "kore.h"
 
