@@ -45,6 +45,7 @@ kore_module_load(char *path, char *onload)
 	module->path = kore_strdup(path);
 	module->mtime = st.st_mtime;
 	module->onload = NULL;
+	module->ocb = NULL;
 
 	module->handle = dlopen(module->path, RTLD_NOW | RTLD_GLOBAL);
 	if (module->handle == NULL)
