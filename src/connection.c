@@ -251,9 +251,9 @@ kore_connection_remove(struct connection *c)
 
 	for (req = TAILQ_FIRST(&(c->http_requests)); req != NULL; req = rnext) {
 		rnext = TAILQ_NEXT(req, olist);
+		TAILQ_REMOVE(&(c->http_requests), req, olist);
 		req->flags |= HTTP_REQUEST_DELETE;
 		http_request_wakeup(req);
-		TAILQ_REMOVE(&(c->http_requests), req, olist);
 	}
 
 	for (nb = TAILQ_FIRST(&(c->send_queue)); nb != NULL; nb = next) {
