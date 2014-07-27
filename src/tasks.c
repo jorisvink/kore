@@ -48,10 +48,13 @@ static void	task_thread_spawn(struct kore_task_thread **);
 void
 kore_task_init(void)
 {
+	int		r;
+
 	threads = 0;
 
 	TAILQ_INIT(&task_threads);
-	pthread_mutex_init(&task_thread_lock, NULL);
+	if ((r = pthread_mutex_init(&task_thread_lock, NULL)) != 0)
+		fatal("kore_task_init: pthread_mutex_init: %d", r);
 }
 
 void
