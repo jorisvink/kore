@@ -493,25 +493,24 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 	GET_HEADER(":host", &host);
 	GET_HEADER(":version", &version);
 
-	if (!http_request_new(c, s, host, method, path, version,
-	    (struct http_request **)&(s->httpreq))) {
-		kore_mem_free(path);
-		kore_mem_free(method);
-		kore_mem_free(host);
-		kore_mem_free(version);
-		kore_mem_free(s->hblock->header_block);
-		kore_mem_free(s->hblock);
-		kore_mem_free(s);
-		return (KORE_RESULT_OK);
-	}
-
-	kore_mem_free(path);
-	kore_mem_free(host);
-	kore_mem_free(method);
-	kore_mem_free(version);
-
 	c->client_stream_id = s->stream_id;
 	TAILQ_INSERT_TAIL(&(c->spdy_streams), s, list);
+
+	/*
+	 * We don't care so much for what http_request_new() tells us here,
+	 * we just have to clean up after passing our stuff to it.
+	 *
+	 * In case of early errors (414, 500, ...) a net_send_flush() will
+	 * clear out this stream properly via spdy_stream_close().
+	 */
+	(void)http_request_new(c, s, host, method, path, version,
+	    (struct http_request **)&(s->httpreq));
+
+	kore_mem_free(path);
+	kore_mem_free(method);
+	kore_mem_free(host);
+	kore_mem_free(version);
+
 	kore_debug("SPDY_SYN_STREAM: %u:%u:%u", s->stream_id,
 	    s->flags, s->prio);
 
