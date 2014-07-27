@@ -306,6 +306,7 @@ http_request_free(struct http_request *req)
 	kore_debug("http_request_free: %p->%p", req->owner, req);
 
 	TAILQ_REMOVE(&http_requests, req, list);
+	TAILQ_REMOVE(&(req->owner->http_requests), req, olist);
 
 	for (hdr = TAILQ_FIRST(&(req->resp_headers)); hdr != NULL; hdr = next) {
 		next = TAILQ_NEXT(hdr, list);
