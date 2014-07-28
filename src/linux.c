@@ -72,14 +72,14 @@ kore_platform_event_init(void)
 }
 
 void
-kore_platform_event_wait(void)
+kore_platform_event_wait(u_int64_t timer)
 {
 	struct connection	*c;
 	struct listener		*l;
 	u_int8_t		type;
 	int			n, i;
 
-	n = epoll_wait(efd, events, event_count, 100);
+	n = epoll_wait(efd, events, event_count, timer);
 	if (n == -1) {
 		if (errno == EINTR)
 			return;

@@ -83,7 +83,7 @@ kore_platform_event_init(void)
 }
 
 void
-kore_platform_event_wait(void)
+kore_platform_event_wait(u_int64_t timer)
 {
 	struct listener		*l;
 	struct connection	*c;
@@ -92,7 +92,7 @@ kore_platform_event_wait(void)
 	int			n, i;
 
 	timeo.tv_sec = 0;
-	timeo.tv_nsec = 100000000;
+	timeo.tv_nsec = timer * 1000000;
 	n = kevent(kfd, changelist, nchanges, events, event_count, &timeo);
 	if (n == -1) {
 		if (errno == EINTR)

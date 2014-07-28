@@ -346,11 +346,11 @@ void		kore_worker_connection_remove(struct connection *);
 
 void		kore_platform_init(void);
 void		kore_platform_event_init(void);
-void		kore_platform_event_wait(void);
 void		kore_platform_proctitle(char *);
 void		kore_platform_disable_read(int);
 void		kore_platform_enable_accept(void);
 void		kore_platform_disable_accept(void);
+void		kore_platform_event_wait(u_int64_t);
 void		kore_platform_schedule_read(int, void *);
 void		kore_platform_event_schedule(int, int, int, void *);
 void		kore_platform_worker_setcpu(struct kore_worker *);
