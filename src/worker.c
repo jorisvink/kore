@@ -55,7 +55,7 @@ static int	worker_trylock(void);
 static int	worker_unlock(void);
 static void	worker_decide_next(void);
 
-static void	kore_worker_acceptlock_obtain(void);
+static int	kore_worker_acceptlock_obtain(void);
 
 static TAILQ_HEAD(, connection)		disconnected;
 static TAILQ_HEAD(, connection)		worker_clients;
@@ -183,7 +183,7 @@ kore_worker_entry(struct kore_worker *kw)
 	int			quit;
 	char			buf[16];
 	struct connection	*c, *cnext;
-	u_int64_t		now, idle_check, last_cb_run;
+	u_int64_t		now, idle_check, last_cb_run, timer;
 
 	worker = kw;
 
@@ -250,10 +250,24 @@ kore_worker_entry(struct kore_worker *kw)
 			sig_recv = 0;
 		}
 
-		if (!worker->has_lock)
-			kore_worker_acceptlock_obtain();
+		/*
+		 * If we do not own the accept lock we want to reduce the time
+		 * spent waiting in kore_platform_event_wait() in case we get
+		 * handed the lock so we can grab it as fast as possible.
+		 *
+		 * Perhaps not the ideal thing to do, but I can't come up with
+		 * anything better right now.
+		 */
+		if (!worker->has_lock) {
+			if (kore_worker_acceptlock_obtain())
+				timer = 100;
+			else
+				timer = 1;
+		} else {
+			timer = 100;
+		}
 
-		kore_platform_event_wait();
+		kore_platform_event_wait(timer);
 
 		if (((worker->accepted >= worker->accept_treshold) ||
 		    (worker_active_connections >= worker_max_connections)) &&
@@ -418,14 +432,18 @@ kore_worker_acceptlock_release(void)
 	}
 }
 
-static void
+static int
 kore_worker_acceptlock_obtain(void)
 {
+	int		r;
+
 	if (worker_count == 1 && !worker->has_lock) {
 		worker->has_lock = 1;
 		kore_platform_enable_accept();
-		return;
+		return (1);
 	}
+
+	r = 0;
 
 	if (worker_trylock()) {
 		if (worker_active_connections >= worker_max_connections) {
@@ -438,11 +456,14 @@ kore_worker_acceptlock_obtain(void)
 				worker->busy_warn = 1;
 			}
 		} else {
+			r = 1;
 			worker->has_lock = 1;
 			worker->busy_warn = 0;
 			kore_platform_enable_accept();
 		}
 	}
+
+	return (r);
 }
 
 static int
