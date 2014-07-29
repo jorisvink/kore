@@ -269,9 +269,7 @@ kore_worker_entry(struct kore_worker *kw)
 
 		kore_platform_event_wait(timer);
 
-		if (((worker->accepted >= worker->accept_treshold) ||
-		    (worker_active_connections >= worker_max_connections)) &&
-		    worker->has_lock)
+		if (worker->has_lock)
 			kore_worker_acceptlock_release();
 
 		http_process();
