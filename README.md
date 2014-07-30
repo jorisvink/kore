@@ -1,8 +1,8 @@
 About
 -----
-Kore (https://kore.io) is a fast webserver written in C for web applications
-developed in C. It provides a small set of API functions you can use to build
-a dynamic library which is loaded into Kore directly.
+Kore (https://kore.io) is an ultra fast webserver written in C for web
+applications developed in C. It provides a set of API functions you can
+use to build a dynamic library which is loaded into Kore directly.
 
 Kore is an ideal candidate for developing robust, fast and safe web applications.
 
