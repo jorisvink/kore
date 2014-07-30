@@ -62,15 +62,18 @@ u_int64_t	http_postbody_max = HTTP_POSTBODY_MAX_LEN;
 void
 http_init(void)
 {
+	int		prealloc;
+
 	http_request_count = 0;
 	TAILQ_INIT(&http_requests);
 	TAILQ_INIT(&http_requests_sleeping);
 
+	prealloc = MIN((worker_max_connections / 10), 1000);
+
 	kore_pool_init(&http_request_pool, "http_request_pool",
-	    sizeof(struct http_request), worker_max_connections);
+	    sizeof(struct http_request), prealloc);
 	kore_pool_init(&http_header_pool, "http_header_pool",
-	    sizeof(struct http_header),
-	    worker_max_connections * HTTP_REQ_HEADER_MAX);
+	    sizeof(struct http_header), prealloc * HTTP_REQ_HEADER_MAX);
 }
 
 int
