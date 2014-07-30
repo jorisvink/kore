@@ -133,6 +133,7 @@ kore_strtonum64(const char *str, int sign, int *err)
 	char		*ep;
 	int		check;
 
+	l = 0;
 	check = 1;
 
 	ll = strtoll(str, &ep, 10);
@@ -390,6 +391,7 @@ kore_base64_decode(char *in, u_int8_t **out, u_int32_t *olen)
 	i = 4;
 	b = 0;
 	d = 0;
+	c = 0;
 	len = strlen(in);
 	res = kore_buf_create(len);
 
