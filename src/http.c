@@ -273,7 +273,9 @@ http_process_request(struct http_request *req, int retry_only)
 		return;
 	}
 
-	kore_accesslog(req);
+	if (hdlr != NULL && hdlr->dom->accesslog != -1)
+		kore_accesslog(req);
+
 	req->flags |= HTTP_REQUEST_DELETE;
 }
 

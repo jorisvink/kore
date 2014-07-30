@@ -228,6 +228,7 @@ struct kore_module_handle {
 	int			type;
 	int			errors;
 	regex_t			rctx;
+	struct kore_domain	*dom;
 	struct kore_auth	*auth;
 
 	TAILQ_HEAD(, kore_handler_params)	params;

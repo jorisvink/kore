@@ -179,6 +179,7 @@ kore_module_handler_new(char *path, char *domain, char *func,
 
 	hdlr = kore_malloc(sizeof(*hdlr));
 	hdlr->auth = ap;
+	hdlr->dom = dom;
 	hdlr->errors = 0;
 	hdlr->addr = addr;
 	hdlr->type = type;
