@@ -139,14 +139,12 @@ kore_platform_event_wait(u_int64_t timer)
 		case KORE_TYPE_LISTENER:
 			l = (struct listener *)events[i].udata;
 
-			while ((worker->accepted < worker->accept_treshold) &&
-			    (worker_active_connections <
-			    worker_max_connections)) {
+			while (worker_active_connections <
+			    worker_max_connections) {
 				kore_connection_accept(l, &c);
 				if (c == NULL)
 					break;
 
-				worker->accepted++;
 				kore_platform_event_schedule(c->fd,
 				    EVFILT_READ, EV_ADD, c);
 				kore_platform_event_schedule(c->fd,
