@@ -1,0 +1,193 @@
+# Example Kore configuration
+
+# Server configuration.
+bind		127.0.0.1 443
+
+# The path worker processes will chroot into after starting.
+chroot		/home/joris/src/kore
+
+# Worker processes will run as the specified user.
+runas		joris
+
+# Set workers to the amount of CPU's available in your system,
+# kore will automatically distribute all workers on them.
+workers		4
+
+# The number of active connections each worker can handle.
+# You might have to tweak this number based on your hardware.
+#worker_max_connections		250
+
+# Store the main process its pid in this file.
+#pidfile	/var/run/kore.pid
+
+# You can define a callback Kore calls from its parent process or
+# workers everytime the kore_cb_interval timer (in milliseconds) is reached.
+#
+# NOTE: Remember that the parent process runs as root and is not chroot().
+# NOTE: If you want the cb to run on a worker, be sure to set kore_cb_worker.
+#kore_cb		my_callback
+#kore_cb_interval	1000
+#kore_cb_worker		3
+
+# HTTP specific settings.
+#	http_header_max		Maximum size of HTTP headers (in bytes).
+#
+#	http_postbody_max	Maximum size of an HTTP POST body (in bytes).
+#
+#	http_keepalive_time	Maximum seconds an HTTP connection can be
+#				kept alive by the browser.
+#				(Set to 0 to disable keepalive completely).
+#
+#	http_hsts_enable	Send Strict Transport Security header in
+#				all responses. Parameter is the age.
+#				(Set to 0 to disable sending this header).
+#http_header_max	4096
+#http_postbody_max	10240000
+#http_keepalive_time	0
+#http_hsts_enable	31536000
+
+# Load modules (you can load multiple at the same time).
+# An additional parameter can be specified as the "onload" function
+# which Kore will call when the module is loaded/reloaded.
+load contrib/examples/generic/example.module	example_load
+
+# Validators
+#	validator	name	type	regex|function
+#
+validator	v_example	function	v_example_func
+validator	v_regex		regex		^/test/[a-z]*$
+validator	v_number	regex		^[0-9]*$
+validator	v_session	function	v_session_validate
+
+# Specify the SSL ciphers that will be used.
+#ssl_cipher	ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA256:DHE-DSS-AES256-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:HIGH:!aNULL:!eNULL:!EXPORT:!DES:!3DES:!MD5:!PSK
+
+# If you wish to use EDH / ECDH specify a file containing
+# a generated DH key (See OpenSSL dhparam).
+#ssl_dhparam	dh2048.pem
+
+# Set this if you want to disable SSL zlib compression.
+ssl_no_compression
+
+# Specify the amount of seconds a SPDY connection is kept open.
+# You can keep it open indefinately by setting this to 0.
+#spdy_idle_time		120
+
+# Authentication configuration
+#
+# Using authentication blocks you can define a standard way for
+# Kore to validate your users. In the example below we create
+# a authentication block called auth_example, which requires
+# a cookie (session_id) to be set.
+#
+# If no cookie is present or the cookie is not valid according
+# to the set validator, Kore will redirect the browser to the
+# URI set in authentication_uri.
+#
+# Page handlers can be bound to authentication by specifying
+# authentication block at the end of the page directive (see below).
+authentication auth_example {
+	# The authentication type denotes the way the user should
+	# be authenticated.
+	#
+	# Allow values:
+	#	- cookie (checks for the cookie presence + pass to validator)
+	#	- header (checks for header presence + pass to validator)
+	#	- requuest (passes the http_request to the validator)
+	#
+	# Use cases for request could for example be IP based ACLs or
+	# any other criteria that can be extracted from a http_request.
+	#
+	# The request type does not need an authentication_validator.
+	#
+	authentication_type		cookie
+
+	# The name of whatever we are looking for.
+	authentication_value		session_id
+
+	# The validator that will be called to verify the cookie.
+	# Note this is YOUR validator, Kore does not have built-in
+	# session support. You must add this manually using your
+	# preferred method (Storing it in postgres, redis, ...)
+	authentication_validator	v_session
+
+	# The URI Kore will redirect to if a authentication fails.
+	# If this is not set, Kore will return a simple 403.
+	authentication_uri		/private
+}
+
+# Domain configuration
+#
+# Each domain configuration starts with listing what domain
+# the directives that follow are to be applied upon.
+#
+# Additionally you can specify the following in a domain configuration:
+#
+#	accesslog
+#		- File where all requests are logged.
+#	require_client_cert
+#		- Asks the client to present a certificate
+#		matching the CA given to require_client_cert
+#
+# Handlers
+#
+# Handlers are either static (for fixed paths) or dynamic.
+# Dynamic handlers take a POSIX regular expression as its path.
+#
+# Syntax:
+#	handler		path		module_callback		[auth block]
+#
+# Note that the auth block is optional and if set will force Kore to
+# authenticate the user according to the authentication block its settings
+# before allowing access to the page.
+
+# Example domain that responds to localhost.
+domain localhost {
+	certfile	cert/server.crt
+	certkey		cert/server.key
+	accesslog	/var/log/kore_access.log
+
+	# Page handlers with no authentication required.
+	static		/css/style.css		serve_style_css
+	static		/			serve_index
+	static		/intro.jpg		serve_intro
+	static		/b64test		serve_b64test
+	static		/spdy-reset		serve_spdyreset
+	static		/upload			serve_file_upload
+	static		/lock-test		serve_lock_test
+	static		/validator		serve_validator
+	static		/params-test		serve_params_test
+	static		/private		serve_private
+
+	# Page handlers with authentication.
+	static		/private/test	serve_private_test	auth_example
+
+	# Configure /params-test POST to only accept the following parameters.
+	# They are automatically tested against the validator listed.
+	# If the validator would fail Kore will automatically remove the
+	# failing parameter, indicating something was wrong with it.
+	# Any parameters not present in the params block are also filtered out.
+	params post /params-test {
+		validate	test1		v_example
+		validate	test2		v_regex
+	}
+
+	# Configure a GET parameter that /params-test can received. As before
+	# this is validated against the validator and removed if validation
+	# fails. All extra parameters in the GET query are filtered out.
+	params get /params-test {
+		validate	arg1		v_example
+		validate	id		v_number
+	}
+}
+
+#domain domain.com {
+#	certfile		cert/other/server.crt
+#	certkey			cert/other/server.key
+#	accesslog		/var/log/other_kore_access.log
+#	require_client_cert	cert/other/ca.crt
+
+#	static		/css/style.css		serve_style_css
+#	static		/			serve_index
+#	dynamic		^/[a-z0-9_]*$		serve_profile
+#}
