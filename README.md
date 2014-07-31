@@ -1,3 +1,5 @@
+[![Coverity Status](https://scan.coverity.com/projects/1844/badge.svg)](https://scan.coverity.com/projects/1844)
+
 About
 -----
 Kore (https://kore.io) is an ultra fast web server / framework for web
