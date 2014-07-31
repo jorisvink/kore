@@ -76,7 +76,7 @@ kore_worker_init(void)
 	u_int16_t		i, cpu;
 
 	if (worker_count == 0)
-		fatal("no workers specified");
+		worker_count = 1;
 
 	len = sizeof(*accept_lock) +
 	    (sizeof(struct kore_worker) * worker_count);

@@ -126,6 +126,8 @@ static struct kore_module_handle	*current_handler = NULL;
 void
 kore_parse_config(void)
 {
+	char		*p;
+
 	if (config_file == NULL)
 		fatal("specify a configuration file with -c");
 
@@ -135,12 +137,21 @@ kore_parse_config(void)
 		fatal("no site module was loaded");
 	if (kore_cb_name != NULL && kore_cb == NULL)
 		fatal("no '%s' symbol found for kore_cb", kore_cb_name);
+
 	if (LIST_EMPTY(&listeners))
 		fatal("no listeners defined");
-	if (skip_chroot != 0 && chroot_path == NULL)
+
+	if (skip_chroot != 1 && chroot_path == NULL)
 		fatal("missing a chroot path");
-	if (runas_user == NULL)
-		fatal("missing a username to run as");
+
+	if (runas_user == NULL) {
+		if ((p = getlogin()) == NULL)
+			fatal("missing a username to run as");
+
+		/* runas_user is free'd later down the line. */
+		runas_user = kore_strdup(p);
+	}
+
 	if ((pw = getpwnam(runas_user)) == NULL)
 		fatal("user '%s' does not exist", runas_user);
 
