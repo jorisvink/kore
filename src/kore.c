@@ -255,12 +255,10 @@ kore_signal(int sig)
 static void
 kore_server_sslstart(void)
 {
-#if !defined(KORE_BENCHMARK)
 	kore_debug("kore_server_sslstart()");
 
 	SSL_library_init();
 	SSL_load_error_strings();
-#endif
 }
 
 static void
