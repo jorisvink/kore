@@ -28,6 +28,7 @@ u_int8_t		nlisteners;
 struct passwd		*pw = NULL;
 pid_t			kore_pid = -1;
 u_int16_t		cpu_count = 1;
+int			foreground = 0;
 int			kore_debug = 0;
 int			skip_chroot = 0;
 u_int8_t		worker_count = 0;
@@ -48,7 +49,7 @@ static void	kore_server_sslstart(void);
 static void
 usage(void)
 {
-	fprintf(stderr, "Usage: kore [-c config] [-dnv]\n");
+	fprintf(stderr, "Usage: kore [-c config] [-dfnv]\n");
 	exit(1);
 }
 
@@ -74,7 +75,7 @@ main(int argc, char *argv[])
 	int			ch;
 	struct listener		*l;
 
-	while ((ch = getopt(argc, argv, "c:dnv")) != -1) {
+	while ((ch = getopt(argc, argv, "c:dfnv")) != -1) {
 		switch (ch) {
 		case 'c':
 			config_file = optarg;
@@ -85,6 +86,9 @@ main(int argc, char *argv[])
 #else
 			printf("kore not compiled with debug support\n");
 #endif
+			break;
+		case 'f':
+			foreground = 1;
 			break;
 		case 'n':
 			skip_chroot = 1;
@@ -120,6 +124,11 @@ main(int argc, char *argv[])
 	sig_recv = 0;
 	signal(SIGHUP, kore_signal);
 	signal(SIGQUIT, kore_signal);
+
+	if (foreground)
+		signal(SIGINT, kore_signal);
+	else
+		signal(SIGINT, SIG_IGN);
 
 	kore_server_start();
 
@@ -246,20 +255,23 @@ kore_signal(int sig)
 static void
 kore_server_sslstart(void)
 {
+#if !defined(KORE_BENCHMARK)
 	kore_debug("kore_server_sslstart()");
 
 	SSL_library_init();
 	SSL_load_error_strings();
+#endif
 }
 
 static void
 kore_server_start(void)
 {
+	int		quit;
 	u_int64_t	now, last_cb_run;
 
 	kore_mem_free(runas_user);
 
-	if (daemon(1, 1) == -1)
+	if (foreground == 0 && daemon(1, 1) == -1)
 		fatal("cannot daemon(): %s", errno_s);
 
 	kore_pid = getpid();
@@ -276,18 +288,28 @@ kore_server_start(void)
 	kore_platform_proctitle("kore [parent]");
 	kore_worker_init();
 
+	quit = 0;
 	now = kore_time_ms();
 	last_cb_run = now;
 
-	for (;;) {
+	while (quit != 1) {
 		if (sig_recv != 0) {
-			if (sig_recv == SIGHUP || sig_recv == SIGQUIT) {
+			switch (sig_recv) {
+			case SIGHUP:
 				kore_worker_dispatch_signal(sig_recv);
-				if (sig_recv == SIGHUP)
-					kore_module_reload(0);
-				if (sig_recv == SIGQUIT)
-					break;
+				kore_module_reload(0);
+				break;
+			case SIGINT:
+			case SIGQUIT:
+				quit = 1;
+				kore_worker_dispatch_signal(sig_recv);
+				continue;
+			default:
+				kore_log(LOG_NOTICE,
+				    "no action taken for signal %d", sig_recv);
+				break;
 			}
+
 			sig_recv = 0;
 		}
 

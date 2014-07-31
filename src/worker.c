@@ -221,6 +221,11 @@ kore_worker_entry(struct kore_worker *kw)
 	signal(SIGQUIT, kore_signal);
 	signal(SIGPIPE, SIG_IGN);
 
+	if (foreground)
+		signal(SIGINT, kore_signal);
+	else
+		signal(SIGINT, SIG_IGN);
+
 	net_init();
 	http_init();
 	kore_connection_init();
@@ -249,7 +254,7 @@ kore_worker_entry(struct kore_worker *kw)
 		if (sig_recv != 0) {
 			if (sig_recv == SIGHUP)
 				kore_module_reload(1);
-			else if (sig_recv == SIGQUIT)
+			else if (sig_recv == SIGQUIT || sig_recv == SIGINT)
 				quit = 1;
 			sig_recv = 0;
 		}
