@@ -301,6 +301,7 @@ struct kore_pool {
 };
 
 extern pid_t	kore_pid;
+extern int	foreground;
 extern int	kore_debug;
 extern int	skip_chroot;
 extern char	*chroot_path;
