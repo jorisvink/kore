@@ -17,6 +17,9 @@ workers		4
 # You might have to tweak this number based on your hardware.
 #worker_max_connections		250
 
+# Limit of maximum open files per worker.
+#worker_rlimit_nofiles		1024
+
 # Store the main process its pid in this file.
 #pidfile	/var/run/kore.pid
 

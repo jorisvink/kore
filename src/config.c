@@ -42,6 +42,7 @@ static int		configure_pidfile(char **);
 static int		configure_accesslog(char **);
 static int		configure_certfile(char **);
 static int		configure_certkey(char **);
+static int		configure_rlimit_nofiles(char **);
 static int		configure_max_connections(char **);
 static int		configure_ssl_cipher(char **);
 static int		configure_ssl_dhparam(char **);
@@ -89,6 +90,7 @@ static struct {
 	{ "runas",			configure_runas },
 	{ "workers",			configure_workers },
 	{ "worker_max_connections",	configure_max_connections },
+	{ "worker_rlimit_nofiles",	configure_rlimit_nofiles },
 	{ "pidfile",			configure_pidfile },
 	{ "accesslog",			configure_accesslog },
 	{ "certfile",			configure_certfile },
@@ -135,7 +137,7 @@ kore_parse_config(void)
 		fatal("no '%s' symbol found for kore_cb", kore_cb_name);
 	if (LIST_EMPTY(&listeners))
 		fatal("no listeners defined");
-	if (chroot_path == NULL)
+	if (skip_chroot != 0 && chroot_path == NULL)
 		fatal("missing a chroot path");
 	if (runas_user == NULL)
 		fatal("missing a username to run as");
@@ -536,6 +538,23 @@ configure_max_connections(char **argv)
 	worker_max_connections = kore_strtonum(argv[1], 10, 1, 65535, &err);
 	if (err != KORE_RESULT_OK) {
 		printf("bad value for worker_max_connections: %s\n", argv[1]);
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_rlimit_nofiles(char **argv)
+{
+	int		err;
+
+	if (argv[1] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	worker_rlimit_nofiles = kore_strtonum(argv[1], 10, 1, UINT_MAX, &err);
+	if (err != KORE_RESULT_OK) {
+		printf("bad value for worker_rlimit_nofiles: %s\n", argv[1]);
 		return (KORE_RESULT_ERROR);
 	}
 
