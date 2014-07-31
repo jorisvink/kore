@@ -134,7 +134,9 @@ main(int argc, char *argv[])
 
 	kore_log(LOG_NOTICE, "server shutting down");
 	kore_worker_shutdown();
-	unlink(kore_pidfile);
+
+	if (!foreground)
+		unlink(kore_pidfile);
 
 	LIST_FOREACH(l, &listeners, list)
 		close(l->fd);
@@ -273,7 +275,8 @@ kore_server_start(void)
 		fatal("cannot daemon(): %s", errno_s);
 
 	kore_pid = getpid();
-	kore_write_kore_pid();
+	if (!foreground)
+		kore_write_kore_pid();
 
 	kore_log(LOG_NOTICE, "kore is starting up");
 #if defined(KORE_USE_PGSQL)
