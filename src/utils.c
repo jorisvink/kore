@@ -55,7 +55,8 @@ kore_debug_internal(char *file, int line, const char *fmt, ...)
 void
 kore_log_init(void)
 {
-	openlog("kore", LOG_NDELAY | LOG_PID, LOG_DAEMON);
+	if (!foreground)
+		openlog("kore", LOG_NDELAY | LOG_PID, LOG_DAEMON);
 }
 
 void
@@ -68,10 +69,17 @@ kore_log(int prio, const char *fmt, ...)
 	(void)vsnprintf(buf, sizeof(buf), fmt, args);
 	va_end(args);
 
-	if (worker != NULL)
-		syslog(prio, "[wrk %d]: %s", worker->id, buf);
-	else
-		syslog(prio, "[parent]: %s", buf);
+	if (worker != NULL) {
+		if (foreground)
+			printf("[wrk %d]: %s\n", worker->id, buf);
+		else
+			syslog(prio, "[wrk %d]: %s", worker->id, buf);
+	} else {
+		if (foreground)
+			printf("[parent]: %s\n", buf);
+		else
+			syslog(prio, "[parent]: %s", buf);
+	}
 }
 
 void
