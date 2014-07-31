@@ -49,7 +49,7 @@ static void	kore_server_sslstart(void);
 static void
 usage(void)
 {
-	fprintf(stderr, "Usage: kore [-c config] [-dfnv]\n");
+	fprintf(stderr, "Usage: kore [-c config] [-dfnv] [lib [onload]]\n");
 	exit(1);
 }
 
@@ -105,7 +105,6 @@ main(int argc, char *argv[])
 	argv += optind;
 
 	kore_pid = getpid();
-
 	nlisteners = 0;
 	LIST_INIT(&listeners);
 
@@ -116,8 +115,20 @@ main(int argc, char *argv[])
 	kore_module_init();
 	kore_validator_init();
 	kore_server_sslstart();
-	kore_parse_config();
 
+	if (foreground && (argc == 1 || argc == 2)) {
+		if (argc == 1)
+			kore_module_load(argv[0], NULL);
+		else
+			kore_module_load(argv[0], argv[1]);
+	} else if (argc > 0) {
+		fatal("library can only be given when running with -f");
+	}
+
+	if (config_file == NULL)
+		usage();
+
+	kore_parse_config();
 	kore_platform_init();
 	kore_accesslog_init();
 
@@ -335,7 +346,8 @@ kore_write_kore_pid(void)
 	FILE		*fp;
 
 	if ((fp = fopen(kore_pidfile, "w+")) == NULL) {
-		kore_debug("kore_write_kore_pid(): fopen() %s", errno_s);
+		printf("warning: couldn't write pid to %s (%s)\n",
+		    kore_pidfile, errno_s);
 	} else {
 		fprintf(fp, "%d\n", kore_pid);
 		fclose(fp);
