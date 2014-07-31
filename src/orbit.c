@@ -413,14 +413,22 @@ orbit_link_library(void *arg)
 {
 	int			idx;
 	struct cfile		*cf;
-	char			*args[cfiles_count + 5], *libname;
+	char			*args[cfiles_count + 10], *libname;
 
 	orbit_vasprintf(&libname, "%s/%s.so", rootdir, appl);
 
-	args[0] = "gcc";
-	args[1] = "-shared";
+	idx = 0;
+	args[idx++] = "gcc";
 
-	idx = 2;
+#if defined(__MACH__)
+	args[idx++] = "-dynamiclib";
+	args[idx++] = "-undefined";
+	args[idx++] = "suppress";
+	args[idx++] = "-flat_namespace";
+#else
+	args[idx++] = "-shared";
+#endif
+
 	TAILQ_FOREACH(cf, &source_files, list)
 		args[idx++] = cf->opath;
 
