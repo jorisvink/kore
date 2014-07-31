@@ -482,7 +482,9 @@ fatal(const char *fmt, ...)
 	(void)vsnprintf(buf, sizeof(buf), fmt, args);
 	va_end(args);
 
-	kore_log(LOG_ERR, "%s", buf);
+	if (!foreground)
+		kore_log(LOG_ERR, "%s", buf);
+
 	printf("kore: %s\n", buf);
 	exit(1);
 }
