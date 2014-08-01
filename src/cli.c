@@ -237,6 +237,9 @@ cli_create(int argc, char **argv)
 
 	rootdir = appl;
 	cli_generate_certs();
+
+	printf("%s created succesfully!\n", appl);
+	printf("note: do not use the generated certificates for production\n");
 }
 
 static void
