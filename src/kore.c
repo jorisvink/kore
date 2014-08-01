@@ -119,6 +119,8 @@ main(int argc, char *argv[])
 	argc -= optind;
 	argv += optind;
 
+	kore_mem_init();
+
 	if (argc > 0) {
 		if (flags)
 			fatal("You cannot specify kore flags and a command");
@@ -130,7 +132,6 @@ main(int argc, char *argv[])
 	LIST_INIT(&listeners);
 
 	kore_log_init();
-	kore_mem_init();
 	kore_auth_init();
 	kore_domain_init();
 	kore_module_init();
