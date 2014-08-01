@@ -147,6 +147,7 @@ main(int argc, char *argv[])
 	return (0);
 }
 
+#if !defined(KORE_BENCHMARK)
 int
 kore_ssl_npn_cb(SSL *ssl, const u_char **data, unsigned int *len, void *arg)
 {
@@ -183,6 +184,7 @@ kore_ssl_sni_cb(SSL *ssl, int *ad, void *arg)
 
 	return (SSL_TLSEXT_ERR_NOACK);
 }
+#endif
 
 int
 kore_server_bind(const char *ip, const char *port)
@@ -259,10 +261,12 @@ kore_signal(int sig)
 static void
 kore_server_sslstart(void)
 {
+#if !defined(KORE_BENCHMARK)
 	kore_debug("kore_server_sslstart()");
 
 	SSL_library_init();
 	SSL_load_error_strings();
+#endif
 }
 
 static void

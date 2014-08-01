@@ -128,11 +128,9 @@ net_send(struct connection *c)
 		if (nb->b_len != 0) {
 			len = MIN(NETBUF_SEND_PAYLOAD_MAX,
 			    nb->b_len - nb->s_off);
+
+#if !defined(KORE_BENCHMARK)
 			r = SSL_write(c->ssl, (nb->buf + nb->s_off), len);
-
-			kore_debug("net_send(%d/%d bytes), progress with %d",
-			    nb->s_off, nb->b_len, r);
-
 			if (r <= 0) {
 				r = SSL_get_error(c->ssl, r);
 				switch (r) {
@@ -146,9 +144,24 @@ net_send(struct connection *c)
 					return (KORE_RESULT_ERROR);
 				}
 			}
+#else
+			r = write(c->fd, (nb->buf + nb->s_off), len);
+			if (r <= -1) {
+				switch (errno) {
+				case EINTR:
+				case EAGAIN:
+					c->flags &= ~CONN_WRITE_POSSIBLE;
+					return (KORE_RESULT_OK);
+				default:
+					kore_debug("write: %s", errno_s);
+					return (KORE_RESULT_ERROR);
+				}
+			}
+#endif
+			kore_debug("net_send(%d/%d bytes), progress with %d",
+			    nb->s_off, nb->b_len, r);
 
 			nb->s_off += (size_t)r;
-
 			if (nb->stream != NULL)
 				spdy_update_wsize(c, nb->stream, r);
 		}
@@ -194,12 +207,9 @@ net_recv(struct connection *c)
 			return (KORE_RESULT_ERROR);
 		}
 
+#if !defined(KORE_BENCHMARK)
 		r = SSL_read(c->ssl,
 		    (nb->buf + nb->s_off), (nb->b_len - nb->s_off));
-
-		kore_debug("net_recv(%ld/%ld bytes), progress with %d",
-		    nb->s_off, nb->b_len, r);
-
 		if (r <= 0) {
 			r = SSL_get_error(c->ssl, r);
 			switch (r) {
@@ -212,6 +222,22 @@ net_recv(struct connection *c)
 				return (KORE_RESULT_ERROR);
 			}
 		}
+#else
+		r = read(c->fd, (nb->buf + nb->s_off), (nb->b_len - nb->s_off));
+		if (r <= 0) {
+			switch (errno) {
+			case EINTR:
+			case EAGAIN:
+				c->flags &= ~CONN_READ_POSSIBLE;
+				return (KORE_RESULT_OK);
+			default:
+				kore_debug("read(): %s", errno_s);
+				return (KORE_RESULT_ERROR);
+			}
+		}
+#endif
+		kore_debug("net_recv(%ld/%ld bytes), progress with %d",
+		    nb->s_off, nb->b_len, r);
 
 		nb->s_off += (size_t)r;
 		if (nb->s_off == nb->b_len ||

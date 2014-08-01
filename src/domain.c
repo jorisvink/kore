@@ -58,6 +58,7 @@ kore_domain_new(char *domain)
 void
 kore_domain_sslstart(struct kore_domain *dom)
 {
+#if !defined(KORE_BENCHMARK)
 	STACK_OF(X509_NAME)	*certs;
 
 #if !defined(OPENSSL_NO_EC)
@@ -138,6 +139,7 @@ kore_domain_sslstart(struct kore_domain *dom)
 
 	kore_mem_free(dom->certfile);
 	kore_mem_free(dom->certkey);
+#endif
 }
 
 struct kore_domain *

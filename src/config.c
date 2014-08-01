@@ -128,9 +128,6 @@ kore_parse_config(void)
 {
 	char		*p;
 
-	if (config_file == NULL)
-		fatal("specify a configuration file with -c");
-
 	kore_parse_config_file(config_file);
 
 	if (!kore_module_loaded())
@@ -274,6 +271,7 @@ configure_ssl_cipher(char **argv)
 static int
 configure_ssl_dhparam(char **argv)
 {
+#if !defined(KORE_BENCHMARK)
 	BIO		*bio;
 
 	if (argv[1] == NULL)
@@ -296,7 +294,7 @@ configure_ssl_dhparam(char **argv)
 		printf("PEM_read_bio_DHparams(): %s\n", ssl_errno_s);
 		return (KORE_RESULT_ERROR);
 	}
-
+#endif
 	return (KORE_RESULT_OK);
 }
 

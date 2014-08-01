@@ -175,12 +175,14 @@ kore_accesslog(struct http_request *req)
 	}
 
 	memset(logpacket.cn, '\0', sizeof(logpacket.cn));
+#if !defined(KORE_BENCHMARK)
 	if (req->owner->cert != NULL) {
 		if (X509_GET_CN(req->owner->cert,
 		    logpacket.cn, sizeof(logpacket.cn)) == -1) {
 			kore_log(LOG_WARNING, "client cert without a CN?");
 		}
 	}
+#endif
 
 	len = send(accesslog_fd[1], &logpacket, sizeof(logpacket), 0);
 	if (len == -1) {

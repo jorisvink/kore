@@ -76,7 +76,6 @@ kore_connection_accept(struct listener *l, struct connection **out)
 	c->deflate_started = 0;
 	c->client_stream_id = 0;
 	c->proto = CONN_PROTO_UNKNOWN;
-	c->state = CONN_STATE_SSL_SHAKE;
 	c->wsize_initial = SPDY_INIT_WSIZE;
 	c->idle_timer.start = 0;
 	c->idle_timer.length = KORE_IDLE_TIMER_MAX;
@@ -85,6 +84,18 @@ kore_connection_accept(struct listener *l, struct connection **out)
 	TAILQ_INIT(&(c->recv_queue));
 	TAILQ_INIT(&(c->spdy_streams));
 	TAILQ_INIT(&(c->http_requests));
+
+#if !defined(KORE_BENCHMARK)
+	c->state = CONN_STATE_SSL_SHAKE;
+#else
+	c->state = CONN_STATE_ESTABLISHED;
+	c->proto = CONN_PROTO_HTTP;
+	if (http_keepalive_time != 0)
+		c->idle_timer.length = http_keepalive_time * 1000;
+
+	net_recv_queue(c, http_header_max, NETBUF_CALL_CB_ALWAYS, NULL,
+	    http_header_recv);
+#endif
 
 	kore_worker_connection_add(c);
 	kore_connection_start_idletimer(c);
@@ -106,16 +117,18 @@ kore_connection_disconnect(struct connection *c)
 int
 kore_connection_handle(struct connection *c)
 {
+#if !defined(KORE_BENCHMARK)
 	int			r;
 	u_int32_t		len;
 	const u_char		*data;
 	char			cn[X509_CN_LENGTH];
+#endif
 
 	kore_debug("kore_connection_handle(%p) -> %d", c, c->state);
-
 	kore_connection_stop_idletimer(c);
 
 	switch (c->state) {
+#if !defined(KORE_BENCHMARK)
 	case CONN_STATE_SSL_SHAKE:
 		if (c->ssl == NULL) {
 			c->ssl = SSL_new(primary_dom->ssl_ctx);
@@ -199,6 +212,7 @@ kore_connection_handle(struct connection *c)
 
 		c->state = CONN_STATE_ESTABLISHED;
 		/* FALLTHROUGH */
+#endif /* !KORE_BENCHMARK */
 	case CONN_STATE_ESTABLISHED:
 		if (c->flags & CONN_READ_POSSIBLE) {
 			if (!net_recv_flush(c))
@@ -231,6 +245,7 @@ kore_connection_remove(struct connection *c)
 
 	kore_debug("kore_connection_remove(%p)", c);
 
+#if !defined(KORE_BENCHMARK)
 	if (c->ssl != NULL) {
 		SSL_shutdown(c->ssl);
 		SSL_free(c->ssl);
@@ -238,6 +253,7 @@ kore_connection_remove(struct connection *c)
 
 	if (c->cert != NULL)
 		X509_free(c->cert);
+#endif
 
 	close(c->fd);
 

@@ -24,6 +24,11 @@ ifneq ("$(KORE_PEDANTIC_MALLOC)", "")
 	CFLAGS+=-DKORE_PEDANTIC_MALLOC
 endif
 
+ifneq ("$(BENCHMARK)", "")
+	CFLAGS+=-DKORE_BENCHMARK
+	LDFLAGS=-rdynamic -lz
+endif
+
 ifneq ("$(PGSQL)", "")
 	S_SRC+=src/pgsql.c
 	LDFLAGS+=-L$(shell pg_config --libdir) -lpq
