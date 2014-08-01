@@ -119,7 +119,9 @@ static struct filegen gen_files[] = {
 
 static const char *gen_dirs[] = {
 	"src",
+#if !defined(KORE_BENCHMARK)
 	"cert",
+#endif
 	"conf",
 	"static",
 	NULL
@@ -146,8 +148,10 @@ static const char *config_data =
 	"load\t\t./%s.so\n"
 	"\n"
 	"domain 127.0.0.1 {\n"
+#if !defined(KORE_BENCHMARK)
 	"\tcertfile\tcert/server.crt\n"
 	"\tcertkey\t\tcert/server.key\n"
+#endif
 	"\tstatic\t/\tpage\n"
 	"}\n";
 
@@ -239,7 +243,10 @@ cli_create(int argc, char **argv)
 	cli_generate_certs();
 
 	printf("%s created succesfully!\n", appl);
+
+#if !defined(KORE_BENCHMARK)
 	printf("note: do not use the generated certificates for production\n");
+#endif
 }
 
 static void
@@ -579,6 +586,7 @@ cli_find_files(const char *path, void (*cb)(char *, struct dirent *))
 static void
 cli_generate_certs(void)
 {
+#if !defined(KORE_BENCHMARK)
 	BIGNUM			*e;
 	FILE			*fp;
 	X509_NAME		*name;
@@ -666,6 +674,7 @@ cli_generate_certs(void)
 
 	EVP_PKEY_free(pkey);
 	X509_free(x509);
+#endif
 }
 
 static void
