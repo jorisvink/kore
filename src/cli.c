@@ -715,11 +715,14 @@ cli_fatal(const char *fmt, ...)
 	(void)vsnprintf(buf, sizeof(buf), fmt, args);
 	va_end(args);
 
-	l = snprintf(spath, sizeof(spath), "%s/.objs", rootdir);
-	if (l == -1 || (size_t)l >= sizeof(spath)) {
-		printf("couldn't create spath for cleanup: %s\n", errno_s);
-	} else {
-		cli_cleanup_files(spath);
+	if (rootdir != NULL) {
+		l = snprintf(spath, sizeof(spath), "%s/.objs", rootdir);
+		if (l == -1 || (size_t)l >= sizeof(spath)) {
+			printf("couldn't create spath for cleanup: %s\n",
+			    errno_s);
+		} else {
+			cli_cleanup_files(spath);
+		}
 	}
 
 	if (command != NULL)
