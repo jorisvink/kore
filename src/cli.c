@@ -33,7 +33,7 @@
 
 #include "kore.h"
 
-#if defined(OpenBSD)
+#if defined(OpenBSD) || defined(__FreeBSD_version)
 #define PRI_TIME_T		"d"
 #endif
 
