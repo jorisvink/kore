@@ -150,6 +150,7 @@ net_send(struct connection *c)
 				switch (errno) {
 				case EINTR:
 				case EAGAIN:
+				case EWOULDBLOCK:
 					c->flags &= ~CONN_WRITE_POSSIBLE;
 					return (KORE_RESULT_OK);
 				default:
@@ -228,6 +229,7 @@ net_recv(struct connection *c)
 			switch (errno) {
 			case EINTR:
 			case EAGAIN:
+			case EWOULDBLOCK:
 				c->flags &= ~CONN_READ_POSSIBLE;
 				return (KORE_RESULT_OK);
 			default:
