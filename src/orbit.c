@@ -90,7 +90,6 @@ static struct filegen gen_files[] = {
 static const char *gen_dirs[] = {
 	"src",
 	"conf",
-	".objs",
 	"static",
 	NULL
 };
@@ -221,7 +220,6 @@ orbit_build(int argc, char **argv)
 	orbit_vasprintf(&spath, "%s/.objs", rootdir);
 	if (!orbit_dir_exists(spath))
 		orbit_mkdir(spath, 0755);
-	free(spath);
 
 	TAILQ_FOREACH(cf, &source_files, list) {
 		printf("compiling %s\n", cf->fpath);
@@ -234,6 +232,11 @@ orbit_build(int argc, char **argv)
 		if (unlink(cf->opath) == -1)
 			printf("couldnt unlink %s\n", cf->opath);
 	}
+
+	if (rmdir(spath) == -1)
+		printf("couldn't rmdir %s\n", spath);
+
+	free(spath);
 }
 
 static void
