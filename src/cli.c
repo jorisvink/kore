@@ -123,6 +123,7 @@ static const char *gitignore_data = "*.o\n.objs\n%s.so\n";
 
 static char			*appl = NULL;
 static char			*rootdir = NULL;
+static char			*compiler = "gcc";
 static struct cfile_list	source_files;
 static int			cfiles_count;
 static struct cmd		*command = NULL;
@@ -200,7 +201,7 @@ static void
 cli_build(int argc, char **argv)
 {
 	struct cfile	*cf;
-	char		pwd[PATH_MAX], *spath;
+	char		pwd[PATH_MAX], *spath, *p;
 
 	if (argc == 0) {
 		if (getcwd(pwd, sizeof(pwd)) == NULL)
@@ -217,6 +218,9 @@ cli_build(int argc, char **argv)
 		if (!cli_dir_exists(spath))
 			cli_fatal("%s doesn't appear to be an app", appl);
 	}
+
+	if ((p = getenv("KORE_COMPILER")) != NULL)
+		compiler = p;
 
 	cfiles_count = 0;
 	TAILQ_INIT(&source_files);
@@ -405,7 +409,7 @@ cli_compile_cfile(void *arg)
 
 	cli_vasprintf(&ipath, "-I%s/src", appl);
 
-	args[0] = "gcc";
+	args[0] = compiler;
 	args[1] = ipath;
 	args[2] = "-I/usr/local/include";
 	args[3] = "-Wall";
@@ -425,7 +429,7 @@ cli_compile_cfile(void *arg)
 	args[16] = cf->opath;
 	args[17] = NULL;
 
-	execvp("gcc", args);
+	execvp(compiler, args);
 }
 
 static void
@@ -438,7 +442,7 @@ cli_link_library(void *arg)
 	cli_vasprintf(&libname, "%s/%s.so", rootdir, appl);
 
 	idx = 0;
-	args[idx++] = "gcc";
+	args[idx++] = compiler;
 
 #if defined(__MACH__)
 	args[idx++] = "-dynamiclib";
@@ -456,7 +460,7 @@ cli_link_library(void *arg)
 	args[idx++] = libname;
 	args[idx] = NULL;
 
-	execvp("gcc", args);
+	execvp(compiler, args);
 }
 
 static void
