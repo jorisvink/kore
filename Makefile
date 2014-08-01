@@ -2,24 +2,19 @@
 
 CC=gcc
 KORE=kore
-ORBIT=orbit
 INSTALL_DIR=/usr/local/bin
 INCLUDE_DIR=/usr/local/include/kore
 
-S_SRC=	src/kore.c src/accesslog.c src/auth.c src/buf.c src/config.c \
+S_SRC=	src/kore.c src/accesslog.c src/auth.c src/buf.c src/cli.c src/config.c \
 	src/connection.c src/domain.c src/http.c src/mem.c src/module.c \
 	src/net.c src/pool.c src/spdy.c src/validator.c src/utils.c \
 	src/worker.c src/zlib_dict.c
 S_OBJS=	$(S_SRC:.c=.o)
 
-O_SRC=	src/orbit.c
-
 CFLAGS+=-Wall -Wstrict-prototypes -Wmissing-prototypes
 CFLAGS+=-Wmissing-declarations -Wshadow -Wpointer-arith -Wcast-qual
 CFLAGS+=-Wsign-compare -Iincludes -g
 LDFLAGS+=-rdynamic -lssl -lcrypto -lz
-
-ORBIT_CFLAGS=$(CFLAGS)
 
 ifneq ("$(DEBUG)", "")
 	CFLAGS+=-DKORE_DEBUG
@@ -59,19 +54,16 @@ else
 	S_SRC+=src/bsd.c
 endif
 
-all: $(S_OBJS) $(O_SRC)
-	$(CC) $(ORBIT_CFLAGS) $(O_SRC) -o $(ORBIT)
+all: $(S_OBJS)
 	$(CC) $(LDFLAGS) $(S_OBJS) -o $(KORE)
 
 install:
 	mkdir -p $(INCLUDE_DIR)
 	install -m 555 $(KORE) $(INSTALL_DIR)/$(KORE)
-	install -m 555 $(ORBIT) $(INSTALL_DIR)/$(ORBIT)
 	install -m 644 includes/*.h $(INCLUDE_DIR)
 
 uninstall:
 	rm -f $(INSTALL_DIR)/$(KORE)
-	rm -f $(INSTALL_DIR)/$(ORBIT)
 	rm -rf $(INCLUDE_DIR)
 
 .c.o:
@@ -79,6 +71,6 @@ uninstall:
 
 clean:
 	find . -type f -name \*.o -exec rm {} \;
-	rm -f $(KORE) $(ORBIT)
+	rm -f $(KORE)
 
 .PHONY: clean

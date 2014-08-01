@@ -331,6 +331,9 @@ extern struct kore_domain	*primary_dom;
 extern struct passwd		*pw;
 extern struct kore_pool		nb_pool;
 
+void		kore_cli_usage(int);
+int		kore_cli_main(int, char **);
+
 void		kore_signal(int);
 void		kore_worker_wait(int);
 void		kore_worker_init(void);

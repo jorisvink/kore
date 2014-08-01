@@ -29,7 +29,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#define errno_s		strerror(errno)
+#include "kore.h"
 
 struct cmd {
 	const char		*name;
@@ -49,35 +49,36 @@ struct cfile {
 
 TAILQ_HEAD(cfile_list, cfile);
 
-static void		usage(void);
-static void		fatal(const char *, ...);
+static void		cli_fatal(const char *, ...);
 
-static void		*orbit_malloc(size_t);
-static void		orbit_run_kore(void *);
-static void		orbit_link_library(void *);
-static void		orbit_compile_cfile(void *);
-static void		orbit_mkdir(const char *, int);
-static int		orbit_dir_exists(const char *);
-static void		orbit_find_cfiles(const char *);
-static void		orbit_file_open(const char *, int *);
-static void		orbit_file_write(int, const void *, size_t);
-static int		orbit_vasprintf(char **, const char *, ...);
-static void		orbit_spawn_proc(void (*cb)(void *), void *);
-static void		orbit_file_create(const char *, const char *, size_t);
+static void		*cli_malloc(size_t);
+static void		cli_run_kore(void *);
+static void		cli_link_library(void *);
+static void		cli_compile_cfile(void *);
+static void		cli_mkdir(const char *, int);
+static int		cli_dir_exists(const char *);
+static void		cli_find_cfiles(const char *);
+static void		cli_file_open(const char *, int *);
+static void		cli_file_write(int, const void *, size_t);
+static int		cli_vasprintf(char **, const char *, ...);
+static void		cli_spawn_proc(void (*cb)(void *), void *);
+static void		cli_file_create(const char *, const char *, size_t);
 
-static void		orbit_run(int, char **);
-static void		orbit_build(int, char **);
-static void		orbit_create(int, char **);
+static void		cli_run(int, char **);
+static void		cli_help(int, char **);
+static void		cli_build(int, char **);
+static void		cli_create(int, char **);
 
 static void		file_create_src(void);
 static void		file_create_config(void);
 static void		file_create_gitignore(void);
 
 static struct cmd cmds[] = {
-	{ "create",	"Create a new application",	orbit_create },
-	{ "run",	"Run an application",		orbit_run },
-	{ "build",	"Builds an application",	orbit_build },
-	{ NULL,		NULL,				NULL }
+	{ "help",	"This help text",			cli_help },
+	{ "run",	"Run an application",			cli_run },
+	{ "build",	"Build an application",			cli_build },
+	{ "create",	"Create a new application skeleton",	cli_create },
+	{ NULL,		NULL,					NULL }
 };
 
 static struct filegen gen_files[] = {
@@ -126,28 +127,29 @@ static struct cfile_list	source_files;
 static int			cfiles_count;
 static struct cmd		*command = NULL;
 
-static void
-usage(void)
+void
+kore_cli_usage(int local)
 {
 	int		i;
 
-	fprintf(stderr, "Usage: orbit [command]\n");
-	for (i = 0; cmds[i].name != NULL; i++)
-		printf("\t%s - %s\n", cmds[i].name, cmds[i].descr);
+	if (local)
+		fprintf(stderr, "Usage: kore [command]\n");
 
+	fprintf(stderr, "\nAvailable commands:\n");
+	for (i = 0; cmds[i].name != NULL; i++)
+		printf("\t%s\t%s\n", cmds[i].name, cmds[i].descr);
+
+	fprintf(stderr, "\nFind more information on https://kore.io\n");
 	exit(1);
 }
 
 int
-main(int argc, char *argv[])
+kore_cli_main(int argc, char **argv)
 {
 	int		i;
 
-	if (argc < 2)
-		usage();
-
-	argc--;
-	argv++;
+	if (argc < 1)
+		kore_cli_usage(1);
 
 	for (i = 0; cmds[i].name != NULL; i++) {
 		if (!strcmp(argv[0], cmds[i].name)) {
@@ -161,26 +163,32 @@ main(int argc, char *argv[])
 
 	if (cmds[i].name == NULL) {
 		fprintf(stderr, "No such command: %s\n", argv[0]);
-		usage();
+		kore_cli_usage(1);
 	}
 
 	return (0);
 }
 
 static void
-orbit_create(int argc, char **argv)
+cli_help(int argc, char **argv)
+{
+	kore_cli_usage(1);
+}
+
+static void
+cli_create(int argc, char **argv)
 {
 	int		i;
 	char		*fpath;
 
 	if (argc != 1)
-		fatal("missing application name");
+		cli_fatal("missing application name");
 
 	appl = argv[0];
-	orbit_mkdir(appl, 0755);
+	cli_mkdir(appl, 0755);
 	for (i = 0; gen_dirs[i] != NULL; i++) {
-		orbit_vasprintf(&fpath, "%s/%s", appl, gen_dirs[i]);
-		orbit_mkdir(fpath, 0755);
+		cli_vasprintf(&fpath, "%s/%s", appl, gen_dirs[i]);
+		cli_mkdir(fpath, 0755);
 		free(fpath);
 	}
 
@@ -189,44 +197,44 @@ orbit_create(int argc, char **argv)
 }
 
 static void
-orbit_build(int argc, char **argv)
+cli_build(int argc, char **argv)
 {
 	struct cfile	*cf;
 	char		pwd[PATH_MAX], *spath;
 
 	if (argc == 0) {
 		if (getcwd(pwd, sizeof(pwd)) == NULL)
-			fatal("could not get cwd: %s", errno_s);
+			cli_fatal("could not get cwd: %s", errno_s);
 
 		rootdir = ".";
 		appl = basename(pwd);
-		orbit_vasprintf(&spath, "./src");
+		cli_vasprintf(&spath, "./src");
 	} else {
 		appl = argv[0];
 		rootdir = appl;
-		orbit_vasprintf(&spath, "%s/src", appl);
+		cli_vasprintf(&spath, "%s/src", appl);
 
-		if (!orbit_dir_exists(spath))
-			fatal("%s doesn't appear to be an app", appl);
+		if (!cli_dir_exists(spath))
+			cli_fatal("%s doesn't appear to be an app", appl);
 	}
 
 	cfiles_count = 0;
 	TAILQ_INIT(&source_files);
 
-	/* orbit_build_statics("static"); */
-	orbit_find_cfiles(spath);
+	/* cli_build_statics("static"); */
+	cli_find_cfiles(spath);
 	free(spath);
 
-	orbit_vasprintf(&spath, "%s/.objs", rootdir);
-	if (!orbit_dir_exists(spath))
-		orbit_mkdir(spath, 0755);
+	cli_vasprintf(&spath, "%s/.objs", rootdir);
+	if (!cli_dir_exists(spath))
+		cli_mkdir(spath, 0755);
 
 	TAILQ_FOREACH(cf, &source_files, list) {
 		printf("compiling %s\n", cf->fpath);
-		orbit_spawn_proc(orbit_compile_cfile, cf);
+		cli_spawn_proc(cli_compile_cfile, cf);
 	}
 
-	orbit_spawn_proc(orbit_link_library, NULL);
+	cli_spawn_proc(cli_link_library, NULL);
 
 	TAILQ_FOREACH(cf, &source_files, list) {
 		if (unlink(cf->opath) == -1)
@@ -240,14 +248,14 @@ orbit_build(int argc, char **argv)
 }
 
 static void
-orbit_run(int argc, char **argv)
+cli_run(int argc, char **argv)
 {
-	orbit_build(argc, argv);
+	cli_build(argc, argv);
 
 	if (chdir(rootdir) == -1)
-		fatal("couldn't change directory to %s", rootdir);
+		cli_fatal("couldn't change directory to %s", rootdir);
 
-	orbit_run_kore(NULL);
+	cli_run_kore(NULL);
 }
 
 static void
@@ -255,8 +263,8 @@ file_create_src(void)
 {
 	char		*name;
 
-	(void)orbit_vasprintf(&name, "src/%s.c", appl);
-	orbit_file_create(name, src_data, strlen(src_data));
+	(void)cli_vasprintf(&name, "src/%s.c", appl);
+	cli_file_create(name, src_data, strlen(src_data));
 	free(name);
 }
 
@@ -266,9 +274,9 @@ file_create_config(void)
 	int		l;
 	char		*name, *data;
 
-	(void)orbit_vasprintf(&name, "conf/%s.conf", appl);
-	l = orbit_vasprintf(&data, config_data, appl);
-	orbit_file_create(name, data, l);
+	(void)cli_vasprintf(&name, "conf/%s.conf", appl);
+	l = cli_vasprintf(&data, config_data, appl);
+	cli_file_create(name, data, l);
 
 	free(name);
 	free(data);
@@ -280,20 +288,20 @@ file_create_gitignore(void)
 	int		l;
 	char		*data;
 
-	l = orbit_vasprintf(&data, gitignore_data, appl);
-	orbit_file_create(".gitignore", data, l);
+	l = cli_vasprintf(&data, gitignore_data, appl);
+	cli_file_create(".gitignore", data, l);
 	free(data);
 }
 
 static void
-orbit_mkdir(const char *fpath, int mode)
+cli_mkdir(const char *fpath, int mode)
 {
 	if (mkdir(fpath, mode) == -1)
-		fatal("orbit_mkdir(%s): %s", fpath, errno_s);
+		cli_fatal("cli_mkdir(%s): %s", fpath, errno_s);
 }
 
 static int
-orbit_dir_exists(const char *fpath)
+cli_dir_exists(const char *fpath)
 {
 	struct stat		st;
 
@@ -307,21 +315,21 @@ orbit_dir_exists(const char *fpath)
 }
 
 static void
-orbit_file_open(const char *fpath, int *fd)
+cli_file_open(const char *fpath, int *fd)
 {
 	if ((*fd = open(fpath, O_CREAT | O_TRUNC | O_WRONLY, 0755)) == -1)
-		fatal("orbit_file_open(%s): %s", fpath, errno_s);
+		cli_fatal("cli_file_open(%s): %s", fpath, errno_s);
 }
 
 static void
-orbit_file_close(int fd)
+cli_file_close(int fd)
 {
 	if (close(fd) == -1)
 		printf("warning: close() %s\n", errno_s);
 }
 
 static void
-orbit_file_write(int fd, const void *buf, size_t len)
+cli_file_write(int fd, const void *buf, size_t len)
 {
 	ssize_t		r;
 	const u_int8_t	*d;
@@ -334,7 +342,7 @@ orbit_file_write(int fd, const void *buf, size_t len)
 		if (r == -1) {
 			if (errno == EINTR)
 				continue;
-			fatal("orbit_file_write: %s", errno_s);
+			cli_fatal("cli_file_write: %s", errno_s);
 		}
 
 		written += r;
@@ -342,23 +350,23 @@ orbit_file_write(int fd, const void *buf, size_t len)
 }
 
 static void
-orbit_file_create(const char *name, const char *data, size_t len)
+cli_file_create(const char *name, const char *data, size_t len)
 {
 	int		fd;
 	char		*fpath;
 
-	orbit_vasprintf(&fpath, "%s/%s", appl, name);
+	cli_vasprintf(&fpath, "%s/%s", appl, name);
 
-	orbit_file_open(fpath, &fd);
-	orbit_file_write(fd, data, len);
-	orbit_file_close(fd);
+	cli_file_open(fpath, &fd);
+	cli_file_write(fd, data, len);
+	cli_file_close(fd);
 
 	printf("created %s\n", fpath);
 	free(fpath);
 }
 
 static void
-orbit_find_cfiles(const char *path)
+cli_find_cfiles(const char *path)
 {
 	DIR			*d;
 	struct cfile		*cf;
@@ -366,23 +374,23 @@ orbit_find_cfiles(const char *path)
 	char			*fpath;
 
 	if ((d = opendir(path)) == NULL)
-		fatal("orbit_find_cfiles: opendir(%s): %s", path, errno_s);
+		cli_fatal("cli_find_cfiles: opendir(%s): %s", path, errno_s);
 
 	while ((dp = readdir(d)) != NULL) {
 		if (!strcmp(dp->d_name, ".") ||
 		    !strcmp(dp->d_name, ".."))
 			continue;
 
-		orbit_vasprintf(&fpath, "%s/%s", path, dp->d_name);
+		cli_vasprintf(&fpath, "%s/%s", path, dp->d_name);
 
 		if (dp->d_type == DT_DIR) {
-			orbit_find_cfiles(fpath);
+			cli_find_cfiles(fpath);
 			free(fpath);
 		} else {
 			cfiles_count++;
-			cf = orbit_malloc(sizeof(*cf));
+			cf = cli_malloc(sizeof(*cf));
 			cf->fpath = fpath;
-			orbit_vasprintf(&(cf->opath),
+			cli_vasprintf(&(cf->opath),
 			    "%s/.objs/%s.o", rootdir, dp->d_name);
 			TAILQ_INSERT_TAIL(&source_files, cf, list);
 		}
@@ -390,12 +398,12 @@ orbit_find_cfiles(const char *path)
 }
 
 static void
-orbit_compile_cfile(void *arg)
+cli_compile_cfile(void *arg)
 {
 	struct cfile	*cf = arg;
 	char		*args[18], *ipath;
 
-	orbit_vasprintf(&ipath, "-I%s/src", appl);
+	cli_vasprintf(&ipath, "-I%s/src", appl);
 
 	args[0] = "gcc";
 	args[1] = ipath;
@@ -421,13 +429,13 @@ orbit_compile_cfile(void *arg)
 }
 
 static void
-orbit_link_library(void *arg)
+cli_link_library(void *arg)
 {
 	int			idx;
 	struct cfile		*cf;
 	char			*args[cfiles_count + 10], *libname;
 
-	orbit_vasprintf(&libname, "%s/%s.so", rootdir, appl);
+	cli_vasprintf(&libname, "%s/%s.so", rootdir, appl);
 
 	idx = 0;
 	args[idx++] = "gcc";
@@ -452,11 +460,11 @@ orbit_link_library(void *arg)
 }
 
 static void
-orbit_run_kore(void *arg)
+cli_run_kore(void *arg)
 {
 	char		*args[4], *cpath;
 
-	orbit_vasprintf(&cpath, "conf/%s.conf", appl);
+	cli_vasprintf(&cpath, "conf/%s.conf", appl);
 
 	args[0] = "kore";
 	args[1] = "-fnc";
@@ -467,7 +475,7 @@ orbit_run_kore(void *arg)
 }
 
 static void
-orbit_spawn_proc(void (*cb)(void *), void *arg)
+cli_spawn_proc(void (*cb)(void *), void *arg)
 {
 	pid_t		pid;
 	int		status;
@@ -475,36 +483,36 @@ orbit_spawn_proc(void (*cb)(void *), void *arg)
 	pid = fork();
 	switch (pid) {
 	case -1:
-		fatal("orbit_compile_cfile: fork() %s", errno_s);
+		cli_fatal("cli_compile_cfile: fork() %s", errno_s);
 		/* NOTREACHED */
 	case 0:
 		cb(arg);
-		fatal("orbit_spawn_proc: %s", errno_s);
+		cli_fatal("cli_spawn_proc: %s", errno_s);
 		/* NOTREACHED */
 	default:
 		break;
 	}
 
 	if (waitpid(pid, &status, 0) == -1)
-		fatal("couldn't wait for child %d", pid);
+		cli_fatal("couldn't wait for child %d", pid);
 
 	if (WEXITSTATUS(status) || WTERMSIG(status) || WCOREDUMP(status))
-		fatal("subprocess trouble, check output");
+		cli_fatal("subprocess trouble, check output");
 }
 
 static void *
-orbit_malloc(size_t len)
+cli_malloc(size_t len)
 {
 	void		*ptr;
 
 	if ((ptr = malloc(len)) == NULL)
-		fatal("orbit_malloc: %s", errno_s);
+		cli_fatal("cli_malloc: %s", errno_s);
 
 	return (ptr);
 }
 
 static int
-orbit_vasprintf(char **out, const char *fmt, ...)
+cli_vasprintf(char **out, const char *fmt, ...)
 {
 	int		l;
 	va_list		args;
@@ -514,13 +522,13 @@ orbit_vasprintf(char **out, const char *fmt, ...)
 	va_end(args);
 
 	if (l == -1)
-		fatal("orbit_vasprintf");
+		cli_fatal("cli_vasprintf");
 
 	return (l);
 }
 
 static void
-fatal(const char *fmt, ...)
+cli_fatal(const char *fmt, ...)
 {
 	va_list		args;
 	char		buf[2048];
@@ -530,8 +538,8 @@ fatal(const char *fmt, ...)
 	va_end(args);
 
 	if (command != NULL)
-		printf("orbit %s: %s\n", command->name, buf);
+		printf("kore %s: %s\n", command->name, buf);
 	else
-		printf("orbit: %s\n", buf);
+		printf("kore: %s\n", buf);
 	exit(1);
 }

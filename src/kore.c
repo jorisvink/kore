@@ -49,8 +49,17 @@ static void	kore_server_sslstart(void);
 static void
 usage(void)
 {
-	fprintf(stderr, "Usage: kore [-c config] [-dfnv]\n");
-	exit(1);
+	fprintf(stderr, "Usage: kore [options | command]\n");
+	fprintf(stderr, "\n");
+	fprintf(stderr, "Available options:\n");
+	fprintf(stderr, "\t-c\tSpecify the configuration file to use\n");
+	fprintf(stderr, "\t-d\tRun with debug on (if compiled in)\n");
+	fprintf(stderr, "\t-f\tStart kore in foreground mode\n");
+	fprintf(stderr, "\t-h\tThis help text\n");
+	fprintf(stderr, "\t-n\tDo not chroot (if not starting kore as root)\n");
+	fprintf(stderr, "\t-v\tDisplay kore's version information\n");
+
+	kore_cli_usage(0);
 }
 
 static void
@@ -72,10 +81,13 @@ version(void)
 int
 main(int argc, char *argv[])
 {
-	int			ch;
 	struct listener		*l;
+	int			ch, flags;
 
-	while ((ch = getopt(argc, argv, "c:dfnv")) != -1) {
+	flags = 0;
+
+	while ((ch = getopt(argc, argv, "c:dfhnv")) != -1) {
+		flags++;
 		switch (ch) {
 		case 'c':
 			config_file = optarg;
@@ -90,6 +102,9 @@ main(int argc, char *argv[])
 		case 'f':
 			foreground = 1;
 			break;
+		case 'h':
+			usage();
+			break;
 		case 'n':
 			skip_chroot = 1;
 			break;
@@ -103,6 +118,12 @@ main(int argc, char *argv[])
 
 	argc -= optind;
 	argv += optind;
+
+	if (argc > 0) {
+		if (flags)
+			fatal("You cannot specify kore flags and a command");
+		return (kore_cli_main(argc, argv));
+	}
 
 	kore_pid = getpid();
 	nlisteners = 0;
