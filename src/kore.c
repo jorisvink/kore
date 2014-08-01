@@ -271,6 +271,9 @@ kore_server_bind(const char *ip, const char *port)
 	nlisteners++;
 	LIST_INSERT_HEAD(&listeners, l, list);
 
+	if (foreground)
+		kore_log(LOG_NOTICE, "running on https://%s:%s", ip, port);
+
 	return (KORE_RESULT_OK);
 }
 
