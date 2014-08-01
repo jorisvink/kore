@@ -49,7 +49,7 @@ static void	kore_server_sslstart(void);
 static void
 usage(void)
 {
-	fprintf(stderr, "Usage: kore [-c config] [-dfnv] [lib [onload]]\n");
+	fprintf(stderr, "Usage: kore [-c config] [-dfnv]\n");
 	exit(1);
 }
 
@@ -115,15 +115,6 @@ main(int argc, char *argv[])
 	kore_module_init();
 	kore_validator_init();
 	kore_server_sslstart();
-
-	if (foreground && (argc == 1 || argc == 2)) {
-		if (argc == 1)
-			kore_module_load(argv[0], NULL);
-		else
-			kore_module_load(argv[0], argv[1]);
-	} else if (argc > 0) {
-		fatal("library can only be given when running with -f");
-	}
 
 	if (config_file == NULL)
 		usage();
