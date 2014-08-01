@@ -20,6 +20,9 @@
 #include <sys/wait.h>
 #include <sys/mman.h>
 
+#include <openssl/pem.h>
+#include <openssl/x509v3.h>
+
 #include <errno.h>
 #include <dirent.h>
 #include <libgen.h>
@@ -73,6 +76,7 @@ static void		cli_fatal(const char *, ...);
 
 static void		cli_file_close(int);
 static void		cli_run_kore(void *);
+static void		cli_generate_certs(void);
 static void		cli_link_library(void *);
 static void		cli_compile_cfile(void *);
 static void		cli_mkdir(const char *, int);
@@ -115,6 +119,7 @@ static struct filegen gen_files[] = {
 
 static const char *gen_dirs[] = {
 	"src",
+	"cert",
 	"conf",
 	"static",
 	NULL
@@ -141,10 +146,12 @@ static const char *config_data =
 	"load\t\t./%s.so\n"
 	"\n"
 	"domain 127.0.0.1 {\n"
+	"\tcertfile\tcert/server.crt\n"
+	"\tcertkey\t\tcert/server.key\n"
 	"\tstatic\t/\tpage\n"
 	"}\n";
 
-static const char *gitignore_data = "*.o\n.objs\n%s.so\nstatic.h\n";
+static const char *gitignore_data = "*.o\n.objs\n%s.so\nstatic.h\ncert\n";
 
 static int			s_fd = -1;
 static char			*appl = NULL;
@@ -227,6 +234,9 @@ cli_create(int argc, char **argv)
 
 	for (i = 0; gen_files[i].cb != NULL; i++)
 		gen_files[i].cb();
+
+	rootdir = appl;
+	cli_generate_certs();
 }
 
 static void
@@ -561,6 +571,98 @@ cli_find_files(const char *path, void (*cb)(char *, struct dirent *))
 			cb(fpath, dp);
 		}
 	}
+}
+
+static void
+cli_generate_certs(void)
+{
+	BIGNUM			*e;
+	FILE			*fp;
+	X509_NAME		*name;
+	EVP_PKEY		*pkey;
+	X509			*x509;
+	RSA			*kpair;
+	char			*fpath;
+
+	/* Create new certificate. */
+	if ((x509 = X509_new()) == NULL)
+		cli_fatal("X509_new(): %s", ssl_errno_s);
+
+	/* Generate version 3. */
+	if (!X509_set_version(x509, 2))
+		cli_fatal("X509_set_version(): %s", ssl_errno_s);
+
+	/* Generate RSA keys. */
+	if ((pkey = EVP_PKEY_new()) == NULL)
+		cli_fatal("EVP_PKEY_new(): %s", ssl_errno_s);
+	if ((kpair = RSA_new()) == NULL)
+		cli_fatal("RSA_new(): %s", ssl_errno_s);
+	if ((e = BN_new()) == NULL)
+		cli_fatal("BN_new(): %s", ssl_errno_s);
+
+	if (!BN_set_word(e, 65537))
+		cli_fatal("BN_set_word(): %s", ssl_errno_s);
+	if (!RSA_generate_key_ex(kpair, 2048, e, NULL))
+		cli_fatal("RSA_generate_key_ex(): %s", ssl_errno_s);
+
+	BN_free(e);
+
+	if (!EVP_PKEY_assign_RSA(pkey, kpair))
+		cli_fatal("EVP_PKEY_assign_RSA(): %s", ssl_errno_s);
+
+	/* Set serial number to 0. */
+	if (!ASN1_INTEGER_set(X509_get_serialNumber(x509), 0))
+		cli_fatal("ASN1_INTEGER_set(): %s", ssl_errno_s);
+
+	/* Not before and not after dates. */
+	if (!X509_gmtime_adj(X509_get_notBefore(x509), 0))
+		cli_fatal("X509_gmtime_adj(): %s", ssl_errno_s);
+	if (!X509_gmtime_adj(X509_get_notAfter(x509), (long)60 *60 * 24 * 3000))
+		cli_fatal("X509_gmtime_adj(): %s", ssl_errno_s);
+
+	/* Attach the pkey to the certificate. */
+	if (!X509_set_pubkey(x509, pkey))
+		cli_fatal("X509_set_pubkey(): %s", ssl_errno_s);
+
+	/* Set certificate information. */
+	if ((name = X509_get_subject_name(x509)) == NULL)
+		cli_fatal("X509_get_subject_name(): %s", ssl_errno_s);
+
+	if (!X509_NAME_add_entry_by_txt(name, "C",
+	    MBSTRING_ASC, (const unsigned char *)"SE", -1, -1, 0))
+		cli_fatal("X509_NAME_add_entry_by_txt(): C %s", ssl_errno_s);
+	if (!X509_NAME_add_entry_by_txt(name, "O",
+	    MBSTRING_ASC, (const unsigned char *)"kore autogen", -1, -1, 0))
+		cli_fatal("X509_NAME_add_entry_by_txt(): O %s", ssl_errno_s);
+	if (!X509_NAME_add_entry_by_txt(name, "CN",
+	    MBSTRING_ASC, (const unsigned char *)"localhost", -1, -1, 0))
+		cli_fatal("X509_NAME_add_entry_by_txt(): CN %s", ssl_errno_s);
+
+	if (!X509_set_issuer_name(x509, name))
+		cli_fatal("X509_set_issuer_name(): %s", ssl_errno_s);
+
+	if (!X509_sign(x509, pkey, EVP_sha1()))
+		cli_fatal("X509_sign(): %s", ssl_errno_s);
+
+	(void)cli_vasprintf(&fpath, "%s/cert/server.key", rootdir);
+	if ((fp = fopen(fpath, "w+")) == NULL)
+		cli_fatal("fopen(%s): %s", fpath, errno_s);
+	free(fpath);
+
+	if (!PEM_write_PrivateKey(fp, pkey, NULL, NULL, 0, NULL, NULL))
+		cli_fatal("PEM_write_PrivateKey(): %s", ssl_errno_s);
+	fclose(fp);
+
+	(void)cli_vasprintf(&fpath, "%s/cert/server.crt", rootdir);
+	if ((fp = fopen(fpath, "w+")) == NULL)
+		cli_fatal("fopen(%s): %s", fpath, errno_s);
+	free(fpath);
+
+	if (!PEM_write_X509(fp, x509))
+		cli_fatal("fopen(%s): %s", fpath, errno_s);
+
+	EVP_PKEY_free(pkey);
+	X509_free(x509);
 }
 
 static void
