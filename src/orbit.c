@@ -14,8 +14,6 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#define _GNU_SOURCE
-
 #include <sys/param.h>
 #include <sys/stat.h>
 #include <sys/queue.h>
@@ -318,11 +316,13 @@ static void
 orbit_file_write(int fd, const void *buf, size_t len)
 {
 	ssize_t		r;
+	const u_int8_t	*d;
 	size_t		written;
 
+	d = buf;
 	written = 0;
 	while (written != len) {
-		r = write(fd, buf + written, len - written);
+		r = write(fd, d + written, len - written);
 		if (r == -1) {
 			if (errno == EINTR)
 				continue;
