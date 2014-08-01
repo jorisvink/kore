@@ -237,7 +237,11 @@ static void
 orbit_run(int argc, char **argv)
 {
 	orbit_build(argc, argv);
-	orbit_spawn_proc(orbit_run_kore, NULL);
+
+	if (chdir(rootdir) == -1)
+		fatal("couldn't change directory to %s", rootdir);
+
+	orbit_run_kore(NULL);
 }
 
 static void
@@ -444,7 +448,7 @@ orbit_run_kore(void *arg)
 {
 	char		*args[4], *cpath;
 
-	orbit_vasprintf(&cpath, "%s/conf/%s.conf", rootdir, appl);
+	orbit_vasprintf(&cpath, "conf/%s.conf", appl);
 
 	args[0] = "kore";
 	args[1] = "-fnc";
