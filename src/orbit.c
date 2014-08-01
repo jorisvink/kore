@@ -218,6 +218,11 @@ orbit_build(int argc, char **argv)
 	orbit_find_cfiles(spath);
 	free(spath);
 
+	orbit_vasprintf(&spath, "%s/.objs", rootdir);
+	if (!orbit_dir_exists(spath))
+		orbit_mkdir(spath, 0755);
+	free(spath);
+
 	TAILQ_FOREACH(cf, &source_files, list) {
 		printf("compiling %s\n", cf->fpath);
 		orbit_spawn_proc(orbit_compile_cfile, cf);
