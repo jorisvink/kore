@@ -461,7 +461,6 @@ cli_build_static(char *fpath, struct dirent *dp)
 	u_int8_t		*d;
 	struct cfile		*cf;
 	off_t			off;
-	struct kore_buf		*buf;
 	void			*base;
 	int			in, out;
 	char			*cpath, *ext;
@@ -495,11 +494,8 @@ cli_build_static(char *fpath, struct dirent *dp)
 
 	/* Copy all data into a buf and write it out afterwards. */
 	d = base;
-	buf = kore_buf_create(st.st_size);
 	for (off = 0; off < st.st_size; off++)
-		kore_buf_appendf(buf, "0x%02x,", *d++);
-	cli_file_write(out, buf->data, buf->offset);
-	kore_buf_free(buf);
+		cli_file_writef(out, "0x%02x,", *d++);
 
 	/* Add the meta data. */
 	cli_file_writef(out, "};\n\n");
