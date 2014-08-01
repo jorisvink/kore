@@ -67,6 +67,7 @@ those by setting a shell environment variable before running **_make_**.
 * TASKS=1 (compiles in task support)
 * PGSQL=1 (compiles in pgsql support)
 * DEBUG=1 (enables use of -d for debug)
+* BENCHMARK=1 (compiles Kore without OpenSSL)
 * KORE_PEDANTIC_MALLOC=1 (zero all allocated memory)
 
 Example libraries
