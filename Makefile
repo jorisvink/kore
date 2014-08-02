@@ -55,7 +55,7 @@ else
 endif
 
 all: $(S_OBJS)
-	$(CC) $(LDFLAGS) $(S_OBJS) -o $(KORE)
+	$(CC) $(S_OBJS) $(LDFLAGS) -o $(KORE)
 
 install:
 	mkdir -p $(INCLUDE_DIR)
