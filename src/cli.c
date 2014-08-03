@@ -81,6 +81,7 @@ static void		cli_link_library(void *);
 static void		cli_compile_cfile(void *);
 static void		cli_mkdir(const char *, int);
 static int		cli_dir_exists(const char *);
+static int		cli_file_exists(const char *);
 static void		cli_cleanup_files(const char *);
 static void		cli_file_writef(int, const char *, ...);
 static void		cli_file_open(const char *, int, int *);
@@ -254,8 +255,8 @@ static void
 cli_build(int argc, char **argv)
 {
 	struct cfile	*cf;
-	char		*static_path, *p, *obj_path, *cpath;
 	char		pwd[PATH_MAX], *src_path, *static_header;
+	char		*static_path, *p, *obj_path, *cpath, *config;
 
 	if (argc == 0) {
 		if (getcwd(pwd, sizeof(pwd)) == NULL)
@@ -274,15 +275,18 @@ cli_build(int argc, char **argv)
 	cfiles_count = 0;
 	TAILQ_INIT(&source_files);
 
+	(void)cli_vasprintf(&src_path, "%s/src", rootdir);
+	(void)cli_vasprintf(&static_path, "%s/static", rootdir);
+	(void)cli_vasprintf(&config, "%s/conf/%s.conf", rootdir, appl);
+	(void)cli_vasprintf(&static_header, "%s/src/static.h", rootdir);
+	if (!cli_dir_exists(src_path) || !cli_file_exists(config))
+		cli_fatal("%s doesn't appear to be a kore app", appl);
+
+	free(config);
+
 	(void)cli_vasprintf(&obj_path, "%s/.objs", rootdir);
 	if (!cli_dir_exists(obj_path))
 		cli_mkdir(obj_path, 0755);
-
-	(void)cli_vasprintf(&src_path, "%s/src", rootdir);
-	(void)cli_vasprintf(&static_path, "%s/static", rootdir);
-	(void)cli_vasprintf(&static_header, "%s/src/static.h", rootdir);
-	if (!cli_dir_exists(src_path))
-		cli_fatal("%s doesn't appear to be an app", appl);
 
 	(void)unlink(static_header);
 
@@ -377,6 +381,20 @@ cli_mkdir(const char *fpath, int mode)
 {
 	if (mkdir(fpath, mode) == -1)
 		cli_fatal("cli_mkdir(%s): %s", fpath, errno_s);
+}
+
+static int
+cli_file_exists(const char *fpath)
+{
+	struct stat		st;
+
+	if (stat(fpath, &st) == -1)
+		return (0);
+
+	if (!S_ISREG(st.st_mode))
+		return (0);
+
+	return (1);
 }
 
 static int
@@ -818,7 +836,7 @@ cli_cleanup_files(const char *spath)
 			printf("couldnt unlink %s\n", cf->fpath);
 	}
 
-	if (rmdir(spath) == -1)
+	if (rmdir(spath) == -1 && errno != ENOENT)
 		printf("couldn't rmdir %s\n", spath);
 }
 
