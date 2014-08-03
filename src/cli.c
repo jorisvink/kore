@@ -168,7 +168,7 @@ static const char *config_data =
 	"\tstatic\t/\tpage\n"
 	"}\n";
 
-static const char *gitignore_data = "*.o\n.objs\n%s.so\nstatic.h\ncert\n";
+static const char *gitignore_data = "*.o\n.objs\n%s.so\nassets.h\ncert\n";
 
 static int			s_fd = -1;
 static char			*appl = NULL;
@@ -616,7 +616,7 @@ cli_build_asset(char *fpath, struct dirent *dp)
 	cli_file_writef(out, "time_t asset_mtime_%s_%s = %" PRI_TIME_T ";\n",
 	    dp->d_name, ext, st.st_mtime);
 
-	/* Write the file symbols into static.h so they can be used. */
+	/* Write the file symbols into assets.h so they can be used. */
 	cli_write_asset(dp->d_name, ext);
 
 	/* Cleanup static file source. */
