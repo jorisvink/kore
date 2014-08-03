@@ -145,6 +145,7 @@ static const char *config_data =
 	"\n"
 	"bind\t\t127.0.0.1 8888\n"
 	"pidfile\t\tkore.pid\n"
+	"ssl_no_compression\n"
 	"load\t\t./%s.so\n"
 	"\n"
 	"domain 127.0.0.1 {\n"
@@ -253,7 +254,7 @@ static void
 cli_build(int argc, char **argv)
 {
 	struct cfile	*cf;
-	char		*static_path, *p, *obj_path;
+	char		*static_path, *p, *obj_path, *cpath;
 	char		pwd[PATH_MAX], *src_path, *static_header;
 
 	if (argc == 0) {
@@ -311,6 +312,13 @@ cli_build(int argc, char **argv)
 	cli_cleanup_files(obj_path);
 	free(obj_path);
 
+	(void)cli_vasprintf(&cpath, "%s/cert", rootdir);
+	if (!cli_dir_exists(cpath)) {
+		cli_mkdir(cpath, 0700);
+		cli_generate_certs();
+	}
+
+	free(cpath);
 	printf("%s built succesfully!\n", appl);
 }
 
