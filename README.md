@@ -72,7 +72,7 @@ those by setting a shell environment variable before running **_make_**.
 Example libraries
 -----------------
 
-You can find example libraries under **_contrib/examples/_**.
+You can find example libraries under **_examples/_**.
 
 The examples should be compiled using the supplied **build.sh** scripts
 and assume you have installed the header files using make install.
