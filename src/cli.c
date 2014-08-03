@@ -848,6 +848,8 @@ cli_link_library(void *arg)
 
 	if ((p = getenv("KORE_LDFLAGS")) != NULL)
 		f = kore_split_string(p, " ", flags, LD_FLAGS_MAX);
+	else
+		f = 0;
 
 	(void)cli_vasprintf(&libname, "%s/%s.so", rootdir, appl);
 
