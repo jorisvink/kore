@@ -74,8 +74,8 @@ Example libraries
 
 You can find example libraries under **_examples/_**.
 
-The examples should be compiled using the supplied **build.sh** scripts
-and assume you have installed the header files using make install.
+The examples contain a README file with instructions on how
+to build or use them.
 
 I apologize for unclear examples or documentation, I am working on
 improving those.
