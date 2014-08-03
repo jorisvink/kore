@@ -87,10 +87,11 @@ static void		cli_cleanup_files(const char *);
 static void		cli_file_writef(int, const char *, ...);
 static void		cli_file_open(const char *, int, int *);
 static void		cli_file_remove(char *, struct dirent *);
-static void		cli_build_static(char *, struct dirent *);
+static void		cli_build_asset(char *, struct dirent *);
 static void		cli_file_write(int, const void *, size_t);
 static int		cli_vasprintf(char **, const char *, ...);
 static void		cli_spawn_proc(void (*cb)(void *), void *);
+static void		cli_write_asset(const char *, const char *);
 static void		cli_register_cfile(char *, struct dirent *);
 static void		cli_file_create(const char *, const char *, size_t);
 static int		cli_file_requires_build(struct stat *, const char *);
@@ -129,7 +130,7 @@ static const char *gen_dirs[] = {
 	"cert",
 #endif
 	"conf",
-	"static",
+	"assets",
 	NULL
 };
 
@@ -262,8 +263,8 @@ cli_build(int argc, char **argv)
 	struct cfile	*cf;
 	struct timeval	times[2];
 	int		requires_relink;
-	char		pwd[PATH_MAX], *src_path, *static_header;
-	char		*static_path, *p, *obj_path, *cpath, *config;
+	char		pwd[PATH_MAX], *src_path, *assets_header;
+	char		*assets_path, *p, *obj_path, *cpath, *config;
 
 	if (argc == 0) {
 		if (getcwd(pwd, sizeof(pwd)) == NULL)
@@ -283,9 +284,9 @@ cli_build(int argc, char **argv)
 	TAILQ_INIT(&source_files);
 
 	(void)cli_vasprintf(&src_path, "%s/src", rootdir);
-	(void)cli_vasprintf(&static_path, "%s/static", rootdir);
+	(void)cli_vasprintf(&assets_path, "%s/assets", rootdir);
 	(void)cli_vasprintf(&config, "%s/conf/%s.conf", rootdir, appl);
-	(void)cli_vasprintf(&static_header, "%s/src/static.h", rootdir);
+	(void)cli_vasprintf(&assets_header, "%s/src/assets.h", rootdir);
 	if (!cli_dir_exists(src_path) || !cli_file_exists(config))
 		cli_fatal("%s doesn't appear to be a kore app", appl);
 
@@ -296,17 +297,21 @@ cli_build(int argc, char **argv)
 		cli_mkdir(obj_path, 0755);
 	free(obj_path);
 
-	(void)unlink(static_header);
+	(void)unlink(assets_header);
 
-	/* Generate the static files. */
-	if (cli_dir_exists(static_path)) {
-		cli_file_open(static_header,
+	/* Generate the assets. */
+	if (cli_dir_exists(assets_path)) {
+		cli_file_open(assets_header,
 		    O_CREAT | O_TRUNC | O_WRONLY, &s_fd);
-		cli_find_files(static_path, cli_build_static);
+
+		cli_file_writef(s_fd, "#ifndef __H_%s_ASSETS_H\n", appl);
+		cli_file_writef(s_fd, "#define __H_%s_ASSETS_H\n", appl);
+		cli_find_files(assets_path, cli_build_asset);
+		cli_file_writef(s_fd, "\n#endif\n");
 		cli_file_close(s_fd);
 	}
 
-	free(static_path);
+	free(assets_path);
 
 	/* Build all source files. */
 	cli_find_files(src_path, cli_register_cfile);
@@ -327,8 +332,8 @@ cli_build(int argc, char **argv)
 		requires_relink++;
 	}
 
-	(void)unlink(static_header);
-	free(static_header);
+	(void)unlink(assets_header);
+	free(assets_header);
 
 	(void)cli_vasprintf(&cpath, "%s/cert", rootdir);
 	if (!cli_dir_exists(cpath)) {
@@ -533,7 +538,15 @@ cli_file_create(const char *name, const char *data, size_t len)
 }
 
 static void
-cli_build_static(char *fpath, struct dirent *dp)
+cli_write_asset(const char *n, const char *e)
+{
+	cli_file_writef(s_fd, "extern u_int8_t asset_%s_%s[];\n", n, e);
+	cli_file_writef(s_fd, "extern u_int32_t asset_len_%s_%s;\n", n, e);
+	cli_file_writef(s_fd, "extern time_t asset_mtime_%s_%s;\n", n, e);
+}
+
+static void
+cli_build_asset(char *fpath, struct dirent *dp)
 {
 	struct stat		st;
 	u_int8_t		*d;
@@ -543,6 +556,10 @@ cli_build_static(char *fpath, struct dirent *dp)
 	int			in, out;
 	char			*cpath, *ext, *opath;
 
+	/* Grab the extension as we're using it in the symbol name. */
+	if ((ext = strrchr(dp->d_name, '.')) == NULL)
+		cli_fatal("couldn't find ext in %s", dp->d_name);
+
 	/* Grab inode information. */
 	if (stat(fpath, &st) == -1)
 		cli_fatal("stat: %s %s", fpath, errno_s);
@@ -550,13 +567,13 @@ cli_build_static(char *fpath, struct dirent *dp)
 	/* Check if the file needs to be built. */
 	(void)cli_vasprintf(&opath, "%s/.objs/%s.o", rootdir, dp->d_name);
 	if (!cli_file_requires_build(&st, opath)) {
+		*(ext)++ = '\0';
+		cli_write_asset(dp->d_name, ext);
+		*ext = '.';
+
 		free(opath);
 		return;
 	}
-
-	/* Grab the extension as we're using it in the symbol name. */
-	if ((ext = strrchr(dp->d_name, '.')) == NULL)
-		cli_fatal("couldn't find ext in %s", dp->d_name);
 
 	/* Open the file we're convering. */
 	cli_file_open(fpath, O_RDONLY, &in);
@@ -571,13 +588,13 @@ cli_build_static(char *fpath, struct dirent *dp)
 	cli_file_open(cpath, O_CREAT | O_TRUNC | O_WRONLY, &out);
 
 	/* No longer need dp->d_name so cut off the extension. */
-	printf("converting %s\n", dp->d_name);
+	printf("building asset %s\n", dp->d_name);
 	*(ext)++ = '\0';
 
 	/* Start generating the file. */
 	cli_file_writef(out, "/* Auto generated */\n");
 	cli_file_writef(out, "#include <sys/param.h>\n\n");
-	cli_file_writef(out, "u_int8_t static_%s_%s[] = {\n", dp->d_name, ext);
+	cli_file_writef(out, "u_int8_t asset_%s_%s[] = {\n", dp->d_name, ext);
 
 	/* Copy all data into a buf and write it out afterwards. */
 	d = base;
@@ -586,18 +603,13 @@ cli_build_static(char *fpath, struct dirent *dp)
 
 	/* Add the meta data. */
 	cli_file_writef(out, "};\n\n");
-	cli_file_writef(out, "u_int32_t static_len_%s_%s = %" PRIu32 ";\n",
+	cli_file_writef(out, "u_int32_t asset_len_%s_%s = %" PRIu32 ";\n",
 	    dp->d_name, ext, (u_int32_t)st.st_size);
-	cli_file_writef(out, "time_t static_mtime_%s_%s = %" PRI_TIME_T ";\n",
+	cli_file_writef(out, "time_t asset_mtime_%s_%s = %" PRI_TIME_T ";\n",
 	    dp->d_name, ext, st.st_mtime);
 
 	/* Write the file symbols into static.h so they can be used. */
-	cli_file_writef(s_fd, "extern u_int8_t static_%s_%s[];\n",
-	    dp->d_name, ext);
-	cli_file_writef(s_fd, "extern u_int32_t static_len_%s_%s;\n",
-	    dp->d_name, ext);
-	cli_file_writef(s_fd, "extern time_t static_mtime_%s_%s;\n",
-	    dp->d_name, ext);
+	cli_write_asset(dp->d_name, ext);
 
 	/* Cleanup static file source. */
 	if (munmap(base, st.st_size) == -1)
