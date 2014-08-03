@@ -67,6 +67,7 @@ struct filegen {
 
 struct cfile {
 	struct stat		st;
+	int			build;
 	char			*name;
 	char			*fpath;
 	char			*opath;
@@ -99,6 +100,8 @@ static void		cli_file_create(const char *, const char *, size_t);
 static int		cli_file_requires_build(struct stat *, const char *);
 static void		cli_find_files(const char *,
 			    void (*cb)(char *, struct dirent *));
+static void		cli_add_cfile(char *, char *, char *,
+			    struct stat *, int);
 
 static void		cli_run(int, char **);
 static void		cli_help(int, char **);
@@ -321,6 +324,9 @@ cli_build(int argc, char **argv)
 	requires_relink = 0;
 
 	TAILQ_FOREACH(cf, &source_files, list) {
+		if (cf->build == 0)
+			continue;
+
 		printf("compiling %s\n", cf->name);
 		cli_spawn_proc(cli_compile_cfile, cf);
 
@@ -552,7 +558,6 @@ cli_build_asset(char *fpath, struct dirent *dp)
 {
 	struct stat		st;
 	u_int8_t		*d;
-	struct cfile		*cf;
 	off_t			off;
 	void			*base;
 	int			in, out;
@@ -566,14 +571,16 @@ cli_build_asset(char *fpath, struct dirent *dp)
 	if (stat(fpath, &st) == -1)
 		cli_fatal("stat: %s %s", fpath, errno_s);
 
-	/* Check if the file needs to be built. */
 	(void)cli_vasprintf(&opath, "%s/.objs/%s.o", rootdir, dp->d_name);
+	(void)cli_vasprintf(&cpath, "%s/.objs/%s.c", rootdir, dp->d_name);
+
+	/* Check if the file needs to be built. */
 	if (!cli_file_requires_build(&st, opath)) {
 		*(ext)++ = '\0';
 		cli_write_asset(dp->d_name, ext);
 		*ext = '.';
 
-		free(opath);
+		cli_add_cfile(dp->d_name, cpath, opath, &st, 0);
 		return;
 	}
 
@@ -586,7 +593,6 @@ cli_build_asset(char *fpath, struct dirent *dp)
 		cli_fatal("mmap: %s %s", fpath, errno_s);
 
 	/* Create the c file where we will write too. */
-	(void)cli_vasprintf(&cpath, "%s/.objs/%s.c", rootdir, dp->d_name);
 	cli_file_open(cpath, O_CREAT | O_TRUNC | O_WRONLY, &out);
 
 	/* No longer need dp->d_name so cut off the extension. */
@@ -625,12 +631,22 @@ cli_build_asset(char *fpath, struct dirent *dp)
 	*--ext = '.';
 
 	/* Register the .c file now (cpath is free'd later). */
+	cli_add_cfile(dp->d_name, cpath, opath, &st, 1);
+}
+
+static void
+cli_add_cfile(char *name, char *fpath, char *opath, struct stat *st, int build)
+{
+	struct cfile		*cf;
+
 	cfiles_count++;
 	cf = kore_malloc(sizeof(*cf));
-	cf->st = st;
-	cf->fpath = cpath;
+
+	cf->st = *st;
+	cf->build = build;
+	cf->fpath = fpath;
 	cf->opath = opath;
-	cf->name = kore_strdup(dp->d_name);
+	cf->name = kore_strdup(name);
 
 	TAILQ_INSERT_TAIL(&source_files, cf, list);
 }
@@ -639,7 +655,6 @@ static void
 cli_register_cfile(char *fpath, struct dirent *dp)
 {
 	struct stat		st;
-	struct cfile		*cf;
 	char			*ext, *opath;
 
 	if ((ext = strrchr(fpath, '.')) == NULL || strcmp(ext, ".c"))
@@ -650,18 +665,11 @@ cli_register_cfile(char *fpath, struct dirent *dp)
 
 	(void)cli_vasprintf(&opath, "%s/.objs/%s.o", rootdir, dp->d_name);
 	if (!cli_file_requires_build(&st, opath)) {
-		free(opath);
+		cli_add_cfile(dp->d_name, fpath, opath, &st, 0);
 		return;
 	}
 
-	cfiles_count++;
-	cf = kore_malloc(sizeof(*cf));
-	cf->st = st;
-	cf->fpath = fpath;
-	cf->opath = opath;
-	cf->name = kore_strdup(dp->d_name);
-
-	TAILQ_INSERT_TAIL(&source_files, cf, list);
+	cli_add_cfile(dp->d_name, fpath, opath, &st, 1);
 }
 
 static void
