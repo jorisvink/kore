@@ -17,7 +17,7 @@
 #include <kore/kore.h>
 #include <kore/http.h>
 
-#include "static.h"
+#include "assets.h"
 
 void		example_load(int);
 
@@ -79,15 +79,15 @@ serve_style_css(struct http_request *req)
 		kore_debug("header was present with %ld", tstamp);
 	}
 
-	if (tstamp != 0 && tstamp <= static_mtime_css_style) {
+	if (tstamp != 0 && tstamp <= asset_mtime_style_css) {
 		http_response(req, 304, NULL, 0);
 	} else {
-		date = kore_time_to_date(static_mtime_css_style);
+		date = kore_time_to_date(asset_mtime_style_css);
 		if (date != NULL)
 			http_response_header_add(req, "last-modified", date);
 
 		http_response_header_add(req, "content-type", "text/css");
-		http_response(req, 200, static_css_style, static_len_css_style);
+		http_response(req, 200, asset_style_css, asset_len_style_css);
 	}
 
 	return (KORE_RESULT_OK);
@@ -97,7 +97,7 @@ int
 serve_index(struct http_request *req)
 {
 	http_response_header_add(req, "content-type", "text/html");
-	http_response(req, 200, static_html_index, static_len_html_index);
+	http_response(req, 200, asset_index_html, asset_len_index_html);
 
 	return (KORE_RESULT_OK);
 }
@@ -106,7 +106,7 @@ int
 serve_intro(struct http_request *req)
 {
 	http_response_header_add(req, "content-type", "image/jpg");
-	http_response(req, 200, static_jpg_intro, static_len_jpg_intro);
+	http_response(req, 200, asset_intro_jpg, asset_len_intro_jpg);
 
 	return (KORE_RESULT_OK);
 }
@@ -148,8 +148,8 @@ serve_file_upload(struct http_request *req)
 	u_int32_t		len;
 	char			*name, buf[BUFSIZ];
 
-	b = kore_buf_create(static_len_html_upload);
-	kore_buf_append(b, static_html_upload, static_len_html_upload);
+	b = kore_buf_create(asset_len_upload_html);
+	kore_buf_append(b, asset_upload_html, asset_len_upload_html);
 
 	if (req->method == HTTP_METHOD_POST) {
 		http_populate_multipart_form(req, &r);
@@ -253,8 +253,8 @@ serve_params_test(struct http_request *req)
 
 	http_populate_arguments(req);
 
-	b = kore_buf_create(static_len_html_params);
-	kore_buf_append(b, static_html_params, static_len_html_params);
+	b = kore_buf_create(asset_len_params_html);
+	kore_buf_append(b, asset_params_html, asset_len_params_html);
 
 	/*
 	 * The GET parameters will be filtered out on POST.
@@ -313,7 +313,7 @@ serve_private(struct http_request *req)
 {
 	http_response_header_add(req, "content-type", "text/html");
 	http_response_header_add(req, "set-cookie", "session_id=test123");
-	http_response(req, 200, static_html_private, static_len_html_private);
+	http_response(req, 200, asset_private_html, asset_len_private_html);
 
 	return (KORE_RESULT_OK);
 }
@@ -323,8 +323,8 @@ serve_private_test(struct http_request *req)
 {
 	http_response_header_add(req, "content-type", "text/html");
 
-	http_response(req, 200, static_html_private_test,
-	    static_len_html_private_test);
+	http_response(req, 200, asset_private_test_html,
+	    asset_len_private_test_html);
 
 	return (KORE_RESULT_OK);
 }
