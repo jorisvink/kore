@@ -52,12 +52,12 @@ usage(void)
 	fprintf(stderr, "Usage: kore [options | command]\n");
 	fprintf(stderr, "\n");
 	fprintf(stderr, "Available options:\n");
-	fprintf(stderr, "\t-c\tSpecify the configuration file to use\n");
-	fprintf(stderr, "\t-d\tRun with debug on (if compiled in)\n");
-	fprintf(stderr, "\t-f\tStart kore in foreground mode\n");
-	fprintf(stderr, "\t-h\tThis help text\n");
-	fprintf(stderr, "\t-n\tDo not chroot (if not starting kore as root)\n");
-	fprintf(stderr, "\t-v\tDisplay kore's version information\n");
+	fprintf(stderr, "\t-c\tspecify the configuration file to use\n");
+	fprintf(stderr, "\t-d\trun with debug on (if compiled in)\n");
+	fprintf(stderr, "\t-f\tstart kore in foreground mode\n");
+	fprintf(stderr, "\t-h\tthis help text\n");
+	fprintf(stderr, "\t-n\tdo not chroot (if not starting kore as root)\n");
+	fprintf(stderr, "\t-v\tdisplay kore's version information\n");
 
 	kore_cli_usage(0);
 }
