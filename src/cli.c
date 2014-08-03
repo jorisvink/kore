@@ -33,6 +33,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <utime.h>
 
 #include "kore.h"
 
@@ -63,10 +64,10 @@ struct filegen {
 };
 
 struct cfile {
+	struct stat		st;
 	char			*name;
 	char			*fpath;
 	char			*opath;
-	int			is_static;
 	TAILQ_ENTRY(cfile)	list;
 };
 
@@ -85,18 +86,21 @@ static int		cli_file_exists(const char *);
 static void		cli_cleanup_files(const char *);
 static void		cli_file_writef(int, const char *, ...);
 static void		cli_file_open(const char *, int, int *);
+static void		cli_file_remove(char *, struct dirent *);
 static void		cli_build_static(char *, struct dirent *);
 static void		cli_file_write(int, const void *, size_t);
 static int		cli_vasprintf(char **, const char *, ...);
 static void		cli_spawn_proc(void (*cb)(void *), void *);
 static void		cli_register_cfile(char *, struct dirent *);
 static void		cli_file_create(const char *, const char *, size_t);
+static int		cli_file_requires_build(struct stat *, const char *);
 static void		cli_find_files(const char *,
 			    void (*cb)(char *, struct dirent *));
 
 static void		cli_run(int, char **);
 static void		cli_help(int, char **);
 static void		cli_build(int, char **);
+static void		cli_clean(int, char **);
 static void		cli_create(int, char **);
 
 static void		file_create_src(void);
@@ -104,10 +108,11 @@ static void		file_create_config(void);
 static void		file_create_gitignore(void);
 
 static struct cmd cmds[] = {
-	{ "help",	"This help text",			cli_help },
-	{ "run",	"Run an application (-fn implied)",	cli_run },
-	{ "build",	"Build an application",			cli_build },
-	{ "create",	"Create a new application skeleton",	cli_create },
+	{ "help",	"this help text",			cli_help },
+	{ "run",	"run an application (-fn implied)",	cli_run },
+	{ "build",	"build an application",			cli_build },
+	{ "clean",	"cleanup the build files",		cli_clean },
+	{ "create",	"create a new application skeleton",	cli_create },
 	{ NULL,		NULL,					NULL }
 };
 
@@ -255,6 +260,8 @@ static void
 cli_build(int argc, char **argv)
 {
 	struct cfile	*cf;
+	struct timeval	times[2];
+	int		requires_relink;
 	char		pwd[PATH_MAX], *src_path, *static_header;
 	char		*static_path, *p, *obj_path, *cpath, *config;
 
@@ -287,6 +294,7 @@ cli_build(int argc, char **argv)
 	(void)cli_vasprintf(&obj_path, "%s/.objs", rootdir);
 	if (!cli_dir_exists(obj_path))
 		cli_mkdir(obj_path, 0755);
+	free(obj_path);
 
 	(void)unlink(static_header);
 
@@ -303,27 +311,57 @@ cli_build(int argc, char **argv)
 	/* Build all source files. */
 	cli_find_files(src_path, cli_register_cfile);
 	free(src_path);
+	requires_relink = 0;
 
 	TAILQ_FOREACH(cf, &source_files, list) {
 		printf("compiling %s\n", cf->name);
 		cli_spawn_proc(cli_compile_cfile, cf);
+
+		times[0].tv_usec = 0;
+		times[0].tv_sec = cf->st.st_mtime;
+		times[1] = times[0];
+
+		if (utimes(cf->opath, times) == -1)
+			printf("utime(%s): %s\n", cf->opath, errno_s);
+
+		requires_relink++;
 	}
 
 	(void)unlink(static_header);
 	free(static_header);
-
-	cli_spawn_proc(cli_link_library, NULL);
-	cli_cleanup_files(obj_path);
-	free(obj_path);
 
 	(void)cli_vasprintf(&cpath, "%s/cert", rootdir);
 	if (!cli_dir_exists(cpath)) {
 		cli_mkdir(cpath, 0700);
 		cli_generate_certs();
 	}
-
 	free(cpath);
-	printf("%s built succesfully!\n", appl);
+
+	if (requires_relink) {
+		cli_spawn_proc(cli_link_library, NULL);
+		printf("%s built succesfully!\n", appl);
+	} else {
+		printf("nothing to be done\n");
+	}
+}
+
+static void
+cli_clean(int argc, char **argv)
+{
+	char		pwd[PATH_MAX], *sofile;
+
+	if (cli_dir_exists(".objs"))
+		cli_cleanup_files(".objs");
+
+	if (getcwd(pwd, sizeof(pwd)) == NULL)
+		cli_fatal("could not get cwd: %s", errno_s);
+
+	appl = basename(pwd);
+	(void)cli_vasprintf(&sofile, "%s.so", appl);
+	if (unlink(sofile) == -1 && errno != ENOENT)
+		printf("couldn't unlink %s: %s", sofile, errno_s);
+
+	free(sofile);
 }
 
 static void
@@ -395,6 +433,20 @@ cli_file_exists(const char *fpath)
 		return (0);
 
 	return (1);
+}
+
+static int
+cli_file_requires_build(struct stat *fst, const char *opath)
+{
+	struct stat	ost;
+
+	if (stat(opath, &ost) == -1) {
+		if (errno == ENOENT)
+			return (1);
+		cli_fatal("stat(%s): %s", opath, errno_s);
+	}
+
+	return (fst->st_mtime != ost.st_mtime);
 }
 
 static int
@@ -489,7 +541,18 @@ cli_build_static(char *fpath, struct dirent *dp)
 	off_t			off;
 	void			*base;
 	int			in, out;
-	char			*cpath, *ext;
+	char			*cpath, *ext, *opath;
+
+	/* Grab inode information. */
+	if (stat(fpath, &st) == -1)
+		cli_fatal("stat: %s %s", fpath, errno_s);
+
+	/* Check if the file needs to be built. */
+	(void)cli_vasprintf(&opath, "%s/.objs/%s.o", rootdir, dp->d_name);
+	if (!cli_file_requires_build(&st, opath)) {
+		free(opath);
+		return;
+	}
 
 	/* Grab the extension as we're using it in the symbol name. */
 	if ((ext = strrchr(dp->d_name, '.')) == NULL)
@@ -498,9 +561,7 @@ cli_build_static(char *fpath, struct dirent *dp)
 	/* Open the file we're convering. */
 	cli_file_open(fpath, O_RDONLY, &in);
 
-	/* Grab the inode info on it and mmap it. */
-	if (fstat(in, &st) == -1)
-		cli_fatal("stat: %s %s", fpath, errno_s);
+	/* mmap our in file. */
 	if ((base = mmap(NULL, st.st_size,
 	    PROT_READ, MAP_PRIVATE, in, 0)) == MAP_FAILED)
 		cli_fatal("mmap: %s %s", fpath, errno_s);
@@ -552,31 +613,48 @@ cli_build_static(char *fpath, struct dirent *dp)
 	/* Register the .c file now (cpath is free'd later). */
 	cfiles_count++;
 	cf = kore_malloc(sizeof(*cf));
-	cf->is_static = 1;
+	cf->st = st;
 	cf->fpath = cpath;
+	cf->opath = opath;
 	cf->name = kore_strdup(dp->d_name);
 
-	(void)cli_vasprintf(&(cf->opath), "%s/.objs/%s.o", rootdir, dp->d_name);
 	TAILQ_INSERT_TAIL(&source_files, cf, list);
 }
 
 static void
 cli_register_cfile(char *fpath, struct dirent *dp)
 {
+	struct stat		st;
 	struct cfile		*cf;
-	char			*ext;
+	char			*ext, *opath;
 
 	if ((ext = strrchr(fpath, '.')) == NULL || strcmp(ext, ".c"))
 		return;
 
+	if (stat(fpath, &st) == -1)
+		cli_fatal("stat(%s): %s", fpath, errno_s);
+
+	(void)cli_vasprintf(&opath, "%s/.objs/%s.o", rootdir, dp->d_name);
+	if (!cli_file_requires_build(&st, opath)) {
+		free(opath);
+		return;
+	}
+
 	cfiles_count++;
 	cf = kore_malloc(sizeof(*cf));
-	cf->is_static = 0;
+	cf->st = st;
 	cf->fpath = fpath;
+	cf->opath = opath;
 	cf->name = kore_strdup(dp->d_name);
 
-	(void)cli_vasprintf(&(cf->opath), "%s/.objs/%s.o", rootdir, dp->d_name);
 	TAILQ_INSERT_TAIL(&source_files, cf, list);
+}
+
+static void
+cli_file_remove(char *fpath, struct dirent *dp)
+{
+	if (unlink(fpath) == -1)
+		fprintf(stderr, "couldn't unlink %s: %s", fpath, errno_s);
 }
 
 static void
@@ -825,16 +903,7 @@ cli_vasprintf(char **out, const char *fmt, ...)
 static void
 cli_cleanup_files(const char *spath)
 {
-	struct cfile		*cf;
-
-	TAILQ_FOREACH(cf, &source_files, list) {
-		if (unlink(cf->opath) == -1 && errno != ENOENT)
-			printf("couldnt unlink %s\n", cf->opath);
-
-		if (cf->is_static &&
-		    (unlink(cf->fpath) == -1) && errno != ENOENT)
-			printf("couldnt unlink %s\n", cf->fpath);
-	}
+	cli_find_files(spath, cli_file_remove);
 
 	if (rmdir(spath) == -1 && errno != ENOENT)
 		printf("couldn't rmdir %s\n", spath);
@@ -843,27 +912,17 @@ cli_cleanup_files(const char *spath)
 static void
 cli_fatal(const char *fmt, ...)
 {
-	int		l;
 	va_list		args;
-	char		buf[2048], spath[MAXPATHLEN];
+	char		buf[2048];
 
 	va_start(args, fmt);
 	(void)vsnprintf(buf, sizeof(buf), fmt, args);
 	va_end(args);
 
-	if (rootdir != NULL) {
-		l = snprintf(spath, sizeof(spath), "%s/.objs", rootdir);
-		if (l == -1 || (size_t)l >= sizeof(spath)) {
-			printf("couldn't create spath for cleanup: %s\n",
-			    errno_s);
-		} else {
-			cli_cleanup_files(spath);
-		}
-	}
-
 	if (command != NULL)
 		printf("kore %s: %s\n", command->name, buf);
 	else
 		printf("kore: %s\n", buf);
+
 	exit(1);
 }
