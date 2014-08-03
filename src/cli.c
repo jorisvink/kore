@@ -793,8 +793,12 @@ cli_generate_certs(void)
 static void
 cli_compile_cfile(void *arg)
 {
+	int		idx;
 	struct cfile	*cf = arg;
-	char		*args[18], *ipath;
+	char		*args[20], *ipath;
+#if defined(KORE_USE_PGSQL)
+	char		*ppath;
+#endif
 
 	(void)cli_vasprintf(&ipath, "-I%s/src", appl);
 
@@ -802,25 +806,32 @@ cli_compile_cfile(void *arg)
 	 * These compiler options should be settable
 	 * somehow by the user if they so choose.
 	 */
-	args[0] = compiler;
-	args[1] = ipath;
-	args[2] = "-I/usr/local/include";
-	args[3] = "-Wall";
-	args[4] = "-Wstrict-prototypes";
-	args[5] = "-Wmissing-prototypes";
-	args[6] = "-Wmissing-declarations";
-	args[7] = "-Wshadow";
-	args[8] = "-Wpointer-arith";
-	args[9] = "-Wcast-qual";
-	args[10] = "-Wsign-compare";
-	args[11] = "-fPIC";
-	args[12] = "-g";
+	idx = 0;
+	args[idx++] = compiler;
+	args[idx++] = ipath;
+	args[idx++] = "-I/usr/local/include";
 
-	args[13] = "-c";
-	args[14] = cf->fpath;
-	args[15] = "-o";
-	args[16] = cf->opath;
-	args[17] = NULL;
+#if defined(KORE_USE_PGSQL)
+	(void)cli_vasprintf(&ppath, "-I%s", PGSQL_INCLUDE_PATH);
+	args[idx++] = ppath;
+#endif
+
+	args[idx++] = "-Wall";
+	args[idx++] = "-Wstrict-prototypes";
+	args[idx++] = "-Wmissing-prototypes";
+	args[idx++] = "-Wmissing-declarations";
+	args[idx++] = "-Wshadow";
+	args[idx++] = "-Wpointer-arith";
+	args[idx++] = "-Wcast-qual";
+	args[idx++] = "-Wsign-compare";
+	args[idx++] = "-fPIC";
+	args[idx++] = "-g";
+
+	args[idx++] = "-c";
+	args[idx++] = cf->fpath;
+	args[idx++] = "-o";
+	args[idx++] = cf->opath;
+	args[idx] = NULL;
 
 	execvp(compiler, args);
 }

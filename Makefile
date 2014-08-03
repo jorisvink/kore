@@ -32,7 +32,8 @@ endif
 ifneq ("$(PGSQL)", "")
 	S_SRC+=src/pgsql.c
 	LDFLAGS+=-L$(shell pg_config --libdir) -lpq
-	CFLAGS+=-I$(shell pg_config --includedir) -DKORE_USE_PGSQL
+	CFLAGS+=-I$(shell pg_config --includedir) -DKORE_USE_PGSQL \
+	    -DPGSQL_INCLUDE_PATH="\"$(shell pg_config --includedir)\""
 endif
 
 ifneq ("$(TASKS)", "")
