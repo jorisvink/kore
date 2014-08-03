@@ -24,13 +24,7 @@
  *
  * You need libcurl installed for this to build (including headers)
  *
- * Compile using build.sh, afterwards start using:
- *	# kore -nc module.conf (depending on where kore is installed)
- *
- * Test using:
- *	# curl -k https://127.0.0.1:4443/?user=foobar
- *
- * If the result echo'd back matches what you specified, its all green.
+ * Read README.md on how to build and run this example.
  */
 
 #include <curl/curl.h>
