@@ -783,6 +783,7 @@ cli_generate_certs(void)
 
 	if (!PEM_write_X509(fp, x509))
 		cli_fatal("fopen(%s): %s", fpath, errno_s);
+	fclose(fp);
 
 	EVP_PKEY_free(pkey);
 	X509_free(x509);
