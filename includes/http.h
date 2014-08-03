@@ -111,7 +111,7 @@ struct http_arg {
 	http_argument_get(r, n, so, no, l, t)
 
 #define http_argument_get_string(n, o, l)				\
-	http_argument_type(req, n, o, NULL, l, HTTP_ARG_TYPE_STRING)
+	http_argument_type(req, n, (void **)o, NULL, l, HTTP_ARG_TYPE_STRING)
 
 #define http_argument_get_byte(n, o)					\
 	http_argument_type(req, n, NULL, o, NULL, HTTP_ARG_TYPE_BYTE)
