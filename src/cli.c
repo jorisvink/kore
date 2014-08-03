@@ -178,7 +178,7 @@ kore_cli_usage(int local)
 	for (i = 0; cmds[i].name != NULL; i++)
 		printf("\t%s\t%s\n", cmds[i].name, cmds[i].descr);
 
-	fprintf(stderr, "\nThe commands mostly exist for your convinience\n");
+	fprintf(stderr, "\nThe commands mostly exist for your convenience\n");
 	fprintf(stderr, "when hacking on your Kore applications.\n");
 	fprintf(stderr, "\n");
 	fprintf(stderr, "Production servers should be started using ");
