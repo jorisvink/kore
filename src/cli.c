@@ -53,6 +53,8 @@
 #define PRI_TIME_T		"ld"
 #endif
 
+#define LD_FLAGS_MAX		10
+
 struct cmd {
 	const char		*name;
 	const char		*descr;
@@ -839,9 +841,13 @@ cli_compile_cfile(void *arg)
 static void
 cli_link_library(void *arg)
 {
-	int			idx;
 	struct cfile		*cf;
-	char			*args[cfiles_count + 10], *libname;
+	int			idx, f, i;
+	char			*p, *libname, *flags[LD_FLAGS_MAX];
+	char			*args[cfiles_count + 10 + LD_FLAGS_MAX];
+
+	if ((p = getenv("KORE_LDFLAGS")) != NULL)
+		f = kore_split_string(p, " ", flags, LD_FLAGS_MAX);
 
 	(void)cli_vasprintf(&libname, "%s/%s.so", rootdir, appl);
 
@@ -856,6 +862,9 @@ cli_link_library(void *arg)
 #else
 	args[idx++] = "-shared";
 #endif
+
+	for (i = 0; i < f; i++)
+		args[idx++] = flags[i];
 
 	TAILQ_FOREACH(cf, &source_files, list)
 		args[idx++] = cf->opath;
