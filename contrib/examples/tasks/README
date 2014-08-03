@@ -1,0 +1,3 @@
+Compile this example using:
+
+# env KORE_LDFLAGS="-I/path/to/libcurl -lcurl"
