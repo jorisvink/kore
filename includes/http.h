@@ -55,11 +55,11 @@ struct http_arg {
 	TAILQ_ENTRY(http_arg)	list;
 };
 
-#define COPY_ARG_TYPE(v, l, t, o)			\
+#define COPY_ARG_TYPE(v, l, t)				\
 	do {						\
 		if (l != NULL)				\
 			*l = sizeof(t);			\
-		*(t **)o = *(t **)v;			\
+		*(t *)nout = v;				\
 	} while (0);
 
 #define COPY_ARG_INT64(type, sign)					\
@@ -69,7 +69,7 @@ struct http_arg {
 		nval = (type)kore_strtonum64(q->s_value, sign, &err);	\
 		if (err != KORE_RESULT_OK)				\
 			return (KORE_RESULT_ERROR);			\
-		COPY_ARG_TYPE(&nval, len, type, out);			\
+		COPY_ARG_TYPE(nval, len, type);				\
 	} while (0);
 
 #define COPY_ARG_INT(min, max, type)					\
@@ -79,7 +79,7 @@ struct http_arg {
 		nval = kore_strtonum(q->s_value, 10, min, max, &err);	\
 		if (err != KORE_RESULT_OK)				\
 			return (KORE_RESULT_ERROR);			\
-		COPY_ARG_TYPE(&nval, len, type, out);			\
+		COPY_ARG_TYPE(nval, len, type);				\
 	} while (0);
 
 #define CACHE_STRING()							\
@@ -93,39 +93,46 @@ struct http_arg {
 
 #define COPY_AS_INTTYPE_64(type, sign)					\
 	do {								\
+		if (nout == NULL)					\
+			return (KORE_RESULT_ERROR);			\
 		CACHE_STRING();						\
 		COPY_ARG_INT64(type, sign);				\
 	} while (0);
 
 #define COPY_AS_INTTYPE(min, max, type)					\
 	do {								\
+		if (nout == NULL)					\
+			return (KORE_RESULT_ERROR);			\
 		CACHE_STRING();						\
 		COPY_ARG_INT(min, max, type);				\
 	} while (0);
 
-#define http_argument_type(r, n, o, l, t)				\
-	http_argument_get(r, n, (void **)o, l, t)
+#define http_argument_type(r, n, so, no, l, t)				\
+	http_argument_get(r, n, so, no, l, t)
 
 #define http_argument_get_string(n, o, l)				\
-	http_argument_type(req, n, o, l, HTTP_ARG_TYPE_STRING)
+	http_argument_type(req, n, o, NULL, l, HTTP_ARG_TYPE_STRING)
+
+#define http_argument_get_byte(n, o)					\
+	http_argument_type(req, n, NULL, o, NULL, HTTP_ARG_TYPE_BYTE)
 
 #define http_argument_get_uint16(n, o)					\
-	http_argument_type(req, n, o, NULL, HTTP_ARG_TYPE_UINT16)
+	http_argument_type(req, n, NULL, o, NULL, HTTP_ARG_TYPE_UINT16)
 
 #define http_argument_get_int16(n, o)					\
-	http_argument_type(req, n, o, NULL, HTTP_ARG_TYPE_INT16)
+	http_argument_type(req, n, NULL, o, NULL, HTTP_ARG_TYPE_INT16)
 
 #define http_argument_get_uint32(n, o)					\
-	http_argument_type(req, n, o, NULL, HTTP_ARG_TYPE_UINT32)
+	http_argument_type(req, n, NULL, o, NULL, HTTP_ARG_TYPE_UINT32)
 
 #define http_argument_get_int32(n, o)					\
-	http_argument_type(req, n, o, NULL, HTTP_ARG_TYPE_INT32)
+	http_argument_type(req, n, NULL, o, NULL, HTTP_ARG_TYPE_INT32)
 
 #define http_argument_get_uint64(n, o)					\
-	http_argument_type(req, n, o, NULL, HTTP_ARG_TYPE_UINT64)
+	http_argument_type(req, n, NULL, o, NULL, HTTP_ARG_TYPE_UINT64)
 
 #define http_argument_get_int64(n, o)					\
-	http_argument_type(req, n, o, NULL, HTTP_ARG_TYPE_INT64)
+	http_argument_type(req, n, NULL, o, NULL, HTTP_ARG_TYPE_INT64)
 
 
 struct http_file {
@@ -203,7 +210,7 @@ int		http_generic_404(struct http_request *);
 int		http_populate_arguments(struct http_request *);
 int		http_populate_multipart_form(struct http_request *, int *);
 int		http_argument_get(struct http_request *,
-		    const char *, void **, u_int32_t *, int);
+		    const char *, void **, void *, u_int32_t *, int);
 int		http_file_lookup(struct http_request *, char *, char **,
 		    u_int8_t **, u_int32_t *);
 

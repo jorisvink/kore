@@ -611,7 +611,7 @@ http_populate_arguments(struct http_request *req)
 
 int
 http_argument_get(struct http_request *req, const char *name,
-    void **out, u_int32_t *len, int type)
+    void **out, void *nout, u_int32_t *len, int type)
 {
 	struct http_arg		*q;
 
@@ -627,7 +627,8 @@ http_argument_get(struct http_request *req, const char *name,
 				*out = q->value;
 				return (KORE_RESULT_OK);
 			case HTTP_ARG_TYPE_BYTE:
-				COPY_ARG_TYPE(q->value, len, u_int8_t, out);
+				COPY_ARG_TYPE(*(u_int8_t *)q->value,
+				    len, u_int8_t);
 				return (KORE_RESULT_OK);
 			case HTTP_ARG_TYPE_INT16:
 				COPY_AS_INTTYPE(SHRT_MIN, SHRT_MAX, int16_t);
