@@ -1,5 +1,5 @@
 *.o
 .objs
-hello-world.so
+integers.so
 static.h
 cert
