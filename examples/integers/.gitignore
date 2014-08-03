@@ -1,0 +1,5 @@
+*.o
+.objs
+hello-world.so
+static.h
+cert
