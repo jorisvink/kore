@@ -33,11 +33,8 @@
 
 static char		*http_status_text(int);
 static int		http_post_data_recv(struct netbuf *);
-static char		*http_post_data_text(struct http_request *);
 static void		http_error_response(struct connection *,
 			    struct spdy_stream *, int);
-static u_int8_t		*http_post_data_bytes(struct http_request *,
-			    u_int32_t *);
 static void		http_argument_add(struct http_request *, const char *,
 			    void *, u_int32_t, int);
 static void		http_file_add(struct http_request *, const char *,
@@ -892,6 +889,41 @@ http_generic_404(struct http_request *req)
 	return (KORE_RESULT_OK);
 }
 
+char *
+http_post_data_text(struct http_request *req)
+{
+	u_int32_t	len;
+	u_int8_t	*data;
+	char		*text;
+
+	if (req->post_data == NULL)
+		return (NULL);
+
+	data = kore_buf_release(req->post_data, &len);
+	req->post_data = NULL;
+	len++;
+
+	text = kore_malloc(len);
+	kore_strlcpy(text, (char *)data, len);
+	kore_mem_free(data);
+
+	return (text);
+}
+
+u_int8_t *
+http_post_data_bytes(struct http_request *req, u_int32_t *len)
+{
+	u_int8_t	*data;
+
+	if (req->post_data == NULL)
+		return (NULL);
+
+	data = kore_buf_release(req->post_data, len);
+	req->post_data = NULL;
+
+	return (data);
+}
+
 static void
 http_argument_add(struct http_request *req, const char *name,
     void *value, u_int32_t len, int type)
@@ -961,41 +993,6 @@ http_post_data_recv(struct netbuf *nb)
 	kore_debug("post complete for request %p", req);
 
 	return (KORE_RESULT_OK);
-}
-
-static char *
-http_post_data_text(struct http_request *req)
-{
-	u_int32_t	len;
-	u_int8_t	*data;
-	char		*text;
-
-	if (req->post_data == NULL)
-		return (NULL);
-
-	data = kore_buf_release(req->post_data, &len);
-	req->post_data = NULL;
-	len++;
-
-	text = kore_malloc(len);
-	kore_strlcpy(text, (char *)data, len);
-	kore_mem_free(data);
-
-	return (text);
-}
-
-static u_int8_t *
-http_post_data_bytes(struct http_request *req, u_int32_t *len)
-{
-	u_int8_t	*data;
-
-	if (req->post_data == NULL)
-		return (NULL);
-
-	data = kore_buf_release(req->post_data, len);
-	req->post_data = NULL;
-
-	return (data);
 }
 
 static void

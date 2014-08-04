@@ -197,7 +197,9 @@ time_t		http_date_to_time(char *);
 void		http_request_free(struct http_request *);
 void		http_request_sleep(struct http_request *);
 void		http_request_wakeup(struct http_request *);
+char		*http_post_data_text(struct http_request *);
 void		http_process_request(struct http_request *, int);
+u_int8_t	*http_post_data_bytes(struct http_request *, u_int32_t *);
 void		http_response(struct http_request *, int, void *, u_int32_t);
 int		http_request_header_get(struct http_request *,
 		    const char *, char **);
