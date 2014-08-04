@@ -24,7 +24,8 @@
 static void		pool_region_create(struct kore_pool *, u_int32_t);
 
 void
-kore_pool_init(struct kore_pool *pool, char *name, u_int32_t len, u_int32_t elm)
+kore_pool_init(struct kore_pool *pool, const char *name,
+    u_int32_t len, u_int32_t elm)
 {
 	kore_debug("kore_pool_init(%p, %s, %d, %d)", pool, name, len, elm);
 

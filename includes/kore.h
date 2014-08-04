@@ -363,8 +363,8 @@ void		kore_accesslog_worker_init(void);
 
 int			kore_auth(struct http_request *, struct kore_auth *);
 void			kore_auth_init(void);
-int			kore_auth_new(char *);
-struct kore_auth	*kore_auth_lookup(char *);
+int			kore_auth_new(const char *);
+struct kore_auth	*kore_auth_lookup(const char *);
 
 int		kore_ssl_sni_cb(SSL *, int *, void *);
 int		kore_server_bind(const char *, const char *);
@@ -396,7 +396,7 @@ void		explicit_bzero(void *, size_t);
 
 void		*kore_pool_get(struct kore_pool *);
 void		kore_pool_put(struct kore_pool *, void *);
-void		kore_pool_init(struct kore_pool *, char *,
+void		kore_pool_init(struct kore_pool *, const char *,
 		    u_int32_t, u_int32_t);
 
 time_t		kore_date_to_time(char *);
@@ -420,20 +420,23 @@ void		kore_module_reload(int);
 void		kore_module_onload(void);
 int		kore_module_loaded(void);
 void		kore_domain_closelogs(void);
-void		*kore_module_getsym(char *);
-void		kore_module_load(char *, char *);
+void		*kore_module_getsym(const char *);
+void		kore_module_load(const char *, const char *);
 void		kore_domain_sslstart(struct kore_domain *);
-int		kore_module_handler_new(char *, char *, char *, char *, int);
+int		kore_module_handler_new(const char *, const char *,
+		    const char *, const char *, int);
+
 struct kore_domain		*kore_domain_lookup(const char *);
-struct kore_module_handle	*kore_module_handler_find(char *, char *);
+struct kore_module_handle	*kore_module_handler_find(const char *,
+				    const char *);
 
 void		kore_validator_init(void);
 void		kore_validator_reload(void);
-int		kore_validator_add(char *, u_int8_t, char *);
-int		kore_validator_run(struct http_request *, char *, char *);
+int		kore_validator_add(const char *, u_int8_t, const char *);
+int		kore_validator_run(struct http_request *, const char *, char *);
 int		kore_validator_check(struct http_request *,
 		    struct kore_validator *, void *);
-struct kore_validator	*kore_validator_lookup(char *);
+struct kore_validator	*kore_validator_lookup(const char *);
 
 void		fatal(const char *, ...);
 void		kore_debug_internal(char *, int, const char *, ...);

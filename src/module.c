@@ -31,7 +31,7 @@ kore_module_init(void)
 }
 
 void
-kore_module_load(char *path, char *onload)
+kore_module_load(const char *path, const char *onload)
 {
 	struct stat		st;
 	struct kore_module	*module;
@@ -150,8 +150,8 @@ kore_module_loaded(void)
 }
 
 int
-kore_module_handler_new(char *path, char *domain, char *func,
-    char *auth, int type)
+kore_module_handler_new(const char *path, const char *domain,
+    const char *func, const char *auth, int type)
 {
 	struct kore_auth		*ap;
 	void				*addr;
@@ -203,7 +203,7 @@ kore_module_handler_new(char *path, char *domain, char *func,
 }
 
 struct kore_module_handle *
-kore_module_handler_find(char *domain, char *path)
+kore_module_handler_find(const char *domain, const char *path)
 {
 	struct kore_domain		*dom;
 	struct kore_module_handle	*hdlr;
@@ -225,7 +225,7 @@ kore_module_handler_find(char *domain, char *path)
 }
 
 void *
-kore_module_getsym(char *symbol)
+kore_module_getsym(const char *symbol)
 {
 	void			*ptr;
 	struct kore_module	*module;

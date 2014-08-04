@@ -34,7 +34,7 @@ kore_auth_init(void)
 }
 
 int
-kore_auth_new(char *name)
+kore_auth_new(const char *name)
 {
 	struct kore_auth	*auth;
 
@@ -158,7 +158,7 @@ kore_auth_request(struct http_request *req, struct kore_auth *auth)
 }
 
 struct kore_auth *
-kore_auth_lookup(char *name)
+kore_auth_lookup(const char *name)
 {
 	struct kore_auth	*auth;
 

@@ -25,7 +25,7 @@ kore_validator_init(void)
 }
 
 int
-kore_validator_add(char *name, u_int8_t type, char *arg)
+kore_validator_add(const char *name, u_int8_t type, const char *arg)
 {
 	struct kore_validator		*val;
 
@@ -63,7 +63,7 @@ kore_validator_add(char *name, u_int8_t type, char *arg)
 }
 
 int
-kore_validator_run(struct http_request *req, char *name, char *data)
+kore_validator_run(struct http_request *req, const char *name, char *data)
 {
 	struct kore_validator		*val;
 
@@ -118,7 +118,7 @@ kore_validator_reload(void)
 }
 
 struct kore_validator *
-kore_validator_lookup(char *name)
+kore_validator_lookup(const char *name)
 {
 	struct kore_validator		*val;
 
