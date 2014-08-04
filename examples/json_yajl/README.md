@@ -14,3 +14,5 @@ Test:
 ```
 
 The result should echo back the foo.bar JSON path value: Hello world.
+
+The yajl repo is available @ https://github.com/lloyd/yajl
