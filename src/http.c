@@ -38,10 +38,10 @@ static void		http_error_response(struct connection *,
 			    struct spdy_stream *, int);
 static u_int8_t		*http_post_data_bytes(struct http_request *,
 			    u_int32_t *);
-static void		http_argument_add(struct http_request *, char *,
+static void		http_argument_add(struct http_request *, const char *,
 			    void *, u_int32_t, int);
-static void		http_file_add(struct http_request *, char *, char *,
-			    u_int8_t *, u_int32_t);
+static void		http_file_add(struct http_request *, const char *,
+			    const char *, u_int8_t *, u_int32_t);
 static void		http_response_normal(struct http_request *,
 			    struct connection *, int, void *, u_int32_t);
 static void		http_response_spdy(struct http_request *,
@@ -77,8 +77,9 @@ http_init(void)
 }
 
 int
-http_request_new(struct connection *c, struct spdy_stream *s, char *host,
-    char *method, char *path, char *version, struct http_request **out)
+http_request_new(struct connection *c, struct spdy_stream *s, const char *host,
+    const char *method, const char *path, const char *version,
+    struct http_request **out)
 {
 	char				*p;
 	struct http_request		*req;
@@ -283,7 +284,8 @@ http_process_request(struct http_request *req, int retry_only)
 }
 
 void
-http_response_header_add(struct http_request *req, char *header, char *value)
+http_response_header_add(struct http_request *req,
+    const char *header, const char *value)
 {
 	struct http_header	*hdr;
 
@@ -392,7 +394,8 @@ http_response(struct http_request *req, int status, void *d, u_int32_t l)
 }
 
 int
-http_request_header_get(struct http_request *req, char *header, char **out)
+http_request_header_get(struct http_request *req, const char *header,
+    char **out)
 {
 	int			r;
 	struct http_header	*hdr;
@@ -712,7 +715,7 @@ http_argument_urldecode(char *arg)
 }
 
 int
-http_file_lookup(struct http_request *req, char *name, char **fname,
+http_file_lookup(struct http_request *req, const char *name, char **fname,
     u_int8_t **data, u_int32_t *len)
 {
 	struct http_file	*f;
@@ -890,7 +893,7 @@ http_generic_404(struct http_request *req)
 }
 
 static void
-http_argument_add(struct http_request *req, char *name,
+http_argument_add(struct http_request *req, const char *name,
     void *value, u_int32_t len, int type)
 {
 	struct http_arg			*q;
@@ -933,7 +936,7 @@ http_argument_add(struct http_request *req, char *name,
 }
 
 static void
-http_file_add(struct http_request *req, char *name, char *filename,
+http_file_add(struct http_request *req, const char *name, const char *filename,
     u_int8_t *data, u_int32_t len)
 {
 	struct http_file	*f;

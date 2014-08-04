@@ -199,10 +199,13 @@ void		http_request_sleep(struct http_request *);
 void		http_request_wakeup(struct http_request *);
 void		http_process_request(struct http_request *, int);
 void		http_response(struct http_request *, int, void *, u_int32_t);
-int		http_request_header_get(struct http_request *, char *, char **);
-void		http_response_header_add(struct http_request *, char *, char *);
+int		http_request_header_get(struct http_request *,
+		    const char *, char **);
+void		http_response_header_add(struct http_request *,
+		    const char *, const char *);
 int		http_request_new(struct connection *, struct spdy_stream *,
-		    char *, char *, char *, char *, struct http_request **);
+		    const char *, const char *, const char *, const char *,
+		    struct http_request **);
 
 int		http_argument_urldecode(char *);
 int		http_header_recv(struct netbuf *);
@@ -211,7 +214,7 @@ int		http_populate_arguments(struct http_request *);
 int		http_populate_multipart_form(struct http_request *, int *);
 int		http_argument_get(struct http_request *,
 		    const char *, void **, void *, u_int32_t *, int);
-int		http_file_lookup(struct http_request *, char *, char **,
+int		http_file_lookup(struct http_request *, const char *, char **,
 		    u_int8_t **, u_int32_t *);
 
 void		kore_accesslog(struct http_request *);

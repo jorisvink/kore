@@ -288,7 +288,8 @@ spdy_header_block_release(struct connection *c,
 }
 
 int
-spdy_stream_get_header(struct spdy_header_block *s, char *header, char **out)
+spdy_stream_get_header(struct spdy_header_block *s,
+    const char *header, char **out)
 {
 	char			*cmp;
 	u_int8_t		*p, *end;

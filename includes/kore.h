@@ -466,7 +466,7 @@ void	kore_buf_replace_string(struct kore_buf *, char *, void *, size_t);
 struct spdy_header_block	*spdy_header_block_create(int);
 struct spdy_stream	*spdy_stream_lookup(struct connection *, u_int32_t);
 int			spdy_stream_get_header(struct spdy_header_block *,
-			    char *, char **);
+			    const char *, char **);
 void			spdy_update_wsize(struct connection *,
 			    struct spdy_stream *, u_int32_t);
 
