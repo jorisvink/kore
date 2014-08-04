@@ -180,7 +180,7 @@ kore_worker_entry(struct kore_worker *kw)
 	char			buf[16];
 	struct connection	*c, *cnext;
 	int			quit, had_lock;
-	u_int64_t		now, idle_check, last_cb_run, timer;
+	u_int64_t		now, idle_check, timer;
 
 	worker = kw;
 
@@ -237,7 +237,6 @@ kore_worker_entry(struct kore_worker *kw)
 	now = idle_check = 0;
 	kore_platform_event_init();
 	kore_accesslog_worker_init();
-	last_cb_run = kore_time_ms();
 
 #if defined(KORE_USE_PGSQL)
 	kore_pgsql_init();
@@ -293,14 +292,6 @@ kore_worker_entry(struct kore_worker *kw)
 				if (!(c->flags & CONN_IDLE_TIMER_ACT))
 					continue;
 				kore_connection_check_idletimer(now, c);
-			}
-		}
-
-		if (kore_cb != NULL && kore_cb_worker != -1 &&
-		    kore_cb_worker == worker->id) {
-			if ((now - last_cb_run) >= kore_cb_interval) {
-				kore_cb();
-				last_cb_run = now;
 			}
 		}
 

@@ -21,7 +21,6 @@
 #include "kore.h"
 
 static TAILQ_HEAD(, kore_module)	modules;
-char					*kore_cb_name = NULL;
 
 void
 kore_module_init(void)
@@ -58,9 +57,6 @@ kore_module_load(const char *path, const char *onload)
 			fatal("%s: onload '%s' not present", path, onload);
 	}
 
-	if (kore_cb_name != NULL && kore_cb == NULL)
-		kore_cb = dlsym(module->handle, kore_cb_name);
-
 	TAILQ_INSERT_TAIL(&modules, module, list);
 }
 
@@ -84,8 +80,6 @@ kore_module_reload(int cbs)
 	struct kore_domain		*dom;
 	struct kore_module_handle	*hdlr;
 	struct kore_module		*module;
-
-	kore_cb = NULL;
 
 	TAILQ_FOREACH(module, &modules, list) {
 		if (stat(module->path, &st) == -1) {
@@ -119,14 +113,8 @@ kore_module_reload(int cbs)
 				module->ocb(KORE_MODULE_LOAD);
 		}
 
-		if (kore_cb_name != NULL && kore_cb == NULL)
-			kore_cb = dlsym(module->handle, kore_cb_name);
-
 		kore_log(LOG_NOTICE, "reloaded '%s' module", module->path);
 	}
-
-	if (kore_cb_name != NULL && kore_cb == NULL)
-		fatal("no kore_cb %s found in loaded modules", kore_cb_name);
 
 	TAILQ_FOREACH(dom, &domains, list) {
 		TAILQ_FOREACH(hdlr, &(dom->handlers), list) {

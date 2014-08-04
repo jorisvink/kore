@@ -34,9 +34,6 @@ int			skip_chroot = 0;
 u_int8_t		worker_count = 0;
 char			*runas_user = NULL;
 char			*chroot_path = NULL;
-int			kore_cb_worker = -1;
-u_int64_t		kore_cb_interval = 0;
-void			(*kore_cb)(void) = NULL;
 char			*kore_pidfile = KORE_PIDFILE_DEFAULT;
 char			*kore_ssl_cipher_list = KORE_DEFAULT_CIPHER_LIST;
 
@@ -298,7 +295,6 @@ static void
 kore_server_start(void)
 {
 	int		quit;
-	u_int64_t	now, last_cb_run;
 
 	kore_mem_free(runas_user);
 
@@ -321,9 +317,6 @@ kore_server_start(void)
 	kore_worker_init();
 
 	quit = 0;
-	now = kore_time_ms();
-	last_cb_run = now;
-
 	while (quit != 1) {
 		if (sig_recv != 0) {
 			switch (sig_recv) {
@@ -347,14 +340,6 @@ kore_server_start(void)
 
 		if (!kore_accesslog_wait())
 			break;
-
-		if (kore_cb != NULL && kore_cb_worker == -1) {
-			now = kore_time_ms();
-			if ((now - last_cb_run) >= kore_cb_interval) {
-				kore_cb();
-				last_cb_run = now;
-			}
-		}
 
 		kore_worker_wait(0);
 	}

@@ -48,9 +48,6 @@ static int		configure_ssl_cipher(char **);
 static int		configure_ssl_dhparam(char **);
 static int		configure_ssl_no_compression(char **);
 static int		configure_spdy_idle_time(char **);
-static int		configure_kore_cb(char **);
-static int		configure_kore_cb_interval(char **);
-static int		configure_kore_cb_worker(char **);
 static int		configure_http_header_max(char **);
 static int		configure_http_postbody_max(char **);
 static int		configure_http_hsts_enable(char **);
@@ -96,9 +93,6 @@ static struct {
 	{ "certfile",			configure_certfile },
 	{ "certkey",			configure_certkey },
 	{ "require_client_cert",	configure_require_client_cert },
-	{ "kore_cb",			configure_kore_cb },
-	{ "kore_cb_worker",		configure_kore_cb_worker },
-	{ "kore_cb_interval",		configure_kore_cb_interval },
 	{ "http_header_max",		configure_http_header_max },
 	{ "http_postbody_max",		configure_http_postbody_max },
 	{ "http_hsts_enable",		configure_http_hsts_enable },
@@ -132,8 +126,6 @@ kore_parse_config(void)
 
 	if (!kore_module_loaded())
 		fatal("no site module was loaded");
-	if (kore_cb_name != NULL && kore_cb == NULL)
-		fatal("no '%s' symbol found for kore_cb", kore_cb_name);
 
 	if (LIST_EMPTY(&listeners))
 		fatal("no listeners defined");
@@ -564,65 +556,6 @@ configure_rlimit_nofiles(char **argv)
 	worker_rlimit_nofiles = kore_strtonum(argv[1], 10, 1, UINT_MAX, &err);
 	if (err != KORE_RESULT_OK) {
 		printf("bad value for worker_rlimit_nofiles: %s\n", argv[1]);
-		return (KORE_RESULT_ERROR);
-	}
-
-	return (KORE_RESULT_OK);
-}
-
-static int
-configure_kore_cb(char **argv)
-{
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
-
-	if (kore_cb_name != NULL) {
-		kore_debug("kore_cb was already set");
-		return (KORE_RESULT_ERROR);
-	}
-
-	kore_cb_name = kore_strdup(argv[1]);
-	return (KORE_RESULT_OK);
-}
-
-static int
-configure_kore_cb_interval(char **argv)
-{
-	int		err;
-
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
-
-	if (kore_cb_interval != 0) {
-		kore_debug("kore_cb_interval already given");
-		return (KORE_RESULT_ERROR);
-	}
-
-	kore_cb_interval = kore_strtonum(argv[1], 10, 1, LLONG_MAX, &err);
-	if (err != KORE_RESULT_OK) {
-		printf("invalid value for kore_cb_interval: %s\n", argv[1]);
-		return (KORE_RESULT_ERROR);
-	}
-
-	return (KORE_RESULT_OK);
-}
-
-static int
-configure_kore_cb_worker(char **argv)
-{
-	int		err;
-
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
-
-	if (kore_cb_worker != -1) {
-		kore_debug("kore_cb_worker already set");
-		return (KORE_RESULT_ERROR);
-	}
-
-	kore_cb_worker = kore_strtonum(argv[1], 10, 0, worker_count, &err);
-	if (err != KORE_RESULT_OK) {
-		printf("invalid value for kore_cb_worker: %s\n", argv[1]);
 		return (KORE_RESULT_ERROR);
 	}
 
