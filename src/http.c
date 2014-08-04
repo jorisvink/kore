@@ -1089,12 +1089,12 @@ http_response_normal(struct http_request *req, struct connection *c,
 	buf = kore_buf_create(KORE_BUF_INITIAL);
 	kore_buf_appendf(buf, "HTTP/1.1 %d %s\r\n",
 	    status, http_status_text(status));
-	kore_buf_appendf(buf, "Server: %s (%d.%d-%s)\r\n",
+	kore_buf_appendf(buf, "server: %s (%d.%d-%s)\r\n",
 	    KORE_NAME_STRING, KORE_VERSION_MAJOR, KORE_VERSION_MINOR,
 	    KORE_VERSION_STATE);
 
 	if (status == HTTP_STATUS_METHOD_NOT_ALLOWED)
-		kore_buf_appendf(buf, "Allow: GET, POST\r\n");
+		kore_buf_appendf(buf, "allow: GET, POST\r\n");
 
 	if (c->flags & CONN_CLOSE_EMPTY)
 		connection_close = 1;
@@ -1111,16 +1111,16 @@ http_response_normal(struct http_request *req, struct connection *c,
 	}
 
 	if (http_keepalive_time && connection_close == 0) {
-		kore_buf_appendf(buf, "Connection: keep-alive\r\n");
-		kore_buf_appendf(buf, "Keep-Alive: timeout=%d\r\n",
+		kore_buf_appendf(buf, "connection: keep-alive\r\n");
+		kore_buf_appendf(buf, "keep-alive: timeout=%d\r\n",
 		    http_keepalive_time);
 	} else {
 		c->flags |= CONN_CLOSE_EMPTY;
-		kore_buf_appendf(buf, "Connection: close\r\n");
+		kore_buf_appendf(buf, "connection: close\r\n");
 	}
 
 	if (http_hsts_enable) {
-		kore_buf_appendf(buf, "Strict-Transport-Security: ");
+		kore_buf_appendf(buf, "strict-transport-security: ");
 		kore_buf_appendf(buf, "max-age=%" PRIu64 "\r\n",
 		    http_hsts_enable);
 	}
@@ -1133,7 +1133,7 @@ http_response_normal(struct http_request *req, struct connection *c,
 	}
 
 	if (len > 0) {
-		kore_buf_appendf(buf, "Content-length: %d\r\n", len);
+		kore_buf_appendf(buf, "content-length: %d\r\n", len);
 		kore_buf_append(buf, "\r\n", 2);
 	}
 
