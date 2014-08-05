@@ -92,7 +92,7 @@ kore_auth(struct http_request *req, struct kore_auth *auth)
 		return (KORE_RESULT_ERROR);
 	}
 
-	http_response_header_add(req, "location", auth->redirect);
+	http_response_header(req, "location", auth->redirect);
 	http_response(req, 302, NULL, 0);
 
 	return (KORE_RESULT_ERROR);
@@ -105,7 +105,7 @@ kore_auth_cookie(struct http_request *req, struct kore_auth *auth)
 	size_t		len, slen;
 	char		*value, *c, *cookie, *cookies[HTTP_MAX_COOKIES];
 
-	if (!http_request_header_get(req, "cookie", &cookie))
+	if (!http_request_header(req, "cookie", &cookie))
 		return (KORE_RESULT_ERROR);
 
 	slen = strlen(auth->value);
@@ -142,7 +142,7 @@ kore_auth_header(struct http_request *req, struct kore_auth *auth)
 	int		r;
 	char		*header;
 
-	if (!http_request_header_get(req, auth->value, &header))
+	if (!http_request_header(req, auth->value, &header))
 		return (KORE_RESULT_ERROR);
 
 	r = kore_validator_check(req, auth->validator, header);

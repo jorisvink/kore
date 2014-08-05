@@ -201,9 +201,9 @@ char		*http_post_data_text(struct http_request *);
 void		http_process_request(struct http_request *, int);
 u_int8_t	*http_post_data_bytes(struct http_request *, u_int32_t *);
 void		http_response(struct http_request *, int, void *, u_int32_t);
-int		http_request_header_get(struct http_request *,
+int		http_request_header(struct http_request *,
 		    const char *, char **);
-void		http_response_header_add(struct http_request *,
+void		http_response_header(struct http_request *,
 		    const char *, const char *);
 int		http_request_new(struct connection *, struct spdy_stream *,
 		    const char *, const char *, const char *, const char *,

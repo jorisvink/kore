@@ -142,7 +142,7 @@ http_request_new(struct connection *c, struct spdy_stream *s, const char *host,
 	TAILQ_INIT(&(req->files));
 
 	if (s != NULL) {
-		if (!http_request_header_get(req, "user-agent", &(req->agent)))
+		if (!http_request_header(req, "user-agent", &(req->agent)))
 			req->agent = kore_strdup("unknown");
 	}
 
@@ -283,12 +283,12 @@ http_process_request(struct http_request *req, int retry_only)
 }
 
 void
-http_response_header_add(struct http_request *req,
+http_response_header(struct http_request *req,
     const char *header, const char *value)
 {
 	struct http_header	*hdr;
 
-	kore_debug("http_response_header_add(%p, %s, %s)", req, header, value);
+	kore_debug("http_response_header(%p, %s, %s)", req, header, value);
 
 	hdr = kore_pool_get(&http_header_pool);
 	hdr->header = kore_strdup(header);
@@ -393,8 +393,7 @@ http_response(struct http_request *req, int status, void *d, u_int32_t l)
 }
 
 int
-http_request_header_get(struct http_request *req, const char *header,
-    char **out)
+http_request_header(struct http_request *req, const char *header, char **out)
 {
 	int			r;
 	struct http_header	*hdr;
@@ -520,7 +519,7 @@ http_header_recv(struct netbuf *nb)
 	}
 
 	if (req->method == HTTP_METHOD_POST) {
-		if (!http_request_header_get(req, "content-length", &p)) {
+		if (!http_request_header(req, "content-length", &p)) {
 			kore_debug("POST but no content-length");
 			req->flags |= HTTP_REQUEST_DELETE;
 			http_error_response(req->owner, NULL, 411);
@@ -745,7 +744,7 @@ http_populate_multipart_form(struct http_request *req, int *v)
 	if (req->method != HTTP_METHOD_POST)
 		return (KORE_RESULT_ERROR);
 
-	if (!http_request_header_get(req, "content-type", &type))
+	if (!http_request_header(req, "content-type", &type))
 		return (KORE_RESULT_ERROR);
 
 	h = kore_split_string(type, ";", args, 3);
@@ -1101,7 +1100,7 @@ http_response_normal(struct http_request *req, struct connection *c,
 		connection_close = 0;
 
 	if (connection_close == 0 && req != NULL) {
-		if (http_request_header_get(req, "connection", &conn)) {
+		if (http_request_header(req, "connection", &conn)) {
 			if ((*conn == 'c' || *conn == 'C') &&
 			    !strcasecmp(conn, "close"))
 				connection_close = 1;

@@ -72,7 +72,7 @@ serve_style_css(struct http_request *req)
 	time_t		tstamp;
 
 	tstamp = 0;
-	if (http_request_header_get(req, "if-modified-since", &date)) {
+	if (http_request_header(req, "if-modified-since", &date)) {
 		tstamp = kore_date_to_time(date);
 		kore_mem_free(date);
 
@@ -84,9 +84,9 @@ serve_style_css(struct http_request *req)
 	} else {
 		date = kore_time_to_date(asset_mtime_style_css);
 		if (date != NULL)
-			http_response_header_add(req, "last-modified", date);
+			http_response_header(req, "last-modified", date);
 
-		http_response_header_add(req, "content-type", "text/css");
+		http_response_header(req, "content-type", "text/css");
 		http_response(req, 200, asset_style_css, asset_len_style_css);
 	}
 
@@ -96,7 +96,7 @@ serve_style_css(struct http_request *req)
 int
 serve_index(struct http_request *req)
 {
-	http_response_header_add(req, "content-type", "text/html");
+	http_response_header(req, "content-type", "text/html");
 	http_response(req, 200, asset_index_html, asset_len_index_html);
 
 	return (KORE_RESULT_OK);
@@ -105,7 +105,7 @@ serve_index(struct http_request *req)
 int
 serve_intro(struct http_request *req)
 {
-	http_response_header_add(req, "content-type", "image/jpg");
+	http_response_header(req, "content-type", "image/jpg");
 	http_response(req, 200, asset_intro_jpg, asset_len_intro_jpg);
 
 	return (KORE_RESULT_OK);
@@ -125,7 +125,7 @@ serve_b64test(struct http_request *req)
 
 	data = kore_buf_release(res, &len);
 
-	http_response_header_add(req, "content-type", "text/plain");
+	http_response_header(req, "content-type", "text/plain");
 	http_response(req, 200, data, len);
 	kore_mem_free(data);
 
@@ -173,7 +173,7 @@ serve_file_upload(struct http_request *req)
 
 	d = kore_buf_release(b, &len);
 
-	http_response_header_add(req, "content-type", "text/html");
+	http_response_header(req, "content-type", "text/html");
 	http_response(req, 200, d, len);
 	kore_mem_free(d);
 
@@ -281,7 +281,7 @@ serve_params_test(struct http_request *req)
 		else
 			kore_log(LOG_NOTICE, "No id set");
 
-		http_response_header_add(req, "content-type", "text/html");
+		http_response_header(req, "content-type", "text/html");
 		d = kore_buf_release(b, &len);
 		http_response(req, 200, d, len);
 		kore_mem_free(d);
@@ -300,7 +300,7 @@ serve_params_test(struct http_request *req)
 		}
 	}
 
-	http_response_header_add(req, "content-type", "text/html");
+	http_response_header(req, "content-type", "text/html");
 	d = kore_buf_release(b, &len);
 	http_response(req, 200, d, len);
 	kore_mem_free(d);
@@ -311,8 +311,8 @@ serve_params_test(struct http_request *req)
 int
 serve_private(struct http_request *req)
 {
-	http_response_header_add(req, "content-type", "text/html");
-	http_response_header_add(req, "set-cookie", "session_id=test123");
+	http_response_header(req, "content-type", "text/html");
+	http_response_header(req, "set-cookie", "session_id=test123");
 	http_response(req, 200, asset_private_html, asset_len_private_html);
 
 	return (KORE_RESULT_OK);
@@ -321,7 +321,7 @@ serve_private(struct http_request *req)
 int
 serve_private_test(struct http_request *req)
 {
-	http_response_header_add(req, "content-type", "text/html");
+	http_response_header(req, "content-type", "text/html");
 
 	http_response(req, 200, asset_private_test_html,
 	    asset_len_private_test_html);
