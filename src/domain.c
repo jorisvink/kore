@@ -21,7 +21,6 @@
 struct kore_domain_h		domains;
 struct kore_domain		*primary_dom = NULL;
 DH				*ssl_dhparam = NULL;
-int				ssl_no_compression = 0;
 
 void
 kore_domain_init(void)
@@ -96,8 +95,7 @@ kore_domain_sslstart(struct kore_domain *dom)
 #endif
 	}
 
-	if (ssl_no_compression)
-		SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_COMPRESSION);
+	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_COMPRESSION);
 
 	if (dom->cafile != NULL) {
 		if ((certs = SSL_load_client_CA_file(dom->cafile)) == NULL) {

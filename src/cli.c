@@ -157,7 +157,6 @@ static const char *config_data =
 	"\n"
 	"bind\t\t127.0.0.1 8888\n"
 	"pidfile\t\tkore.pid\n"
-	"ssl_no_compression\n"
 	"load\t\t./%s.so\n"
 	"\n"
 	"domain 127.0.0.1 {\n"

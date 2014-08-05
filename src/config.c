@@ -293,8 +293,7 @@ configure_ssl_dhparam(char **argv)
 static int
 configure_ssl_no_compression(char **argv)
 {
-	ssl_no_compression = 1;
-
+	printf("ssl_no_compression is deprecated, and always on by default\n");
 	return (KORE_RESULT_OK);
 }
 
