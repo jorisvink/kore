@@ -272,6 +272,8 @@ http_process_request(struct http_request *req, int retry_only)
 		break;
 	case KORE_RESULT_RETRY:
 		return;
+	default:
+		fatal("A page handler returned an unknown result: %d", r);
 	}
 
 	if (hdlr != NULL && hdlr->dom->accesslog != -1)
