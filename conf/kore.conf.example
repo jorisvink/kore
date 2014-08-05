@@ -21,7 +21,7 @@ workers		4
 #worker_rlimit_nofiles		1024
 
 # Store the main process its pid in this file.
-#pidfile	/var/run/kore.pid
+#pidfile	kore.pid
 
 # HTTP specific settings.
 #	http_header_max		Maximum size of HTTP headers (in bytes).
