@@ -66,7 +66,7 @@ struct spdy_stream {
 
 extern const unsigned char SPDY_dictionary_txt[];
 
-#define KORE_SSL_PROTO_STRING		"\x06spdy/3\x08http/1.1"
+#define KORE_SSL_PROTO_STRING		"\x08spdy/3.2\x08http/1.1"
 #define SPDY_CONTROL_FRAME(x)		((x & (1 << 31)))
 
 #define SPDY_FRAME_SIZE			8

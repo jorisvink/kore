@@ -136,6 +136,7 @@ net_send(struct connection *c)
 				switch (r) {
 				case SSL_ERROR_WANT_READ:
 				case SSL_ERROR_WANT_WRITE:
+					nb->flags |= NETBUF_MUST_RESEND;
 					c->flags &= ~CONN_WRITE_POSSIBLE;
 					return (KORE_RESULT_OK);
 				default:
@@ -158,20 +159,17 @@ net_send(struct connection *c)
 				}
 			}
 #endif
-			kore_debug("net_send(%d/%d bytes), progress with %d",
-			    nb->s_off, nb->b_len, r);
+			kore_debug("net_send(%p/%d/%d bytes), progress with %d",
+			    nb, nb->s_off, nb->b_len, r);
 
 			nb->s_off += (size_t)r;
+			nb->flags &= ~NETBUF_MUST_RESEND;
 			if (nb->stream != NULL)
 				spdy_update_wsize(c, nb->stream, r);
 		}
 
-		if (nb->s_off == nb->b_len) {
-			TAILQ_REMOVE(&(c->send_queue), nb, list);
-
-			kore_mem_free(nb->buf);
-			kore_pool_put(&nb_pool, nb);
-		}
+		if (nb->s_off == nb->b_len)
+			net_remove_netbuf(&(c->send_queue), nb);
 	}
 
 	return (KORE_RESULT_OK);
@@ -245,10 +243,7 @@ net_recv(struct connection *c)
 			r = nb->cb(nb);
 			if (nb->s_off == nb->b_len ||
 			    (nb->flags & NETBUF_FORCE_REMOVE)) {
-				TAILQ_REMOVE(&(c->recv_queue), nb, list);
-
-				kore_mem_free(nb->buf);
-				kore_pool_put(&nb_pool, nb);
+				net_remove_netbuf(&(c->recv_queue), nb);
 			}
 
 			if (r != KORE_RESULT_OK)
@@ -271,6 +266,20 @@ net_recv_flush(struct connection *c)
 	}
 
 	return (KORE_RESULT_OK);
+}
+
+void
+net_remove_netbuf(struct netbuf_head *list, struct netbuf *nb)
+{
+	nb->stream = NULL;
+	if (nb->flags & NETBUF_MUST_RESEND) {
+		kore_debug("retaining %p (MUST_RESEND)", nb);
+		return;
+	}
+
+	TAILQ_REMOVE(list, nb, list);
+	kore_mem_free(nb->buf);
+	kore_pool_put(&nb_pool, nb);
 }
 
 u_int16_t

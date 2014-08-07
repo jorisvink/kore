@@ -74,6 +74,7 @@ extern int daemon(int, int);
 
 #define NETBUF_CALL_CB_ALWAYS	0x01
 #define NETBUF_FORCE_REMOVE	0x02
+#define NETBUF_MUST_RESEND	0x04
 
 #define X509_GET_CN(c, o, l)					\
 	X509_NAME_get_text_by_NID(X509_get_subject_name(c),	\
@@ -171,8 +172,8 @@ struct connection {
 	z_stream		z_deflate;
 	u_int32_t		wsize_initial;
 
-	TAILQ_HEAD(, netbuf)	send_queue;
-	TAILQ_HEAD(, netbuf)	recv_queue;
+	struct netbuf_head	send_queue;
+	struct netbuf_head	recv_queue;
 
 	u_int32_t			client_stream_id;
 	TAILQ_HEAD(, spdy_stream)	spdy_streams;
@@ -445,6 +446,7 @@ int		net_recv(struct connection *);
 int		net_send(struct connection *);
 int		net_send_flush(struct connection *);
 int		net_recv_flush(struct connection *);
+void		net_remove_netbuf(struct netbuf_head *, struct netbuf *);
 void		net_recv_queue(struct connection *, size_t, int,
 		    struct netbuf **, int (*cb)(struct netbuf *));
 int		net_recv_expand(struct connection *c, struct netbuf *, size_t,

@@ -20,6 +20,9 @@
 #include "kore.h"
 #include "http.h"
 
+#define SPDY_KEEP_NETBUFS		0
+#define SPDY_REMOVE_NETBUFS		1
+
 static int		spdy_ctrl_frame_syn_stream(struct netbuf *);
 static int		spdy_ctrl_frame_rst_stream(struct netbuf *);
 static int		spdy_ctrl_frame_settings(struct netbuf *);
@@ -28,7 +31,7 @@ static int		spdy_ctrl_frame_window(struct netbuf *);
 static int		spdy_data_frame_recv(struct netbuf *);
 
 static void		spdy_stream_close(struct connection *,
-			    struct spdy_stream *);
+			    struct spdy_stream *, int);
 static int		spdy_zlib_inflate(struct connection *, u_int8_t *,
 			    size_t, u_int8_t **, u_int32_t *);
 static int		spdy_zlib_deflate(struct connection *, u_int8_t *,
@@ -365,7 +368,7 @@ spdy_update_wsize(struct connection *c, struct spdy_stream *s, u_int32_t len)
 
 	if (s->send_size == 0) {
 		if (s->flags & (SPDY_KORE_FIN | FLAG_FIN)) {
-			spdy_stream_close(c, s);
+			spdy_stream_close(c, s, SPDY_KEEP_NETBUFS);
 			return;
 		}
 
@@ -522,10 +525,13 @@ static int
 spdy_ctrl_frame_rst_stream(struct netbuf *nb)
 {
 	struct spdy_stream	*s;
-	u_int32_t		stream_id;
+	u_int32_t		stream_id, status;
 	struct connection	*c = (struct connection *)nb->owner;
 
 	stream_id = net_read32(nb->buf + SPDY_FRAME_SIZE);
+	status = net_read32(nb->buf + SPDY_FRAME_SIZE + sizeof(u_int32_t));
+	printf("RST STATUS IS %d\n", status);
+
 	if ((stream_id % 2) == 0) {
 		kore_debug("received RST for non-client stream %u", stream_id);
 		return (KORE_RESULT_ERROR);
@@ -536,7 +542,7 @@ spdy_ctrl_frame_rst_stream(struct netbuf *nb)
 		return (KORE_RESULT_ERROR);
 	}
 
-	spdy_stream_close(c, s);
+	spdy_stream_close(c, s, SPDY_REMOVE_NETBUFS);
 
 	return (KORE_RESULT_OK);
 }
@@ -735,11 +741,20 @@ spdy_data_frame_recv(struct netbuf *nb)
 }
 
 static void
-spdy_stream_close(struct connection *c, struct spdy_stream *s)
+spdy_stream_close(struct connection *c, struct spdy_stream *s, int rb)
 {
 	struct http_request		*req;
+	struct netbuf			*nb, *nt;
 
 	kore_debug("spdy_stream_close(%p, %p) <%d>", c, s, s->stream_id);
+
+	if (rb) {
+		for (nb = TAILQ_FIRST(&(c->send_queue)); nb != NULL; nb = nt) {
+			nt = TAILQ_NEXT(nb, list);
+			if (nb->stream == s)
+				net_remove_netbuf(&(c->send_queue), nb);
+		}
+	}
 
 	TAILQ_REMOVE(&(c->spdy_streams), s, list);
 	if (s->hblock != NULL) {
@@ -750,6 +765,7 @@ spdy_stream_close(struct connection *c, struct spdy_stream *s)
 
 	if (s->httpreq != NULL) {
 		req = s->httpreq;
+		req->stream = NULL;
 		req->flags |= HTTP_REQUEST_DELETE;
 	}
 
