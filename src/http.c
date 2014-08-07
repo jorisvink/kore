@@ -396,25 +396,21 @@ http_response(struct http_request *req, int status, void *d, u_int32_t l)
 
 void
 http_response_stream(struct http_request *req, int status, void *base,
-    u_int64_t start, u_int64_t end)
+    u_int64_t len)
 {
-	u_int8_t		*d;
-	u_int64_t		len;
-
-	len = end - start;
 	req->status = status;
 
 	switch (req->owner->proto) {
 	case CONN_PROTO_SPDY:
-		http_response_spdy(req, req->owner, req->stream, status, NULL, len);
+		http_response_spdy(req, req->owner,
+		    req->stream, status, NULL, len);
 		break;
 	case CONN_PROTO_HTTP:
 		http_response_normal(req, req->owner, status, NULL, len);
 		break;
 	}
 
-	d = base;
-	net_send_stream(req->owner, d + start, end - start, req->stream);
+	net_send_stream(req->owner, base, len, req->stream);
 }
 
 int

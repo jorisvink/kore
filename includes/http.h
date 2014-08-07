@@ -202,7 +202,7 @@ void		http_process_request(struct http_request *, int);
 u_int8_t	*http_post_data_bytes(struct http_request *, u_int32_t *);
 void		http_response(struct http_request *, int, void *, u_int32_t);
 void		http_response_stream(struct http_request *, int,
-		    void *, u_int64_t, u_int64_t);
+		    void *, u_int64_t);
 int		http_request_header(struct http_request *,
 		    const char *, char **);
 void		http_response_header(struct http_request *,
