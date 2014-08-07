@@ -75,6 +75,26 @@ net_send_queue(struct connection *c, void *data, u_int32_t len,
 }
 
 void
+net_send_stream(struct connection *c, void *data, u_int32_t len,
+    struct spdy_stream *s)
+{
+	struct netbuf		*nb;
+
+	nb = kore_pool_get(&nb_pool);
+	nb->cb = NULL;
+	nb->owner = c;
+	nb->s_off = 0;
+	nb->buf = data;
+	nb->stream = s;
+	nb->b_len = len;
+	nb->m_len = nb->b_len;
+	nb->type = NETBUF_SEND;
+	nb->flags  = NETBUF_IS_STREAM;
+
+	TAILQ_INSERT_TAIL(&(c->send_queue), nb, list);
+}
+
+void
 net_recv_queue(struct connection *c, size_t len, int flags,
     struct netbuf **out, int (*cb)(struct netbuf *))
 {
@@ -168,8 +188,15 @@ net_send(struct connection *c)
 				spdy_update_wsize(c, nb->stream, r);
 		}
 
-		if (nb->s_off == nb->b_len)
+		if (nb->s_off == nb->b_len) {
+			if (nb->stream != NULL &&
+			    (nb->flags & NETBUF_IS_STREAM)) {
+				spdy_frame_send(c, SPDY_DATA_FRAME,
+				    FLAG_FIN, 0, nb->stream, 0);
+			}
+
 			net_remove_netbuf(&(c->send_queue), nb);
+		}
 	}
 
 	return (KORE_RESULT_OK);
@@ -272,13 +299,16 @@ void
 net_remove_netbuf(struct netbuf_head *list, struct netbuf *nb)
 {
 	nb->stream = NULL;
+
 	if (nb->flags & NETBUF_MUST_RESEND) {
 		kore_debug("retaining %p (MUST_RESEND)", nb);
 		return;
 	}
 
+	if (!(nb->flags & NETBUF_IS_STREAM))
+		kore_mem_free(nb->buf);
+
 	TAILQ_REMOVE(list, nb, list);
-	kore_mem_free(nb->buf);
 	kore_pool_put(&nb_pool, nb);
 }
 

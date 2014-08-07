@@ -275,7 +275,8 @@ kore_connection_remove(struct connection *c)
 	for (nb = TAILQ_FIRST(&(c->send_queue)); nb != NULL; nb = next) {
 		next = TAILQ_NEXT(nb, list);
 		TAILQ_REMOVE(&(c->send_queue), nb, list);
-		kore_mem_free(nb->buf);
+		if (!(nb->flags & NETBUF_IS_STREAM))
+			kore_mem_free(nb->buf);
 		kore_pool_put(&nb_pool, nb);
 	}
 

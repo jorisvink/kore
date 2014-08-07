@@ -385,11 +385,36 @@ http_response(struct http_request *req, int status, void *d, u_int32_t l)
 	switch (req->owner->proto) {
 	case CONN_PROTO_SPDY:
 		http_response_spdy(req, req->owner, req->stream, status, d, l);
+		spdy_frame_send(req->owner, SPDY_DATA_FRAME,
+		    FLAG_FIN, 0, req->stream, 0);
 		break;
 	case CONN_PROTO_HTTP:
 		http_response_normal(req, req->owner, status, d, l);
 		break;
 	}
+}
+
+void
+http_response_stream(struct http_request *req, int status, void *base,
+    u_int64_t start, u_int64_t end)
+{
+	u_int8_t		*d;
+	u_int64_t		len;
+
+	len = end - start;
+	req->status = status;
+
+	switch (req->owner->proto) {
+	case CONN_PROTO_SPDY:
+		http_response_spdy(req, req->owner, req->stream, status, NULL, len);
+		break;
+	case CONN_PROTO_HTTP:
+		http_response_normal(req, req->owner, status, NULL, len);
+		break;
+	}
+
+	d = base;
+	net_send_stream(req->owner, d + start, end - start, req->stream);
 }
 
 int
@@ -1008,6 +1033,7 @@ http_error_response(struct connection *c, struct spdy_stream *s, int status)
 	switch (c->proto) {
 	case CONN_PROTO_SPDY:
 		http_response_spdy(NULL, c, s, status, NULL, 0);
+		spdy_frame_send(c, SPDY_DATA_FRAME, FLAG_FIN, 0, s, 0);
 		break;
 	case CONN_PROTO_HTTP:
 		if (s != NULL)
@@ -1067,10 +1093,10 @@ http_response_spdy(struct http_request *req, struct connection *c,
 	if (len > 0) {
 		req->stream->send_size += len;
 		spdy_frame_send(c, SPDY_DATA_FRAME, 0, len, s, 0);
-		net_send_queue(c, d, len, s);
-	}
 
-	spdy_frame_send(c, SPDY_DATA_FRAME, FLAG_FIN, 0, s, 0);
+		if (d != NULL)
+			net_send_queue(c, d, len, s);
+	}
 }
 
 static void
@@ -1139,7 +1165,7 @@ http_response_normal(struct http_request *req, struct connection *c,
 	net_send_queue(c, htext, hlen, NULL);
 	kore_mem_free(htext);
 
-	if (len > 0)
+	if (d != NULL)
 		net_send_queue(c, d, len, NULL);
 
 	if (!(c->flags & CONN_CLOSE_EMPTY)) {

@@ -75,6 +75,7 @@ extern int daemon(int, int);
 #define NETBUF_CALL_CB_ALWAYS	0x01
 #define NETBUF_FORCE_REMOVE	0x02
 #define NETBUF_MUST_RESEND	0x04
+#define NETBUF_IS_STREAM	0x10
 
 #define X509_GET_CN(c, o, l)					\
 	X509_NAME_get_text_by_NID(X509_get_subject_name(c),	\
@@ -452,6 +453,8 @@ void		net_recv_queue(struct connection *, size_t, int,
 int		net_recv_expand(struct connection *c, struct netbuf *, size_t,
 		    int (*cb)(struct netbuf *));
 void		net_send_queue(struct connection *, void *,
+		    u_int32_t, struct spdy_stream *);
+void		net_send_stream(struct connection *, void *,
 		    u_int32_t, struct spdy_stream *);
 
 void		kore_buf_free(struct kore_buf *);
