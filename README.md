@@ -9,7 +9,7 @@ Kore is an ideal candidate for developing robust, fast and safe web applications
 Features
 --------
 * Supports SNI
-* Supports SPDY/3
+* Supports SPDY/3.1
 * Supports HTTP/1.1
 * Lightweight background tasks
 * Built-in parameter validation
