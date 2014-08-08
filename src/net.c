@@ -28,28 +28,34 @@ net_init(void)
 
 void
 net_send_queue(struct connection *c, void *data, u_int32_t len,
-    struct spdy_stream *s)
+    struct spdy_stream *s, int before)
 {
 	u_int8_t		*d;
 	struct netbuf		*nb;
 	u_int32_t		avail;
 
-	d = data;
-	nb = TAILQ_LAST(&(c->send_queue), netbuf_head);
-	if (nb != NULL && nb->b_len < nb->m_len && nb->stream == s) {
-		avail = nb->m_len - nb->b_len;
-		if (len < avail) {
-			memcpy(nb->buf + nb->b_len, d, len);
-			nb->b_len += len;
-			return;
-		} else if (len > avail) {
-			memcpy(nb->buf + nb->b_len, d, avail);
-			nb->b_len += avail;
+	kore_debug("net_send_queue(%p, %p, %d, %p, %d)",
+	    c, data, len, s, before);
 
-			len -= avail;
-			d += avail;
-			if (len == 0)
+	d = data;
+	if (before == NETBUF_LAST_CHAIN) {
+		nb = TAILQ_LAST(&(c->send_queue), netbuf_head);
+		if (nb != NULL && !(nb->flags & NETBUF_IS_STREAM) &&
+		    nb->stream == s && nb->b_len < nb->m_len) {
+			avail = nb->m_len - nb->b_len;
+			if (len < avail) {
+				memcpy(nb->buf + nb->b_len, d, len);
+				nb->b_len += len;
 				return;
+			} else if (len > avail) {
+				memcpy(nb->buf + nb->b_len, d, avail);
+				nb->b_len += avail;
+
+				len -= avail;
+				d += avail;
+				if (len == 0)
+					return;
+			}
 		}
 	}
 
@@ -71,7 +77,12 @@ net_send_queue(struct connection *c, void *data, u_int32_t len,
 	if (len > 0)
 		memcpy(nb->buf, d, nb->b_len);
 
-	TAILQ_INSERT_TAIL(&(c->send_queue), nb, list);
+	if (before == NETBUF_BEFORE_CHAIN) {
+		kore_debug("net_send_queue(): %p->new", c->snb);
+		TAILQ_INSERT_BEFORE(c->snb, nb, list);
+	} else {
+		TAILQ_INSERT_TAIL(&(c->send_queue), nb, list);
+	}
 }
 
 void
@@ -79,6 +90,8 @@ net_send_stream(struct connection *c, void *data, u_int32_t len,
     struct spdy_stream *s)
 {
 	struct netbuf		*nb;
+
+	kore_debug("net_send_stream(%p, %p, %d, %p)", c, data, len, s);
 
 	nb = kore_pool_get(&nb_pool);
 	nb->cb = NULL;
@@ -140,63 +153,94 @@ int
 net_send(struct connection *c)
 {
 	int			r;
-	struct netbuf		*nb;
-	u_int32_t		len;
+	u_int32_t		len, smin;
+	struct netbuf		*nb, *next;
 
-	while (!TAILQ_EMPTY(&(c->send_queue))) {
-		nb = TAILQ_FIRST(&(c->send_queue));
-		if (nb->b_len != 0) {
-			len = MIN(NETBUF_SEND_PAYLOAD_MAX,
-			    nb->b_len - nb->s_off);
+	c->snb = TAILQ_FIRST(&(c->send_queue));
+	kore_debug("net_send(%p, %d, %d)", c->snb, c->snb->s_off, c->snb->b_len);
+	if (c->snb->b_len != 0) {
+		if (c->snb->stream != NULL &&
+		    (c->snb->stream->flags & SPDY_DATAFRAME_PRELUDE)) {
+			if (!spdy_dataframe_begin(c)) {
+				c->snb = NULL;
+				return (KORE_RESULT_OK);
+			}
+
+			c->snb = TAILQ_FIRST(&(c->send_queue));
+			kore_debug("after (%p, %d, %d)",
+			    c->snb, c->snb->s_off, c->snb->b_len);
+		}
+
+		if (c->snb->stream != NULL &&
+		    (c->snb->stream->flags & SPDY_STREAM_BLOCKING)) {
+			kore_debug("stream block, resorting", c->snb);
+			for (nb = TAILQ_FIRST(&(c->send_queue)); nb != NULL;
+			    nb = next) {
+				next = TAILQ_NEXT(nb, list);
+				if (nb->stream != c->snb->stream)
+					continue;
+
+				TAILQ_REMOVE(&(c->send_queue), nb, list);
+				TAILQ_INSERT_TAIL(&(c->send_queue), nb, list);
+			}
+
+			c->snb = NULL;
+			return (KORE_RESULT_OK);
+		}
+
+		smin = c->snb->b_len - c->snb->s_off;
+		if (c->snb->stream != NULL &&
+		    c->snb->stream->frame_size > 0) {
+			smin = MIN(smin, c->snb->stream->frame_size);
+		}
+
+		len = MIN(NETBUF_SEND_PAYLOAD_MAX, smin);
+		kore_debug("chosen len: %d", len);
 
 #if !defined(KORE_BENCHMARK)
-			r = SSL_write(c->ssl, (nb->buf + nb->s_off), len);
-			if (r <= 0) {
-				r = SSL_get_error(c->ssl, r);
-				switch (r) {
-				case SSL_ERROR_WANT_READ:
-				case SSL_ERROR_WANT_WRITE:
-					nb->flags |= NETBUF_MUST_RESEND;
-					c->flags &= ~CONN_WRITE_POSSIBLE;
-					return (KORE_RESULT_OK);
-				default:
-					kore_debug("SSL_write(): %s",
-					    ssl_errno_s);
-					return (KORE_RESULT_ERROR);
-				}
+		r = SSL_write(c->ssl,
+		    (c->snb->buf + c->snb->s_off), len);
+		if (r <= 0) {
+			r = SSL_get_error(c->ssl, r);
+			switch (r) {
+			case SSL_ERROR_WANT_READ:
+			case SSL_ERROR_WANT_WRITE:
+				c->snb->flags |= NETBUF_MUST_RESEND;
+				c->flags &= ~CONN_WRITE_POSSIBLE;
+				return (KORE_RESULT_OK);
+			default:
+				kore_debug("SSL_write(): %s",
+				    ssl_errno_s);
+				return (KORE_RESULT_ERROR);
 			}
+		}
 #else
-			r = write(c->fd, (nb->buf + nb->s_off), len);
-			if (r <= -1) {
-				switch (errno) {
-				case EINTR:
-				case EAGAIN:
-					c->flags &= ~CONN_WRITE_POSSIBLE;
-					return (KORE_RESULT_OK);
-				default:
-					kore_debug("write: %s", errno_s);
-					return (KORE_RESULT_ERROR);
-				}
+		r = write(c->fd, (c->snb->buf + c->snb->s_off), len);
+		if (r <= -1) {
+			switch (errno) {
+			case EINTR:
+			case EAGAIN:
+				c->flags &= ~CONN_WRITE_POSSIBLE;
+				return (KORE_RESULT_OK);
+			default:
+				kore_debug("write: %s", errno_s);
+				return (KORE_RESULT_ERROR);
 			}
+		}
 #endif
-			kore_debug("net_send(%p/%d/%d bytes), progress with %d",
-			    nb, nb->s_off, nb->b_len, r);
+		kore_debug("net_send(%p/%d/%d bytes), progress with %d",
+		    c->snb, c->snb->s_off, c->snb->b_len, r);
 
-			nb->s_off += (size_t)r;
-			nb->flags &= ~NETBUF_MUST_RESEND;
-			if (nb->stream != NULL)
-				spdy_update_wsize(c, nb->stream, r);
-		}
+		c->snb->s_off += (size_t)r;
+		c->snb->flags &= ~NETBUF_MUST_RESEND;
+		if (c->snb->stream != NULL)
+			spdy_update_wsize(c, c->snb->stream, r);
+	}
 
-		if (nb->s_off == nb->b_len) {
-			if (nb->stream != NULL &&
-			    (nb->flags & NETBUF_IS_STREAM)) {
-				spdy_frame_send(c, SPDY_DATA_FRAME,
-				    FLAG_FIN, 0, nb->stream, 0);
-			}
-
-			net_remove_netbuf(&(c->send_queue), nb);
-		}
+	if (c->snb->s_off == c->snb->b_len ||
+	    (c->snb->flags & NETBUF_FORCE_REMOVE)) {
+		net_remove_netbuf(&(c->send_queue), c->snb);
+		c->snb = NULL;
 	}
 
 	return (KORE_RESULT_OK);
@@ -223,59 +267,59 @@ int
 net_recv(struct connection *c)
 {
 	int			r;
-	struct netbuf		*nb;
 
-	while (!TAILQ_EMPTY(&(c->recv_queue))) {
-		nb = TAILQ_FIRST(&(c->recv_queue));
-		if (nb->cb == NULL) {
-			kore_debug("kore_read_client(): nb->cb == NULL");
-			return (KORE_RESULT_ERROR);
-		}
+	c->rnb = TAILQ_FIRST(&(c->recv_queue));
+	if (c->rnb == NULL) {
+		kore_debug("kore_read_client(): nb->cb == NULL");
+		return (KORE_RESULT_ERROR);
+	}
 
 #if !defined(KORE_BENCHMARK)
-		r = SSL_read(c->ssl,
-		    (nb->buf + nb->s_off), (nb->b_len - nb->s_off));
-		if (r <= 0) {
-			r = SSL_get_error(c->ssl, r);
-			switch (r) {
-			case SSL_ERROR_WANT_READ:
-			case SSL_ERROR_WANT_WRITE:
-				c->flags &= ~CONN_READ_POSSIBLE;
-				return (KORE_RESULT_OK);
-			default:
-				kore_debug("SSL_read(): %s", ssl_errno_s);
-				return (KORE_RESULT_ERROR);
-			}
+	r = SSL_read(c->ssl,
+	    (c->rnb->buf + c->rnb->s_off),
+	    (c->rnb->b_len - c->rnb->s_off));
+	if (r <= 0) {
+		r = SSL_get_error(c->ssl, r);
+		switch (r) {
+		case SSL_ERROR_WANT_READ:
+		case SSL_ERROR_WANT_WRITE:
+			c->flags &= ~CONN_READ_POSSIBLE;
+			return (KORE_RESULT_OK);
+		default:
+			kore_debug("SSL_read(): %s", ssl_errno_s);
+			return (KORE_RESULT_ERROR);
 		}
+	}
 #else
-		r = read(c->fd, (nb->buf + nb->s_off), (nb->b_len - nb->s_off));
-		if (r <= 0) {
-			switch (errno) {
-			case EINTR:
-			case EAGAIN:
-				c->flags &= ~CONN_READ_POSSIBLE;
-				return (KORE_RESULT_OK);
-			default:
-				kore_debug("read(): %s", errno_s);
-				return (KORE_RESULT_ERROR);
-			}
+	r = read(c->fd, (c->rnb->buf + c->rnb->s_off),
+	    (c->rnb->b_len - c->rnb->s_off));
+	if (r <= 0) {
+		switch (errno) {
+		case EINTR:
+		case EAGAIN:
+			c->flags &= ~CONN_READ_POSSIBLE;
+			return (KORE_RESULT_OK);
+		default:
+			kore_debug("read(): %s", errno_s);
+			return (KORE_RESULT_ERROR);
 		}
+	}
 #endif
-		kore_debug("net_recv(%ld/%ld bytes), progress with %d",
-		    nb->s_off, nb->b_len, r);
+	kore_debug("net_recv(%ld/%ld bytes), progress with %d",
+	    c->rnb->s_off, c->rnb->b_len, r);
 
-		nb->s_off += (size_t)r;
-		if (nb->s_off == nb->b_len ||
-		    (nb->flags & NETBUF_CALL_CB_ALWAYS)) {
-			r = nb->cb(nb);
-			if (nb->s_off == nb->b_len ||
-			    (nb->flags & NETBUF_FORCE_REMOVE)) {
-				net_remove_netbuf(&(c->recv_queue), nb);
-			}
-
-			if (r != KORE_RESULT_OK)
-				return (r);
+	c->rnb->s_off += (size_t)r;
+	if (c->rnb->s_off == c->rnb->b_len ||
+	    (c->rnb->flags & NETBUF_CALL_CB_ALWAYS)) {
+		r = c->rnb->cb(c->rnb);
+		if (c->rnb->s_off == c->rnb->b_len ||
+		    (c->rnb->flags & NETBUF_FORCE_REMOVE)) {
+			net_remove_netbuf(&(c->recv_queue), c->rnb);
+			c->rnb = NULL;
 		}
+
+		if (r != KORE_RESULT_OK)
+			return (r);
 	}
 
 	return (KORE_RESULT_OK);
@@ -298,10 +342,12 @@ net_recv_flush(struct connection *c)
 void
 net_remove_netbuf(struct netbuf_head *list, struct netbuf *nb)
 {
-	nb->stream = NULL;
+	kore_debug("net_remove_netbuf(%p, %p, %p)", list, nb, nb->stream);
 
+	nb->stream = NULL;
 	if (nb->flags & NETBUF_MUST_RESEND) {
 		kore_debug("retaining %p (MUST_RESEND)", nb);
+		nb->flags |= NETBUF_FORCE_REMOVE;
 		return;
 	}
 

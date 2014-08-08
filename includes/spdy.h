@@ -54,9 +54,9 @@ struct spdy_stream {
 	u_int8_t	prio;
 	u_int64_t	post_size;
 	u_int64_t	send_size;
-
-	int32_t		recv_wsize;
-	int32_t		send_wsize;
+	u_int32_t	frame_size;
+	u_int32_t	recv_wsize;
+	u_int32_t	send_wsize;
 
 	void				*httpreq;
 	struct spdy_header_block	*hblock;
@@ -66,7 +66,7 @@ struct spdy_stream {
 
 extern const unsigned char SPDY_dictionary_txt[];
 
-#define KORE_SSL_PROTO_STRING		"\x08spdy/3.2\x08http/1.1"
+#define KORE_SSL_PROTO_STRING		"\x08spdy/3.1\x08http/1.1"
 #define SPDY_CONTROL_FRAME(x)		((x & (1 << 31)))
 
 #define SPDY_FRAME_SIZE			8
@@ -109,5 +109,7 @@ extern const unsigned char SPDY_dictionary_txt[];
 
 /* internal flags (make sure they don't clash with SPDY stream flags) */
 #define SPDY_KORE_FIN			0x10
+#define SPDY_DATAFRAME_PRELUDE		0x20
+#define SPDY_STREAM_BLOCKING		0x40
 
 #endif /* !__H_SPDY_H */

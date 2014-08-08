@@ -70,7 +70,10 @@ extern int daemon(int, int);
 
 #define NETBUF_RECV			0
 #define NETBUF_SEND			1
-#define NETBUF_SEND_PAYLOAD_MAX		4000
+#define NETBUF_SEND_PAYLOAD_MAX		8192
+
+#define NETBUF_LAST_CHAIN		0
+#define NETBUF_BEFORE_CHAIN		1
 
 #define NETBUF_CALL_CB_ALWAYS	0x01
 #define NETBUF_FORCE_REMOVE	0x02
@@ -142,6 +145,7 @@ LIST_HEAD(listener_head, listener);
 #define CONN_IDLE_TIMER_ACT	0x10
 #define CONN_READ_BLOCK		0x20
 #define CONN_CLOSE_EMPTY	0x40
+#define SPDY_CONN_GOAWAY	0x80
 
 #define KORE_IDLE_TIMER_MAX	20000
 
@@ -171,10 +175,14 @@ struct connection {
 	z_stream		z_inflate;
 	u_int8_t		deflate_started;
 	z_stream		z_deflate;
+
 	u_int32_t		wsize_initial;
+	u_int32_t		spdy_send_wsize;
 
 	struct netbuf_head	send_queue;
+	struct netbuf		*snb;
 	struct netbuf_head	recv_queue;
+	struct netbuf		*rnb;
 
 	u_int32_t			client_stream_id;
 	TAILQ_HEAD(, spdy_stream)	spdy_streams;
@@ -453,7 +461,7 @@ void		net_recv_queue(struct connection *, size_t, int,
 int		net_recv_expand(struct connection *c, struct netbuf *, size_t,
 		    int (*cb)(struct netbuf *));
 void		net_send_queue(struct connection *, void *,
-		    u_int32_t, struct spdy_stream *);
+		    u_int32_t, struct spdy_stream *, int);
 void		net_send_stream(struct connection *, void *,
 		    u_int32_t, struct spdy_stream *);
 
@@ -466,7 +474,6 @@ void	kore_buf_appendv(struct kore_buf *, const char *, va_list);
 void	kore_buf_appendb(struct kore_buf *, struct kore_buf *);
 void	kore_buf_replace_string(struct kore_buf *, char *, void *, size_t);
 
-struct spdy_header_block	*spdy_header_block_create(int);
 struct spdy_stream	*spdy_stream_lookup(struct connection *, u_int32_t);
 int			spdy_stream_get_header(struct spdy_header_block *,
 			    const char *, char **);
@@ -474,6 +481,7 @@ void			spdy_update_wsize(struct connection *,
 			    struct spdy_stream *, u_int32_t);
 
 int		spdy_frame_recv(struct netbuf *);
+int		spdy_dataframe_begin(struct connection *);
 void		spdy_session_teardown(struct connection *c, u_int8_t);
 void		spdy_frame_send(struct connection *, u_int16_t,
 		    u_int8_t, u_int32_t, struct spdy_stream *, u_int32_t);
@@ -481,5 +489,7 @@ void		spdy_header_block_add(struct spdy_header_block *,
 		    char *, char *);
 u_int8_t	*spdy_header_block_release(struct connection *,
 		    struct spdy_header_block *, u_int32_t *);
+
+struct spdy_header_block	*spdy_header_block_create(int);
 
 #endif /* !__H_KORE_H */

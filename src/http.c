@@ -385,8 +385,6 @@ http_response(struct http_request *req, int status, void *d, u_int32_t l)
 	switch (req->owner->proto) {
 	case CONN_PROTO_SPDY:
 		http_response_spdy(req, req->owner, req->stream, status, d, l);
-		spdy_frame_send(req->owner, SPDY_DATA_FRAME,
-		    FLAG_FIN, 0, req->stream, 0);
 		break;
 	case CONN_PROTO_HTTP:
 		http_response_normal(req, req->owner, status, d, l);
@@ -1029,7 +1027,6 @@ http_error_response(struct connection *c, struct spdy_stream *s, int status)
 	switch (c->proto) {
 	case CONN_PROTO_SPDY:
 		http_response_spdy(NULL, c, s, status, NULL, 0);
-		spdy_frame_send(c, SPDY_DATA_FRAME, FLAG_FIN, 0, s, 0);
 		break;
 	case CONN_PROTO_HTTP:
 		if (s != NULL)
@@ -1083,15 +1080,15 @@ http_response_spdy(struct http_request *req, struct connection *c,
 	}
 
 	spdy_frame_send(c, SPDY_CTRL_FRAME_SYN_REPLY, 0, hlen, s, 0);
-	net_send_queue(c, htext, hlen, NULL);
+	net_send_queue(c, htext, hlen, NULL, NETBUF_LAST_CHAIN);
 	kore_mem_free(htext);
 
 	if (len > 0) {
 		req->stream->send_size += len;
-		spdy_frame_send(c, SPDY_DATA_FRAME, 0, len, s, 0);
+		req->stream->flags |= SPDY_DATAFRAME_PRELUDE;
 
 		if (d != NULL)
-			net_send_queue(c, d, len, s);
+			net_send_queue(c, d, len, s, NETBUF_LAST_CHAIN);
 	}
 }
 
@@ -1158,11 +1155,11 @@ http_response_normal(struct http_request *req, struct connection *c,
 	}
 
 	htext = kore_buf_release(buf, &hlen);
-	net_send_queue(c, htext, hlen, NULL);
+	net_send_queue(c, htext, hlen, NULL, NETBUF_LAST_CHAIN);
 	kore_mem_free(htext);
 
 	if (d != NULL)
-		net_send_queue(c, d, len, NULL);
+		net_send_queue(c, d, len, NULL, NETBUF_LAST_CHAIN);
 
 	if (!(c->flags & CONN_CLOSE_EMPTY)) {
 		net_recv_queue(c, http_header_max,
