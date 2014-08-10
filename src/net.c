@@ -86,14 +86,14 @@ net_send_queue(struct connection *c, void *data, u_int32_t len,
 
 void
 net_send_stream(struct connection *c, void *data, u_int32_t len,
-    struct spdy_stream *s)
+    struct spdy_stream *s, int (*cb)(struct netbuf *), struct netbuf **out)
 {
 	struct netbuf		*nb;
 
 	kore_debug("net_send_stream(%p, %p, %d, %p)", c, data, len, s);
 
 	nb = kore_pool_get(&nb_pool);
-	nb->cb = NULL;
+	nb->cb = cb;
 	nb->owner = c;
 	nb->s_off = 0;
 	nb->buf = data;
@@ -104,10 +104,12 @@ net_send_stream(struct connection *c, void *data, u_int32_t len,
 	nb->flags  = NETBUF_IS_STREAM;
 
 	TAILQ_INSERT_TAIL(&(c->send_queue), nb, list);
+	if (out != NULL)
+		*out = nb;
 }
 
 void
-net_recv_queue(struct connection *c, size_t len, int flags,
+net_recv_queue(struct connection *c, u_int32_t len, int flags,
     struct netbuf **out, int (*cb)(struct netbuf *))
 {
 	struct netbuf		*nb;
@@ -129,7 +131,7 @@ net_recv_queue(struct connection *c, size_t len, int flags,
 }
 
 int
-net_recv_expand(struct connection *c, struct netbuf *nb, size_t len,
+net_recv_expand(struct connection *c, struct netbuf *nb, u_int32_t len,
     int (*cb)(struct netbuf *))
 {
 	if (nb->type != NETBUF_RECV) {
@@ -328,8 +330,11 @@ net_remove_netbuf(struct netbuf_head *list, struct netbuf *nb)
 		return;
 	}
 
-	if (!(nb->flags & NETBUF_IS_STREAM))
+	if (!(nb->flags & NETBUF_IS_STREAM)) {
 		kore_mem_free(nb->buf);
+	} else if (nb->cb != NULL) {
+		(void)nb->cb(nb);
+	}
 
 	TAILQ_REMOVE(list, nb, list);
 	kore_pool_put(&nb_pool, nb);

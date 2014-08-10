@@ -456,14 +456,15 @@ int		net_send(struct connection *);
 int		net_send_flush(struct connection *);
 int		net_recv_flush(struct connection *);
 void		net_remove_netbuf(struct netbuf_head *, struct netbuf *);
-void		net_recv_queue(struct connection *, size_t, int,
+void		net_recv_queue(struct connection *, u_int32_t, int,
 		    struct netbuf **, int (*cb)(struct netbuf *));
-int		net_recv_expand(struct connection *c, struct netbuf *, size_t,
-		    int (*cb)(struct netbuf *));
+int		net_recv_expand(struct connection *c, struct netbuf *,
+		    u_int32_t, int (*cb)(struct netbuf *));
 void		net_send_queue(struct connection *, void *,
 		    u_int32_t, struct spdy_stream *, int);
 void		net_send_stream(struct connection *, void *,
-		    u_int32_t, struct spdy_stream *);
+		    u_int32_t, struct spdy_stream *,
+		    int (*cb)(struct netbuf *), struct netbuf **);
 
 void		kore_buf_free(struct kore_buf *);
 struct kore_buf	*kore_buf_create(u_int32_t);

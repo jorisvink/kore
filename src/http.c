@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013 Joris Vink <joris@coders.se>
+ * Copyright (c) 2013-2014 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -394,8 +394,10 @@ http_response(struct http_request *req, int status, void *d, u_int32_t l)
 
 void
 http_response_stream(struct http_request *req, int status, void *base,
-    u_int64_t len)
+    u_int64_t len, int (*cb)(struct netbuf *), void *arg)
 {
+	struct netbuf		*nb;
+
 	req->status = status;
 
 	switch (req->owner->proto) {
@@ -408,7 +410,8 @@ http_response_stream(struct http_request *req, int status, void *base,
 		break;
 	}
 
-	net_send_stream(req->owner, base, len, req->stream);
+	net_send_stream(req->owner, base, len, req->stream, cb, &nb);
+	nb->extra = arg;
 }
 
 int
