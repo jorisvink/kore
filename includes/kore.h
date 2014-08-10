@@ -178,6 +178,7 @@ struct connection {
 
 	u_int32_t		wsize_initial;
 	u_int32_t		spdy_send_wsize;
+	u_int32_t		spdy_recv_wsize;
 
 	struct netbuf_head	send_queue;
 	struct netbuf		*snb;

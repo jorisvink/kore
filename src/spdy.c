@@ -39,7 +39,7 @@ static int		spdy_zlib_deflate(struct connection *, u_int8_t *,
 			    size_t, u_int8_t **, u_int32_t *);
 
 u_int64_t		spdy_idle_time = 120000;
-u_int32_t		spdy_recv_wsize = 65536;
+u_int32_t		spdy_recv_wsize = SPDY_INIT_WSIZE;
 
 int
 spdy_frame_recv(struct netbuf *nb)
@@ -181,7 +181,6 @@ spdy_frame_send(struct connection *c, u_int16_t type, u_int8_t flags,
 
 	switch (type) {
 	case SPDY_CTRL_FRAME_SYN_REPLY:
-	case SPDY_CTRL_FRAME_WINDOW:
 	case SPDY_DATA_FRAME:
 		if (s == NULL)
 			fatal("spdy_frame_send(): stream is NULL for %d", type);
@@ -223,7 +222,7 @@ spdy_frame_send(struct connection *c, u_int16_t type, u_int8_t flags,
 		net_write16(&nb[2], type);
 		net_write32(&nb[4], len);
 		nb[4] = flags;
-		net_write32(&nb[8], s->stream_id);
+		net_write32(&nb[8], (s != NULL) ? s->stream_id : 0);
 		net_write32(&nb[12], misc);
 		length = 16;
 		break;
@@ -837,13 +836,20 @@ spdy_data_frame_recv(struct netbuf *nb)
 		req->flags |= HTTP_REQUEST_COMPLETE;
 	}
 
+	/*
+	 * XXX - This can be implemented better so we can stagger
+	 * window updates a bit and not constantly hit flow control.
+	 */
 	s->recv_wsize -= data.length;
-	if (s->recv_wsize < (spdy_recv_wsize / 2)) {
-		spdy_frame_send(c, SPDY_CTRL_FRAME_WINDOW,
-		    0, 8, s, spdy_recv_wsize - s->recv_wsize);
+	spdy_frame_send(c, SPDY_CTRL_FRAME_WINDOW, 0, 8, s, data.length);
+	s->recv_wsize += data.length;
 
-		s->recv_wsize += (spdy_recv_wsize - s->recv_wsize);
-	}
+	c->spdy_recv_wsize -= data.length;
+	spdy_frame_send(c, SPDY_CTRL_FRAME_WINDOW, 0, 8, NULL, data.length);
+	c->spdy_recv_wsize += data.length;
+
+	kore_debug("data frame recv: wz:%d cwz:%d", s->recv_wsize,
+	    c->spdy_recv_wsize);
 
 	return (KORE_RESULT_OK);
 }

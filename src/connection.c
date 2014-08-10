@@ -78,6 +78,7 @@ kore_connection_accept(struct listener *l, struct connection **out)
 	c->proto = CONN_PROTO_UNKNOWN;
 	c->wsize_initial = SPDY_INIT_WSIZE;
 	c->spdy_send_wsize = SPDY_INIT_WSIZE;
+	c->spdy_recv_wsize = SPDY_INIT_WSIZE;
 	c->idle_timer.start = 0;
 	c->idle_timer.length = KORE_IDLE_TIMER_MAX;
 
