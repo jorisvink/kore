@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013 Joris Vink <joris@coders.se>
+ * Copyright (c) 2013-2014 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -78,7 +78,6 @@ net_send_queue(struct connection *c, void *data, u_int32_t len,
 		memcpy(nb->buf, d, nb->b_len);
 
 	if (before == NETBUF_BEFORE_CHAIN) {
-		kore_debug("net_send_queue(): %p->new", c->snb);
 		TAILQ_INSERT_BEFORE(c->snb, nb, list);
 	} else {
 		TAILQ_INSERT_TAIL(&(c->send_queue), nb, list);
@@ -154,10 +153,8 @@ net_send(struct connection *c)
 {
 	int			r;
 	u_int32_t		len, smin;
-	struct netbuf		*nb, *next;
 
 	c->snb = TAILQ_FIRST(&(c->send_queue));
-	kore_debug("net_send(%p, %d, %d)", c->snb, c->snb->s_off, c->snb->b_len);
 	if (c->snb->b_len != 0) {
 		if (c->snb->stream != NULL &&
 		    (c->snb->stream->flags & SPDY_DATAFRAME_PRELUDE)) {
@@ -167,25 +164,6 @@ net_send(struct connection *c)
 			}
 
 			c->snb = TAILQ_FIRST(&(c->send_queue));
-			kore_debug("after (%p, %d, %d)",
-			    c->snb, c->snb->s_off, c->snb->b_len);
-		}
-
-		if (c->snb->stream != NULL &&
-		    (c->snb->stream->flags & SPDY_STREAM_BLOCKING)) {
-			kore_debug("stream block, resorting", c->snb);
-			for (nb = TAILQ_FIRST(&(c->send_queue)); nb != NULL;
-			    nb = next) {
-				next = TAILQ_NEXT(nb, list);
-				if (nb->stream != c->snb->stream)
-					continue;
-
-				TAILQ_REMOVE(&(c->send_queue), nb, list);
-				TAILQ_INSERT_TAIL(&(c->send_queue), nb, list);
-			}
-
-			c->snb = NULL;
-			return (KORE_RESULT_OK);
 		}
 
 		smin = c->snb->b_len - c->snb->s_off;
@@ -195,7 +173,6 @@ net_send(struct connection *c)
 		}
 
 		len = MIN(NETBUF_SEND_PAYLOAD_MAX, smin);
-		kore_debug("chosen len: %d", len);
 
 #if !defined(KORE_BENCHMARK)
 		r = SSL_write(c->ssl,

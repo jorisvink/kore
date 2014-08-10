@@ -1089,6 +1089,9 @@ http_response_spdy(struct http_request *req, struct connection *c,
 
 		if (d != NULL)
 			net_send_queue(c, d, len, s, NETBUF_LAST_CHAIN);
+	} else {
+		spdy_frame_send(c, SPDY_DATA_FRAME, FLAG_FIN, 0, s, 0);
+		spdy_stream_close(c, req->stream, SPDY_KEEP_NETBUFS);
 	}
 }
 

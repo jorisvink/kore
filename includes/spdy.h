@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013 Joris Vink <joris@coders.se>
+ * Copyright (c) 2013-2014 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -107,9 +107,13 @@ extern const unsigned char SPDY_dictionary_txt[];
 #define SPDY_HBLOCK_NORMAL		0
 #define SPDY_HBLOCK_DELAYED_ALLOC	1
 
+#define SPDY_FLOW_WINDOW_MAX		2147483647
+
 /* internal flags (make sure they don't clash with SPDY stream flags) */
 #define SPDY_KORE_FIN			0x10
 #define SPDY_DATAFRAME_PRELUDE		0x20
-#define SPDY_STREAM_BLOCKING		0x40
+
+#define SPDY_KEEP_NETBUFS		0
+#define SPDY_REMOVE_NETBUFS		1
 
 #endif /* !__H_SPDY_H */

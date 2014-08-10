@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013 Joris Vink <joris@coders.se>
+ * Copyright (c) 2013-2014 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -22,9 +22,6 @@
 #include "kore.h"
 #include "http.h"
 
-#define SPDY_KEEP_NETBUFS		0
-#define SPDY_REMOVE_NETBUFS		1
-
 static int		spdy_ctrl_frame_syn_stream(struct netbuf *);
 static int		spdy_ctrl_frame_rst_stream(struct netbuf *);
 static int		spdy_ctrl_frame_settings(struct netbuf *);
@@ -36,8 +33,6 @@ static int		spdy_data_frame_recv(struct netbuf *);
 static void		spdy_block_write(struct connection *);
 static void		spdy_enable_write(struct connection *);
 
-static void		spdy_stream_close(struct connection *,
-			    struct spdy_stream *, int);
 static int		spdy_zlib_inflate(struct connection *, u_int8_t *,
 			    size_t, u_int8_t **, u_int32_t *);
 static int		spdy_zlib_deflate(struct connection *, u_int8_t *,
@@ -147,6 +142,10 @@ int
 spdy_dataframe_begin(struct connection *c)
 {
 	struct spdy_stream	*s = c->snb->stream;
+
+	kore_debug("spdy_dataframe_begin(%p): s:%u fz:%d sz:%d wz:%d cwz:%d",
+	    c, s->stream_id, s->frame_size, s->send_size, s->send_wsize,
+	    c->spdy_send_wsize);
 
 	if (s->frame_size != 0 || s->send_size == 0) {
 		fatal("spdy_dataframe_begin(): s:%u fz:%d - sz:%d",
@@ -421,7 +420,6 @@ spdy_update_wsize(struct connection *c, struct spdy_stream *s, u_int32_t len)
 			s->flags |= SPDY_KORE_FIN;
 			kore_debug("sending final frame %u", s->stream_id);
 			spdy_frame_send(c, SPDY_DATA_FRAME, FLAG_FIN, 0, s, 0);
-			return;
 		}
 
 		if (s->flags & (SPDY_KORE_FIN | FLAG_FIN)) {
@@ -432,15 +430,44 @@ spdy_update_wsize(struct connection *c, struct spdy_stream *s, u_int32_t len)
 		kore_debug("%u remains half open\n", s->stream_id);
 	}
 
-	if ((int)s->send_wsize <= 0) {
-		kore_debug("flow control kicked in for STREAM %p:%p", s, c);
-		s->flags |= SPDY_STREAM_BLOCKING;
-	}
-
-	if ((int)c->spdy_send_wsize <= 0) {
-		kore_debug("flow control kicked in for CONNECTION %p", c);
+	if ((int)s->send_wsize <= 0 || (int)c->spdy_send_wsize <= 0) {
+		kore_debug("flow control kicked in for %p:%p", c, s);
 		spdy_block_write(c);
 	}
+}
+
+void
+spdy_stream_close(struct connection *c, struct spdy_stream *s, int rb)
+{
+	struct http_request		*req;
+	struct netbuf			*nb, *nt;
+
+	kore_debug("spdy_stream_close(%p, %p) <%d>", c, s, s->stream_id);
+
+	if (rb) {
+		for (nb = TAILQ_FIRST(&(c->send_queue)); nb != NULL; nb = nt) {
+			nt = TAILQ_NEXT(nb, list);
+			if (nb->stream == s) {
+				kore_debug("spdy_stream_close: killing %p", nb);
+				net_remove_netbuf(&(c->send_queue), nb);
+			}
+		}
+	}
+
+	TAILQ_REMOVE(&(c->spdy_streams), s, list);
+	if (s->hblock != NULL) {
+		if (s->hblock->header_block != NULL)
+			kore_mem_free(s->hblock->header_block);
+		kore_mem_free(s->hblock);
+	}
+
+	if (s->httpreq != NULL) {
+		req = s->httpreq;
+		req->stream = NULL;
+		req->flags |= HTTP_REQUEST_DELETE;
+	}
+
+	kore_mem_free(s);
 }
 
 static int
@@ -562,9 +589,6 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 	/*
 	 * We don't care so much for what http_request_new() tells us here,
 	 * we just have to clean up after passing our stuff to it.
-	 *
-	 * In case of early errors (414, 500, ...) a net_send_flush() will
-	 * clear out this stream properly via spdy_stream_close().
 	 */
 	(void)http_request_new(c, s, host, method, path, version,
 	    (struct http_request **)&(s->httpreq));
@@ -686,24 +710,35 @@ spdy_ctrl_frame_window(struct netbuf *nb)
 
 	stream_id = net_read32(nb->buf + SPDY_FRAME_SIZE);
 	window_size = net_read32(nb->buf + SPDY_FRAME_SIZE + 4);
+	kore_debug("window_update: %u for %u", window_size, stream_id);
 
 	r = KORE_RESULT_OK;
 	if ((s = spdy_stream_lookup(c, stream_id)) != NULL) {
 		s->send_wsize += window_size;
-		if (c->flags & CONN_WRITE_BLOCK && s->send_wsize > 0) {
-			s->flags &= ~SPDY_STREAM_BLOCKING;
-			kore_debug("stream %u no longer blocket", s->stream_id);
+		if ((u_int64_t)s->send_wsize > SPDY_FLOW_WINDOW_MAX) {
+			kore_debug("window_update: size too large");
+			return (KORE_RESULT_ERROR);
+		}
+
+		if (c->flags & CONN_WRITE_BLOCK &&
+		    s->send_wsize > 0 && c->spdy_send_wsize > 0) {
+			kore_debug("stream %u no longer blocked", s->stream_id);
+			spdy_enable_write(c);
+			r = net_send_flush(c);
 		}
 	} else {
 		c->spdy_send_wsize += window_size;
+		if ((u_int64_t)c->spdy_send_wsize > SPDY_FLOW_WINDOW_MAX) {
+			kore_debug("window_update: size too large");
+			return (KORE_RESULT_ERROR);
+		}
+
 		if (c->flags & CONN_WRITE_BLOCK && c->spdy_send_wsize > 0) {
+			kore_debug("session %p no longer blocked", c);
 			spdy_enable_write(c);
 			r = net_send_flush(c);
 		}
 	}
-
-	kore_debug("window_update: %u for %u", window_size, stream_id);
-	kore_debug("c->spdy_send_wsize = %u", c->spdy_send_wsize);
 
 	return (r);
 }
@@ -811,40 +846,6 @@ spdy_data_frame_recv(struct netbuf *nb)
 	}
 
 	return (KORE_RESULT_OK);
-}
-
-static void
-spdy_stream_close(struct connection *c, struct spdy_stream *s, int rb)
-{
-	struct http_request		*req;
-	struct netbuf			*nb, *nt;
-
-	kore_debug("spdy_stream_close(%p, %p) <%d>", c, s, s->stream_id);
-
-	if (rb) {
-		for (nb = TAILQ_FIRST(&(c->send_queue)); nb != NULL; nb = nt) {
-			nt = TAILQ_NEXT(nb, list);
-			if (nb->stream == s) {
-				kore_debug("spdy_stream_close: killing %p", nb);
-				net_remove_netbuf(&(c->send_queue), nb);
-			}
-		}
-	}
-
-	TAILQ_REMOVE(&(c->spdy_streams), s, list);
-	if (s->hblock != NULL) {
-		if (s->hblock->header_block != NULL)
-			kore_mem_free(s->hblock->header_block);
-		kore_mem_free(s->hblock);
-	}
-
-	if (s->httpreq != NULL) {
-		req = s->httpreq;
-		req->stream = NULL;
-		req->flags |= HTTP_REQUEST_DELETE;
-	}
-
-	kore_mem_free(s);
 }
 
 static void

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013 Joris Vink <joris@coders.se>
+ * Copyright (c) 2013-2014 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -489,6 +489,8 @@ void		spdy_header_block_add(struct spdy_header_block *,
 		    char *, char *);
 u_int8_t	*spdy_header_block_release(struct connection *,
 		    struct spdy_header_block *, u_int32_t *);
+void		spdy_stream_close(struct connection *,
+		    struct spdy_stream *, int);
 
 struct spdy_header_block	*spdy_header_block_create(int);
 
