@@ -1,0 +1,279 @@
+/*
+ * Copyright (c) 2014 Joris Vink <joris@coders.se>
+ *
+ * Permission to use, copy, modify, and distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+
+#include <sys/param.h>
+#include <sys/stat.h>
+#include <sys/mman.h>
+#include <sys/queue.h>
+
+#include <fcntl.h>
+
+#include <kore/kore.h>
+#include <kore/http.h>
+
+#include "assets.h"
+
+struct video {
+	int			fd;
+	int			ref;
+	off_t			size;
+	char			*path;
+	u_int8_t		*data;
+	void			*base;
+
+	TAILQ_ENTRY(video)	list;
+};
+
+void		init(int);
+int		serve_page(struct http_request *);
+int		video_stream(struct http_request *);
+
+static void	video_unmap(struct video *);
+static int	video_stream_finish(struct netbuf *);
+static int	video_mmap(struct http_request *, struct video *);
+static int	video_open(struct http_request *, struct video **);
+
+TAILQ_HEAD(, video)		videos;
+
+void
+init(int state)
+{
+	switch (state) {
+	case KORE_MODULE_LOAD:
+		TAILQ_INIT(&videos);
+		break;
+	case KORE_MODULE_UNLOAD:
+		fatal("cannot reload this module, i should fix this");
+		break;
+	}
+}
+
+int
+serve_page(struct http_request *req)
+{
+	http_response_header(req, "content-type", "text/html");
+	http_response_stream(req, 200, asset_video_html,
+	    asset_len_video_html, NULL, NULL);
+
+	return (KORE_RESULT_OK);
+}
+
+int
+video_stream(struct http_request *req)
+{
+	struct video	*v;
+	off_t		start, end;
+	int		n, err, l, status;
+	char		*header, *bytes, *range[3], rb[128], *ext, ctype[32];
+
+	if (!video_open(req, &v))
+		return (KORE_RESULT_OK);
+
+	if ((ext = strrchr(req->path, '.')) == NULL) {
+		http_response(req, 400, NULL, 0);
+		return (KORE_RESULT_OK);
+	}
+
+	l = snprintf(ctype, sizeof(ctype), "video/%s", ext + 1);
+	if (l == -1 || (size_t)l >= sizeof(ctype)) {
+		http_response(req, 500, NULL, 0);
+		return (KORE_RESULT_OK);
+	}
+
+	kore_log(LOG_NOTICE, "%p: opened %s (%s) for streaming (%ld ref:%d)",
+	    req->owner, v->path, ctype, v->size, v->ref);
+
+	if (http_request_header(req, "range", &header)) {
+		if ((bytes = strchr(header, '=')) == NULL) {
+			http_response(req, 416, NULL, 0);
+			return (KORE_RESULT_OK);
+		}
+
+		bytes++;
+		n = kore_split_string(bytes, "-", range, 2);
+		if (n == 0) {
+			http_response(req, 416, NULL, 0);
+			return (KORE_RESULT_OK);
+		}
+
+		if (n >= 1) {
+			start = kore_strtonum64(range[0], 10, &err);
+			if (err != KORE_RESULT_OK) {
+				http_response(req, 416, NULL, 0);
+				return (KORE_RESULT_OK);
+			}
+		}
+
+		if (n > 1) {
+			end = kore_strtonum64(range[1], 10, &err);
+			if (err != KORE_RESULT_OK) {
+				http_response(req, 416, NULL, 0);
+				return (KORE_RESULT_OK);
+			}
+		} else {
+			end = 0;
+		}
+
+		if (end == 0)
+			end = v->size;
+
+		if (start > end || start > v->size || end > v->size) {
+			http_response(req, 416, NULL, 0);
+			return (KORE_RESULT_OK);
+		}
+
+		status = 206;
+		l = snprintf(rb, sizeof(rb), "bytes %ld-%ld/%ld",
+		    start, end - 1, v->size);
+		if (l == -1 || (size_t)l >= sizeof(rb)) {
+			http_response(req, 500, NULL, 0);
+			return (KORE_RESULT_OK);
+		}
+
+		kore_log(LOG_NOTICE, "%p: %s sending: %ld-%ld/%ld",
+		    req->owner, v->path, start, end - 1, v->size);
+		http_response_header(req, "content-range", rb);
+	} else {
+		start = 0;
+		status = 200;
+		end = v->size;
+	}
+
+	http_response_header(req, "content-type", ctype);
+	http_response_header(req, "accept-ranges", "bytes");
+	http_response_stream(req, status, v->data + start,
+	    end - start, video_stream_finish, v);
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+video_open(struct http_request *req, struct video **out)
+{
+	int			l;
+	struct stat		st;
+	struct video		*v;
+	char			fpath[MAXPATHLEN];
+
+	l = snprintf(fpath, sizeof(fpath), "videos%s", req->path);
+	if (l == -1 || (size_t)l >= sizeof(fpath))
+		return (KORE_RESULT_ERROR);
+
+	TAILQ_FOREACH(v, &videos, list) {
+		if (!strcmp(v->path, fpath)) {
+			if (video_mmap(req, v)) {
+				*out = v;
+				return (KORE_RESULT_OK);
+			}
+
+			close(v->fd);
+			TAILQ_REMOVE(&videos, v, list);
+			kore_mem_free(v->path);
+			kore_mem_free(v);
+
+			http_response(req, 500, NULL, 0);
+			return (KORE_RESULT_ERROR);
+		}
+	}
+
+	v = kore_malloc(sizeof(*v));
+	v->ref = 0;
+	v->base = NULL;
+	v->data = NULL;
+	v->path = kore_strdup(fpath);
+
+	if ((v->fd = open(fpath, O_RDONLY)) == -1) {
+		kore_mem_free(v->path);
+		kore_mem_free(v);
+
+		if (errno == ENOENT)
+			http_response(req, 404, NULL, 0);
+		else
+			http_response(req, 500, NULL, 0);
+
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (fstat(v->fd, &st) == -1) {
+		close(v->fd);
+		kore_mem_free(v->path);
+		kore_mem_free(v);
+
+		http_response(req, 500, NULL, 0);
+		return (KORE_RESULT_ERROR);
+	}
+
+	v->size = st.st_size;
+	if (!video_mmap(req, v)) {
+		close(v->fd);
+		kore_mem_free(v->path);
+		kore_mem_free(v);
+
+		http_response(req, 500, NULL, 0);
+		return (KORE_RESULT_ERROR);
+	}
+
+	*out = v;
+	TAILQ_INSERT_TAIL(&videos, v, list);
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+video_mmap(struct http_request *req, struct video *v)
+{
+	if (v->base != NULL && v->data != NULL) {
+		v->ref++;
+		return (KORE_RESULT_OK);
+	}
+
+	v->base = mmap(NULL, v->size, PROT_READ, MAP_SHARED, v->fd, 0);
+	if (v->base == MAP_FAILED)
+		return (KORE_RESULT_ERROR);
+
+	v->ref++;
+	v->data = v->base;
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+video_stream_finish(struct netbuf *nb)
+{
+	struct video	*v = nb->extra;
+
+	v->ref--;
+	kore_log(LOG_NOTICE, "%p: video stream %s done (%d/%d ref:%d)",
+	    nb->owner, v->path, nb->s_off, nb->b_len, v->ref);
+
+	if (v->ref == 0)
+		video_unmap(v);
+
+	return (KORE_RESULT_OK);
+}
+
+static void
+video_unmap(struct video *v)
+{
+	if (munmap(v->base, v->size) == -1) {
+		kore_log(LOG_ERR, "munmap(%s): %s", v->path, errno_s);
+	} else {
+		v->base = NULL;
+		v->data = NULL;
+		kore_log(LOG_NOTICE,
+		    "unmapped %s for streaming, no refs left", v->path);
+	}
+}
