@@ -23,6 +23,7 @@
 #include <openssl/pem.h>
 #include <openssl/x509v3.h>
 
+#include <ctype.h>
 #include <errno.h>
 #include <dirent.h>
 #include <libgen.h>
@@ -559,26 +560,35 @@ cli_build_asset(char *fpath, struct dirent *dp)
 	off_t			off;
 	void			*base;
 	int			in, out;
-	char			*cpath, *ext, *opath;
+	char			*cpath, *ext, *opath, *p, *name;
+
+	name = kore_strdup(dp->d_name);
 
 	/* Grab the extension as we're using it in the symbol name. */
-	if ((ext = strrchr(dp->d_name, '.')) == NULL)
-		cli_fatal("couldn't find ext in %s", dp->d_name);
+	if ((ext = strrchr(name, '.')) == NULL)
+		cli_fatal("couldn't find ext in %s", name);
+
+	/* Replace dots, spaces, etc etc with underscores. */
+	for (p = name; *p != '\0'; p++) {
+		if (*p == '.' || isspace(*p))
+			*p = '_';
+	}
 
 	/* Grab inode information. */
 	if (stat(fpath, &st) == -1)
 		cli_fatal("stat: %s %s", fpath, errno_s);
 
-	(void)cli_vasprintf(&opath, "%s/.objs/%s.o", rootdir, dp->d_name);
-	(void)cli_vasprintf(&cpath, "%s/.objs/%s.c", rootdir, dp->d_name);
+	(void)cli_vasprintf(&opath, "%s/.objs/%s.o", rootdir, name);
+	(void)cli_vasprintf(&cpath, "%s/.objs/%s.c", rootdir, name);
 
 	/* Check if the file needs to be built. */
 	if (!cli_file_requires_build(&st, opath)) {
 		*(ext)++ = '\0';
-		cli_write_asset(dp->d_name, ext);
-		*ext = '.';
+		cli_write_asset(name, ext);
+		*ext = '_';
 
-		cli_add_cfile(dp->d_name, cpath, opath, &st, 0);
+		cli_add_cfile(name, cpath, opath, &st, 0);
+		kore_mem_free(name);
 		return;
 	}
 
@@ -593,16 +603,16 @@ cli_build_asset(char *fpath, struct dirent *dp)
 	/* Create the c file where we will write too. */
 	cli_file_open(cpath, O_CREAT | O_TRUNC | O_WRONLY, &out);
 
-	/* No longer need dp->d_name so cut off the extension. */
-	printf("building asset %s\n", dp->d_name);
+	/* No longer need name so cut off the extension. */
+	printf("building asset %s\n", name);
 	*(ext)++ = '\0';
 
 	/* Start generating the file. */
 	cli_file_writef(out, "/* Auto generated */\n");
 	cli_file_writef(out, "#include <sys/param.h>\n\n");
-	cli_file_writef(out, "u_int8_t asset_%s_%s[] = {\n", dp->d_name, ext);
 
-	/* Copy all data into a buf and write it out afterwards. */
+	/* Write the file data as a byte array. */
+	cli_file_writef(out, "u_int8_t asset_%s_%s[] = {\n", name, ext);
 	d = base;
 	for (off = 0; off < st.st_size; off++)
 		cli_file_writef(out, "0x%02x,", *d++);
@@ -610,12 +620,12 @@ cli_build_asset(char *fpath, struct dirent *dp)
 	/* Add the meta data. */
 	cli_file_writef(out, "};\n\n");
 	cli_file_writef(out, "u_int32_t asset_len_%s_%s = %" PRIu32 ";\n",
-	    dp->d_name, ext, (u_int32_t)st.st_size);
+	    name, ext, (u_int32_t)st.st_size);
 	cli_file_writef(out, "time_t asset_mtime_%s_%s = %" PRI_TIME_T ";\n",
-	    dp->d_name, ext, st.st_mtime);
+	    name, ext, st.st_mtime);
 
 	/* Write the file symbols into assets.h so they can be used. */
-	cli_write_asset(dp->d_name, ext);
+	cli_write_asset(name, ext);
 
 	/* Cleanup static file source. */
 	if (munmap(base, st.st_size) == -1)
@@ -625,11 +635,12 @@ cli_build_asset(char *fpath, struct dirent *dp)
 	cli_file_close(in);
 	cli_file_close(out);
 
-	/* Restore the original dp->d_name */
+	/* Restore the original name */
 	*--ext = '.';
 
 	/* Register the .c file now (cpath is free'd later). */
-	cli_add_cfile(dp->d_name, cpath, opath, &st, 1);
+	cli_add_cfile(name, cpath, opath, &st, 1);
+	kore_mem_free(name);
 }
 
 static void
