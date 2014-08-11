@@ -29,6 +29,7 @@
 #include <libgen.h>
 #include <inttypes.h>
 #include <fcntl.h>
+#include <time.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -604,7 +605,7 @@ cli_build_asset(char *fpath, struct dirent *dp)
 	cli_file_open(cpath, O_CREAT | O_TRUNC | O_WRONLY, &out);
 
 	/* No longer need name so cut off the extension. */
-	printf("building asset %s\n", name);
+	printf("building asset %s\n", dp->d_name);
 	*(ext)++ = '\0';
 
 	/* Start generating the file. */
@@ -720,11 +721,12 @@ cli_generate_certs(void)
 #if !defined(KORE_BENCHMARK)
 	BIGNUM			*e;
 	FILE			*fp;
+	time_t			now;
 	X509_NAME		*name;
 	EVP_PKEY		*pkey;
 	X509			*x509;
 	RSA			*kpair;
-	char			*fpath;
+	char			*fpath, issuer[64];
 
 	/* Create new certificate. */
 	if ((x509 = X509_new()) == NULL)
@@ -752,14 +754,16 @@ cli_generate_certs(void)
 	if (!EVP_PKEY_assign_RSA(pkey, kpair))
 		cli_fatal("EVP_PKEY_assign_RSA(): %s", ssl_errno_s);
 
-	/* Set serial number to 0. */
-	if (!ASN1_INTEGER_set(X509_get_serialNumber(x509), 0))
+	/* Set serial number to current timestamp. */
+	time(&now);
+	if (!ASN1_INTEGER_set(X509_get_serialNumber(x509), now))
 		cli_fatal("ASN1_INTEGER_set(): %s", ssl_errno_s);
 
 	/* Not before and not after dates. */
 	if (!X509_gmtime_adj(X509_get_notBefore(x509), 0))
 		cli_fatal("X509_gmtime_adj(): %s", ssl_errno_s);
-	if (!X509_gmtime_adj(X509_get_notAfter(x509), (long)60 *60 * 24 * 3000))
+	if (!X509_gmtime_adj(X509_get_notAfter(x509),
+	    (long)60 * 60 * 24 * 3000))
 		cli_fatal("X509_gmtime_adj(): %s", ssl_errno_s);
 
 	/* Attach the pkey to the certificate. */
@@ -770,11 +774,12 @@ cli_generate_certs(void)
 	if ((name = X509_get_subject_name(x509)) == NULL)
 		cli_fatal("X509_get_subject_name(): %s", ssl_errno_s);
 
+	(void)snprintf(issuer, sizeof(issuer), "kore autogen: %s", appl);
 	if (!X509_NAME_add_entry_by_txt(name, "C",
 	    MBSTRING_ASC, (const unsigned char *)"SE", -1, -1, 0))
 		cli_fatal("X509_NAME_add_entry_by_txt(): C %s", ssl_errno_s);
 	if (!X509_NAME_add_entry_by_txt(name, "O",
-	    MBSTRING_ASC, (const unsigned char *)"kore autogen", -1, -1, 0))
+	    MBSTRING_ASC, (const unsigned char *)issuer, -1, -1, 0))
 		cli_fatal("X509_NAME_add_entry_by_txt(): O %s", ssl_errno_s);
 	if (!X509_NAME_add_entry_by_txt(name, "CN",
 	    MBSTRING_ASC, (const unsigned char *)"localhost", -1, -1, 0))
