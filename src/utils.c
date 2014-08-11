@@ -102,6 +102,25 @@ kore_strlcpy(char *dst, const char *src, size_t len)
 	}
 }
 
+int
+kore_snprintf(char *str, size_t size, int *len, const char *fmt, ...)
+{
+	int		l;
+	va_list		args;
+
+	va_start(args, fmt);
+	l = vsnprintf(str, size, fmt, args);
+	va_end(args);
+
+	if (l == -1 || (size_t)l >= size)
+		return (KORE_RESULT_ERROR);
+
+	if (len != NULL)
+		*len = l;
+
+	return (KORE_RESULT_OK);
+}
+
 long long
 kore_strtonum(const char *str, int base, long long min, long long max, int *err)
 {

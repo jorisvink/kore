@@ -414,6 +414,7 @@ void		kore_strlcpy(char *, const char *, size_t);
 void		kore_server_disconnect(struct connection *);
 int		kore_split_string(char *, char *, char **, size_t);
 void		kore_strip_chars(char *, char, char **);
+int		kore_snprintf(char *, size_t, int *, const char *, ...);
 long long	kore_strtonum(const char *, int, long long, long long, int *);
 int		kore_base64_encode(u_int8_t *, u_int32_t, char **);
 int		kore_base64_decode(char *, u_int8_t **, u_int32_t *);
