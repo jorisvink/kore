@@ -160,7 +160,8 @@ serve_file_upload(struct http_request *req)
 		}
 
 		if (http_file_lookup(req, "file", &name, &d, &len)) {
-			snprintf(buf, sizeof(buf), "%s is %d bytes", name, len);
+			(void)snprintf(buf, sizeof(buf),
+			    "%s is %d bytes", name, len);
 			kore_buf_replace_string(b,
 			    "$upload$", buf, strlen(buf));
 		} else {
@@ -290,12 +291,12 @@ serve_params_test(struct http_request *req)
 	}
 
 	for (i = 1; i < 4; i++) {
-		snprintf(name, sizeof(name), "test%d", i);
+		(void)snprintf(name, sizeof(name), "test%d", i);
 		if (http_argument_get_string(name, &test, &len)) {
-			snprintf(name, sizeof(name), "$test%d$", i);
+			(void)snprintf(name, sizeof(name), "$test%d$", i);
 			kore_buf_replace_string(b, name, test, len);
 		} else {
-			snprintf(name, sizeof(name), "$test%d$", i);
+			(void)snprintf(name, sizeof(name), "$test%d$", i);
 			kore_buf_replace_string(b, name, NULL, 0);
 		}
 	}

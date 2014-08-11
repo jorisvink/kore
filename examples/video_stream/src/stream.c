@@ -76,7 +76,7 @@ video_stream(struct http_request *req)
 {
 	struct video	*v;
 	off_t		start, end;
-	int		n, err, l, status;
+	int		n, err, status;
 	char		*header, *bytes, *range[3], rb[128], *ext, ctype[32];
 
 	if (!video_open(req, &v))
@@ -87,8 +87,7 @@ video_stream(struct http_request *req)
 		return (KORE_RESULT_OK);
 	}
 
-	l = snprintf(ctype, sizeof(ctype), "video/%s", ext + 1);
-	if (l == -1 || (size_t)l >= sizeof(ctype)) {
+	if (!kore_snprintf(ctype, sizeof(ctype), NULL, "video/%s", ext + 1)) {
 		http_response(req, 500, NULL, 0);
 		return (KORE_RESULT_OK);
 	}
@@ -136,9 +135,8 @@ video_stream(struct http_request *req)
 		}
 
 		status = 206;
-		l = snprintf(rb, sizeof(rb), "bytes %ld-%ld/%ld",
-		    start, end - 1, v->size);
-		if (l == -1 || (size_t)l >= sizeof(rb)) {
+		if (!kore_snprintf(rb, sizeof(rb), NULL,
+		    "bytes %ld-%ld/%ld", start, end - 1, v->size)) {
 			http_response(req, 500, NULL, 0);
 			return (KORE_RESULT_OK);
 		}
@@ -163,13 +161,11 @@ video_stream(struct http_request *req)
 static int
 video_open(struct http_request *req, struct video **out)
 {
-	int			l;
 	struct stat		st;
 	struct video		*v;
 	char			fpath[MAXPATHLEN];
 
-	l = snprintf(fpath, sizeof(fpath), "videos%s", req->path);
-	if (l == -1 || (size_t)l >= sizeof(fpath))
+	if (!kore_snprintf(fpath, sizeof(fpath), NULL, "videos%s", req->path))
 		return (KORE_RESULT_ERROR);
 
 	TAILQ_FOREACH(v, &videos, list) {

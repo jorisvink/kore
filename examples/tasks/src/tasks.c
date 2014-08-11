@@ -156,7 +156,6 @@ post_back(struct http_request *req)
 int
 run_curl(struct kore_task *t)
 {
-	int			l;
 	struct kore_buf		*b;
 	u_int32_t		len;
 	CURLcode		res;
@@ -172,8 +171,8 @@ run_curl(struct kore_task *t)
 	if (len > sizeof(user))
 		return (KORE_RESULT_ERROR);
 
-	l = snprintf(fields, sizeof(fields), "user=%.*s", len, user);
-	if (l == -1 || (size_t)l >= sizeof(fields))
+	if (!kore_snprintf(fields, sizeof(fields),
+	    NULL, "user=%.*s", len, user))
 		return (KORE_RESULT_ERROR);
 
 	if ((curl = curl_easy_init()) == NULL)
