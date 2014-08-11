@@ -16,6 +16,6 @@ Run:
 
 Test:
 ```
-	# curl -i -k https://127.0.0.1:8888/?id=astring
+	# curl -i -k https://127.0.0.1:8888/?user=astring
 	The returned data must match what you supplied in user ([a-z] string)
 ```
