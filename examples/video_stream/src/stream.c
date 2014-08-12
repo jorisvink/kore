@@ -83,11 +83,13 @@ video_stream(struct http_request *req)
 		return (KORE_RESULT_OK);
 
 	if ((ext = strrchr(req->path, '.')) == NULL) {
+		v->ref--;
 		http_response(req, 400, NULL, 0);
 		return (KORE_RESULT_OK);
 	}
 
 	if (!kore_snprintf(ctype, sizeof(ctype), NULL, "video/%s", ext + 1)) {
+		v->ref--;
 		http_response(req, 500, NULL, 0);
 		return (KORE_RESULT_OK);
 	}
@@ -97,6 +99,7 @@ video_stream(struct http_request *req)
 
 	if (http_request_header(req, "range", &header)) {
 		if ((bytes = strchr(header, '=')) == NULL) {
+			v->ref--;
 			http_response(req, 416, NULL, 0);
 			return (KORE_RESULT_OK);
 		}
@@ -104,6 +107,7 @@ video_stream(struct http_request *req)
 		bytes++;
 		n = kore_split_string(bytes, "-", range, 2);
 		if (n == 0) {
+			v->ref--;
 			http_response(req, 416, NULL, 0);
 			return (KORE_RESULT_OK);
 		}
@@ -111,6 +115,7 @@ video_stream(struct http_request *req)
 		if (n >= 1) {
 			start = kore_strtonum64(range[0], 10, &err);
 			if (err != KORE_RESULT_OK) {
+				v->ref--;
 				http_response(req, 416, NULL, 0);
 				return (KORE_RESULT_OK);
 			}
@@ -119,6 +124,7 @@ video_stream(struct http_request *req)
 		if (n > 1) {
 			end = kore_strtonum64(range[1], 10, &err);
 			if (err != KORE_RESULT_OK) {
+				v->ref--;
 				http_response(req, 416, NULL, 0);
 				return (KORE_RESULT_OK);
 			}
@@ -130,6 +136,7 @@ video_stream(struct http_request *req)
 			end = v->size;
 
 		if (start > end || start > v->size || end > v->size) {
+			v->ref--;
 			http_response(req, 416, NULL, 0);
 			return (KORE_RESULT_OK);
 		}
@@ -137,6 +144,7 @@ video_stream(struct http_request *req)
 		status = 206;
 		if (!kore_snprintf(rb, sizeof(rb), NULL,
 		    "bytes %ld-%ld/%ld", start, end - 1, v->size)) {
+			v->ref--;
 			http_response(req, 500, NULL, 0);
 			return (KORE_RESULT_OK);
 		}
