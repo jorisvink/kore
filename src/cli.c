@@ -713,6 +713,8 @@ cli_find_files(const char *path, void (*cb)(char *, struct dirent *))
 			cb(fpath, dp);
 		}
 	}
+
+	closedir(d);
 }
 
 static void
