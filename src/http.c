@@ -122,6 +122,7 @@ http_request_new(struct connection *c, struct spdy_stream *s, const char *host,
 	req->hdlr = NULL;
 	req->agent = NULL;
 	req->flags = flags;
+	req->fsm_state = 0;
 	req->post_data = NULL;
 	req->hdlr_extra = NULL;
 	req->query_string = NULL;
@@ -947,6 +948,43 @@ http_post_data_bytes(struct http_request *req, u_int32_t *len)
 	req->post_data = NULL;
 
 	return (data);
+}
+
+int
+http_state_run(struct http_state *states, u_int8_t elm,
+    struct http_request *req)
+{
+	int		r, done;
+
+	done = 0;
+
+	while (!done) {
+		if (req->fsm_state >= elm) {
+			fatal("http_state_run: fsm_state > elm (%d/%d)",
+			    req->fsm_state, elm);
+		}
+
+		kore_debug("http_state_run: running %s",
+		    states[req->fsm_state].name);
+
+		r = states[req->fsm_state].cb(req);
+		switch (r) {
+		case HTTP_STATE_ERROR:
+			return (KORE_RESULT_OK);
+		case HTTP_STATE_RETRY:
+			return (KORE_RESULT_RETRY);
+		case HTTP_STATE_OK:
+			break;
+		case HTTP_STATE_COMPLETE:
+			done = 1;
+			break;
+		default:
+			fatal("http_state_run: unknown return value %d", r);
+		}
+	}
+
+	kore_debug("http_state_run(%p): done", req);
+	return (KORE_RESULT_OK);
 }
 
 static void

@@ -37,6 +37,11 @@
 #define HTTP_ARG_TYPE_INT64	7
 #define HTTP_ARG_TYPE_UINT64	8
 
+#define HTTP_STATE_ERROR	0
+#define HTTP_STATE_OK		1
+#define HTTP_STATE_COMPLETE	2
+#define HTTP_STATE_RETRY	3
+
 struct http_header {
 	char			*header;
 	char			*value;
@@ -159,6 +164,7 @@ struct kore_task;
 struct http_request {
 	u_int8_t			method;
 	u_int8_t			flags;
+	u_int8_t			fsm_state;
 	int				status;
 	u_int64_t			start;
 	u_int64_t			end;
@@ -183,6 +189,11 @@ struct http_request {
 	TAILQ_HEAD(, http_file)			files;
 	TAILQ_ENTRY(http_request)		list;
 	TAILQ_ENTRY(http_request)		olist;
+};
+
+struct http_state {
+	const char		*name;
+	int			(*cb)(struct http_request *);
 };
 
 extern int		http_request_count;
@@ -210,6 +221,8 @@ void		http_response_header(struct http_request *,
 int		http_request_new(struct connection *, struct spdy_stream *,
 		    const char *, const char *, const char *, const char *,
 		    struct http_request **);
+int		http_state_run(struct http_state *, u_int8_t,
+		    struct http_request *);
 
 int		http_argument_urldecode(char *);
 int		http_header_recv(struct netbuf *);
