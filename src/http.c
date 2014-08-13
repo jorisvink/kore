@@ -847,6 +847,9 @@ http_populate_multipart_form(struct http_request *req, int *v)
 				;
 
 			c = kore_split_string(d, ";", opt, 5);
+			if (c < 3)
+				continue;
+
 			if (strcasecmp(opt[0], "form-data"))
 				continue;
 
