@@ -147,8 +147,10 @@ kore_pgsql_continue(struct http_request *req, struct kore_pgsql *pgsql)
 		pgsql->error = NULL;
 	}
 
-	if (pgsql->result)
+	if (pgsql->result) {
 		PQclear(pgsql->result);
+		pgsql->result = NULL;
+	}
 
 	switch (pgsql->state) {
 	case KORE_PGSQL_STATE_INIT:
@@ -245,6 +247,10 @@ pgsql_conn_release(struct kore_pgsql *pgsql)
 
 	kore_mem_free(pgsql->conn->job->query);
 	kore_mem_free(pgsql->conn->job);
+
+	/* Drain just in case. */
+	while (PQgetResult(pgsql->conn->db) != NULL)
+		;
 
 	pgsql->conn->job = NULL;
 	pgsql->conn->flags |= PGSQL_CONN_FREE;
