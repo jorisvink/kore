@@ -40,6 +40,7 @@ struct pgsql_job {
 #define PGSQL_CONN_MAX		2
 #define PGSQL_CONN_FREE		0x01
 
+static void	pgsql_conn_release(struct kore_pgsql *);
 static void	pgsql_conn_cleanup(struct pgsql_conn *);
 static int	pgsql_conn_create(struct kore_pgsql *);
 static void	pgsql_read_result(struct kore_pgsql *, int);
@@ -138,9 +139,6 @@ kore_pgsql_handle(void *c, int err)
 void
 kore_pgsql_continue(struct http_request *req, struct kore_pgsql *pgsql)
 {
-	int				fd;
-	struct pgsql_conn		*conn;
-
 	kore_debug("kore_pgsql_continue: %p->%p (%d)",
 	    req->owner, req, pgsql->state);
 
@@ -152,29 +150,17 @@ kore_pgsql_continue(struct http_request *req, struct kore_pgsql *pgsql)
 	if (pgsql->result)
 		PQclear(pgsql->result);
 
-	conn = pgsql->conn;
 	switch (pgsql->state) {
 	case KORE_PGSQL_STATE_INIT:
 	case KORE_PGSQL_STATE_WAIT:
 		break;
 	case KORE_PGSQL_STATE_DONE:
 		http_request_wakeup(req);
-		pgsql->conn = NULL;
-		pgsql->state = KORE_PGSQL_STATE_COMPLETE;
-
-		kore_mem_free(conn->job->query);
-		kore_mem_free(conn->job);
-
-		conn->job = NULL;
-		conn->flags |= PGSQL_CONN_FREE;
-		TAILQ_INSERT_TAIL(&pgsql_conn_free, conn, list);
-
-		fd = PQsocket(conn->db);
-		kore_platform_disable_read(fd);
+		pgsql_conn_release(pgsql);
 		break;
 	case KORE_PGSQL_STATE_ERROR:
 	case KORE_PGSQL_STATE_RESULT:
-		kore_pgsql_handle(conn, 0);
+		kore_pgsql_handle(pgsql->conn, 0);
 		break;
 	default:
 		fatal("unknown pgsql state %d", pgsql->state);
@@ -184,10 +170,8 @@ kore_pgsql_continue(struct http_request *req, struct kore_pgsql *pgsql)
 void
 kore_pgsql_cleanup(struct kore_pgsql *pgsql)
 {
-	if (pgsql->result != NULL) {
-		kore_log(LOG_NOTICE, "cleaning up leaked pgsql result");
+	if (pgsql->result != NULL)
 		PQclear(pgsql->result);
-	}
 
 	if (pgsql->error != NULL)
 		kore_mem_free(pgsql->error);
@@ -195,6 +179,7 @@ kore_pgsql_cleanup(struct kore_pgsql *pgsql)
 	if (pgsql->conn != NULL) {
 		while (PQgetResult(pgsql->conn->db) != NULL)
 			;
+		pgsql_conn_release(pgsql);
 	}
 
 	pgsql->result = NULL;
@@ -248,6 +233,28 @@ pgsql_conn_create(struct kore_pgsql *pgsql)
 	TAILQ_INSERT_TAIL(&pgsql_conn_free, conn, list);
 
 	return (KORE_RESULT_OK);
+}
+
+static void
+pgsql_conn_release(struct kore_pgsql *pgsql)
+{
+	int		fd;
+
+	if (pgsql->conn == NULL)
+		return;
+
+	kore_mem_free(pgsql->conn->job->query);
+	kore_mem_free(pgsql->conn->job);
+
+	pgsql->conn->job = NULL;
+	pgsql->conn->flags |= PGSQL_CONN_FREE;
+	TAILQ_INSERT_TAIL(&pgsql_conn_free, pgsql->conn, list);
+
+	fd = PQsocket(pgsql->conn->db);
+	kore_platform_disable_read(fd);
+	pgsql->state = KORE_PGSQL_STATE_COMPLETE;
+
+	pgsql->conn = NULL;
 }
 
 static void
