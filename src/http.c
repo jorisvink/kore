@@ -973,7 +973,7 @@ http_state_run(struct http_state *states, u_int8_t elm,
 			return (KORE_RESULT_OK);
 		case HTTP_STATE_RETRY:
 			return (KORE_RESULT_RETRY);
-		case HTTP_STATE_OK:
+		case HTTP_STATE_CONTINUE:
 			break;
 		case HTTP_STATE_COMPLETE:
 			done = 1;
