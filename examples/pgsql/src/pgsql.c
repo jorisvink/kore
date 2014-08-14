@@ -97,11 +97,8 @@ request_perform_query(struct http_request *req)
 
 	/* Fire off the query. */
 	if (!kore_pgsql_async(&state->sql, req, "SELECT * FROM coders")) {
-		/*
-		 * If the sql was NULL we need to retry as there was no
-		 * available connection.
-		 */
-		if (state->sql.conn == NULL) {
+		/* If the state was still INIT, we'll try again later. */
+		if (state->sql.state == KORE_PGSQL_STATE_INIT) {
 			req->fsm_state = REQ_STATE_QUERY;
 			return (HTTP_STATE_RETRY);
 		}
