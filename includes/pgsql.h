@@ -33,6 +33,8 @@ struct kore_pgsql {
 	char			*error;
 	PGresult		*result;
 	struct pgsql_conn	*conn;
+
+	LIST_ENTRY(kore_pgsql)	rlist;
 };
 
 extern u_int16_t	pgsql_conn_max;

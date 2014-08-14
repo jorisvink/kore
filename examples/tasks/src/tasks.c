@@ -38,24 +38,38 @@ int		post_back(struct http_request *);
 int		page_handler(struct http_request *);
 size_t		curl_write_cb(char *, size_t, size_t, void *);
 
+struct rstate {
+	struct kore_task	task;
+};
+
 int
 page_handler(struct http_request *req)
 {
 	u_int32_t	len;
+	struct rstate	*state;
 	char		*user, result[64];
 
 	/*
 	 * Lets check if a task has been created yet, this is important
 	 * as we only want to fire this off once and we will be called
 	 * again once it has been created.
+	 *
+	 * In this example, we'll store our state with our task in hdlr_extra.
 	 */
-	if (req->task == NULL) {
+	if (req->hdlr_extra == NULL) {
 		/* Grab the user argument */
 		http_populate_arguments(req);
 		if (!http_argument_get_string("user", &user, &len)) {
 			http_response(req, 500, "ERROR\n", 6);
 			return (KORE_RESULT_OK);
 		}
+
+		/*
+		 * Allocate rstate and bind it to the hdlr_extra field.
+		 * Kore automatically frees this when freeing the result.
+		 */
+		state = kore_malloc(sizeof(*state));
+		req->hdlr_extra = state;
 
 		/*
 		 * Create a new task that will execute the run_curl()
@@ -65,20 +79,22 @@ page_handler(struct http_request *req)
 		 * the page handler for that request to refire after the
 		 * task has completed or when it writes on the task channel.
 		 */
-		kore_task_create(&req->task, run_curl);
-		kore_task_bind_request(req->task, req);
+		kore_task_create(&state->task, run_curl);
+		kore_task_bind_request(&state->task, req);
 
 		/*
 		 * Start the task and write the user we received in our
 		 * GET request to its channel.
 		 */
-		kore_task_run(req->task);
-		kore_task_channel_write(req->task, user, len);
+		kore_task_run(&state->task);
+		kore_task_channel_write(&state->task, user, len);
 
 		/*
 		 * Tell Kore to retry us later.
 		 */
 		return (KORE_RESULT_RETRY);
+	} else {
+		state = req->hdlr_extra;
 	}
 
 	/*
@@ -88,7 +104,7 @@ page_handler(struct http_request *req)
 	 * In order to distuingish between the two we can inspect the
 	 * state of the task.
 	 */
-	if (kore_task_state(req->task) != KORE_TASK_STATE_FINISHED) {
+	if (kore_task_state(&state->task) != KORE_TASK_STATE_FINISHED) {
 		http_request_sleep(req);
 		return (KORE_RESULT_RETRY);
 	}
@@ -96,8 +112,8 @@ page_handler(struct http_request *req)
 	/*
 	 * Task is finished, check the result.
 	 */
-	if (kore_task_result(req->task) != KORE_RESULT_OK) {
-		kore_task_destroy(req->task);
+	if (kore_task_result(&state->task) != KORE_RESULT_OK) {
+		kore_task_destroy(&state->task);
 		http_response(req, 500, NULL, 0);
 		return (KORE_RESULT_OK);
 	}
@@ -110,7 +126,7 @@ page_handler(struct http_request *req)
 	 * larger then the buffer you passed this is a sign of truncation
 	 * and should be treated carefully.
 	 */
-	len = kore_task_channel_read(req->task, result, sizeof(result));
+	len = kore_task_channel_read(&state->task, result, sizeof(result));
 	if (len > sizeof(result)) {
 		http_response(req, 500, NULL, 0);
 	} else {
@@ -118,7 +134,7 @@ page_handler(struct http_request *req)
 	}
 
 	/* We good, destroy the task. */
-	kore_task_destroy(req->task);
+	kore_task_destroy(&state->task);
 
 	return (KORE_RESULT_OK);
 }

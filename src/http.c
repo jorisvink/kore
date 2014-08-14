@@ -23,6 +23,10 @@
 #include "kore.h"
 #include "http.h"
 
+#if defined(KORE_USE_PGSQL)
+#include "pgsql.h"
+#endif
+
 #if defined(KORE_USE_TASKS)
 #include "tasks.h"
 #endif
@@ -144,7 +148,11 @@ http_request_new(struct connection *c, struct spdy_stream *s, const char *host,
 	}
 
 #if defined(KORE_USE_TASKS)
-	req->task = NULL;
+	LIST_INIT(&(req->tasks));
+#endif
+
+#if defined(KORE_USE_PGSQL)
+	LIST_INIT(&(req->pgsqls));
 #endif
 
 	http_request_count++;
@@ -296,15 +304,38 @@ http_response_header(struct http_request *req,
 void
 http_request_free(struct http_request *req)
 {
+#if defined(KORE_USE_TASKS)
+	struct kore_task	*t, *nt;
+	int			pending_tasks;
+#endif
+#if defined(KORE_USE_PGSQL)
+	struct kore_pgsql	*pgsql;
+#endif
 	struct http_file	*f, *fnext;
 	struct http_arg		*q, *qnext;
 	struct http_header	*hdr, *next;
 
 #if defined(KORE_USE_TASKS)
-	if (req->task != NULL && !kore_task_finished(req->task)) {
-		if (kore_task_state(req->task) != KORE_TASK_STATE_ABORT)
-			kore_task_set_state(req->task, KORE_TASK_STATE_ABORT);
+	pending_tasks = 0;
+	for (t = LIST_FIRST(&(req->tasks)); t != NULL; t = nt) {
+		nt = LIST_NEXT(t, rlist);
+		if (!kore_task_finished(t)) {
+			pending_tasks++;
+		} else {
+			kore_task_destroy(t);
+		}
+	}
+
+	if (pending_tasks) {
+		kore_debug("http_request_free %d pending tasks", pending_tasks);
 		return;
+	}
+#endif
+
+#if defined(KORE_USE_PGSQL)
+	while (!LIST_EMPTY(&(req->pgsqls))) {
+		pgsql = LIST_FIRST(&(req->pgsqls));
+		kore_pgsql_cleanup(pgsql);
 	}
 #endif
 

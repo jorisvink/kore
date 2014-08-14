@@ -176,9 +176,10 @@ struct http_request {
 	void				*hdlr_extra;
 	char				*query_string;
 	u_int8_t			*multipart_body;
-
 	struct kore_module_handle	*hdlr;
-	struct kore_task		*task;
+
+	LIST_HEAD(, kore_task)		tasks;
+	LIST_HEAD(, kore_pgsql)		pgsqls;
 
 	TAILQ_HEAD(, http_header)		req_headers;
 	TAILQ_HEAD(, http_header)		resp_headers;

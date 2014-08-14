@@ -58,12 +58,8 @@ kore_task_init(void)
 }
 
 void
-kore_task_create(struct kore_task **out, int (*entry)(struct kore_task *))
+kore_task_create(struct kore_task *t, int (*entry)(struct kore_task *))
 {
-	struct kore_task		*t;
-
-	t = kore_malloc(sizeof(struct kore_task));
-
 	t->req = NULL;
 	t->entry = entry;
 	t->type = KORE_TYPE_TASK;
@@ -72,9 +68,6 @@ kore_task_create(struct kore_task **out, int (*entry)(struct kore_task *))
 
 	if (socketpair(AF_UNIX, SOCK_STREAM, 0,t->fds) == -1)
 		fatal("kore_task_create: socketpair() %s", errno_s);
-
-	if (out != NULL)
-		*out = t;
 }
 
 void
@@ -104,7 +97,7 @@ kore_task_bind_request(struct kore_task *t, struct http_request *req)
 	kore_debug("kore_task_bind_request: %p bound to %p", req, t);
 
 	t->req = req;
-	req->task = t;
+	LIST_INSERT_HEAD(&(req->tasks), t, rlist);
 
 	http_request_sleep(req);
 	kore_platform_schedule_read(t->fds[0], t);
@@ -115,14 +108,15 @@ kore_task_destroy(struct kore_task *t)
 {
 	kore_debug("kore_task_destroy: %p", t);
 
-	if (t->req != NULL)
-		t->req->task = NULL;
+	if (t->req != NULL) {
+		t->req = NULL;
+		LIST_REMOVE(t, rlist);
+	}
 
 	close(t->fds[0]);
 	close(t->fds[1]);		/* This might already be closed. */
 
 	pthread_rwlock_destroy(&(t->lock));
-	kore_mem_free(t);
 }
 
 int

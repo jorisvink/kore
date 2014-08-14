@@ -90,6 +90,8 @@ kore_pgsql_async(struct kore_pgsql *pgsql, struct http_request *req,
 	conn->job->pgsql = pgsql;
 	conn->job->req = req;
 
+	LIST_INSERT_HEAD(&(req->pgsqls), pgsql, rlist);
+
 	if (!PQsendQuery(conn->db, query)) {
 		pgsql_conn_cleanup(conn);
 		return (KORE_RESULT_ERROR);
@@ -172,6 +174,8 @@ kore_pgsql_continue(struct http_request *req, struct kore_pgsql *pgsql)
 void
 kore_pgsql_cleanup(struct kore_pgsql *pgsql)
 {
+	kore_debug("kore_pgsql_cleanup(%p)", pgsql);
+
 	if (pgsql->result != NULL)
 		PQclear(pgsql->result);
 
@@ -187,6 +191,8 @@ kore_pgsql_cleanup(struct kore_pgsql *pgsql)
 	pgsql->result = NULL;
 	pgsql->error = NULL;
 	pgsql->conn = NULL;
+
+	LIST_REMOVE(pgsql, rlist);
 }
 
 void
