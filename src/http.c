@@ -23,10 +23,6 @@
 #include "kore.h"
 #include "http.h"
 
-#if defined(KORE_USE_PGSQL)
-#include "pgsql.h"
-#endif
-
 #if defined(KORE_USE_TASKS)
 #include "tasks.h"
 #endif
@@ -357,10 +353,6 @@ http_request_free(struct http_request *req)
 		kore_mem_free(f->name);
 		kore_mem_free(f);
 	}
-
-#if defined(KORE_USE_PGSQL)
-	kore_pgsql_cleanup(req);
-#endif
 
 	if (req->method == HTTP_METHOD_POST && req->post_data != NULL)
 		kore_buf_free(req->post_data);

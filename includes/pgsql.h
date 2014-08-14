@@ -19,11 +19,20 @@
 
 #include <libpq-fe.h>
 
+struct pgsql_conn {
+	u_int8_t			type;
+	u_int8_t			flags;
+
+	PGconn				*db;
+	struct pgsql_job		*job;
+	TAILQ_ENTRY(pgsql_conn)		list;
+};
+
 struct kore_pgsql {
 	u_int8_t		state;
 	char			*error;
 	PGresult		*result;
-	void			*conn;
+	struct pgsql_conn	*conn;
 };
 
 extern u_int16_t	pgsql_conn_max;
@@ -31,9 +40,11 @@ extern char		*pgsql_conn_string;
 
 void		kore_pgsql_init(void);
 void		kore_pgsql_handle(void *, int);
-void		kore_pgsql_cleanup(struct http_request *);
-void		kore_pgsql_continue(struct http_request *, int);
-int		kore_pgsql_query(struct http_request *, char *, int);
+void		kore_pgsql_cleanup(struct kore_pgsql *);
+void		kore_pgsql_continue(struct http_request *,
+		    struct kore_pgsql *);
+int		kore_pgsql_async(struct kore_pgsql *,
+		    struct http_request *, const char *);
 
 int		kore_pgsql_ntuples(struct kore_pgsql *);
 void		kore_pgsql_logerror(struct kore_pgsql *);
@@ -45,34 +56,5 @@ char		*kore_pgsql_getvalue(struct kore_pgsql *, int, int);
 #define KORE_PGSQL_STATE_ERROR		4
 #define KORE_PGSQL_STATE_DONE		5
 #define KORE_PGSQL_STATE_COMPLETE	6
-
-#define KORE_PGSQL(r, q, i, s)						\
-	do {								\
-		if (r->pgsql[i] == NULL)				\
-			if (!kore_pgsql_query(r, q, i)) {		\
-				if (r->pgsql[i] == NULL)		\
-					return (KORE_RESULT_RETRY);	\
-				s;					\
-				r->pgsql[i]->state =			\
-				    KORE_PGSQL_STATE_COMPLETE;		\
-			}						\
-		if (r->pgsql[i] == NULL)				\
-			return (KORE_RESULT_RETRY);			\
-		switch (r->pgsql[i]->state) {				\
-		case KORE_PGSQL_STATE_ERROR:				\
-		case KORE_PGSQL_STATE_RESULT:				\
-			s;						\
-		case KORE_PGSQL_STATE_COMPLETE:				\
-			break;						\
-		default:						\
-			kore_pgsql_continue(r, i);			\
-			return (KORE_RESULT_RETRY);			\
-		}							\
-		if (r->pgsql[i]->state == KORE_PGSQL_STATE_ERROR ||	\
-		    r->pgsql[i]->state == KORE_PGSQL_STATE_RESULT) {	\
-			kore_pgsql_continue(r, i);			\
-			return (KORE_RESULT_RETRY);			\
-		}							\
-	} while (0);
 
 #endif

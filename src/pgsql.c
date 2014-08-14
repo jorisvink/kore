@@ -25,30 +25,24 @@
 #include "pgsql.h"
 
 struct pgsql_job {
-	u_int8_t		idx;
-	struct http_request	*req;
 	u_int64_t		start;
 	char			*query;
+
+	struct http_request	*req;
+	struct kore_pgsql	*pgsql;
 
 	TAILQ_ENTRY(pgsql_job)	list;
 };
 
+#define PGSQL_IS_BLOCKING	0
+#define PGSQL_IS_ASYNC		1
+
 #define PGSQL_CONN_MAX		2
 #define PGSQL_CONN_FREE		0x01
 
-struct pgsql_conn {
-	u_int8_t			type;
-	u_int8_t			flags;
-
-	PGconn				*db;
-	struct pgsql_job		*job;
-	TAILQ_ENTRY(pgsql_conn)		list;
-};
-
 static void	pgsql_conn_cleanup(struct pgsql_conn *);
-static int	pgsql_conn_create(struct http_request *, int);
-static void	pgsql_read_result(struct http_request *, int,
-		    struct pgsql_conn *);
+static int	pgsql_conn_create(struct kore_pgsql *);
+static void	pgsql_read_result(struct kore_pgsql *, int);
 
 static TAILQ_HEAD(, pgsql_conn)		pgsql_conn_free;
 static u_int16_t			pgsql_conn_count;
@@ -63,29 +57,20 @@ kore_pgsql_init(void)
 }
 
 int
-kore_pgsql_query(struct http_request *req, char *query, int idx)
+kore_pgsql_async(struct kore_pgsql *pgsql, struct http_request *req,
+    const char *query)
 {
 	int			fd;
 	struct pgsql_conn	*conn;
 
-	if (idx >= HTTP_PGSQL_MAX)
-		fatal("kore_pgsql_query: %d > %d", idx, HTTP_PGSQL_MAX);
-	if (req->pgsql[idx] != NULL)
-		fatal("kore_pgsql_query: %d already exists", idx);
+	pgsql->state = KORE_PGSQL_STATE_INIT;
+	pgsql->result = NULL;
+	pgsql->error = NULL;
+	pgsql->conn = NULL;
 
 	if (TAILQ_EMPTY(&pgsql_conn_free)) {
-		if (pgsql_conn_count >= pgsql_conn_max)
-			return (KORE_RESULT_ERROR);
-	}
-
-	req->pgsql[idx] = kore_malloc(sizeof(struct kore_pgsql));
-	req->pgsql[idx]->state = KORE_PGSQL_STATE_INIT;
-	req->pgsql[idx]->result = NULL;
-	req->pgsql[idx]->error = NULL;
-	req->pgsql[idx]->conn = NULL;
-
-	if (TAILQ_EMPTY(&pgsql_conn_free)) {
-		if (pgsql_conn_create(req, idx) == KORE_RESULT_ERROR)
+		if ((pgsql_conn_count >= pgsql_conn_max) ||
+		    !pgsql_conn_create(pgsql))
 			return (KORE_RESULT_ERROR);
 	}
 
@@ -97,12 +82,12 @@ kore_pgsql_query(struct http_request *req, char *query, int idx)
 	conn->flags &= ~PGSQL_CONN_FREE;
 	TAILQ_REMOVE(&pgsql_conn_free, conn, list);
 
-	req->pgsql[idx]->conn = conn;
+	pgsql->conn = conn;
 	conn->job = kore_malloc(sizeof(struct pgsql_job));
 	conn->job->query = kore_strdup(query);
 	conn->job->start = kore_time_ms();
+	conn->job->pgsql = pgsql;
 	conn->job->req = req;
-	conn->job->idx = idx;
 
 	if (!PQsendQuery(conn->db, query)) {
 		pgsql_conn_cleanup(conn);
@@ -114,7 +99,7 @@ kore_pgsql_query(struct http_request *req, char *query, int idx)
 		fatal("PQsocket returned < 0 fd on open connection");
 
 	kore_platform_schedule_read(fd, conn);
-	req->pgsql[idx]->state = KORE_PGSQL_STATE_WAIT;
+	pgsql->state = KORE_PGSQL_STATE_WAIT;
 	kore_debug("query '%s' for %p sent on %p", query, req, conn);
 
 	return (KORE_RESULT_OK);
@@ -123,8 +108,8 @@ kore_pgsql_query(struct http_request *req, char *query, int idx)
 void
 kore_pgsql_handle(void *c, int err)
 {
-	int			i;
 	struct http_request	*req;
+	struct kore_pgsql	*pgsql;
 	struct pgsql_conn	*conn = (struct pgsql_conn *)c;
 
 	if (err) {
@@ -132,52 +117,50 @@ kore_pgsql_handle(void *c, int err)
 		return;
 	}
 
-	i = conn->job->idx;
 	req = conn->job->req;
-	kore_debug("kore_pgsql_handle: %p (%d) (%d)",
-	    req, i, req->pgsql[i]->state);
+	pgsql = conn->job->pgsql;
+	kore_debug("kore_pgsql_handle: %p (%d)", req, pgsql->state);
 
 	if (!PQconsumeInput(conn->db)) {
-		req->pgsql[i]->state = KORE_PGSQL_STATE_ERROR;
-		req->pgsql[i]->error = kore_strdup(PQerrorMessage(conn->db));
+		pgsql->state = KORE_PGSQL_STATE_ERROR;
+		pgsql->error = kore_strdup(PQerrorMessage(conn->db));
 	} else {
-		pgsql_read_result(req, i, conn);
+		pgsql_read_result(pgsql, PGSQL_IS_ASYNC);
 	}
 
-	if (req->pgsql[i]->state == KORE_PGSQL_STATE_WAIT) {
+	if (pgsql->state == KORE_PGSQL_STATE_WAIT) {
 		http_request_sleep(req);
 	} else {
 		http_request_wakeup(req);
-		http_process_request(req, 1);
 	}
 }
 
 void
-kore_pgsql_continue(struct http_request *req, int i)
+kore_pgsql_continue(struct http_request *req, struct kore_pgsql *pgsql)
 {
 	int				fd;
 	struct pgsql_conn		*conn;
 
-	kore_debug("kore_pgsql_continue: %p->%p (%d) (%d)",
-	    req->owner, req, i, req->pgsql[i]->state);
+	kore_debug("kore_pgsql_continue: %p->%p (%d)",
+	    req->owner, req, pgsql->state);
 
-	if (req->pgsql[i]->error) {
-		kore_mem_free(req->pgsql[i]->error);
-		req->pgsql[i]->error = NULL;
+	if (pgsql->error) {
+		kore_mem_free(pgsql->error);
+		pgsql->error = NULL;
 	}
 
-	if (req->pgsql[i]->result)
-		PQclear(req->pgsql[i]->result);
+	if (pgsql->result)
+		PQclear(pgsql->result);
 
-	conn = req->pgsql[i]->conn;
-	switch (req->pgsql[i]->state) {
+	conn = pgsql->conn;
+	switch (pgsql->state) {
 	case KORE_PGSQL_STATE_INIT:
 	case KORE_PGSQL_STATE_WAIT:
 		break;
 	case KORE_PGSQL_STATE_DONE:
 		http_request_wakeup(req);
-		req->pgsql[i]->conn = NULL;
-		req->pgsql[i]->state = KORE_PGSQL_STATE_COMPLETE;
+		pgsql->conn = NULL;
+		pgsql->state = KORE_PGSQL_STATE_COMPLETE;
 
 		kore_mem_free(conn->job->query);
 		kore_mem_free(conn->job);
@@ -188,46 +171,35 @@ kore_pgsql_continue(struct http_request *req, int i)
 
 		fd = PQsocket(conn->db);
 		kore_platform_disable_read(fd);
-
-		http_process_request(req, 0);
 		break;
 	case KORE_PGSQL_STATE_ERROR:
 	case KORE_PGSQL_STATE_RESULT:
 		kore_pgsql_handle(conn, 0);
 		break;
 	default:
-		fatal("unknown pgsql state");
+		fatal("unknown pgsql state %d", pgsql->state);
 	}
 }
 
 void
-kore_pgsql_cleanup(struct http_request *req)
+kore_pgsql_cleanup(struct kore_pgsql *pgsql)
 {
-	int			i;
-	struct pgsql_conn	*conn;
-
-	for (i = 0; i < HTTP_PGSQL_MAX; i++) {
-		if (req->pgsql[i] == NULL)
-			continue;
-
-		if (req->pgsql[i]->result != NULL) {
-			kore_log(LOG_NOTICE, "cleaning up leaked pgsql result");
-			PQclear(req->pgsql[i]->result);
-		}
-
-		if (req->pgsql[i]->error != NULL)
-			kore_mem_free(req->pgsql[i]->error);
-
-		if (req->pgsql[i]->conn != NULL) {
-			conn = req->pgsql[i]->conn;
-			while (PQgetResult(conn->db) != NULL)
-				;
-		}
-
-		req->pgsql[i]->conn = NULL;
-		kore_mem_free(req->pgsql[i]);
-		req->pgsql[i] = NULL;
+	if (pgsql->result != NULL) {
+		kore_log(LOG_NOTICE, "cleaning up leaked pgsql result");
+		PQclear(pgsql->result);
 	}
+
+	if (pgsql->error != NULL)
+		kore_mem_free(pgsql->error);
+
+	if (pgsql->conn != NULL) {
+		while (PQgetResult(pgsql->conn->db) != NULL)
+			;
+	}
+
+	pgsql->result = NULL;
+	pgsql->error = NULL;
+	pgsql->conn = NULL;
 }
 
 void
@@ -250,7 +222,7 @@ kore_pgsql_getvalue(struct kore_pgsql *pgsql, int row, int col)
 }
 
 static int
-pgsql_conn_create(struct http_request *req, int idx)
+pgsql_conn_create(struct kore_pgsql *pgsql)
 {
 	struct pgsql_conn	*conn;
 
@@ -264,8 +236,8 @@ pgsql_conn_create(struct http_request *req, int idx)
 
 	conn->db = PQconnectdb(pgsql_conn_string);
 	if (conn->db == NULL || (PQstatus(conn->db) != CONNECTION_OK)) {
-		req->pgsql[idx]->state = KORE_PGSQL_STATE_ERROR;
-		req->pgsql[idx]->error = kore_strdup(PQerrorMessage(conn->db));
+		pgsql->state = KORE_PGSQL_STATE_ERROR;
+		pgsql->error = kore_strdup(PQerrorMessage(conn->db));
 		pgsql_conn_cleanup(conn);
 		return (KORE_RESULT_ERROR);
 	}
@@ -281,8 +253,8 @@ pgsql_conn_create(struct http_request *req, int idx)
 static void
 pgsql_conn_cleanup(struct pgsql_conn *conn)
 {
-	int			i;
 	struct http_request	*req;
+	struct kore_pgsql	*pgsql;
 
 	kore_debug("pgsql_conn_cleanup(): %p", conn);
 
@@ -290,13 +262,13 @@ pgsql_conn_cleanup(struct pgsql_conn *conn)
 		TAILQ_REMOVE(&pgsql_conn_free, conn, list);
 
 	if (conn->job) {
-		i = conn->job->idx;
 		req = conn->job->req;
+		pgsql = conn->job->pgsql;
 		http_request_wakeup(req);
 
-		req->pgsql[i]->conn = NULL;
-		req->pgsql[i]->state = KORE_PGSQL_STATE_ERROR;
-		req->pgsql[i]->error = kore_strdup(PQerrorMessage(conn->db));
+		pgsql->conn = NULL;
+		pgsql->state = KORE_PGSQL_STATE_ERROR;
+		pgsql->error = kore_strdup(PQerrorMessage(conn->db));
 
 		kore_mem_free(conn->job->query);
 		kore_mem_free(conn->job);
@@ -311,40 +283,41 @@ pgsql_conn_cleanup(struct pgsql_conn *conn)
 }
 
 static void
-pgsql_read_result(struct http_request *req, int i, struct pgsql_conn *conn)
+pgsql_read_result(struct kore_pgsql *pgsql, int async)
 {
-	if (PQisBusy(conn->db)) {
-		req->pgsql[i]->state = KORE_PGSQL_STATE_WAIT;
+	if (async) {
+		if (PQisBusy(pgsql->conn->db)) {
+			pgsql->state = KORE_PGSQL_STATE_WAIT;
+			return;
+		}
+	}
+
+	pgsql->result = PQgetResult(pgsql->conn->db);
+	if (pgsql->result == NULL) {
+		pgsql->state = KORE_PGSQL_STATE_DONE;
 		return;
 	}
 
-	req->pgsql[i]->result = PQgetResult(conn->db);
-	if (req->pgsql[i]->result == NULL) {
-		req->pgsql[i]->state = KORE_PGSQL_STATE_DONE;
-		return;
-	}
-
-	switch (PQresultStatus(req->pgsql[i]->result)) {
+	switch (PQresultStatus(pgsql->result)) {
 	case PGRES_COPY_OUT:
 	case PGRES_COPY_IN:
 	case PGRES_NONFATAL_ERROR:
 	case PGRES_COPY_BOTH:
 		break;
 	case PGRES_COMMAND_OK:
-		req->pgsql[i]->state = KORE_PGSQL_STATE_DONE;
+		pgsql->state = KORE_PGSQL_STATE_DONE;
 		break;
 	case PGRES_TUPLES_OK:
 #if PG_VERSION_NUM >= 90200
 	case PGRES_SINGLE_TUPLE:
 #endif
-		req->pgsql[i]->state = KORE_PGSQL_STATE_RESULT;
+		pgsql->state = KORE_PGSQL_STATE_RESULT;
 		break;
 	case PGRES_EMPTY_QUERY:
 	case PGRES_BAD_RESPONSE:
 	case PGRES_FATAL_ERROR:
-		req->pgsql[i]->state = KORE_PGSQL_STATE_ERROR;
-		req->pgsql[i]->error =
-		    kore_strdup(PQresultErrorMessage(req->pgsql[i]->result));
+		pgsql->state = KORE_PGSQL_STATE_ERROR;
+		pgsql->error = kore_strdup(PQresultErrorMessage(pgsql->result));
 		break;
 	}
 }
