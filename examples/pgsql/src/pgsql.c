@@ -131,6 +131,8 @@ request_db_wait(struct http_request *req)
 	 * given us something, check the state to figure out what.
 	 */
 	switch (state->sql.state) {
+	case KORE_PGSQL_STATE_WAIT:
+		return (HTTP_STATUS_RETRY);
 	case KORE_PGSQL_STATE_COMPLETE:
 		req->fsm_state = REQ_STATE_DONE;
 		break;
