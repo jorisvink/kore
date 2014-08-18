@@ -828,12 +828,13 @@ cli_compile_cfile(void *arg)
 {
 	int		idx;
 	struct cfile	*cf = arg;
-	char		*args[20], *ipath;
+	char		*args[20], *ipath[2];
 #if defined(KORE_USE_PGSQL)
 	char		*ppath;
 #endif
 
-	(void)cli_vasprintf(&ipath, "-I%s/src", rootdir);
+	(void)cli_vasprintf(&ipath[0], "-I%s/src", rootdir);
+	(void)cli_vasprintf(&ipath[1], "-I%s/src/includes", rootdir);
 
 	/*
 	 * These compiler options should be settable
@@ -841,7 +842,8 @@ cli_compile_cfile(void *arg)
 	 */
 	idx = 0;
 	args[idx++] = compiler;
-	args[idx++] = ipath;
+	args[idx++] = ipath[0];
+	args[idx++] = ipath[1];
 	args[idx++] = "-I/usr/local/include";
 
 #if defined(KORE_USE_PGSQL)
