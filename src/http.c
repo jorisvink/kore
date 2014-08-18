@@ -31,7 +31,6 @@
 #include "tasks.h"
 #endif
 
-static char		*http_status_text(int);
 static int		http_post_data_recv(struct netbuf *);
 static void		http_error_response(struct connection *,
 			    struct spdy_stream *, int);
@@ -1236,7 +1235,7 @@ http_response_normal(struct http_request *req, struct connection *c,
 	}
 }
 
-static char *
+char *
 http_status_text(int status)
 {
 	char		*r;
