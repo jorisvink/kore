@@ -833,7 +833,7 @@ cli_compile_cfile(void *arg)
 	char		*ppath;
 #endif
 
-	(void)cli_vasprintf(&ipath, "-I%s/src", appl);
+	(void)cli_vasprintf(&ipath, "-I%s/src", rootdir);
 
 	/*
 	 * These compiler options should be settable
