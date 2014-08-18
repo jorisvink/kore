@@ -618,6 +618,13 @@ cli_build_asset(char *fpath, struct dirent *dp)
 	for (off = 0; off < st.st_size; off++)
 		cli_file_writef(out, "0x%02x,", *d++);
 
+	/*
+	 * Always NUL-terminate the asset, even if this NUL is not included in
+	 * the actual length. This way assets can be cast to char * without
+	 * any additional thinking for the developer.
+	 */
+	cli_file_writef(out, "0x00");
+
 	/* Add the meta data. */
 	cli_file_writef(out, "};\n\n");
 	cli_file_writef(out, "u_int32_t asset_len_%s_%s = %" PRIu32 ";\n",
