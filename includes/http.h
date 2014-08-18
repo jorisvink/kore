@@ -202,7 +202,7 @@ extern u_int16_t	http_keepalive_time;
 
 void		http_init(void);
 void		http_process(void);
-char		*http_status_text(int);
+const char	*http_status_text(int);
 time_t		http_date_to_time(char *);
 void		http_request_free(struct http_request *);
 void		http_request_sleep(struct http_request *);

@@ -1235,7 +1235,7 @@ http_response_normal(struct http_request *req, struct connection *c,
 	}
 }
 
-char *
+const char *
 http_status_text(int status)
 {
 	char		*r;
