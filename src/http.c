@@ -336,6 +336,9 @@ http_request_free(struct http_request *req)
 		pgsql = LIST_FIRST(&(req->pgsqls));
 		kore_pgsql_cleanup(pgsql);
 	}
+
+	if (req->flags & HTTP_REQUEST_PGSQL_QUEUE)
+		kore_pgsql_queue_remove(req);
 #endif
 
 	kore_debug("http_request_free: %p->%p", req->owner, req);
