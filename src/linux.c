@@ -96,7 +96,8 @@ kore_platform_event_wait(u_int64_t timer)
 		type = *(u_int8_t *)events[i].data.ptr;
 
 		if (events[i].events & EPOLLERR ||
-		    events[i].events & EPOLLHUP) {
+		    events[i].events & EPOLLHUP ||
+		    events[i].events & EPOLLRDHUP) {
 			switch (type) {
 			case KORE_TYPE_LISTENER:
 				fatal("failed on listener socket");
@@ -131,7 +132,8 @@ kore_platform_event_wait(u_int64_t timer)
 					break;
 
 				kore_platform_event_schedule(c->fd,
-				    EPOLLIN | EPOLLOUT | EPOLLET, 0, c);
+				    EPOLLIN | EPOLLOUT |
+				    EPOLLRDHUP | EPOLLET, 0, c);
 			}
 			break;
 		case KORE_TYPE_CONNECTION:
@@ -185,7 +187,7 @@ kore_platform_event_schedule(int fd, int type, int flags, void *udata)
 void
 kore_platform_schedule_read(int fd, void *data)
 {
-	kore_platform_event_schedule(fd, EPOLLIN | EPOLLET, 0, data);
+	kore_platform_event_schedule(fd, EPOLLIN, 0, data);
 }
 
 void
