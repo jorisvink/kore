@@ -163,7 +163,7 @@ struct http_request {
 	u_int8_t			method;
 	u_int8_t			flags;
 	u_int8_t			fsm_state;
-	int				status;
+	u_int16_t			status;
 	u_int64_t			start;
 	u_int64_t			end;
 	u_int64_t			total;
