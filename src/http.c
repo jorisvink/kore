@@ -44,6 +44,7 @@ static void		http_response_spdy(struct http_request *,
 			    struct connection *, struct spdy_stream *,
 			    int, void *, u_int32_t);
 
+static struct kore_buf			*header_buf;
 static TAILQ_HEAD(, http_request)	http_requests;
 static TAILQ_HEAD(, http_request)	http_requests_sleeping;
 static struct kore_pool			http_request_pool;
@@ -63,6 +64,7 @@ http_init(void)
 	http_request_count = 0;
 	TAILQ_INIT(&http_requests);
 	TAILQ_INIT(&http_requests_sleeping);
+	header_buf = kore_buf_create(1024);
 
 	prealloc = MIN((worker_max_connections / 10), 1000);
 
@@ -1167,22 +1169,20 @@ static void
 http_response_normal(struct http_request *req, struct connection *c,
     int status, void *d, u_int32_t len)
 {
-	struct kore_buf		*buf;
 	struct http_header	*hdr;
-	u_int32_t		hlen;
 	char			*conn;
-	u_int8_t		*htext;
 	int			connection_close;
 
-	buf = kore_buf_create(KORE_BUF_INITIAL);
-	kore_buf_appendf(buf, "HTTP/1.1 %d %s\r\n",
+	header_buf->offset = 0;
+
+	kore_buf_appendf(header_buf, "HTTP/1.1 %d %s\r\n",
 	    status, http_status_text(status));
-	kore_buf_appendf(buf, "server: %s (%d.%d-%s)\r\n",
+	kore_buf_appendf(header_buf, "server: %s (%d.%d-%s)\r\n",
 	    KORE_NAME_STRING, KORE_VERSION_MAJOR, KORE_VERSION_MINOR,
 	    KORE_VERSION_STATE);
 
 	if (status == HTTP_STATUS_METHOD_NOT_ALLOWED)
-		kore_buf_appendf(buf, "allow: GET, POST\r\n");
+		kore_buf_appendf(header_buf, "allow: GET, POST\r\n");
 
 	if (c->flags & CONN_CLOSE_EMPTY)
 		connection_close = 1;
@@ -1199,35 +1199,34 @@ http_response_normal(struct http_request *req, struct connection *c,
 	}
 
 	if (http_keepalive_time && connection_close == 0) {
-		kore_buf_appendf(buf, "connection: keep-alive\r\n");
-		kore_buf_appendf(buf, "keep-alive: timeout=%d\r\n",
+		kore_buf_appendf(header_buf, "connection: keep-alive\r\n");
+		kore_buf_appendf(header_buf, "keep-alive: timeout=%d\r\n",
 		    http_keepalive_time);
 	} else {
 		c->flags |= CONN_CLOSE_EMPTY;
-		kore_buf_appendf(buf, "connection: close\r\n");
+		kore_buf_appendf(header_buf, "connection: close\r\n");
 	}
 
 	if (http_hsts_enable) {
-		kore_buf_appendf(buf, "strict-transport-security: ");
-		kore_buf_appendf(buf, "max-age=%" PRIu64 "\r\n",
+		kore_buf_appendf(header_buf, "strict-transport-security: ");
+		kore_buf_appendf(header_buf, "max-age=%" PRIu64 "\r\n",
 		    http_hsts_enable);
 	}
 
 	if (req != NULL) {
 		TAILQ_FOREACH(hdr, &(req->resp_headers), list) {
-			kore_buf_appendf(buf, "%s: %s\r\n",
+			kore_buf_appendf(header_buf, "%s: %s\r\n",
 			    hdr->header, hdr->value);
 		}
 	}
 
 	if (len > 0) {
-		kore_buf_appendf(buf, "content-length: %d\r\n", len);
-		kore_buf_append(buf, "\r\n", 2);
+		kore_buf_appendf(header_buf, "content-length: %d\r\n", len);
+		kore_buf_append(header_buf, "\r\n", 2);
 	}
 
-	htext = kore_buf_release(buf, &hlen);
-	net_send_queue(c, htext, hlen, NULL, NETBUF_LAST_CHAIN);
-	kore_mem_free(htext);
+	net_send_queue(c, header_buf->data, header_buf->offset,
+	    NULL, NETBUF_LAST_CHAIN);
 
 	if (d != NULL)
 		net_send_queue(c, d, len, NULL, NETBUF_LAST_CHAIN);
