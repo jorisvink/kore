@@ -31,11 +31,11 @@ Platforms supported
 * FreeBSD
 * OSX
 
-See https://kore.io/doc/#section1.1 for more information.
+See https://kore.io/doc/#requirements for more information.
 
 Releases
 --------
-* [2014-08-25] Version 1.2 will be released
+* [2014-08-25] Version 1.2 - https://kore.io/release/kore-1.2-stable.tgz
 * [2014-03-01] Version 1.1 - https://kore.io/release/kore-1.1-stable.tgz
 
 Building Kore
