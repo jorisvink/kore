@@ -1220,11 +1220,10 @@ http_response_normal(struct http_request *req, struct connection *c,
 		}
 	}
 
-	if (len > 0) {
+	if (len > 0)
 		kore_buf_appendf(header_buf, "content-length: %d\r\n", len);
-		kore_buf_append(header_buf, "\r\n", 2);
-	}
 
+	kore_buf_append(header_buf, "\r\n", 2);
 	net_send_queue(c, header_buf->data, header_buf->offset,
 	    NULL, NETBUF_LAST_CHAIN);
 
