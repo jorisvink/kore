@@ -160,6 +160,10 @@ struct connection {
 	void			*hdlr_extra;
 	X509			*cert;
 
+	void			(*disconnect)(struct connection *);
+	int			(*read)(struct connection *, int *);
+	int			(*write)(struct connection *, int, int *);
+
 	u_int8_t		addrtype;
 	union {
 		struct sockaddr_in	ipv4;
@@ -359,6 +363,7 @@ void		kore_platform_disable_read(int);
 void		kore_platform_enable_accept(void);
 void		kore_platform_disable_accept(void);
 void		kore_platform_event_wait(u_int64_t);
+void		kore_platform_event_all(int, void *);
 void		kore_platform_schedule_read(int, void *);
 void		kore_platform_event_schedule(int, int, int, void *);
 void		kore_platform_worker_setcpu(struct kore_worker *);
@@ -376,15 +381,18 @@ int		kore_ssl_sni_cb(SSL *, int *, void *);
 int		kore_server_bind(const char *, const char *);
 int		kore_ssl_npn_cb(SSL *, const u_char **, unsigned int *, void *);
 
-void		kore_connection_init(void);
-int		kore_connection_nonblock(int);
-int		kore_connection_handle(struct connection *);
-void		kore_connection_remove(struct connection *);
-void		kore_connection_disconnect(struct connection *);
-void		kore_connection_start_idletimer(struct connection *);
-void		kore_connection_stop_idletimer(struct connection *);
-void		kore_connection_check_idletimer(u_int64_t, struct connection *);
-int		kore_connection_accept(struct listener *, struct connection **);
+void			kore_connection_init(void);
+struct connection	*kore_connection_new(void *);
+int			kore_connection_nonblock(int);
+int			kore_connection_handle(struct connection *);
+void			kore_connection_remove(struct connection *);
+void			kore_connection_disconnect(struct connection *);
+void			kore_connection_start_idletimer(struct connection *);
+void			kore_connection_stop_idletimer(struct connection *);
+void			kore_connection_check_idletimer(u_int64_t,
+			    struct connection *);
+int			kore_connection_accept(struct listener *,
+			    struct connection **);
 
 u_int64_t	kore_time_ms(void);
 void		kore_log_init(void);
@@ -457,6 +465,10 @@ int		net_recv(struct connection *);
 int		net_send(struct connection *);
 int		net_send_flush(struct connection *);
 int		net_recv_flush(struct connection *);
+int		net_read(struct connection *, int *);
+int		net_read_ssl(struct connection *, int *);
+int		net_write(struct connection *, int, int *);
+int		net_write_ssl(struct connection *, int, int *);
 void		net_remove_netbuf(struct netbuf_head *, struct netbuf *);
 void		net_recv_queue(struct connection *, u_int32_t, int,
 		    struct netbuf **, int (*cb)(struct netbuf *));

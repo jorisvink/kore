@@ -131,9 +131,7 @@ kore_platform_event_wait(u_int64_t timer)
 				if (c == NULL)
 					break;
 
-				kore_platform_event_schedule(c->fd,
-				    EPOLLIN | EPOLLOUT |
-				    EPOLLRDHUP | EPOLLET, 0, c);
+				kore_platform_event_all(c->fd, c);
 			}
 			break;
 		case KORE_TYPE_CONNECTION:
@@ -162,6 +160,13 @@ kore_platform_event_wait(u_int64_t timer)
 			fatal("wrong type in event %d", type);
 		}
 	}
+}
+
+void
+kore_platform_event_all(int fd, void *c)
+{
+	kore_platform_event_schedule(fd,
+	    EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLET, 0, c);
 }
 
 void

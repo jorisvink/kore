@@ -33,6 +33,38 @@ kore_connection_init(void)
 	    sizeof(struct connection), worker_max_connections);
 }
 
+struct connection *
+kore_connection_new(void *owner)
+{
+	struct connection	*c;
+
+	c = kore_pool_get(&connection_pool);
+
+	c->ssl = NULL;
+	c->flags = 0;
+	c->cert = NULL;
+	c->owner = owner;
+	c->disconnect = NULL;
+	c->hdlr_extra = NULL;
+	c->inflate_started = 0;
+	c->deflate_started = 0;
+	c->client_stream_id = 0;
+	c->proto = CONN_PROTO_UNKNOWN;
+	c->type = KORE_TYPE_CONNECTION;
+	c->wsize_initial = SPDY_INIT_WSIZE;
+	c->spdy_send_wsize = SPDY_INIT_WSIZE;
+	c->spdy_recv_wsize = SPDY_INIT_WSIZE;
+	c->idle_timer.start = 0;
+	c->idle_timer.length = KORE_IDLE_TIMER_MAX;
+
+	TAILQ_INIT(&(c->send_queue));
+	TAILQ_INIT(&(c->recv_queue));
+	TAILQ_INIT(&(c->spdy_streams));
+	TAILQ_INIT(&(c->http_requests));
+
+	return (c);
+}
+
 int
 kore_connection_accept(struct listener *l, struct connection **out)
 {
@@ -43,8 +75,7 @@ kore_connection_accept(struct listener *l, struct connection **out)
 	kore_debug("kore_connection_accept(%p)", l);
 
 	*out = NULL;
-	c = kore_pool_get(&connection_pool);
-	c->type = KORE_TYPE_CONNECTION;
+	c = kore_connection_new(l);
 
 	c->addrtype = l->addrtype;
 	if (c->addrtype == AF_INET) {
@@ -67,31 +98,16 @@ kore_connection_accept(struct listener *l, struct connection **out)
 		return (KORE_RESULT_ERROR);
 	}
 
-	c->owner = l;
-	c->ssl = NULL;
-	c->flags = 0;
-	c->cert = NULL;
-	c->hdlr_extra = NULL;
-	c->inflate_started = 0;
-	c->deflate_started = 0;
-	c->client_stream_id = 0;
-	c->proto = CONN_PROTO_UNKNOWN;
-	c->wsize_initial = SPDY_INIT_WSIZE;
-	c->spdy_send_wsize = SPDY_INIT_WSIZE;
-	c->spdy_recv_wsize = SPDY_INIT_WSIZE;
-	c->idle_timer.start = 0;
-	c->idle_timer.length = KORE_IDLE_TIMER_MAX;
-
-	TAILQ_INIT(&(c->send_queue));
-	TAILQ_INIT(&(c->recv_queue));
-	TAILQ_INIT(&(c->spdy_streams));
-	TAILQ_INIT(&(c->http_requests));
-
 #if !defined(KORE_BENCHMARK)
 	c->state = CONN_STATE_SSL_SHAKE;
+	c->write = net_write_ssl;
+	c->read = net_read_ssl;
 #else
 	c->state = CONN_STATE_ESTABLISHED;
 	c->proto = CONN_PROTO_HTTP;
+	c->write = net_write;
+	c->read = net_read;
+
 	if (http_keepalive_time != 0)
 		c->idle_timer.length = http_keepalive_time * 1000;
 
@@ -112,6 +128,9 @@ kore_connection_disconnect(struct connection *c)
 	if (c->state != CONN_STATE_DISCONNECTING) {
 		kore_debug("preparing %p for disconnection", c);
 		c->state = CONN_STATE_DISCONNECTING;
+		if (c->disconnect)
+			c->disconnect(c);
+
 		kore_worker_connection_move(c);
 	}
 }

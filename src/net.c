@@ -176,37 +176,11 @@ net_send(struct connection *c)
 
 		len = MIN(NETBUF_SEND_PAYLOAD_MAX, smin);
 
-#if !defined(KORE_BENCHMARK)
-		r = SSL_write(c->ssl,
-		    (c->snb->buf + c->snb->s_off), len);
-		if (r <= 0) {
-			r = SSL_get_error(c->ssl, r);
-			switch (r) {
-			case SSL_ERROR_WANT_READ:
-			case SSL_ERROR_WANT_WRITE:
-				c->snb->flags |= NETBUF_MUST_RESEND;
-				c->flags &= ~CONN_WRITE_POSSIBLE;
-				return (KORE_RESULT_OK);
-			default:
-				kore_debug("SSL_write(): %s",
-				    ssl_errno_s);
-				return (KORE_RESULT_ERROR);
-			}
-		}
-#else
-		r = write(c->fd, (c->snb->buf + c->snb->s_off), len);
-		if (r <= -1) {
-			switch (errno) {
-			case EINTR:
-			case EAGAIN:
-				c->flags &= ~CONN_WRITE_POSSIBLE;
-				return (KORE_RESULT_OK);
-			default:
-				kore_debug("write: %s", errno_s);
-				return (KORE_RESULT_ERROR);
-			}
-		}
-#endif
+		if (!c->write(c, len, &r))
+			return (KORE_RESULT_ERROR);
+		if (!(c->flags & CONN_WRITE_POSSIBLE))
+			return (KORE_RESULT_OK);
+
 		kore_debug("net_send(%p/%d/%d bytes), progress with %d",
 		    c->snb, c->snb->s_off, c->snb->b_len, r);
 
@@ -253,37 +227,11 @@ net_recv(struct connection *c)
 		return (KORE_RESULT_ERROR);
 	}
 
-#if !defined(KORE_BENCHMARK)
-	r = SSL_read(c->ssl,
-	    (c->rnb->buf + c->rnb->s_off),
-	    (c->rnb->b_len - c->rnb->s_off));
-	if (r <= 0) {
-		r = SSL_get_error(c->ssl, r);
-		switch (r) {
-		case SSL_ERROR_WANT_READ:
-		case SSL_ERROR_WANT_WRITE:
-			c->flags &= ~CONN_READ_POSSIBLE;
-			return (KORE_RESULT_OK);
-		default:
-			kore_debug("SSL_read(): %s", ssl_errno_s);
-			return (KORE_RESULT_ERROR);
-		}
-	}
-#else
-	r = read(c->fd, (c->rnb->buf + c->rnb->s_off),
-	    (c->rnb->b_len - c->rnb->s_off));
-	if (r <= 0) {
-		switch (errno) {
-		case EINTR:
-		case EAGAIN:
-			c->flags &= ~CONN_READ_POSSIBLE;
-			return (KORE_RESULT_OK);
-		default:
-			kore_debug("read(): %s", errno_s);
-			return (KORE_RESULT_ERROR);
-		}
-	}
-#endif
+	if (!c->read(c, &r))
+		return (KORE_RESULT_ERROR);
+	if (!(c->flags & CONN_READ_POSSIBLE))
+		return (KORE_RESULT_OK);
+
 	kore_debug("net_recv(%ld/%ld bytes), progress with %d",
 	    c->rnb->s_off, c->rnb->b_len, r);
 
@@ -338,6 +286,101 @@ net_remove_netbuf(struct netbuf_head *list, struct netbuf *nb)
 
 	TAILQ_REMOVE(list, nb, list);
 	kore_pool_put(&nb_pool, nb);
+}
+
+#if !defined(KORE_BENCHMARK)
+int
+net_write_ssl(struct connection *c, int len, int *written)
+{
+	int		r;
+
+	r = SSL_write(c->ssl, (c->snb->buf + c->snb->s_off), len);
+	if (r <= 0) {
+		r = SSL_get_error(c->ssl, r);
+		switch (r) {
+		case SSL_ERROR_WANT_READ:
+		case SSL_ERROR_WANT_WRITE:
+			c->snb->flags |= NETBUF_MUST_RESEND;
+			c->flags &= ~CONN_WRITE_POSSIBLE;
+			return (KORE_RESULT_OK);
+		default:
+			kore_debug("SSL_write(): %s", ssl_errno_s);
+			return (KORE_RESULT_ERROR);
+		}
+	}
+
+	*written = r;
+	return (KORE_RESULT_OK);
+}
+
+int
+net_read_ssl(struct connection *c, int *bytes)
+{
+	int		r;
+
+	r = SSL_read(c->ssl, (c->rnb->buf + c->rnb->s_off),
+	    (c->rnb->b_len - c->rnb->s_off));
+	if (r <= 0) {
+		r = SSL_get_error(c->ssl, r);
+		switch (r) {
+		case SSL_ERROR_WANT_READ:
+		case SSL_ERROR_WANT_WRITE:
+			c->flags &= ~CONN_READ_POSSIBLE;
+			return (KORE_RESULT_OK);
+		default:
+			kore_debug("SSL_read(): %s", ssl_errno_s);
+			return (KORE_RESULT_ERROR);
+		}
+	}
+
+	*bytes = r;
+	return (KORE_RESULT_OK);
+}
+#endif
+
+int
+net_write(struct connection *c, int len, int *written)
+{
+	int		r;
+
+	r = write(c->fd, (c->snb->buf + c->snb->s_off), len);
+	if (r <= -1) {
+		switch (errno) {
+		case EINTR:
+		case EAGAIN:
+			c->flags &= ~CONN_WRITE_POSSIBLE;
+			return (KORE_RESULT_OK);
+		default:
+			kore_debug("write: %s", errno_s);
+			return (KORE_RESULT_ERROR);
+		}
+	}
+
+	*written = r;
+	return (KORE_RESULT_OK);
+}
+
+int
+net_read(struct connection *c, int *bytes)
+{
+	int		r;
+
+	r = read(c->fd, (c->rnb->buf + c->rnb->s_off),
+	    (c->rnb->b_len - c->rnb->s_off));
+	if (r <= 0) {
+		switch (errno) {
+		case EINTR:
+		case EAGAIN:
+			c->flags &= ~CONN_READ_POSSIBLE;
+			return (KORE_RESULT_OK);
+		default:
+			kore_debug("read(): %s", errno_s);
+			return (KORE_RESULT_ERROR);
+		}
+	}
+
+	*bytes = r;
+	return (KORE_RESULT_OK);
 }
 
 u_int16_t
