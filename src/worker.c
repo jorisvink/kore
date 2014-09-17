@@ -308,8 +308,7 @@ kore_worker_entry(struct kore_worker *kw)
 	for (c = TAILQ_FIRST(&worker_clients); c != NULL; c = cnext) {
 		cnext = TAILQ_NEXT(c, list);
 		net_send_flush(c);
-		TAILQ_REMOVE(&worker_clients, c, list);
-		kore_connection_remove(c);
+		kore_connection_disconnect(c);
 	}
 
 	for (c = TAILQ_FIRST(&disconnected); c != NULL; c = cnext) {
