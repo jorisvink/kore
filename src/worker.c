@@ -234,7 +234,7 @@ kore_worker_entry(struct kore_worker *kw)
 
 	quit = 0;
 	had_lock = 0;
-	now = idle_check = 0;
+	idle_check = 0;
 	kore_platform_event_init();
 	kore_accesslog_worker_init();
 
