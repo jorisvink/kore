@@ -25,9 +25,7 @@
 #include "pgsql.h"
 
 struct pgsql_job {
-	u_int64_t		start;
 	char			*query;
-
 	struct http_request	*req;
 	struct kore_pgsql	*pgsql;
 
@@ -106,7 +104,6 @@ kore_pgsql_async(struct kore_pgsql *pgsql, struct http_request *req,
 	pgsql->conn = conn;
 	conn->job = kore_pool_get(&pgsql_job_pool);
 	conn->job->query = kore_strdup(query);
-	conn->job->start = kore_time_ms();
 	conn->job->pgsql = pgsql;
 	conn->job->req = req;
 
