@@ -14,6 +14,8 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <sys/socket.h>
+
 #include <kore/kore.h>
 #include <kore/http.h>
 
@@ -87,7 +89,7 @@ static int
 ktunnel_pipe_create(struct connection *c, const char *host, const char *port)
 {
 	struct sockaddr_in	sin;
-	struct connection	*pipe;
+	struct connection	*cpipe;
 	u_int16_t		nport;
 	int			fd, err;
 	struct netbuf		*nb, *next;
@@ -121,22 +123,22 @@ ktunnel_pipe_create(struct connection *c, const char *host, const char *port)
 		return (KORE_RESULT_ERROR);
 	}
 
-	pipe = kore_connection_new(c);
-	pipe->fd = fd;
-	pipe->addr.ipv4 = sin;
-	pipe->read = net_read;
-	pipe->write = net_write;
-	pipe->addrtype = AF_INET;
-	pipe->proto = CONN_PROTO_UNKNOWN;
-	pipe->state = CONN_STATE_ESTABLISHED;
+	cpipe = kore_connection_new(c);
+	cpipe->fd = fd;
+	cpipe->addr.ipv4 = sin;
+	cpipe->read = net_read;
+	cpipe->write = net_write;
+	cpipe->addrtype = AF_INET;
+	cpipe->proto = CONN_PROTO_UNKNOWN;
+	cpipe->state = CONN_STATE_ESTABLISHED;
 
-	c->hdlr_extra = pipe;
-	pipe->hdlr_extra = c;
+	c->hdlr_extra = cpipe;
+	cpipe->hdlr_extra = c;
 	c->disconnect = ktunnel_pipe_disconnect;
-	pipe->disconnect = ktunnel_pipe_disconnect;
+	cpipe->disconnect = ktunnel_pipe_disconnect;
 
-	kore_worker_connection_add(pipe);
-	kore_connection_start_idletimer(pipe);
+	kore_worker_connection_add(cpipe);
+	kore_connection_start_idletimer(cpipe);
 
 	for (nb = TAILQ_FIRST(&(c->recv_queue)); nb != NULL; nb = next) {
 		next = TAILQ_NEXT(nb, list);
@@ -145,14 +147,14 @@ ktunnel_pipe_create(struct connection *c, const char *host, const char *port)
 		kore_pool_put(&nb_pool, nb);
 	}
 
-	kore_platform_event_all(pipe->fd, pipe);
+	kore_platform_event_all(cpipe->fd, cpipe);
 
 	net_recv_queue(c, NETBUF_SEND_PAYLOAD_MAX,
 	    NETBUF_CALL_CB_ALWAYS, NULL, ktunnel_pipe_data);
-	net_recv_queue(pipe, NETBUF_SEND_PAYLOAD_MAX,
+	net_recv_queue(cpipe, NETBUF_SEND_PAYLOAD_MAX,
 	    NETBUF_CALL_CB_ALWAYS, NULL, ktunnel_pipe_data);
 
-	printf("connection started to %s (%p -> %p)\n", host, c, pipe);
+	printf("connection started to %s (%p -> %p)\n", host, c, cpipe);
 	return (KORE_RESULT_OK);
 }
 
@@ -183,13 +185,13 @@ ktunnel_pipe_data(struct netbuf *nb)
 static void
 ktunnel_pipe_disconnect(struct connection *c)
 {
-	struct connection	*pipe = c->hdlr_extra;
+	struct connection	*cpipe = c->hdlr_extra;
 
-	printf("ktunnel_pipe_disconnect(%p)->%p\n", c, pipe);
+	printf("ktunnel_pipe_disconnect(%p)->%p\n", c, cpipe);
 
-	if (pipe != NULL) {
+	if (cpipe != NULL) {
 		/* Prevent Kore from calling kore_mem_free() on hdlr_extra. */
 		c->hdlr_extra = NULL;
-		kore_connection_disconnect(pipe);
+		kore_connection_disconnect(cpipe);
 	}
 }
