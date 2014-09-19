@@ -511,7 +511,9 @@ pgsql_simple_state_result(struct http_request *req)
 	if (simple->result)
 		simple->result(req, simple);
 
-	req->fsm_state = PGSQL_SIMPLE_STATE_DONE;
+	kore_pgsql_continue(req, &simple->sql);
+	req->fsm_state = PGSQL_SIMPLE_STATE_WAIT;
+
 	return (HTTP_STATE_CONTINUE);
 }
 
