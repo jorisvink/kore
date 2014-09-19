@@ -38,10 +38,13 @@ struct kore_pgsql {
 };
 
 struct kore_pgsql_simple {
-	char			*query;
-	void			*udata;
-	struct kore_pgsql	sql;
+	struct kore_pgsql		sql;
+	void				*fun;
+	char				*query;
+	void				*udata;
+};
 
+struct kore_pgsql_functions {
 	int	(*init)(struct http_request *, struct kore_pgsql_simple *);
 	void	(*done)(struct http_request *, struct kore_pgsql_simple *);
 	void	(*result)(struct http_request *, struct kore_pgsql_simple *);
@@ -54,7 +57,7 @@ void	kore_pgsql_init(void);
 void	kore_pgsql_handle(void *, int);
 void	kore_pgsql_cleanup(struct kore_pgsql *);
 void	kore_pgsql_continue(struct http_request *, struct kore_pgsql *);
-int	kore_pgsql_run(struct http_request *, struct kore_pgsql_simple *);
+int	kore_pgsql_run(struct http_request *, struct kore_pgsql_functions *);
 int	kore_pgsql_async(struct kore_pgsql *,
 	    struct http_request *, const char *);
 

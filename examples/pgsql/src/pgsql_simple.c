@@ -36,10 +36,10 @@ void	page_simple_result(struct http_request *, struct kore_pgsql_simple *);
  * Set our callbacks for initialization, result and completion.
  * At least init and done MUST be set.
  */
-static struct kore_pgsql_simple simple_query = {
-	.init = page_simple_init,
-	.done = page_simple_done,
-	.result = page_simple_result
+static struct kore_pgsql_functions simple_query = {
+	page_simple_init,
+	page_simple_done,
+	page_simple_result
 };
 
 int

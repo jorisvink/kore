@@ -146,9 +146,23 @@ kore_pgsql_async(struct kore_pgsql *pgsql, struct http_request *req,
 }
 
 int
-kore_pgsql_run(struct http_request *req, struct kore_pgsql_simple *query)
+kore_pgsql_run(struct http_request *req, struct kore_pgsql_functions *fun)
 {
-	req->hdlr_extra = query;
+	struct kore_pgsql_simple	*simple;
+
+	if (req->hdlr_extra == NULL) {
+		if (fun->init == NULL || fun->done == NULL)
+			fatal("kore_pgsql_run: missing callback functions");
+
+		simple = kore_malloc(sizeof(*simple));
+		simple->fun = fun;
+		simple->query = NULL;
+		simple->udata = NULL;
+		simple->sql.state = 0;
+
+		req->hdlr_extra = simple;
+	}
+
 	return (http_state_run(pgsql_states, sizeof(pgsql_states), req));
 }
 
@@ -437,18 +451,10 @@ static int
 pgsql_simple_state_init(struct http_request *req)
 {
 	struct kore_pgsql_simple	*simple = req->hdlr_extra;
+	struct kore_pgsql_functions	*fun = simple->fun;
 
-	if (simple->init == NULL || simple->done == NULL)
-		fatal("pgsql_simple_state_init: missing callbacks");
-
-	simple->query = NULL;
-	simple->udata = NULL;
-	simple->sql.state = 0;
-
-	if (simple->init(req, simple) != KORE_RESULT_OK) {
-		req->hdlr_extra = NULL;
+	if (fun->init(req, simple) != KORE_RESULT_OK)
 		return (HTTP_STATE_COMPLETE);
-	}
 
 	req->fsm_state = PGSQL_SIMPLE_STATE_QUERY;
 	return (HTTP_STATE_CONTINUE);
@@ -507,9 +513,10 @@ static int
 pgsql_simple_state_result(struct http_request *req)
 {
 	struct kore_pgsql_simple	*simple = req->hdlr_extra;
+	struct kore_pgsql_functions	*fun = simple->fun;
 
-	if (simple->result)
-		simple->result(req, simple);
+	if (fun->result)
+		fun->result(req, simple);
 
 	kore_pgsql_continue(req, &simple->sql);
 	req->fsm_state = PGSQL_SIMPLE_STATE_WAIT;
@@ -521,10 +528,9 @@ static int
 pgsql_simple_state_done(struct http_request *req)
 {
 	struct kore_pgsql_simple	*simple = req->hdlr_extra;
+	struct kore_pgsql_functions	*fun = simple->fun;
 
-	req->hdlr_extra = NULL;
-	simple->done(req, simple);
-
+	fun->done(req, simple);
 	if (simple->sql.state != 0)
 		kore_pgsql_cleanup(&simple->sql);
 
