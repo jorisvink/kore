@@ -182,12 +182,12 @@ struct http_request {
 	LIST_HEAD(, kore_task)		tasks;
 	LIST_HEAD(, kore_pgsql)		pgsqls;
 
-	TAILQ_HEAD(, http_header)		req_headers;
-	TAILQ_HEAD(, http_header)		resp_headers;
-	TAILQ_HEAD(, http_arg)			arguments;
-	TAILQ_HEAD(, http_file)			files;
-	TAILQ_ENTRY(http_request)		list;
-	TAILQ_ENTRY(http_request)		olist;
+	TAILQ_HEAD(, http_header)	req_headers;
+	TAILQ_HEAD(, http_header)	resp_headers;
+	TAILQ_HEAD(, http_arg)		arguments;
+	TAILQ_HEAD(, http_file)		files;
+	TAILQ_ENTRY(http_request)	list;
+	TAILQ_ENTRY(http_request)	olist;
 };
 
 struct http_state {
