@@ -132,7 +132,6 @@ kore_strtonum(const char *str, int base, long long min, long long max, int *err)
 		return (0);
 	}
 
-	l = 0;
 	errno = 0;
 	l = strtoll(str, &ep, base);
 	if (errno != 0 || str == ep || *ep != '\0') {
