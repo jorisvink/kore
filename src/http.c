@@ -1154,14 +1154,14 @@ http_response_spdy(struct http_request *req, struct connection *c,
 	kore_mem_free(htext);
 
 	if (len > 0) {
-		req->stream->send_size += len;
-		req->stream->flags |= SPDY_DATAFRAME_PRELUDE;
+		s->send_size += len;
+		s->flags |= SPDY_DATAFRAME_PRELUDE;
 
 		if (d != NULL)
 			net_send_queue(c, d, len, s, NETBUF_LAST_CHAIN);
 	} else {
 		spdy_frame_send(c, SPDY_DATA_FRAME, FLAG_FIN, 0, s, 0);
-		spdy_stream_close(c, req->stream, SPDY_KEEP_NETBUFS);
+		spdy_stream_close(c, s, SPDY_KEEP_NETBUFS);
 	}
 }
 
