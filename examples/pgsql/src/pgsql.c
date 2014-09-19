@@ -132,7 +132,7 @@ request_db_wait(struct http_request *req)
 	 */
 	switch (state->sql.state) {
 	case KORE_PGSQL_STATE_WAIT:
-		return (HTTP_STATUS_RETRY);
+		return (HTTP_STATE_RETRY);
 	case KORE_PGSQL_STATE_COMPLETE:
 		req->fsm_state = REQ_STATE_DONE;
 		break;
