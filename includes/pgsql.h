@@ -37,21 +37,31 @@ struct kore_pgsql {
 	LIST_ENTRY(kore_pgsql)	rlist;
 };
 
+struct kore_pgsql_simple {
+	char			*query;
+	void			*udata;
+	struct kore_pgsql	sql;
+
+	int	(*init)(struct http_request *, struct kore_pgsql_simple *);
+	void	(*done)(struct http_request *, struct kore_pgsql_simple *);
+	void	(*result)(struct http_request *, struct kore_pgsql_simple *);
+};
+
 extern u_int16_t	pgsql_conn_max;
 extern char		*pgsql_conn_string;
 
-void		kore_pgsql_init(void);
-void		kore_pgsql_handle(void *, int);
-void		kore_pgsql_cleanup(struct kore_pgsql *);
-void		kore_pgsql_continue(struct http_request *,
-		    struct kore_pgsql *);
-int		kore_pgsql_async(struct kore_pgsql *,
-		    struct http_request *, const char *);
+void	kore_pgsql_init(void);
+void	kore_pgsql_handle(void *, int);
+void	kore_pgsql_cleanup(struct kore_pgsql *);
+void	kore_pgsql_continue(struct http_request *, struct kore_pgsql *);
+int	kore_pgsql_run(struct http_request *, struct kore_pgsql_simple *);
+int	kore_pgsql_async(struct kore_pgsql *,
+	    struct http_request *, const char *);
 
-int		kore_pgsql_ntuples(struct kore_pgsql *);
-void		kore_pgsql_logerror(struct kore_pgsql *);
-void		kore_pgsql_queue_remove(struct http_request *);
-char		*kore_pgsql_getvalue(struct kore_pgsql *, int, int);
+int	kore_pgsql_ntuples(struct kore_pgsql *);
+void	kore_pgsql_logerror(struct kore_pgsql *);
+void	kore_pgsql_queue_remove(struct http_request *);
+char	*kore_pgsql_getvalue(struct kore_pgsql *, int, int);
 
 #define KORE_PGSQL_STATE_INIT		1
 #define KORE_PGSQL_STATE_WAIT		2

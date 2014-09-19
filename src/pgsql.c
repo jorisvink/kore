@@ -50,6 +50,26 @@ static void	pgsql_read_result(struct kore_pgsql *, int);
 static void	pgsql_queue_add(struct http_request *);
 static void	pgsql_queue_wakeup(void);
 
+static int	pgsql_simple_state_init(struct http_request *);
+static int	pgsql_simple_state_query(struct http_request *);
+static int	pgsql_simple_state_wait(struct http_request *);
+static int	pgsql_simple_state_result(struct http_request *);
+static int	pgsql_simple_state_done(struct http_request *);
+
+#define PGSQL_SIMPLE_STATE_INIT			0
+#define PGSQL_SIMPLE_STATE_QUERY		1
+#define PGSQL_SIMPLE_STATE_WAIT			2
+#define PGSQL_SIMPLE_STATE_RESULT		3
+#define PGSQL_SIMPLE_STATE_DONE			4
+
+static struct http_state	pgsql_states[] = {
+	{ "PGSQL_SIMPLE_STATE_INIT",		pgsql_simple_state_init },
+	{ "PGSQL_SIMPLE_STATE_QUERY",		pgsql_simple_state_query },
+	{ "PGSQL_SIMPLE_STATE_WAIT",		pgsql_simple_state_wait },
+	{ "PGSQL_SIMPLE_STATE_RESULT",		pgsql_simple_state_result },
+	{ "PGSQL_SIMPLE_STATE_DONE",		pgsql_simple_state_done }
+};
+
 static struct kore_pool			pgsql_job_pool;
 static struct kore_pool			pgsql_wait_pool;
 static TAILQ_HEAD(, pgsql_conn)		pgsql_conn_free;
@@ -123,6 +143,13 @@ kore_pgsql_async(struct kore_pgsql *pgsql, struct http_request *req,
 	kore_debug("query '%s' for %p sent on %p", query, req, conn);
 
 	return (KORE_RESULT_OK);
+}
+
+int
+kore_pgsql_run(struct http_request *req, struct kore_pgsql_simple *query)
+{
+	req->hdlr_extra = query;
+	return (http_state_run(pgsql_states, sizeof(pgsql_states), req));
 }
 
 void
@@ -404,4 +431,100 @@ pgsql_read_result(struct kore_pgsql *pgsql, int async)
 		pgsql->error = kore_strdup(PQresultErrorMessage(pgsql->result));
 		break;
 	}
+}
+
+static int
+pgsql_simple_state_init(struct http_request *req)
+{
+	struct kore_pgsql_simple	*simple = req->hdlr_extra;
+
+	if (simple->init == NULL || simple->done == NULL)
+		fatal("pgsql_simple_state_init: missing callbacks");
+
+	simple->query = NULL;
+	simple->udata = NULL;
+	simple->sql.state = 0;
+
+	if (simple->init(req, simple) != KORE_RESULT_OK) {
+		req->hdlr_extra = NULL;
+		return (HTTP_STATE_COMPLETE);
+	}
+
+	req->fsm_state = PGSQL_SIMPLE_STATE_QUERY;
+	return (HTTP_STATE_CONTINUE);
+}
+
+static int
+pgsql_simple_state_query(struct http_request *req)
+{
+	struct kore_pgsql_simple	*simple = req->hdlr_extra;
+
+	if (simple->query == NULL)
+		fatal("No string set after pgsql_state_init()");
+
+	req->fsm_state = PGSQL_SIMPLE_STATE_WAIT;
+
+	if (!kore_pgsql_async(&simple->sql, req, simple->query)) {
+		if (simple->sql.state == KORE_PGSQL_STATE_INIT) {
+			req->fsm_state = PGSQL_SIMPLE_STATE_QUERY;
+			return (HTTP_STATE_RETRY);
+		}
+
+		return (HTTP_STATE_CONTINUE);
+	}
+
+	return (HTTP_STATE_CONTINUE);
+}
+
+static int
+pgsql_simple_state_wait(struct http_request *req)
+{
+	struct kore_pgsql_simple	*simple = req->hdlr_extra;
+
+	switch (simple->sql.state) {
+	case KORE_PGSQL_STATE_WAIT:
+		return (HTTP_STATE_RETRY);
+	case KORE_PGSQL_STATE_COMPLETE:
+		req->fsm_state = PGSQL_SIMPLE_STATE_DONE;
+		break;
+	case KORE_PGSQL_STATE_ERROR:
+		req->status = HTTP_STATUS_INTERNAL_ERROR;
+		req->fsm_state = PGSQL_SIMPLE_STATE_DONE;
+		kore_pgsql_logerror(&simple->sql);
+		break;
+	case KORE_PGSQL_STATE_RESULT:
+		req->fsm_state = PGSQL_SIMPLE_STATE_RESULT;
+		break;
+	default:
+		kore_pgsql_continue(req, &simple->sql);
+		break;
+	}
+
+	return (HTTP_STATE_CONTINUE);
+}
+
+static int
+pgsql_simple_state_result(struct http_request *req)
+{
+	struct kore_pgsql_simple	*simple = req->hdlr_extra;
+
+	if (simple->result)
+		simple->result(req, simple);
+
+	req->fsm_state = PGSQL_SIMPLE_STATE_DONE;
+	return (HTTP_STATE_CONTINUE);
+}
+
+static int
+pgsql_simple_state_done(struct http_request *req)
+{
+	struct kore_pgsql_simple	*simple = req->hdlr_extra;
+
+	req->hdlr_extra = NULL;
+	simple->done(req, simple);
+
+	if (simple->sql.state != 0)
+		kore_pgsql_cleanup(&simple->sql);
+
+	return (HTTP_STATE_COMPLETE);
 }
