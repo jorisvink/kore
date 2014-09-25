@@ -107,6 +107,9 @@ kore_mem_free(void *ptr)
 	u_int8_t	*addr;
 	struct meminfo	*mem;
 
+	if (ptr == NULL)
+		return;
+
 	mem = KORE_MEMINFO(ptr);
 	if (mem->magic != KORE_MEM_MAGIC)
 		fatal("kore_mem_free(): magic boundary not found");
