@@ -309,8 +309,8 @@ cli_build(int argc, char **argv)
 		cli_file_open(assets_header,
 		    O_CREAT | O_TRUNC | O_WRONLY, &s_fd);
 
-		cli_file_writef(s_fd, "#ifndef __H_%s_ASSETS_H\n", appl);
-		cli_file_writef(s_fd, "#define __H_%s_ASSETS_H\n", appl);
+		cli_file_writef(s_fd, "#ifndef __H_KORE_ASSETS_H\n");
+		cli_file_writef(s_fd, "#define __H_KORE_ASSETS_H\n");
 		cli_find_files(assets_path, cli_build_asset);
 		cli_file_writef(s_fd, "\n#endif\n");
 		cli_file_close(s_fd);
