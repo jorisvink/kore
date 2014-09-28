@@ -228,6 +228,12 @@ kore_pgsql_ntuples(struct kore_pgsql *pgsql)
 	return (PQntuples(pgsql->result));
 }
 
+int
+kore_pgsql_getlength(struct kore_pgsql *pgsql, int row, int col)
+{
+	return (PQgetlength(pgsql->result, row, col));
+}
+
 char *
 kore_pgsql_getvalue(struct kore_pgsql *pgsql, int row, int col)
 {
