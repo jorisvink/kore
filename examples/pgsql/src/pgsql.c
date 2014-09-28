@@ -96,7 +96,7 @@ request_perform_query(struct http_request *req)
 	req->fsm_state = REQ_STATE_DB_WAIT;
 
 	/* Fire off the query. */
-	if (!kore_pgsql_async(&state->sql, req, "SELECT * FROM coders")) {
+	if (!kore_pgsql_query(&state->sql, req, "SELECT * FROM coders")) {
 		/* If the state was still INIT, we'll try again later. */
 		if (state->sql.state == KORE_PGSQL_STATE_INIT) {
 			req->fsm_state = REQ_STATE_QUERY;
