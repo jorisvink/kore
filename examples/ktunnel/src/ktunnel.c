@@ -132,6 +132,10 @@ ktunnel_pipe_create(struct connection *c, const char *host, const char *port)
 	cpipe->proto = CONN_PROTO_UNKNOWN;
 	cpipe->state = CONN_STATE_ESTABLISHED;
 
+	/* Don't let these connections timeout any time soon. */
+	cpipe->idle_timer.length = 10000000000;
+	c->idle_timer.length = 10000000000;
+
 	c->hdlr_extra = cpipe;
 	cpipe->hdlr_extra = c;
 	c->disconnect = ktunnel_pipe_disconnect;
