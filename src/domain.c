@@ -14,6 +14,8 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <sys/param.h>
+
 #include "kore.h"
 
 #define SSL_SESSION_ID		"kore_ssl_sessionid"
