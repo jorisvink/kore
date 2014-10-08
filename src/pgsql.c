@@ -306,7 +306,6 @@ pgsql_schedule(struct kore_pgsql *pgsql, struct http_request *req)
 
 	kore_platform_schedule_read(fd, pgsql->conn);
 	pgsql->state = KORE_PGSQL_STATE_WAIT;
-	kore_debug("query '%s' for %p sent on %p", query, req, pgsql->conn);
 }
 
 static void

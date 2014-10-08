@@ -49,7 +49,7 @@ static int		configure_ssl_dhparam(char **);
 static int		configure_ssl_no_compression(char **);
 static int		configure_spdy_idle_time(char **);
 static int		configure_http_header_max(char **);
-static int		configure_http_postbody_max(char **);
+static int		configure_http_body_max(char **);
 static int		configure_http_hsts_enable(char **);
 static int		configure_http_keepalive_time(char **);
 static int		configure_validator(char **);
@@ -94,7 +94,7 @@ static struct {
 	{ "certkey",			configure_certkey },
 	{ "require_client_cert",	configure_require_client_cert },
 	{ "http_header_max",		configure_http_header_max },
-	{ "http_postbody_max",		configure_http_postbody_max },
+	{ "http_body_max",		configure_http_body_max },
 	{ "http_hsts_enable",		configure_http_hsts_enable },
 	{ "http_keepalive_time",	configure_http_keepalive_time },
 	{ "validator",			configure_validator },
@@ -584,21 +584,21 @@ configure_http_header_max(char **argv)
 }
 
 static int
-configure_http_postbody_max(char **argv)
+configure_http_body_max(char **argv)
 {
 	int		err;
 
 	if (argv[1] == NULL)
 		return (KORE_RESULT_ERROR);
 
-	if (http_postbody_max != HTTP_POSTBODY_MAX_LEN) {
-		kore_debug("http_postbody_max already set");
+	if (http_body_max != HTTP_BODY_MAX_LEN) {
+		kore_debug("http_body_max already set");
 		return (KORE_RESULT_ERROR);
 	}
 
-	http_postbody_max = kore_strtonum(argv[1], 10, 1, LONG_MAX, &err);
+	http_body_max = kore_strtonum(argv[1], 10, 1, LONG_MAX, &err);
 	if (err != KORE_RESULT_OK) {
-		printf("bad http_postbody_max value: %s\n", argv[1]);
+		printf("bad http_body_max value: %s\n", argv[1]);
 		return (KORE_RESULT_ERROR);
 	}
 

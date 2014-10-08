@@ -20,7 +20,7 @@
 #define HTTP_KEEPALIVE_TIME	20
 #define HTTP_HSTS_ENABLE	31536000
 #define HTTP_HEADER_MAX_LEN	4096
-#define HTTP_POSTBODY_MAX_LEN	10240000
+#define HTTP_BODY_MAX_LEN	10240000
 #define HTTP_URI_LEN		2000
 #define HTTP_USERAGENT_LEN	256
 #define HTTP_REQ_HEADER_MAX	25
@@ -152,11 +152,15 @@ struct http_file {
 
 #define HTTP_METHOD_GET		0
 #define HTTP_METHOD_POST	1
+#define HTTP_METHOD_PUT		2
+#define HTTP_METHOD_DELETE	3
+#define HTTP_METHOD_HEAD	4
 
 #define HTTP_REQUEST_COMPLETE		0x01
 #define HTTP_REQUEST_DELETE		0x02
 #define HTTP_REQUEST_SLEEPING		0x04
 #define HTTP_REQUEST_PGSQL_QUEUE	0x10
+#define HTTP_REQUEST_EXPECT_BODY	0x20
 
 struct kore_task;
 
@@ -173,7 +177,7 @@ struct http_request {
 	char				*agent;
 	struct connection		*owner;
 	struct spdy_stream		*stream;
-	struct kore_buf			*post_data;
+	struct kore_buf			*http_body;
 	void				*hdlr_extra;
 	char				*query_string;
 	u_int8_t			*multipart_body;
@@ -197,7 +201,7 @@ struct http_state {
 
 extern int		http_request_count;
 extern u_int16_t	http_header_max;
-extern u_int64_t	http_postbody_max;
+extern u_int64_t	http_body_max;
 extern u_int64_t	http_hsts_enable;
 extern u_int16_t	http_keepalive_time;
 
@@ -208,9 +212,9 @@ time_t		http_date_to_time(char *);
 void		http_request_free(struct http_request *);
 void		http_request_sleep(struct http_request *);
 void		http_request_wakeup(struct http_request *);
-char		*http_post_data_text(struct http_request *);
+char		*http_body_text(struct http_request *);
 void		http_process_request(struct http_request *, int);
-u_int8_t	*http_post_data_bytes(struct http_request *, u_int32_t *);
+u_int8_t	*http_body_bytes(struct http_request *, u_int32_t *);
 void		http_response(struct http_request *, int, void *, u_int32_t);
 void		http_response_stream(struct http_request *, int, void *,
 		    u_int64_t, int (*cb)(struct netbuf *), void *);

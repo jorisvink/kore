@@ -781,16 +781,16 @@ spdy_data_frame_recv(struct netbuf *nb)
 	}
 
 	req = (struct http_request *)s->httpreq;
-	if (req == NULL || req->method != HTTP_METHOD_POST) {
+	if (req == NULL || !(req->flags & HTTP_REQUEST_EXPECT_BODY)) {
 		kore_debug("data frame for non post received");
 		/* stream error */
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (req->post_data == NULL) {
+	if (req->http_body == NULL) {
 		if (!spdy_stream_get_header(s->hblock,
 		    "content-length", &content)) {
-			kore_debug("no content-length found for post");
+			kore_debug("no content-length found for body");
 			return (KORE_RESULT_ERROR);
 		}
 
@@ -805,28 +805,29 @@ spdy_data_frame_recv(struct netbuf *nb)
 
 		if (s->post_size == 0) {
 			req->flags |= HTTP_REQUEST_COMPLETE;
+			req->flags &= ~HTTP_REQUEST_EXPECT_BODY;
 			return (KORE_RESULT_OK);
 		}
 
-		if (s->post_size > http_postbody_max) {
-			kore_log(LOG_NOTICE, "POST data too large (%ld > %ld)",
-			    s->post_size, http_postbody_max);
+		if (s->post_size > http_body_max) {
+			kore_log(LOG_NOTICE, "body data too large (%ld > %ld)",
+			    s->post_size, http_body_max);
 			return (KORE_RESULT_ERROR);
 		}
 
-		req->post_data = kore_buf_create(s->post_size);
+		req->http_body = kore_buf_create(s->post_size);
 	}
 
-	if ((req->post_data->offset + data.length) > s->post_size) {
+	if ((req->http_body->offset + data.length) > s->post_size) {
 		kore_debug("POST would grow too large");
 		return (KORE_RESULT_ERROR);
 	}
 
-	kore_buf_append(req->post_data, (nb->buf + SPDY_FRAME_SIZE),
+	kore_buf_append(req->http_body, (nb->buf + SPDY_FRAME_SIZE),
 	    data.length);
 
 	if (data.flags & FLAG_FIN) {
-		if (req->post_data->offset != s->post_size) {
+		if (req->http_body->offset != s->post_size) {
 			kore_debug("FLAG_FIN before all POST data received");
 			return (KORE_RESULT_ERROR);
 		}
@@ -834,6 +835,7 @@ spdy_data_frame_recv(struct netbuf *nb)
 		s->post_size = 0;
 		s->flags |= FLAG_FIN;
 		req->flags |= HTTP_REQUEST_COMPLETE;
+		req->flags &= ~HTTP_REQUEST_EXPECT_BODY;
 	}
 
 	/*

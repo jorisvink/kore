@@ -14,9 +14,11 @@ page(struct http_request *req)
 	char			eb[1024];
 	const char		*path[] = { "foo", "bar", NULL };
 
-	/* We only allow POST methods. */
-	if (req->method != HTTP_METHOD_POST) {
-		http_response(req, 400, NULL, 0);
+	/* We only allow POST/PUT methods. */
+	if (req->method != HTTP_METHOD_POST &&
+	    req->method != HTTP_METHOD_PUT) {
+		http_response_header(req, "allow", "POST, PUT");
+		http_response(req, HTTP_STATUS_METHOD_NOT_ALLOWED, NULL, 0);
 		return (KORE_RESULT_OK);
 	}
 
@@ -24,7 +26,7 @@ page(struct http_request *req)
 	 * Grab the entire body we received as text (NUL-terminated).
 	 * Note: this can return NULL and the result MUST be freed.
 	 */
-	if ((body = http_post_data_text(req)) == NULL) {
+	if ((body = http_body_text(req)) == NULL) {
 		http_response(req, 400, NULL, 0);
 		return (KORE_RESULT_OK);
 	}

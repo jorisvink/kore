@@ -26,7 +26,7 @@ workers		4
 # HTTP specific settings.
 #	http_header_max		Maximum size of HTTP headers (in bytes).
 #
-#	http_postbody_max	Maximum size of an HTTP POST body (in bytes).
+#	http_body_max		Maximum size of an HTTP body (in bytes).
 #
 #	http_keepalive_time	Maximum seconds an HTTP connection can be
 #				kept alive by the browser.
@@ -36,7 +36,7 @@ workers		4
 #				all responses. Parameter is the age.
 #				(Set to 0 to disable sending this header).
 #http_header_max	4096
-#http_postbody_max	10240000
+#http_body_max		10240000
 #http_keepalive_time	0
 #http_hsts_enable	31536000
 

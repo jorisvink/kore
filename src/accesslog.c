@@ -101,6 +101,15 @@ kore_accesslog_wait(void)
 	case HTTP_METHOD_POST:
 		method = "POST";
 		break;
+	case HTTP_METHOD_PUT:
+		method = "PUT";
+		break;
+	case HTTP_METHOD_DELETE:
+		method = "DELETE";
+		break;
+	case HTTP_METHOD_HEAD:
+		method = "HEAD";
+		break;
 	default:
 		method = "UNKNOWN";
 		break;

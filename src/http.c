@@ -31,7 +31,7 @@
 #include "tasks.h"
 #endif
 
-static int		http_post_data_recv(struct netbuf *);
+static int		http_body_recv(struct netbuf *);
 static void		http_error_response(struct connection *,
 			    struct spdy_stream *, int);
 static void		http_argument_add(struct http_request *, const char *,
@@ -54,7 +54,7 @@ int		http_request_count;
 u_int64_t	http_hsts_enable = HTTP_HSTS_ENABLE;
 u_int16_t	http_header_max = HTTP_HEADER_MAX_LEN;
 u_int16_t	http_keepalive_time = HTTP_KEEPALIVE_TIME;
-u_int64_t	http_postbody_max = HTTP_POSTBODY_MAX_LEN;
+u_int64_t	http_body_max = HTTP_BODY_MAX_LEN;
 
 void
 http_init(void)
@@ -104,11 +104,20 @@ http_request_new(struct connection *c, struct spdy_stream *s, const char *host,
 	if (!strcasecmp(method, "get")) {
 		m = HTTP_METHOD_GET;
 		flags = HTTP_REQUEST_COMPLETE;
+	} else if (!strcasecmp(method, "delete")) {
+		m = HTTP_METHOD_DELETE;
+		flags = HTTP_REQUEST_COMPLETE;
 	} else if (!strcasecmp(method, "post")) {
-		flags = 0;
 		m = HTTP_METHOD_POST;
+		flags = HTTP_REQUEST_EXPECT_BODY;
+	} else if (!strcasecmp(method, "put")) {
+		m = HTTP_METHOD_PUT;
+		flags = HTTP_REQUEST_EXPECT_BODY;
+	} else if (!strcasecmp(method, "head")) {
+		m = HTTP_METHOD_HEAD;
+		flags = HTTP_REQUEST_COMPLETE;
 	} else {
-		http_error_response(c, s, 405);
+		http_error_response(c, s, 400);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -124,7 +133,7 @@ http_request_new(struct connection *c, struct spdy_stream *s, const char *host,
 	req->agent = NULL;
 	req->flags = flags;
 	req->fsm_state = 0;
-	req->post_data = NULL;
+	req->http_body = NULL;
 	req->hdlr_extra = NULL;
 	req->query_string = NULL;
 	req->multipart_body = NULL;
@@ -389,9 +398,9 @@ http_request_free(struct http_request *req)
 		kore_mem_free(f);
 	}
 
-	if (req->method == HTTP_METHOD_POST && req->post_data != NULL)
-		kore_buf_free(req->post_data);
-	if (req->method == HTTP_METHOD_POST && req->multipart_body != NULL)
+	if (req->http_body != NULL)
+		kore_buf_free(req->http_body);
+	if (req->multipart_body != NULL)
 		kore_mem_free(req->multipart_body);
 
 	if (req->agent != NULL)
@@ -438,8 +447,10 @@ http_response_stream(struct http_request *req, int status, void *base,
 		break;
 	}
 
-	net_send_stream(req->owner, base, len, req->stream, cb, &nb);
-	nb->extra = arg;
+	if (req->method != HTTP_METHOD_HEAD) {
+		net_send_stream(req->owner, base, len, req->stream, cb, &nb);
+		nb->extra = arg;
+	}
 }
 
 int
@@ -568,9 +579,9 @@ http_header_recv(struct netbuf *nb)
 			req->agent = kore_strdup(hdr->value);
 	}
 
-	if (req->method == HTTP_METHOD_POST) {
+	if (req->flags & HTTP_REQUEST_EXPECT_BODY) {
 		if (!http_request_header(req, "content-length", &p)) {
-			kore_debug("POST but no content-length");
+			kore_debug("expected body but no content-length");
 			req->flags |= HTTP_REQUEST_DELETE;
 			http_error_response(req->owner, NULL, 411);
 			return (KORE_RESULT_OK);
@@ -589,30 +600,31 @@ http_header_recv(struct netbuf *nb)
 
 		if (clen == 0) {
 			req->flags |= HTTP_REQUEST_COMPLETE;
+			req->flags &= ~HTTP_REQUEST_EXPECT_BODY;
 			return (KORE_RESULT_OK);
 		}
 
-		if (clen > http_postbody_max) {
-			kore_log(LOG_NOTICE, "POST data too large (%ld > %ld)",
-			    clen, http_postbody_max);
+		if (clen > http_body_max) {
+			kore_log(LOG_NOTICE, "body too large (%ld > %ld)",
+			    clen, http_body_max);
 			req->flags |= HTTP_REQUEST_DELETE;
 			http_error_response(req->owner, NULL, 411);
 			return (KORE_RESULT_OK);
 		}
 
-		req->post_data = kore_buf_create(clen);
-		kore_buf_append(req->post_data, end_headers,
+		req->http_body = kore_buf_create(clen);
+		kore_buf_append(req->http_body, end_headers,
 		    (nb->s_off - len));
 
 		bytes_left = clen - (nb->s_off - len);
 		if (bytes_left > 0) {
-			kore_debug("%ld/%ld (%ld - %ld) more bytes for POST",
+			kore_debug("%ld/%ld (%ld - %ld) more bytes for body",
 			    bytes_left, clen, nb->s_off, len);
-			net_recv_queue(c, bytes_left,
-			    0, &nnb, http_post_data_recv);
+			net_recv_queue(c, bytes_left, 0, &nnb, http_body_recv);
 			nnb->extra = req;
 		} else if (bytes_left == 0) {
 			req->flags |= HTTP_REQUEST_COMPLETE;
+			req->flags &= ~HTTP_REQUEST_EXPECT_BODY;
 		} else {
 			kore_debug("bytes_left would become zero (%ld)", clen);
 			http_error_response(req->owner, NULL, 500);
@@ -630,9 +642,9 @@ http_populate_arguments(struct http_request *req)
 	char			*query, *args[HTTP_MAX_QUERY_ARGS], *val[3];
 
 	if (req->method == HTTP_METHOD_POST) {
-		if (req->post_data == NULL)
+		if (req->http_body == NULL)
 			return (0);
-		query = http_post_data_text(req);
+		query = http_body_text(req);
 	} else {
 		if (req->query_string == NULL)
 			return (0);
@@ -825,7 +837,7 @@ http_populate_multipart_form(struct http_request *req, int *v)
 	slen = l;
 	kore_mem_free(type);
 
-	req->multipart_body = http_post_data_bytes(req, &blen);
+	req->multipart_body = http_body_bytes(req, &blen);
 	if (slen < 3 || blen < (slen * 2)) {
 		kore_mem_free(boundary);
 		return (KORE_RESULT_ERROR);
@@ -943,17 +955,17 @@ http_generic_404(struct http_request *req)
 }
 
 char *
-http_post_data_text(struct http_request *req)
+http_body_text(struct http_request *req)
 {
 	u_int32_t	len;
 	u_int8_t	*data;
 	char		*text;
 
-	if (req->post_data == NULL)
+	if (req->http_body == NULL)
 		return (NULL);
 
-	data = kore_buf_release(req->post_data, &len);
-	req->post_data = NULL;
+	data = kore_buf_release(req->http_body, &len);
+	req->http_body = NULL;
 	len++;
 
 	text = kore_malloc(len);
@@ -964,15 +976,15 @@ http_post_data_text(struct http_request *req)
 }
 
 u_int8_t *
-http_post_data_bytes(struct http_request *req, u_int32_t *len)
+http_body_bytes(struct http_request *req, u_int32_t *len)
 {
 	u_int8_t	*data;
 
-	if (req->post_data == NULL)
+	if (req->http_body == NULL)
 		return (NULL);
 
-	data = kore_buf_release(req->post_data, len);
-	req->post_data = NULL;
+	data = kore_buf_release(req->http_body, len);
+	req->http_body = NULL;
 
 	return (data);
 }
@@ -1073,14 +1085,16 @@ http_file_add(struct http_request *req, const char *name, const char *filename,
 }
 
 static int
-http_post_data_recv(struct netbuf *nb)
+http_body_recv(struct netbuf *nb)
 {
 	struct http_request	*req = (struct http_request *)nb->extra;
 
-	kore_buf_append(req->post_data, nb->buf, nb->s_off);
-	req->flags |= HTTP_REQUEST_COMPLETE;
+	kore_buf_append(req->http_body, nb->buf, nb->s_off);
 
-	kore_debug("post complete for request %p", req);
+	req->flags |= HTTP_REQUEST_COMPLETE;
+	req->flags &= ~HTTP_REQUEST_EXPECT_BODY;
+
+	kore_debug("received all body data for request %p", req);
 
 	return (KORE_RESULT_OK);
 }
@@ -1128,9 +1142,6 @@ http_response_spdy(struct http_request *req, struct connection *c,
 	    KORE_VERSION_STATE);
 	spdy_header_block_add(hblock, ":server", sbuf);
 
-	if (status == HTTP_STATUS_METHOD_NOT_ALLOWED)
-		spdy_header_block_add(hblock, ":allow", "get, post");
-
 	if (http_hsts_enable) {
 		(void)snprintf(sbuf, sizeof(sbuf),
 		    "max-age=%" PRIu64, http_hsts_enable);
@@ -1153,7 +1164,7 @@ http_response_spdy(struct http_request *req, struct connection *c,
 	net_send_queue(c, htext, hlen, NULL, NETBUF_LAST_CHAIN);
 	kore_mem_free(htext);
 
-	if (len > 0) {
+	if (len > 0 && req != NULL && req->method != HTTP_METHOD_HEAD) {
 		s->send_size += len;
 		s->flags |= SPDY_DATAFRAME_PRELUDE;
 
@@ -1180,9 +1191,6 @@ http_response_normal(struct http_request *req, struct connection *c,
 	kore_buf_appendf(header_buf, "server: %s (%d.%d-%s)\r\n",
 	    KORE_NAME_STRING, KORE_VERSION_MAJOR, KORE_VERSION_MINOR,
 	    KORE_VERSION_STATE);
-
-	if (status == HTTP_STATUS_METHOD_NOT_ALLOWED)
-		kore_buf_appendf(header_buf, "allow: GET, POST\r\n");
 
 	if (c->flags & CONN_CLOSE_EMPTY)
 		connection_close = 1;
@@ -1227,7 +1235,7 @@ http_response_normal(struct http_request *req, struct connection *c,
 	net_send_queue(c, header_buf->data, header_buf->offset,
 	    NULL, NETBUF_LAST_CHAIN);
 
-	if (d != NULL)
+	if (d != NULL && req != NULL && req->method != HTTP_METHOD_HEAD)
 		net_send_queue(c, d, len, NULL, NETBUF_LAST_CHAIN);
 
 	if (!(c->flags & CONN_CLOSE_EMPTY)) {
