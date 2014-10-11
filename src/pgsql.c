@@ -102,16 +102,22 @@ kore_pgsql_query_params(struct kore_pgsql *pgsql, struct http_request *req,
 	if (!pgsql_prepare(pgsql, req, query))
 		return (KORE_RESULT_ERROR);
 
-	va_start(args, count);
+	if (count > 0) {
+		va_start(args, count);
 
-	lengths = kore_calloc(count, sizeof(int));
-	formats = kore_calloc(count, sizeof(int));
-	values = kore_calloc(count, sizeof(char *));
+		lengths = kore_calloc(count, sizeof(int));
+		formats = kore_calloc(count, sizeof(int));
+		values = kore_calloc(count, sizeof(char *));
 
-	for (i = 0; i < count; i++) {
-		values[i] = va_arg(args, void *);
-		lengths[i] = va_arg(args, u_int32_t);
-		formats[i] = va_arg(args, int);
+		for (i = 0; i < count; i++) {
+			values[i] = va_arg(args, void *);
+			lengths[i] = va_arg(args, u_int32_t);
+			formats[i] = va_arg(args, int);
+		}
+	} else {
+		lengths = NULL;
+		formats = NULL;
+		values = NULL;
 	}
 
 	if (!PQsendQueryParams(pgsql->conn->db, query, count, NULL,
