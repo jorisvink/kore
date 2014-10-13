@@ -281,7 +281,7 @@ kore_worker_entry(struct kore_worker *kw)
 		http_process();
 
 		now = kore_time_ms();
-		if ((now - idle_check) >= 10000) {
+		if ((now - idle_check) >= 1000) {
 			idle_check = now;
 			TAILQ_FOREACH(c, &worker_clients, list) {
 				if (c->proto == CONN_PROTO_SPDY &&
