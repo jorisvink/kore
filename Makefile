@@ -44,8 +44,8 @@ endif
 
 OSNAME=$(shell uname -s | sed -e 's/[-_].*//g' | tr A-Z a-z)
 ifeq ("$(OSNAME)", "darwin")
-	CFLAGS+=-I/opt/local/include/
-	LDFLAGS+=-L/opt/local/lib
+	CFLAGS+=-I/opt/local/include/ -I/usr/local/opt/openssl/include
+	LDFLAGS+=-L/opt/local/lib -L/usr/local/opt/openssl/lib
 	S_SRC+=src/bsd.c
 else ifeq ("$(OSNAME)", "linux")
 	CFLAGS+=-D_GNU_SOURCE=1
