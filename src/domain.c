@@ -130,6 +130,7 @@ kore_domain_sslstart(struct kore_domain *dom)
 	SSL_CTX_set_mode(dom->ssl_ctx, SSL_MODE_ENABLE_PARTIAL_WRITE);
 
 	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_SSLv2);
+	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_SSLv3);
 	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_CIPHER_SERVER_PREFERENCE);
 	SSL_CTX_set_cipher_list(dom->ssl_ctx, kore_ssl_cipher_list);
 
