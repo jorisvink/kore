@@ -43,7 +43,7 @@ Building Kore
 
 Requirements
 * libz
-* openssl >= 1.0.1g
+* openssl >= 1.0.1i
 
 Requirements for background tasks
 * pthreads
