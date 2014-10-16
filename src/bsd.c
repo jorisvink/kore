@@ -72,7 +72,7 @@ kore_platform_event_init(void)
 		fatal("kqueue(): %s", errno_s);
 
 	nchanges = 0;
-	event_count = worker_max_connections + nlisteners;
+	event_count = (worker_max_connections * 2) + nlisteners;
 	events = kore_calloc(event_count, sizeof(struct kevent));
 	changelist = kore_calloc(event_count, sizeof(struct kevent));
 
