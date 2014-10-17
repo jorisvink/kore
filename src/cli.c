@@ -797,7 +797,7 @@ cli_generate_certs(void)
 	if (!X509_set_issuer_name(x509, name))
 		cli_fatal("X509_set_issuer_name(): %s", ssl_errno_s);
 
-	if (!X509_sign(x509, pkey, EVP_sha1()))
+	if (!X509_sign(x509, pkey, EVP_sha256()))
 		cli_fatal("X509_sign(): %s", ssl_errno_s);
 
 	(void)cli_vasprintf(&fpath, "%s/cert/server.key", rootdir);
