@@ -116,9 +116,9 @@ authentication auth_example {
 #
 #	accesslog
 #		- File where all requests are logged.
-#	require_client_cert
-#		- Asks the client to present a certificate
-#		matching the CA given to require_client_cert
+#	client_certificates [CA] [optional CRL]
+#		- Require client certificates to be sent for the given
+#		  CA with an optional CRL file.
 #
 # Handlers
 #
@@ -176,7 +176,7 @@ domain localhost {
 #	certfile		cert/other/server.crt
 #	certkey			cert/other/server.key
 #	accesslog		/var/log/other_kore_access.log
-#	require_client_cert	cert/other/ca.crt
+#	client_certificates	cert/other/ca.crt
 
 #	static		/css/style.css		serve_style_css
 #	static		/			serve_index

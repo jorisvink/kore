@@ -229,6 +229,7 @@ kore_worker_entry(struct kore_worker *kw)
 	net_init();
 	http_init();
 	kore_connection_init();
+	kore_domain_load_crl();
 	TAILQ_INIT(&disconnected);
 	TAILQ_INIT(&worker_clients);
 
@@ -255,6 +256,7 @@ kore_worker_entry(struct kore_worker *kw)
 				kore_module_reload(1);
 			else if (sig_recv == SIGQUIT || sig_recv == SIGINT)
 				quit = 1;
+
 			sig_recv = 0;
 		}
 

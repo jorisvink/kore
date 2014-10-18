@@ -55,7 +55,7 @@ static int		configure_http_keepalive_time(char **);
 static int		configure_validator(char **);
 static int		configure_params(char **);
 static int		configure_validate(char **);
-static int		configure_require_client_cert(char **);
+static int		configure_client_certificates(char **);
 static int		configure_authentication(char **);
 static int		configure_authentication_uri(char **);
 static int		configure_authentication_type(char **);
@@ -92,7 +92,7 @@ static struct {
 	{ "accesslog",			configure_accesslog },
 	{ "certfile",			configure_certfile },
 	{ "certkey",			configure_certkey },
-	{ "require_client_cert",	configure_require_client_cert },
+	{ "client_certificates",	configure_client_certificates },
 	{ "http_header_max",		configure_http_header_max },
 	{ "http_body_max",		configure_http_body_max },
 	{ "http_hsts_enable",		configure_http_hsts_enable },
@@ -370,10 +370,10 @@ configure_handler(char **argv)
 }
 
 static int
-configure_require_client_cert(char **argv)
+configure_client_certificates(char **argv)
 {
 	if (current_domain == NULL) {
-		printf("missing domain page require_client_cert\n");
+		printf("missing domain for require_client_cert\n");
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -389,6 +389,9 @@ configure_require_client_cert(char **argv)
 	}
 
 	current_domain->cafile = kore_strdup(argv[1]);
+	if (argv[2] != NULL)
+		current_domain->crlfile = kore_strdup(argv[2]);
+
 	return (KORE_RESULT_OK);
 }
 

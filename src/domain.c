@@ -24,6 +24,8 @@ struct kore_domain_h		domains;
 struct kore_domain		*primary_dom = NULL;
 DH				*ssl_dhparam = NULL;
 
+static void	domain_load_crl(struct kore_domain *);
+
 void
 kore_domain_init(void)
 {
@@ -61,7 +63,6 @@ kore_domain_sslstart(struct kore_domain *dom)
 {
 #if !defined(KORE_BENCHMARK)
 	STACK_OF(X509_NAME)	*certs;
-
 #if !defined(OPENSSL_NO_EC)
 	EC_KEY		*ecdh;
 #endif
@@ -163,4 +164,43 @@ kore_domain_closelogs(void)
 
 	TAILQ_FOREACH(dom, &domains, list)
 		close(dom->accesslog);
+}
+
+void
+kore_domain_load_crl(void)
+{
+	struct kore_domain	*dom;
+
+	TAILQ_FOREACH(dom, &domains, list)
+		domain_load_crl(dom);
+}
+
+static void
+domain_load_crl(struct kore_domain *dom)
+{
+	X509_STORE		*store;
+
+	ERR_clear_error();
+
+	if (dom->cafile == NULL)
+		return;
+
+	if (dom->crlfile == NULL) {
+		kore_log(LOG_WARNING, "WARNING: Running without CRL");
+		return;
+	}
+
+	if ((store = SSL_CTX_get_cert_store(dom->ssl_ctx)) == NULL) {
+		kore_log(LOG_ERR, "SSL_CTX_get_cert_store(): %S", ssl_errno_s);
+		return;
+	}
+
+	if (!X509_STORE_load_locations(store, dom->crlfile, NULL)) {
+		kore_log(LOG_ERR, "X509_STORE_load_locations(): %s",
+		    ssl_errno_s);
+		return;
+	}
+
+	X509_STORE_set_flags(store,
+	    X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
 }

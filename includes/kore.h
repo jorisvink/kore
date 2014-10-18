@@ -263,6 +263,7 @@ struct kore_domain {
 	char					*certfile;
 	char					*certkey;
 	char					*cafile;
+	char					*crlfile;
 	int					accesslog;
 	SSL_CTX					*ssl_ctx;
 	TAILQ_HEAD(, kore_module_handle)	handlers;
@@ -436,6 +437,7 @@ void		kore_module_onload(void);
 int		kore_module_loaded(void);
 void		kore_domain_closelogs(void);
 void		*kore_module_getsym(const char *);
+void		kore_domain_load_crl(void);
 void		kore_module_load(const char *, const char *);
 void		kore_domain_sslstart(struct kore_domain *);
 int		kore_module_handler_new(const char *, const char *,
