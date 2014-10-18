@@ -178,6 +178,7 @@ kore_domain_load_crl(void)
 static void
 domain_load_crl(struct kore_domain *dom)
 {
+#if !defined(KORE_BENCHMARK)
 	X509_STORE		*store;
 
 	ERR_clear_error();
@@ -203,4 +204,5 @@ domain_load_crl(struct kore_domain *dom)
 
 	X509_STORE_set_flags(store,
 	    X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
+#endif
 }
