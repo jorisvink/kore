@@ -42,6 +42,8 @@
 #endif
 
 #define KORE_SHM_KEY		15000
+#define WORKER_LOCK_TIMEOUT	500
+
 #define WORKER(id)						\
 	(struct kore_worker *)((u_int8_t *)kore_workers +	\
 	    (sizeof(struct kore_worker) * id))
@@ -54,7 +56,8 @@ struct wlock {
 static int	worker_trylock(void);
 static void	worker_unlock(void);
 
-static int	kore_worker_acceptlock_obtain(void);
+static inline int	kore_worker_acceptlock_obtain(void);
+static inline void	kore_worker_acceptlock_release(void);
 
 static TAILQ_HEAD(, connection)		disconnected;
 static TAILQ_HEAD(, connection)		worker_clients;
@@ -179,8 +182,8 @@ kore_worker_entry(struct kore_worker *kw)
 	struct rlimit		rl;
 	char			buf[16];
 	struct connection	*c, *cnext;
-	int			quit, had_lock;
-	u_int64_t		now, idle_check, timer;
+	int			quit, had_lock, r;
+	u_int64_t		now, idle_check, next_lock;
 
 	worker = kw;
 
@@ -235,6 +238,7 @@ kore_worker_entry(struct kore_worker *kw)
 
 	quit = 0;
 	had_lock = 0;
+	next_lock = 0;
 	idle_check = 0;
 	kore_platform_event_init();
 	kore_accesslog_worker_init();
@@ -250,6 +254,11 @@ kore_worker_entry(struct kore_worker *kw)
 	kore_log(LOG_NOTICE, "worker %d started (cpu#%d)", kw->id, kw->cpu);
 	kore_module_onload();
 
+	if (worker_count > 1)
+		kw->accept_treshold = worker_max_connections / 16;
+	else
+		kw->accept_treshold = worker_max_connections;
+
 	for (;;) {
 		if (sig_recv != 0) {
 			if (sig_recv == SIGHUP)
@@ -260,30 +269,33 @@ kore_worker_entry(struct kore_worker *kw)
 			sig_recv = 0;
 		}
 
-		if (kore_worker_acceptlock_obtain()) {
-			if (had_lock == 0)
-				kore_platform_enable_accept();
+		now = kore_time_ms();
 
-			timer = 100;
-			had_lock = 1;
-		} else {
+		if (now > next_lock) {
+			if (kore_worker_acceptlock_obtain()) {
+				if (had_lock == 0) {
+					kore_platform_enable_accept();
+					had_lock = 1;
+				}
+			}
+		}
+
+		if (!worker->has_lock) {
 			if (had_lock == 1) {
 				had_lock = 0;
 				kore_platform_disable_accept();
 			}
-
-			timer = 1;
 		}
 
-		kore_platform_event_wait(timer);
-
-		if (worker->has_lock)
+		r = kore_platform_event_wait(100);
+		if (worker->has_lock && r > 0) {
 			kore_worker_acceptlock_release();
+			next_lock = now + WORKER_LOCK_TIMEOUT;
+		}
 
 		http_process();
 
-		now = kore_time_ms();
-		if ((now - idle_check) >= 1000) {
+		if ((now - idle_check) >= 10000) {
 			idle_check = now;
 			TAILQ_FOREACH(c, &worker_clients, list) {
 				if (c->proto == CONN_PROTO_SPDY &&
@@ -409,7 +421,7 @@ kore_worker_wait(int final)
 	}
 }
 
-void
+static inline void
 kore_worker_acceptlock_release(void)
 {
 	if (worker_count == 1)
@@ -422,10 +434,13 @@ kore_worker_acceptlock_release(void)
 	worker->has_lock = 0;
 }
 
-static int
+static inline int
 kore_worker_acceptlock_obtain(void)
 {
 	int		r;
+
+	if (worker->has_lock == 1)
+		return (1);
 
 	if (worker_count == 1) {
 		worker->has_lock = 1;

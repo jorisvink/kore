@@ -27,7 +27,6 @@ int		serve_intro(struct http_request *);
 int		serve_b64test(struct http_request *);
 int		serve_spdyreset(struct http_request *);
 int		serve_file_upload(struct http_request *);
-int		serve_lock_test(struct http_request *);
 int		serve_validator(struct http_request *);
 int		serve_params_test(struct http_request *);
 int		serve_private(struct http_request *);
@@ -178,16 +177,6 @@ serve_file_upload(struct http_request *req)
 	http_response(req, 200, d, len);
 	kore_mem_free(d);
 
-	return (KORE_RESULT_OK);
-}
-
-int
-serve_lock_test(struct http_request *req)
-{
-	kore_log(LOG_NOTICE, "lock-test called on worker %d", worker->id);
-	kore_worker_acceptlock_release();
-
-	http_response(req, 200, "OK", 2);
 	return (KORE_RESULT_OK);
 }
 

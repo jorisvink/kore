@@ -172,8 +172,8 @@ struct http_request {
 	u_int64_t			start;
 	u_int64_t			end;
 	u_int64_t			total;
-	char				host[KORE_DOMAINNAME_LEN];
-	char				path[HTTP_URI_LEN];
+	char				*host;
+	char				*path;
 	char				*agent;
 	struct connection		*owner;
 	struct spdy_stream		*stream;

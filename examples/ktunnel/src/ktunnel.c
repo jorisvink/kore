@@ -82,8 +82,6 @@ open_connection(struct http_request *req)
  * Kore understands. We set the disconnect method so we get a callback
  * whenever either of the connections will go away so we can cleanup the
  * one it is attached to.
- *
- * We are storing the "piped" connection in hdlr_extra.
  */
 static int
 ktunnel_pipe_create(struct connection *c, const char *host, const char *port)
@@ -92,7 +90,6 @@ ktunnel_pipe_create(struct connection *c, const char *host, const char *port)
 	struct connection	*cpipe;
 	u_int16_t		nport;
 	int			fd, err;
-	struct netbuf		*nb, *next;
 
 	nport = kore_strtonum(port, 10, 1, SHRT_MAX, &err);
 	if (err == KORE_RESULT_ERROR) {
@@ -143,20 +140,11 @@ ktunnel_pipe_create(struct connection *c, const char *host, const char *port)
 
 	kore_worker_connection_add(cpipe);
 	kore_connection_start_idletimer(cpipe);
-
-	for (nb = TAILQ_FIRST(&(c->recv_queue)); nb != NULL; nb = next) {
-		next = TAILQ_NEXT(nb, list);
-		TAILQ_REMOVE(&(c->recv_queue), nb, list);
-		kore_mem_free(nb->buf);
-		kore_pool_put(&nb_pool, nb);
-	}
-
 	kore_platform_event_all(cpipe->fd, cpipe);
 
-	net_recv_queue(c, NETBUF_SEND_PAYLOAD_MAX,
-	    NETBUF_CALL_CB_ALWAYS, NULL, ktunnel_pipe_data);
-	net_recv_queue(cpipe, NETBUF_SEND_PAYLOAD_MAX,
-	    NETBUF_CALL_CB_ALWAYS, NULL, ktunnel_pipe_data);
+	net_recv_reset(c, NETBUF_SEND_PAYLOAD_MAX, ktunnel_pipe_data);
+	net_recv_queue(cpipe, NETBUF_SEND_PAYLOAD_MAX, NETBUF_CALL_CB_ALWAYS,
+	    ktunnel_pipe_data);
 
 	printf("connection started to %s (%p -> %p)\n", host, c, cpipe);
 	return (KORE_RESULT_OK);
@@ -176,9 +164,7 @@ ktunnel_pipe_data(struct netbuf *nb)
 
 	net_send_queue(dst, nb->buf, nb->s_off, NULL, NETBUF_LAST_CHAIN);
 	net_send_flush(dst);
-
-	/* Reuse the netbuf so we don't have to recreate them all the time. */
-	nb->s_off = 0;
+	net_recv_reset(src, NETBUF_SEND_PAYLOAD_MAX, ktunnel_pipe_data);
 
 	return (KORE_RESULT_OK);
 }

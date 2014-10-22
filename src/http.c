@@ -45,6 +45,9 @@ static void		http_response_spdy(struct http_request *,
 			    int, void *, u_int32_t);
 
 static struct kore_buf			*header_buf;
+static char				http_version[32];
+static u_int16_t			http_version_len;
+static char				http_version_spdy[32];
 static TAILQ_HEAD(, http_request)	http_requests;
 static TAILQ_HEAD(, http_request)	http_requests_sleeping;
 static struct kore_pool			http_request_pool;
@@ -59,15 +62,29 @@ u_int64_t	http_body_max = HTTP_BODY_MAX_LEN;
 void
 http_init(void)
 {
-	int		prealloc;
+	int		prealloc, l;
 
 	http_request_count = 0;
 	TAILQ_INIT(&http_requests);
 	TAILQ_INIT(&http_requests_sleeping);
+
 	header_buf = kore_buf_create(1024);
 
-	prealloc = MIN((worker_max_connections / 10), 1000);
+	l = snprintf(http_version_spdy, sizeof(http_version_spdy),
+	    "kore (%d.%d-%s)", KORE_VERSION_MAJOR,
+	    KORE_VERSION_MINOR, KORE_VERSION_STATE);
+	if (l == -1 || (size_t)l >= sizeof(http_version_spdy))
+		fatal("http_init(): http_version_spdy buffer too small");
 
+	l = snprintf(http_version, sizeof(http_version),
+	    "server: kore (%d.%d-%s)\r\n",
+	    KORE_VERSION_MAJOR, KORE_VERSION_MINOR, KORE_VERSION_STATE);
+	if (l == -1 || (size_t)l >= sizeof(http_version))
+		fatal("http_init(): http_version buffer too small");
+
+	http_version_len = l;
+
+	prealloc = MIN((worker_max_connections / 10), 1000);
 	kore_pool_init(&http_request_pool, "http_request_pool",
 	    sizeof(struct http_request), prealloc);
 	kore_pool_init(&http_header_pool, "http_header_pool",
@@ -141,8 +158,8 @@ http_request_new(struct connection *c, struct spdy_stream *s, const char *host,
 	if ((p = strrchr(host, ':')) != NULL)
 		*p = '\0';
 
-	kore_strlcpy(req->host, host, sizeof(req->host));
-	kore_strlcpy(req->path, path, sizeof(req->path));
+	req->host = kore_strdup(host);
+	req->path = kore_strdup(path);
 
 	if ((req->query_string = strchr(req->path, '?')) != NULL)
 		*(req->query_string)++ = '\0';
@@ -354,6 +371,12 @@ http_request_free(struct http_request *req)
 
 	kore_debug("http_request_free: %p->%p", req->owner, req);
 
+	kore_mem_free(req->host);
+	kore_mem_free(req->path);
+
+	req->host = NULL;
+	req->path = NULL;
+
 	TAILQ_REMOVE(&http_requests, req, list);
 	TAILQ_REMOVE(&(req->owner->http_requests), req, olist);
 
@@ -484,7 +507,6 @@ http_header_recv(struct netbuf *nb)
 	u_int64_t		clen;
 	struct http_header	*hdr;
 	struct http_request	*req;
-	struct netbuf		*nnb;
 	u_int8_t		*end_headers;
 	int			h, i, v, skip, bytes_left;
 	char			*request[4], *host[3], *hbuf;
@@ -620,8 +642,7 @@ http_header_recv(struct netbuf *nb)
 		if (bytes_left > 0) {
 			kore_debug("%ld/%ld (%ld - %ld) more bytes for body",
 			    bytes_left, clen, nb->s_off, len);
-			net_recv_queue(c, bytes_left, 0, &nnb, http_body_recv);
-			nnb->extra = req;
+			net_recv_expand(c, bytes_left, req, http_body_recv);
 		} else if (bytes_left == 0) {
 			req->flags |= HTTP_REQUEST_COMPLETE;
 			req->flags &= ~HTTP_REQUEST_EXPECT_BODY;
@@ -1136,11 +1157,7 @@ http_response_spdy(struct http_request *req, struct connection *c,
 	hblock = spdy_header_block_create(SPDY_HBLOCK_NORMAL);
 	spdy_header_block_add(hblock, ":status", sbuf);
 	spdy_header_block_add(hblock, ":version", "HTTP/1.1");
-
-	(void)snprintf(sbuf, sizeof(sbuf), "%s (%d.%d-%s)",
-	    KORE_NAME_STRING, KORE_VERSION_MAJOR, KORE_VERSION_MINOR,
-	    KORE_VERSION_STATE);
-	spdy_header_block_add(hblock, ":server", sbuf);
+	spdy_header_block_add(hblock, ":server", http_version_spdy);
 
 	if (http_hsts_enable) {
 		(void)snprintf(sbuf, sizeof(sbuf),
@@ -1188,9 +1205,7 @@ http_response_normal(struct http_request *req, struct connection *c,
 
 	kore_buf_appendf(header_buf, "HTTP/1.1 %d %s\r\n",
 	    status, http_status_text(status));
-	kore_buf_appendf(header_buf, "server: %s (%d.%d-%s)\r\n",
-	    KORE_NAME_STRING, KORE_VERSION_MAJOR, KORE_VERSION_MINOR,
-	    KORE_VERSION_STATE);
+	kore_buf_append(header_buf, http_version, http_version_len);
 
 	if (c->flags & CONN_CLOSE_EMPTY)
 		connection_close = 1;
@@ -1238,10 +1253,8 @@ http_response_normal(struct http_request *req, struct connection *c,
 	if (d != NULL && req != NULL && req->method != HTTP_METHOD_HEAD)
 		net_send_queue(c, d, len, NULL, NETBUF_LAST_CHAIN);
 
-	if (!(c->flags & CONN_CLOSE_EMPTY)) {
-		net_recv_queue(c, http_header_max,
-		    NETBUF_CALL_CB_ALWAYS, NULL, http_header_recv);
-	}
+	if (!(c->flags & CONN_CLOSE_EMPTY))
+		net_recv_reset(c, http_header_max, http_header_recv);
 }
 
 const char *

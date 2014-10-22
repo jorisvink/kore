@@ -71,9 +71,10 @@ kore_platform_event_init(void)
 	events = kore_calloc(event_count, sizeof(struct epoll_event));
 }
 
-void
+int
 kore_platform_event_wait(u_int64_t timer)
 {
+	u_int32_t		r;
 	struct connection	*c;
 	struct listener		*l;
 	u_int8_t		type;
@@ -82,13 +83,14 @@ kore_platform_event_wait(u_int64_t timer)
 	n = epoll_wait(efd, events, event_count, timer);
 	if (n == -1) {
 		if (errno == EINTR)
-			return;
+			return (0);
 		fatal("epoll_wait(): %s", errno_s);
 	}
 
 	if (n > 0)
 		kore_debug("main(): %d sockets available", n);
 
+	r = 0;
 	for (i = 0; i < n; i++) {
 		if (events[i].data.ptr == NULL)
 			fatal("events[%d].data.ptr == NULL", i);
@@ -125,12 +127,14 @@ kore_platform_event_wait(u_int64_t timer)
 		case KORE_TYPE_LISTENER:
 			l = (struct listener *)events[i].data.ptr;
 
-			while (worker_active_connections <
+			while (r < worker->accept_treshold &&
+			    worker_active_connections <
 			    worker_max_connections) {
 				kore_connection_accept(l, &c);
 				if (c == NULL)
 					break;
 
+				r++;
 				kore_platform_event_all(c->fd, c);
 			}
 			break;
@@ -160,6 +164,8 @@ kore_platform_event_wait(u_int64_t timer)
 			fatal("wrong type in event %d", type);
 		}
 	}
+
+	return (r);
 }
 
 void
@@ -174,7 +180,7 @@ kore_platform_event_schedule(int fd, int type, int flags, void *udata)
 {
 	struct epoll_event	evt;
 
-	kore_debug("kore_platform_event(%d, %d, %d, %p)",
+	kore_debug("kore_platform_event_schedule(%d, %d, %d, %p)",
 	    fd, type, flags, udata);
 
 	evt.events = type;
@@ -207,6 +213,8 @@ kore_platform_enable_accept(void)
 {
 	struct listener		*l;
 
+	kore_debug("kore_platform_enable_accept()");
+
 	LIST_FOREACH(l, &listeners, list)
 		kore_platform_event_schedule(l->fd, EPOLLIN, 0, l);
 }
@@ -215,6 +223,8 @@ void
 kore_platform_disable_accept(void)
 {
 	struct listener		*l;
+
+	kore_debug("kore_platform_disable_accept()");
 
 	LIST_FOREACH(l, &listeners, list) {
 		if (epoll_ctl(efd, EPOLL_CTL_DEL, l->fd, NULL) == -1)

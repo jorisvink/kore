@@ -97,11 +97,12 @@ spdy_frame_recv(struct netbuf *nb)
 			break;
 		}
 
+		r = KORE_RESULT_OK;
+
 		if (cb != NULL) {
-			r = net_recv_expand(c, nb, ctrl.length, cb);
+			net_recv_expand(c, ctrl.length, NULL, cb);
 		} else {
 			kore_debug("no callback for type %u", ctrl.type);
-			r = KORE_RESULT_OK;
 		}
 	} else {
 		data.stream_id = net_read32(nb->buf) & ~(1 << 31);
@@ -122,15 +123,14 @@ spdy_frame_recv(struct netbuf *nb)
 			if ((int)data.length < 0) {
 				r = KORE_RESULT_ERROR;
 			} else {
-				r = net_recv_expand(c, nb, data.length,
+				r = KORE_RESULT_OK;
+				net_recv_expand(c, data.length, NULL,
 				    spdy_data_frame_recv);
 			}
 		}
 	}
 
-	if (r == KORE_RESULT_OK) {
-		net_recv_queue(c, SPDY_FRAME_SIZE, 0, NULL, spdy_frame_recv);
-	} else {
+	if (r != KORE_RESULT_OK) {
 		r = KORE_RESULT_OK;
 		spdy_session_teardown(c, SPDY_SESSION_ERROR_PROTOCOL);
 	}
@@ -596,6 +596,7 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 	kore_mem_free(method);
 	kore_mem_free(host);
 	kore_mem_free(version);
+	net_recv_reset(c, SPDY_FRAME_SIZE, spdy_frame_recv);
 
 	kore_debug("SPDY_SYN_STREAM: %u:%u:%u", s->stream_id,
 	    s->flags, s->prio);
@@ -622,6 +623,7 @@ spdy_ctrl_frame_rst_stream(struct netbuf *nb)
 	}
 
 	spdy_stream_close(c, s, SPDY_REMOVE_NETBUFS);
+	net_recv_reset(c, SPDY_FRAME_SIZE, spdy_frame_recv);
 
 	return (KORE_RESULT_OK);
 }
@@ -676,6 +678,8 @@ spdy_ctrl_frame_settings(struct netbuf *nb)
 		buf += 8;
 	}
 
+	net_recv_reset(c, SPDY_FRAME_SIZE, spdy_frame_recv);
+
 	return (KORE_RESULT_OK);
 }
 
@@ -696,6 +700,8 @@ spdy_ctrl_frame_ping(struct netbuf *nb)
 	}
 
 	spdy_frame_send(c, SPDY_CTRL_FRAME_PING, 0, 4, NULL, id);
+	net_recv_reset(c, SPDY_FRAME_SIZE, spdy_frame_recv);
+
 	return (KORE_RESULT_OK);
 }
 
@@ -738,6 +744,8 @@ spdy_ctrl_frame_window(struct netbuf *nb)
 			r = net_send_flush(c);
 		}
 	}
+
+	net_recv_reset(c, SPDY_FRAME_SIZE, spdy_frame_recv);
 
 	return (r);
 }
@@ -806,6 +814,7 @@ spdy_data_frame_recv(struct netbuf *nb)
 		if (s->post_size == 0) {
 			req->flags |= HTTP_REQUEST_COMPLETE;
 			req->flags &= ~HTTP_REQUEST_EXPECT_BODY;
+			net_recv_reset(c, SPDY_FRAME_SIZE, spdy_frame_recv);
 			return (KORE_RESULT_OK);
 		}
 
@@ -826,7 +835,7 @@ spdy_data_frame_recv(struct netbuf *nb)
 	kore_buf_append(req->http_body, (nb->buf + SPDY_FRAME_SIZE),
 	    data.length);
 
-	if (data.flags & FLAG_FIN) {
+	if (data.flags & FLAG_FIN || req->http_body->offset == s->post_size) {
 		if (req->http_body->offset != s->post_size) {
 			kore_debug("FLAG_FIN before all POST data received");
 			return (KORE_RESULT_ERROR);
@@ -837,6 +846,8 @@ spdy_data_frame_recv(struct netbuf *nb)
 		req->flags |= HTTP_REQUEST_COMPLETE;
 		req->flags &= ~HTTP_REQUEST_EXPECT_BODY;
 	}
+
+	net_recv_reset(c, SPDY_FRAME_SIZE, spdy_frame_recv);
 
 	/*
 	 * XXX - This can be implemented better so we can stagger

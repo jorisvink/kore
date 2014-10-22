@@ -82,9 +82,10 @@ kore_platform_event_init(void)
 	}
 }
 
-void
+int
 kore_platform_event_wait(u_int64_t timer)
 {
+	u_int32_t		r;
 	struct listener		*l;
 	struct connection	*c;
 	u_int8_t		type;
@@ -96,7 +97,7 @@ kore_platform_event_wait(u_int64_t timer)
 	n = kevent(kfd, changelist, nchanges, events, event_count, &timeo);
 	if (n == -1) {
 		if (errno == EINTR)
-			return;
+			return (0);
 		fatal("kevent(): %s", errno_s);
 	}
 
@@ -104,6 +105,7 @@ kore_platform_event_wait(u_int64_t timer)
 	if (n > 0)
 		kore_debug("main(): %d sockets available", n);
 
+	r = 0;
 	for (i = 0; i < n; i++) {
 		if (events[i].udata == NULL)
 			fatal("events[%d].udata == NULL", i);
@@ -139,12 +141,14 @@ kore_platform_event_wait(u_int64_t timer)
 		case KORE_TYPE_LISTENER:
 			l = (struct listener *)events[i].udata;
 
-			while (worker_active_connections <
+			while (r < worker->accept_treshold &&
+			    worker_active_connections <
 			    worker_max_connections) {
 				kore_connection_accept(l, &c);
 				if (c == NULL)
 					break;
 
+				r++;
 				kore_platform_event_all(c->fd, c);
 			}
 			break;
@@ -181,6 +185,8 @@ kore_platform_event_wait(u_int64_t timer)
 			fatal("wrong type in event %d", type);
 		}
 	}
+
+	return (r);
 }
 
 void

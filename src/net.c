@@ -109,45 +109,62 @@ net_send_stream(struct connection *c, void *data, u_int32_t len,
 }
 
 void
-net_recv_queue(struct connection *c, u_int32_t len, int flags,
-    struct netbuf **out, int (*cb)(struct netbuf *))
+net_recv_reset(struct connection *c, u_int32_t len, int (*cb)(struct netbuf *))
 {
-	struct netbuf		*nb;
+	kore_debug("net_recv_reset(): %p %d", c, len);
 
-	nb = kore_pool_get(&nb_pool);
-	nb->cb = cb;
-	nb->b_len = len;
-	nb->m_len = len;
-	nb->owner = c;
-	nb->s_off = 0;
-	nb->stream = NULL;
-	nb->flags = flags;
-	nb->type = NETBUF_RECV;
-	nb->buf = kore_malloc(nb->b_len);
+	if (c->rnb->type != NETBUF_RECV)
+		fatal("net_recv_expand(): wrong netbuf type");
 
-	TAILQ_INSERT_TAIL(&(c->recv_queue), nb, list);
-	if (out != NULL)
-		*out = nb;
+	c->rnb->cb = cb;
+	c->rnb->s_off = 0;
+	c->rnb->b_len = len;
+
+	if (c->rnb->b_len <= c->rnb->m_len &&
+	    c->rnb->m_len < (NETBUF_SEND_PAYLOAD_MAX / 2))
+		return;
+
+	kore_mem_free(c->rnb->buf);
+	c->rnb->m_len = len;
+	c->rnb->buf = kore_malloc(c->rnb->m_len);
 }
 
-int
-net_recv_expand(struct connection *c, struct netbuf *nb, u_int32_t len,
+void
+net_recv_queue(struct connection *c, u_int32_t len, int flags,
     int (*cb)(struct netbuf *))
 {
-	if (nb->type != NETBUF_RECV) {
-		kore_debug("net_recv_expand(): wrong netbuf type");
-		return (KORE_RESULT_ERROR);
-	}
+	kore_debug("net_recv_queue(): %p %d %d", c, len, flags);
 
-	nb->cb = cb;
-	nb->b_len += len;
-	nb->m_len = nb->b_len;
-	nb->buf = kore_realloc(nb->buf, nb->b_len);
+	if (c->rnb != NULL)
+		fatal("net_recv_queue(): called incorrectly for %p", c);
 
-	TAILQ_REMOVE(&(c->recv_queue), nb, list);
-	TAILQ_INSERT_HEAD(&(c->recv_queue), nb, list);
+	c->rnb = kore_pool_get(&nb_pool);
+	c->rnb->cb = cb;
+	c->rnb->owner = c;
+	c->rnb->s_off = 0;
+	c->rnb->b_len = len;
+	c->rnb->m_len = len;
+	c->rnb->extra = NULL;
+	c->rnb->stream = NULL;
+	c->rnb->flags = flags;
+	c->rnb->type = NETBUF_RECV;
+	c->rnb->buf = kore_malloc(c->rnb->b_len);
+}
 
-	return (KORE_RESULT_OK);
+void
+net_recv_expand(struct connection *c, u_int32_t len, void *extra,
+    int (*cb)(struct netbuf *))
+{
+	kore_debug("net_recv_expand(): %p %d %p", c, len, extra);
+
+	if (c->rnb->type != NETBUF_RECV)
+		fatal("net_recv_expand(): wrong netbuf type");
+
+	c->rnb->cb = cb;
+	c->rnb->b_len += len;
+	c->rnb->extra = extra;
+	c->rnb->m_len = c->rnb->b_len;
+	c->rnb->buf = kore_realloc(c->rnb->buf, c->rnb->b_len);
 }
 
 int
@@ -217,50 +234,31 @@ net_send_flush(struct connection *c)
 }
 
 int
-net_recv(struct connection *c)
+net_recv_flush(struct connection *c)
 {
 	int			r;
 
-	c->rnb = TAILQ_FIRST(&(c->recv_queue));
-	if (c->rnb == NULL) {
-		kore_debug("kore_read_client(): nb->cb == NULL");
-		return (KORE_RESULT_ERROR);
-	}
-
-	if (!c->read(c, &r))
-		return (KORE_RESULT_ERROR);
-	if (!(c->flags & CONN_READ_POSSIBLE))
-		return (KORE_RESULT_OK);
-
-	kore_debug("net_recv(%ld/%ld bytes), progress with %d",
-	    c->rnb->s_off, c->rnb->b_len, r);
-
-	c->rnb->s_off += (size_t)r;
-	if (c->rnb->s_off == c->rnb->b_len ||
-	    (c->rnb->flags & NETBUF_CALL_CB_ALWAYS)) {
-		r = c->rnb->cb(c->rnb);
-		if (c->rnb->s_off == c->rnb->b_len ||
-		    (c->rnb->flags & NETBUF_FORCE_REMOVE)) {
-			net_remove_netbuf(&(c->recv_queue), c->rnb);
-			c->rnb = NULL;
-		}
-
-		if (r != KORE_RESULT_OK)
-			return (r);
-	}
-
-	return (KORE_RESULT_OK);
-}
-
-int
-net_recv_flush(struct connection *c)
-{
 	kore_debug("net_recv_flush(%p)", c);
 
-	while (!TAILQ_EMPTY(&(c->recv_queue)) &&
-	    (c->flags & CONN_READ_POSSIBLE)) {
-		if (!net_recv(c))
+	if (c->rnb == NULL)
+		fatal("net_recv_flush(): nb->cb == NULL");
+
+	while (c->flags & CONN_READ_POSSIBLE) {
+		if (!c->read(c, &r))
 			return (KORE_RESULT_ERROR);
+		if (!(c->flags & CONN_READ_POSSIBLE))
+			break;
+
+		kore_debug("net_recv(%ld/%ld bytes), progress with %d",
+		    c->rnb->s_off, c->rnb->b_len, r);
+
+		c->rnb->s_off += (size_t)r;
+		if (c->rnb->s_off == c->rnb->b_len ||
+		    (c->rnb->flags & NETBUF_CALL_CB_ALWAYS)) {
+			r = c->rnb->cb(c->rnb);
+			if (r != KORE_RESULT_OK)
+				return (r);
+		}
 	}
 
 	return (KORE_RESULT_OK);
@@ -270,6 +268,9 @@ void
 net_remove_netbuf(struct netbuf_head *list, struct netbuf *nb)
 {
 	kore_debug("net_remove_netbuf(%p, %p, %p)", list, nb, nb->stream);
+
+	if (nb->type == NETBUF_RECV)
+		fatal("net_remove_netbuf(): cannot remove recv netbuf");
 
 	nb->stream = NULL;
 	if (nb->flags & NETBUF_MUST_RESEND) {

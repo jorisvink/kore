@@ -42,6 +42,8 @@ kore_connection_new(void *owner)
 
 	c->ssl = NULL;
 	c->flags = 0;
+	c->rnb = NULL;
+	c->snb = NULL;
 	c->cert = NULL;
 	c->owner = owner;
 	c->disconnect = NULL;
@@ -58,7 +60,6 @@ kore_connection_new(void *owner)
 	c->idle_timer.length = KORE_IDLE_TIMER_MAX;
 
 	TAILQ_INIT(&(c->send_queue));
-	TAILQ_INIT(&(c->recv_queue));
 	TAILQ_INIT(&(c->spdy_streams));
 	TAILQ_INIT(&(c->http_requests));
 
@@ -111,7 +112,7 @@ kore_connection_accept(struct listener *l, struct connection **out)
 	if (http_keepalive_time != 0)
 		c->idle_timer.length = http_keepalive_time * 1000;
 
-	net_recv_queue(c, http_header_max, NETBUF_CALL_CB_ALWAYS, NULL,
+	net_recv_queue(c, http_header_max, NETBUF_CALL_CB_ALWAYS,
 	    http_header_recv);
 #endif
 
@@ -203,7 +204,7 @@ kore_connection_handle(struct connection *c)
 				c->proto = CONN_PROTO_SPDY;
 				c->idle_timer.length = spdy_idle_time;
 				net_recv_queue(c, SPDY_FRAME_SIZE, 0,
-				    NULL, spdy_frame_recv);
+				    spdy_frame_recv);
 			} else if (!memcmp(data, "http/1.1", MIN(8, len))) {
 				c->proto = CONN_PROTO_HTTP;
 				if (http_keepalive_time != 0) {
@@ -212,7 +213,7 @@ kore_connection_handle(struct connection *c)
 				}
 
 				net_recv_queue(c, http_header_max,
-				    NETBUF_CALL_CB_ALWAYS, NULL,
+				    NETBUF_CALL_CB_ALWAYS,
 				    http_header_recv);
 			} else {
 				kore_log(LOG_NOTICE,
@@ -227,7 +228,7 @@ kore_connection_handle(struct connection *c)
 			}
 
 			net_recv_queue(c, http_header_max,
-			    NETBUF_CALL_CB_ALWAYS, NULL,
+			    NETBUF_CALL_CB_ALWAYS,
 			    http_header_recv);
 		}
 
@@ -304,11 +305,9 @@ kore_connection_remove(struct connection *c)
 		kore_pool_put(&nb_pool, nb);
 	}
 
-	for (nb = TAILQ_FIRST(&(c->recv_queue)); nb != NULL; nb = next) {
-		next = TAILQ_NEXT(nb, list);
-		TAILQ_REMOVE(&(c->recv_queue), nb, list);
-		kore_mem_free(nb->buf);
-		kore_pool_put(&nb_pool, nb);
+	if (c->rnb != NULL) {
+		kore_mem_free(c->rnb->buf);
+		kore_pool_put(&nb_pool, c->rnb);
 	}
 
 	for (s = TAILQ_FIRST(&(c->spdy_streams)); s != NULL; s = snext) {

@@ -48,7 +48,6 @@ extern int daemon(int, int);
 #define KORE_RESULT_OK		1
 #define KORE_RESULT_RETRY	2
 
-#define KORE_NAME_STRING	"kore"
 #define KORE_VERSION_MAJOR	1
 #define KORE_VERSION_MINOR	2
 #define KORE_VERSION_STATE	"current"
@@ -186,7 +185,6 @@ struct connection {
 
 	struct netbuf_head	send_queue;
 	struct netbuf		*snb;
-	struct netbuf_head	recv_queue;
 	struct netbuf		*rnb;
 
 	u_int32_t			client_stream_id;
@@ -255,6 +253,7 @@ struct kore_worker {
 	u_int8_t			cpu;
 	pid_t				pid;
 	u_int8_t			has_lock;
+	u_int32_t			accept_treshold;
 	struct kore_module_handle	*active_hdlr;
 };
 
@@ -350,7 +349,6 @@ void		kore_worker_wait(int);
 void		kore_worker_init(void);
 void		kore_worker_shutdown(void);
 void		kore_worker_dispatch_signal(int);
-void		kore_worker_acceptlock_release(void);
 void		kore_worker_spawn(u_int16_t, u_int16_t);
 void		kore_worker_entry(struct kore_worker *);
 void		kore_worker_connection_add(struct connection *);
@@ -363,7 +361,7 @@ void		kore_platform_proctitle(char *);
 void		kore_platform_disable_read(int);
 void		kore_platform_enable_accept(void);
 void		kore_platform_disable_accept(void);
-void		kore_platform_event_wait(u_int64_t);
+int		kore_platform_event_wait(u_int64_t);
 void		kore_platform_event_all(int, void *);
 void		kore_platform_schedule_read(int, void *);
 void		kore_platform_event_schedule(int, int, int, void *);
@@ -463,7 +461,6 @@ u_int32_t	net_read32(u_int8_t *);
 void		net_write16(u_int8_t *, u_int16_t);
 void		net_write32(u_int8_t *, u_int32_t);
 void		net_init(void);
-int		net_recv(struct connection *);
 int		net_send(struct connection *);
 int		net_send_flush(struct connection *);
 int		net_recv_flush(struct connection *);
@@ -471,11 +468,13 @@ int		net_read(struct connection *, int *);
 int		net_read_ssl(struct connection *, int *);
 int		net_write(struct connection *, int, int *);
 int		net_write_ssl(struct connection *, int, int *);
+void		net_recv_reset(struct connection *, u_int32_t,
+		    int (*cb)(struct netbuf *));
 void		net_remove_netbuf(struct netbuf_head *, struct netbuf *);
 void		net_recv_queue(struct connection *, u_int32_t, int,
-		    struct netbuf **, int (*cb)(struct netbuf *));
-int		net_recv_expand(struct connection *c, struct netbuf *,
-		    u_int32_t, int (*cb)(struct netbuf *));
+		    int (*cb)(struct netbuf *));
+void		net_recv_expand(struct connection *c, u_int32_t, void *,
+		    int (*cb)(struct netbuf *));
 void		net_send_queue(struct connection *, void *,
 		    u_int32_t, struct spdy_stream *, int);
 void		net_send_stream(struct connection *, void *,
