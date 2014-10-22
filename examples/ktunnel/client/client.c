@@ -352,7 +352,6 @@ ktunnel_connect(struct peer *peer, struct addrinfo *ai)
 
 	/*
 	 * XXX
-	 * - Make this TLSv1.2 only
 	 * - Add our client certs
 	 * - Verify server cert properly
 	 * - ...
@@ -360,10 +359,15 @@ ktunnel_connect(struct peer *peer, struct addrinfo *ai)
 	SSL_library_init();
 	SSL_load_error_strings();
 
-	if ((peer->ssl_ctx = SSL_CTX_new(SSLv3_method())) == NULL)
+	if ((peer->ssl_ctx = SSL_CTX_new(SSLv23_method())) == NULL)
 		fatal("SSL_CTX_new(): %s", ssl_errno_s);
 
 	SSL_CTX_set_mode(peer->ssl_ctx, SSL_MODE_AUTO_RETRY);
+	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_SSLv2);
+	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_SSLv3);
+	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_TLSv1);
+	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_TLSv1_1);
+
 	if ((peer->ssl = SSL_new(peer->ssl_ctx)) == NULL)
 		fatal("SSL_new(): %s", ssl_errno_s);
 	if (!SSL_set_fd(peer->ssl, peer->fd))
