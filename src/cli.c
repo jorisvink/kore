@@ -282,7 +282,7 @@ cli_build(int argc, char **argv)
 		rootdir = appl;
 	}
 
-	if ((p = getenv("KORE_COMPILER")) != NULL)
+	if ((p = getenv("CC")) != NULL)
 		compiler = p;
 
 	cfiles_count = 0;
@@ -879,7 +879,7 @@ cli_link_library(void *arg)
 	char			*p, *libname, *flags[LD_FLAGS_MAX];
 	char			*args[cfiles_count + 10 + LD_FLAGS_MAX];
 
-	if ((p = getenv("KORE_LDFLAGS")) != NULL)
+	if ((p = getenv("LDFLAGS")) != NULL)
 		f = kore_split_string(p, " ", flags, LD_FLAGS_MAX);
 	else
 		f = 0;
