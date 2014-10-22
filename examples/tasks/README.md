@@ -6,7 +6,7 @@ before returning to the client.
 
 Build:
 ```
-	# env KORE_LDFLAGS="-I/path/to/libcurl -lcurl" kore build
+	# env LDFLAGS="-I/path/to/libcurl -lcurl" kore build
 ```
 
 Run:

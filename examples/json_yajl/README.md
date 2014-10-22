@@ -5,7 +5,7 @@ parse a JSON string that was POSTed to the server.
 
 Run:
 ```
-	env KORE_LDFLAGS="-lyajl" kore run
+	env LDFLAGS="-lyajl" kore run
 ```
 
 Test:
