@@ -363,10 +363,10 @@ ktunnel_connect(struct peer *peer, struct addrinfo *ai)
 		fatal("SSL_CTX_new(): %s", ssl_errno_s);
 
 	SSL_CTX_set_mode(peer->ssl_ctx, SSL_MODE_AUTO_RETRY);
-	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_SSLv2);
-	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_SSLv3);
-	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_TLSv1);
-	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_TLSv1_1);
+	SSL_CTX_set_options(peer->ssl_ctx, SSL_OP_NO_SSLv2);
+	SSL_CTX_set_options(peer->ssl_ctx, SSL_OP_NO_SSLv3);
+	SSL_CTX_set_options(peer->ssl_ctx, SSL_OP_NO_TLSv1);
+	SSL_CTX_set_options(peer->ssl_ctx, SSL_OP_NO_TLSv1_1);
 
 	if ((peer->ssl = SSL_new(peer->ssl_ctx)) == NULL)
 		fatal("SSL_new(): %s", ssl_errno_s);
