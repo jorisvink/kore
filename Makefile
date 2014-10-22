@@ -1,6 +1,6 @@
 # Kore Makefile
 
-CC=gcc
+CC?=gcc
 KORE=kore
 INSTALL_DIR=/usr/local/bin
 INCLUDE_DIR=/usr/local/include/kore
