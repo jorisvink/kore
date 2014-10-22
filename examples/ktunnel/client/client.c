@@ -406,8 +406,10 @@ ktunnel_connect(struct peer *peer, struct addrinfo *ai)
 	if (l == -1)
 		fatal("asprintf(): %s", errno_s);
 
-	if (SSL_write(peer->ssl, req, l) != l)
-		fatal("Failed to talk to %s:%s: %s", peer->host, peer->port, ssl_errno_s);
+	if (SSL_write(peer->ssl, req, l) != l) {
+		fatal("Failed to talk to %s:%s: %s",
+		    peer->host, peer->port, ssl_errno_s);
+	}
 
 	free(req);
 
