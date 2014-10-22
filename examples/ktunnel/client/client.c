@@ -41,7 +41,7 @@
 #define NETBUF_RECV_MAX		8192
 
 #define HTTP_REQUEST_FMT	\
-	"GET /?host=%s&port=%s HTTP/1.1\r\nHost: %s\r\n\r\n"
+	"GET %s?host=%s&port=%s HTTP/1.1\r\nHost: %s\r\n\r\n"
 
 struct netbuf {
 	u_int8_t		*data;
@@ -121,23 +121,43 @@ struct kevent	*changelist = NULL;
 char		*target_host = NULL;
 char		*target_port = NULL;
 char		*remote_name = NULL;
+char		*http_hostname = NULL;
+char		*http_path = "/connect";
 
 void
 usage(void)
 {
 	fprintf(stderr,
-	    "Usage: ktunnel-client local:port remote:port target:port\n");
+	    "Usage: ktunnel-client [-h host] [-p path] "
+	    "local:port remote:port target:port\n");
+
 	exit(1);
 }
 
 int
 main(int argc, char *argv[])
 {
-	int			n, i;
+	int			n, i, ch;
 	struct connection	*c, *cnext;
 	struct peer		lpeer, *peer;
 
-	if (argc != 4)
+	while ((ch = getopt(argc, argv, "h:p:")) != -1) {
+		switch (ch) {
+		case 'h':
+			http_hostname = optarg;
+			break;
+		case 'p':
+			http_path = optarg;
+			break;
+		default:
+			usage();
+		}
+	}
+
+	argc -= optind;
+	argv += optind;
+
+	if (argc != 3)
 		usage();
 
 	TAILQ_INIT(&clients);
@@ -153,15 +173,18 @@ main(int argc, char *argv[])
 		fatal("calloc(): %s", errno_s);
 
 	memset(&lpeer, 0, sizeof(lpeer));
-	ktunnel_peer_init(&lpeer, argv[1], ktunnel_bind);
+	ktunnel_peer_init(&lpeer, argv[0], ktunnel_bind);
 	ktunnel_event_schedule(lpeer.fd, EVFILT_READ, EV_ADD, &lpeer);
 
-	remote_name = argv[2];
-	target_host = argv[3];
+	remote_name = argv[1];
+	target_host = argv[2];
 
 	if ((target_port = strchr(target_host, ':')) == NULL)
 		fatal("Target host does not contain a port");
 	*(target_port)++ = '\0';
+
+	if (http_hostname == NULL)
+		http_hostname = target_host;
 
 	for (;;) {
 		n = kevent(kfd, changelist, nchanges,
@@ -378,13 +401,13 @@ ktunnel_connect(struct peer *peer, struct addrinfo *ai)
 	}
 
 	/* Send custom HTTP command. */
-	l = asprintf(&req, HTTP_REQUEST_FMT,
-	    target_host, target_port, peer->host);
+	l = asprintf(&req, HTTP_REQUEST_FMT, http_path,
+	    target_host, target_port, http_hostname);
 	if (l == -1)
 		fatal("asprintf(): %s", errno_s);
 
 	if (SSL_write(peer->ssl, req, l) != l)
-		fatal("Failed to talk to %s:%s", peer->host, peer->port);
+		fatal("Failed to talk to %s:%s: %s", peer->host, peer->port, ssl_errno_s);
 
 	free(req);
 
