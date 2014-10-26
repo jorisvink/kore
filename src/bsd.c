@@ -16,9 +16,10 @@
 
 #include <sys/param.h>
 #include <sys/event.h>
-
-#ifdef __MACH__
 #include <sys/sysctl.h>
+
+#if defined(__FreeBSD_version)
+#include <sys/cpuset.h>
 #endif
 
 #include "kore.h"
@@ -40,27 +41,36 @@ static u_int32_t		event_count = 0;
 void
 kore_platform_init(void)
 {
-#ifndef __MACH__
-	cpu_count = 0;
-#else
+#if defined(__MACH__) || defined(__FreeBSD_version)
 	long	n;
 	size_t	len = sizeof(n);
-	int	mib[] = { CTL_HW, HW_AVAILCPU };
+	int	mib[] = { CTL_HW, HW_NCPU };
 
-	sysctl(mib, 2, &n, &len, NULL, 0);
-	if (n < 1) {
-		mib[1] = HW_NCPU;
-		sysctl(mib, 2, &n, &len, NULL, 0);
-	}
-
-	if (n >= 1)
+	if (sysctl(mib, 2, &n, &len, NULL, 0) == -1) {
+		kore_debug("kore_platform_init(): sysctl %s", errno_s);
+		cpu_count = 1;
+	} else {
 		cpu_count = (u_int16_t)n;
-#endif /* !__MACH__ */
+	}
+#else
+	cpu_count = 0;
+#endif /* __MACH__ || __FreeBSD_version */
 }
 
 void
 kore_platform_worker_setcpu(struct kore_worker *kw)
 {
+#if defined(__FreeBSD_version)
+	cpuset_t	cpuset;
+
+	CPU_ZERO(&cpuset);
+	CPU_SET(kw->cpu, &cpuset);
+	if (cpuset_setaffinity(CPU_LEVEL_WHICH, CPU_WHICH_PID,
+	    -1, sizeof(cpuset), &cpuset) == -1) {
+		fatal("failed: %s", errno_s);
+	}
+
+#endif /* __FreeBSD_version */
 }
 
 void
