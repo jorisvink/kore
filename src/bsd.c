@@ -47,7 +47,7 @@ kore_platform_init(void)
 	size_t	len = sizeof(n);
 	int	mib[] = { CTL_HW, HW_AVAILCPU };
 
-	 sysctl(mib, 2, &n, &len, NULL, 0);
+	sysctl(mib, 2, &n, &len, NULL, 0);
 	if (n < 1) {
 		mib[1] = HW_NCPU;
 		sysctl(mib, 2, &n, &len, NULL, 0);
