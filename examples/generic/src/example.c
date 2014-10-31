@@ -32,7 +32,6 @@ int		serve_params_test(struct http_request *);
 int		serve_private(struct http_request *);
 int		serve_private_test(struct http_request *);
 
-void		my_callback(void);
 int		v_example_func(struct http_request *, char *);
 int		v_session_validate(struct http_request *, char *);
 void		test_base64(u_int8_t *, u_int32_t, struct kore_buf *);
@@ -317,15 +316,6 @@ serve_private_test(struct http_request *req)
 	    asset_len_private_test_html);
 
 	return (KORE_RESULT_OK);
-}
-
-void
-my_callback(void)
-{
-	if (worker != NULL)
-		kore_log(LOG_NOTICE, "running on worker %d", worker->id);
-	else
-		kore_log(LOG_NOTICE, "running from parent");
 }
 
 int
