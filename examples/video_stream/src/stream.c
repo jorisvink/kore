@@ -173,8 +173,10 @@ video_open(struct http_request *req, struct video **out)
 	struct video		*v;
 	char			fpath[MAXPATHLEN];
 
-	if (!kore_snprintf(fpath, sizeof(fpath), NULL, "videos%s", req->path))
+	if (!kore_snprintf(fpath, sizeof(fpath), NULL, "videos%s", req->path)) {
+		http_response(req, 500, NULL, 0);
 		return (KORE_RESULT_ERROR);
+	}
 
 	TAILQ_FOREACH(v, &videos, list) {
 		if (!strcmp(v->path, fpath)) {
