@@ -16,9 +16,10 @@ Features
 * Only HTTPS connections allowed
 * Multiple modules can be loaded at once
 * Built-in asynchronous PostgreSQL support
-* Load your web application as a precompiled C library
+* Default sane TLS ciphersuites (PFS in all major browsers)
+* Load your web application as a precompiled dynamic library
 * Modules can be reloaded on-the-fly, even while serving content
-* Event driven (epoll/kqueue) architecture with per CPU core worker processes
+* Event driven (epoll/kqueue) architecture with per CPU core workers
 
 License
 -------
