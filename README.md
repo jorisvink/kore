@@ -1,10 +1,10 @@
 About
 -----
-Kore (https://kore.io) is an ultra fast web server / framework for web
-applications developed in C. It provides a set of API functions you can
-use to build a dynamic library which is loaded into Kore directly.
+Kore (https://kore.io) is an easy to use web application framework for
+writing scalable web APIs in C. Its main goals are security, scalability
+and allowing rapid development and deployment of such APIs.
 
-Kore is an ideal candidate for developing robust, fast and safe web applications.
+Because of this Kore is an ideal candidate for building robust, scalable and secure web things.
 
 Features
 --------
