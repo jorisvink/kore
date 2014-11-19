@@ -898,11 +898,11 @@ cli_link_library(void *arg)
 	args[idx++] = "-shared";
 #endif
 
-	for (i = 0; i < f; i++)
-		args[idx++] = flags[i];
-
 	TAILQ_FOREACH(cf, &source_files, list)
 		args[idx++] = cf->opath;
+
+	for (i = 0; i < f; i++)
+		args[idx++] = flags[i];
 
 	args[idx++] = "-o";
 	args[idx++] = libname;
