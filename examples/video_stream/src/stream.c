@@ -113,7 +113,7 @@ video_stream(struct http_request *req)
 		}
 
 		if (n >= 1) {
-			start = kore_strtonum64(range[0], 10, &err);
+			start = kore_strtonum64(range[0], 1, &err);
 			if (err != KORE_RESULT_OK) {
 				v->ref--;
 				http_response(req, 416, NULL, 0);
@@ -122,7 +122,7 @@ video_stream(struct http_request *req)
 		}
 
 		if (n > 1) {
-			end = kore_strtonum64(range[1], 10, &err);
+			end = kore_strtonum64(range[1], 1, &err);
 			if (err != KORE_RESULT_OK) {
 				v->ref--;
 				http_response(req, 416, NULL, 0);
