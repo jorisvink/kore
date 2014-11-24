@@ -449,6 +449,9 @@ http_response(struct http_request *req, int status, void *d, u_int32_t l)
 	case CONN_PROTO_HTTP:
 		http_response_normal(req, req->owner, status, d, l);
 		break;
+	default:
+		fatal("http_response() bad proto %d", req->owner->proto);
+		/* NOTREACHED. */
 	}
 }
 
@@ -468,6 +471,9 @@ http_response_stream(struct http_request *req, int status, void *base,
 	case CONN_PROTO_HTTP:
 		http_response_normal(req, req->owner, status, NULL, len);
 		break;
+	default:
+		fatal("http_response_stream() bad proto %d", req->owner->proto);
+		/* NOTREACHED. */
 	}
 
 	if (req->method != HTTP_METHOD_HEAD) {
@@ -1138,6 +1144,9 @@ http_error_response(struct connection *c, struct spdy_stream *s, int status)
 			kore_log(LOG_NOTICE, "http_error_response: s != NULL");
 		http_response_normal(NULL, c, status, NULL, 0);
 		break;
+	default:
+		fatal("http_error_response() bad proto %d", c->proto);
+		/* NOTREACHED. */
 	}
 }
 

@@ -16,6 +16,16 @@
 
 #include <sys/param.h>
 
+#if defined(__linux__)
+#include <endian.h>
+#elif defined(__MACH__)
+#include <libkern/OSByteOrder.h>
+#define htobe64(x)	OSSwapHostToBigInt64(x)
+#define be64toh(x)	OSSwapBigToHostInt64(x)
+#else
+#include <sys/endian.h>
+#endif
+
 #include "kore.h"
 
 struct kore_pool		nb_pool;
@@ -417,5 +427,23 @@ net_write32(u_int8_t *p, u_int32_t n)
 	u_int32_t	r;
 
 	r = htonl(n);
+	memcpy(p, &r, sizeof(r));
+}
+
+u_int64_t
+net_read64(u_int8_t *b)
+{
+	u_int64_t	r;
+
+	r = *(u_int64_t *)b;
+	return (be64toh(r));
+}
+
+void
+net_write64(u_int8_t *p, u_int64_t n)
+{
+	u_int64_t	r;
+
+	r = htobe64(n);
 	memcpy(p, &r, sizeof(r));
 }

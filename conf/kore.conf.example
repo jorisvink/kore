@@ -40,6 +40,13 @@ workers		4
 #http_keepalive_time	0
 #http_hsts_enable	31536000
 
+# Websocket specific settings.
+#	websocket_maxframe	Specifies the maximum frame size we can receive
+#	websocket_timeout	Specifies the time in seconds before a websocket
+#				connection would be closed due to inactivity.
+#websocket_maxframe	16384
+#websocket_timeout	120
+
 # Load modules (you can load multiple at the same time).
 # An additional parameter can be specified as the "onload" function
 # which Kore will call when the module is loaded/reloaded.

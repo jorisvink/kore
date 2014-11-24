@@ -358,6 +358,18 @@ kore_worker_connection_remove(struct connection *c)
 }
 
 void
+kore_worker_websocket_broadcast(struct connection *src,
+    void (*cb)(struct connection *, void *), void *args)
+{
+	struct connection	*c;
+
+	TAILQ_FOREACH(c, &worker_clients, list) {
+		if (c != src && c->proto == CONN_PROTO_WEBSOCKET)
+			cb(c, args);
+	}
+}
+
+void
 kore_worker_wait(int final)
 {
 	u_int16_t		id;

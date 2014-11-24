@@ -61,6 +61,8 @@ static int		configure_authentication_uri(char **);
 static int		configure_authentication_type(char **);
 static int		configure_authentication_value(char **);
 static int		configure_authentication_validator(char **);
+static int		configure_websocket_maxframe(char **);
+static int		configure_websocket_timeout(char **);
 
 #if defined(KORE_USE_PGSQL)
 static int		configure_pgsql_conn_max(char **);
@@ -105,6 +107,8 @@ static struct {
 	{ "authentication_type",	configure_authentication_type },
 	{ "authentication_value",	configure_authentication_value },
 	{ "authentication_validator",	configure_authentication_validator },
+	{ "websocket_maxframe",		configure_websocket_maxframe },
+	{ "websocket_timeout",		configure_websocket_timeout },
 #if defined(KORE_USE_PGSQL)
 	{ "pgsql_conn_max",		configure_pgsql_conn_max },
 #endif
@@ -871,6 +875,46 @@ configure_authentication_uri(char **argv)
 	}
 
 	current_auth->redirect = kore_strdup(argv[1]);
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_websocket_maxframe(char **argv)
+{
+	int	err;
+
+	if (argv[1] == NULL) {
+		printf("missing parameter for kore_websocket_maxframe\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	kore_websocket_maxframe = kore_strtonum64(argv[1], 1, &err);
+	if (err != KORE_RESULT_OK) {
+		printf("bad kore_websocket_maxframe value\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_websocket_timeout(char **argv)
+{
+	int	err;
+
+	if (argv[1] == NULL) {
+		printf("missing parameter for kore_websocket_timeout\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	kore_websocket_timeout = kore_strtonum64(argv[1], 1, &err);
+	if (err != KORE_RESULT_OK) {
+		printf("bad kore_websocket_timeout value\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	kore_websocket_timeout = kore_websocket_timeout * 1000;
 
 	return (KORE_RESULT_OK);
 }

@@ -137,6 +137,7 @@ LIST_HEAD(listener_head, listener);
 #define CONN_PROTO_UNKNOWN	0
 #define CONN_PROTO_SPDY		1
 #define CONN_PROTO_HTTP		2
+#define CONN_PROTO_WEBSOCKET	3
 
 #define CONN_READ_POSSIBLE	0x01
 #define CONN_WRITE_POSSIBLE	0x02
@@ -148,6 +149,16 @@ LIST_HEAD(listener_head, listener);
 
 #define KORE_IDLE_TIMER_MAX	20000
 
+#define WEBSOCKET_OP_CONT	0x00
+#define WEBSOCKET_OP_TEXT	0x01
+#define WEBSOCKET_OP_BINARY	0x02
+#define WEBSOCKET_OP_CLOSE	0x08
+#define WEBSOCKET_OP_PING	0x09
+#define WEBSOCKET_OP_PONG	0x10
+
+#define WEBSOCKET_BROADCAST_LOCAL	1
+#define WEBSOCKET_BROADCAST_GLOBAL	2
+
 struct connection {
 	u_int8_t		type;
 	int			fd;
@@ -158,6 +169,7 @@ struct connection {
 	u_int8_t		flags;
 	void			*hdlr_extra;
 	X509			*cert;
+	void			*wscbs;
 
 	void			(*disconnect)(struct connection *);
 	int			(*read)(struct connection *, int *);
@@ -315,6 +327,13 @@ struct kore_pool {
 	LIST_HEAD(, kore_pool_entry)	freelist;
 };
 
+struct kore_wscbs {
+	void		(*connect)(struct connection *);
+	void		(*message)(struct connection *, u_int8_t,
+			    void *, size_t);
+	void		(*disconnect)(struct connection *);
+};
+
 extern pid_t	kore_pid;
 extern int	foreground;
 extern int	kore_debug;
@@ -333,6 +352,8 @@ extern u_int8_t			worker_count;
 extern u_int32_t		worker_rlimit_nofiles;
 extern u_int32_t		worker_max_connections;
 extern u_int32_t		worker_active_connections;
+extern u_int64_t		kore_websocket_maxframe;
+extern u_int64_t		kore_websocket_timeout;
 
 extern struct listener_head	listeners;
 extern struct kore_worker	*worker;
@@ -354,6 +375,8 @@ void		kore_worker_entry(struct kore_worker *);
 void		kore_worker_connection_add(struct connection *);
 void		kore_worker_connection_move(struct connection *);
 void		kore_worker_connection_remove(struct connection *);
+void		kore_worker_websocket_broadcast(struct connection *,
+		    void (*cb)(struct connection *, void *), void *);
 
 void		kore_platform_init(void);
 void		kore_platform_event_init(void);
@@ -427,6 +450,13 @@ int		kore_base64_encode(u_int8_t *, u_int32_t, char **);
 int		kore_base64_decode(char *, u_int8_t **, u_int32_t *);
 void		*kore_mem_find(void *, size_t, void *, u_int32_t);
 
+void		kore_websocket_handshake(struct http_request *,
+		    struct kore_wscbs *);
+void		kore_websocket_send(struct connection *,
+		    u_int8_t, void *, size_t);
+void		kore_websocket_broadcast(struct connection *,
+		    u_int8_t, void *, size_t, int);
+
 void		kore_domain_init(void);
 int		kore_domain_new(char *);
 void		kore_module_init(void);
@@ -458,8 +488,11 @@ void		kore_debug_internal(char *, int, const char *, ...);
 
 u_int16_t	net_read16(u_int8_t *);
 u_int32_t	net_read32(u_int8_t *);
+u_int64_t	net_read64(u_int8_t *);
 void		net_write16(u_int8_t *, u_int16_t);
 void		net_write32(u_int8_t *, u_int32_t);
+void		net_write64(u_int8_t *, u_int64_t);
+
 void		net_init(void);
 int		net_send(struct connection *);
 int		net_send_flush(struct connection *);

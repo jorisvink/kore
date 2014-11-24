@@ -45,6 +45,7 @@ kore_connection_new(void *owner)
 	c->rnb = NULL;
 	c->snb = NULL;
 	c->cert = NULL;
+	c->wscbs = NULL;
 	c->owner = owner;
 	c->disconnect = NULL;
 	c->hdlr_extra = NULL;
