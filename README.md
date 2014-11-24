@@ -11,6 +11,7 @@ Features
 * Supports SNI
 * Supports SPDY/3.1
 * Supports HTTP/1.1
+* Websocket support
 * Lightweight background tasks
 * Built-in parameter validation
 * Only HTTPS connections allowed
