@@ -26,7 +26,7 @@ endif
 
 ifneq ("$(BENCHMARK)", "")
 	CFLAGS+=-DKORE_BENCHMARK
-	LDFLAGS=-rdynamic -lz
+	LDFLAGS=-rdynamic -lz -lcrypto
 endif
 
 ifneq ("$(PGSQL)", "")
