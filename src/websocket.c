@@ -109,7 +109,7 @@ kore_websocket_handshake(struct http_request *req, struct kore_wscbs *wscbs)
 	req->owner->proto = CONN_PROTO_WEBSOCKET;
 
 	req->owner->wscbs = wscbs;
-	req->owner->idle_timer.start = 0;
+	req->owner->idle_timer.start = kore_time_ms();
 	req->owner->idle_timer.length = kore_websocket_timeout;
 
 	if (wscbs->connect != NULL)
