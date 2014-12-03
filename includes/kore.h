@@ -207,6 +207,9 @@ struct connection {
 	TAILQ_ENTRY(connection)	flush_list;
 };
 
+TAILQ_HEAD(connection_list, connection);
+extern struct connection_list	worker_clients;
+
 struct kore_handler_params {
 	char			*name;
 	u_int8_t		method;

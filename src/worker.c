@@ -59,14 +59,14 @@ static void	worker_unlock(void);
 static inline int	kore_worker_acceptlock_obtain(void);
 static inline void	kore_worker_acceptlock_release(void);
 
-static TAILQ_HEAD(, connection)		disconnected;
-static TAILQ_HEAD(, connection)		worker_clients;
+static struct connection_list		disconnected;
 static struct kore_worker		*kore_workers;
 static int				shm_accept_key;
 static struct wlock			*accept_lock;
 
 extern volatile sig_atomic_t	sig_recv;
 struct kore_worker		*worker = NULL;
+struct connection_list		worker_clients;
 u_int32_t			worker_rlimit_nofiles = 1024;
 u_int32_t			worker_max_connections = 250;
 u_int32_t			worker_active_connections = 0;
