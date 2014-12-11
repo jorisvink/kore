@@ -1,9 +1,10 @@
 # Kore Makefile
 
 CC?=gcc
+PREFIX?=/usr/local
 KORE=kore
-INSTALL_DIR=/usr/local/bin
-INCLUDE_DIR=/usr/local/include/kore
+INSTALL_DIR=$(PREFIX)/bin
+INCLUDE_DIR=$(PREFIX)/include/kore
 
 S_SRC=	src/kore.c src/accesslog.c src/auth.c src/buf.c src/cli.c src/config.c \
 	src/connection.c src/domain.c src/http.c src/mem.c src/module.c \
@@ -14,6 +15,7 @@ S_OBJS=	$(S_SRC:.c=.o)
 CFLAGS+=-Wall -Wstrict-prototypes -Wmissing-prototypes
 CFLAGS+=-Wmissing-declarations -Wshadow -Wpointer-arith -Wcast-qual
 CFLAGS+=-Wsign-compare -Iincludes -g
+CFLAGS+=-DPREFIX='"$(PREFIX)"'
 LDFLAGS+=-rdynamic -lssl -lcrypto -lz
 
 ifneq ("$(DEBUG)", "")
@@ -60,6 +62,7 @@ all: $(S_OBJS)
 
 install:
 	mkdir -p $(INCLUDE_DIR)
+	mkdir -p $(INSTALL_DIR)
 	install -m 555 $(KORE) $(INSTALL_DIR)/$(KORE)
 	install -m 644 includes/*.h $(INCLUDE_DIR)
 

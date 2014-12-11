@@ -844,7 +844,11 @@ cli_compile_cfile(void *arg)
 	args[idx++] = compiler;
 	args[idx++] = ipath[0];
 	args[idx++] = ipath[1];
+#if defined(PREFIX)
+	(void)cli_vasprintf(&args[idx++], "-I%s/include", PREFIX);
+#else
 	args[idx++] = "-I/usr/local/include";
+#endif
 
 #if defined(KORE_USE_PGSQL)
 	(void)cli_vasprintf(&ppath, "-I%s", PGSQL_INCLUDE_PATH);
