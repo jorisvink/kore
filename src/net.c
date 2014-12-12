@@ -26,6 +26,10 @@
 #include <sys/endian.h>
 #endif
 
+#if defined(OpenBSD)
+#define be64toh(x)	betoh64(x)
+#endif
+
 #include "kore.h"
 
 struct kore_pool		nb_pool;
