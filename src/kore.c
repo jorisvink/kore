@@ -62,8 +62,8 @@ usage(void)
 static void
 version(void)
 {
-	printf("kore %d.%d-%s ", KORE_VERSION_MAJOR,
-	    KORE_VERSION_MINOR, KORE_VERSION_STATE);
+	printf("kore %d.%d.%d-%s ", KORE_VERSION_MAJOR, KORE_VERSION_MINOR,
+	    KORE_VERSION_PATCH, KORE_VERSION_STATE);
 #if defined(KORE_USE_PGSQL)
 	printf("pgsql ");
 #endif

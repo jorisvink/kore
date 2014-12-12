@@ -71,14 +71,14 @@ http_init(void)
 	header_buf = kore_buf_create(1024);
 
 	l = snprintf(http_version_spdy, sizeof(http_version_spdy),
-	    "kore (%d.%d-%s)", KORE_VERSION_MAJOR,
-	    KORE_VERSION_MINOR, KORE_VERSION_STATE);
+	    "kore (%d.%d.%d-%s)", KORE_VERSION_MAJOR, KORE_VERSION_MINOR,
+	    KORE_VERSION_PATCH, KORE_VERSION_STATE);
 	if (l == -1 || (size_t)l >= sizeof(http_version_spdy))
 		fatal("http_init(): http_version_spdy buffer too small");
 
 	l = snprintf(http_version, sizeof(http_version),
-	    "server: kore (%d.%d-%s)\r\n",
-	    KORE_VERSION_MAJOR, KORE_VERSION_MINOR, KORE_VERSION_STATE);
+	    "server: kore (%d.%d.%d-%s)\r\n", KORE_VERSION_MAJOR,
+	    KORE_VERSION_MINOR, KORE_VERSION_PATCH, KORE_VERSION_STATE);
 	if (l == -1 || (size_t)l >= sizeof(http_version))
 		fatal("http_init(): http_version buffer too small");
 
