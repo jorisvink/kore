@@ -1,11 +1,16 @@
 language: c
+
 sudo: false
+
 compiler:
   - clang
   - gcc
+
 addons:
   apt:
-    packages:
-    - libssl-dev
-script:
-  - make
+      packages:
+          - libssl-dev
+          - zlib1g-dev
+          - valgrind
+
+script: make check
