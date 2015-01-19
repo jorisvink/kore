@@ -87,8 +87,9 @@ kore_platform_event_wait(u_int64_t timer)
 		fatal("epoll_wait(): %s", errno_s);
 	}
 
-	if (n > 0)
+	if (n > 0) {
 		kore_debug("main(): %d sockets available", n);
+	}
 
 	r = 0;
 	for (i = 0; i < n; i++) {
@@ -235,6 +236,7 @@ kore_platform_disable_accept(void)
 void
 kore_platform_proctitle(char *title)
 {
-	if (prctl(PR_SET_NAME, title) == -1)
+	if (prctl(PR_SET_NAME, title) == -1) {
 		kore_debug("prctl(): %s", errno_s);
+	}
 }
