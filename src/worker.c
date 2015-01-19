@@ -103,8 +103,10 @@ kore_worker_init(void)
 
 	kore_debug("kore_worker_init(): system has %d cpu's", cpu_count);
 	kore_debug("kore_worker_init(): starting %d workers", worker_count);
-	if (worker_count > cpu_count)
+
+	if (worker_count > cpu_count) {
 		kore_debug("kore_worker_init(): more workers then cpu's");
+	}
 
 	cpu = 0;
 	for (i = 0; i < worker_count; i++) {
@@ -171,8 +173,9 @@ kore_worker_dispatch_signal(int sig)
 
 	for (id = 0; id < worker_count; id++) {
 		kw = WORKER(id);
-		if (kill(kw->pid, sig) == -1)
+		if (kill(kw->pid, sig) == -1) {
 			kore_debug("kill(%d, %d): %s", kw->pid, sig, errno_s);
+		}
 	}
 }
 
