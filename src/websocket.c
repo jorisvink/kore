@@ -313,7 +313,6 @@ websocket_recv_frame(struct netbuf *nb)
 		    &nb->buf[moff + 4], len);
 		break;
 	default:
-		ret = KORE_RESULT_ERROR;
 		kore_debug("%p: bad websocket op %d", c, op);
 		return (KORE_RESULT_ERROR);
 	}
