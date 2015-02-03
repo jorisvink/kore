@@ -86,17 +86,18 @@ kore_domain_sslstart(struct kore_domain *dom)
 	if (!SSL_CTX_check_private_key(dom->ssl_ctx))
 		fatal("Public/Private key for %s do not match", dom->domain);
 
-	if (ssl_dhparam != NULL) {
-		SSL_CTX_set_tmp_dh(dom->ssl_ctx, ssl_dhparam);
-		SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_SINGLE_DH_USE);
+	if (ssl_dhparam == NULL)
+		fatal("No DH parameters given");
+
+	SSL_CTX_set_tmp_dh(dom->ssl_ctx, ssl_dhparam);
+	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_SINGLE_DH_USE);
 
 #if !defined(OPENSSL_NO_EC)
-		if ((ecdh = EC_KEY_new_by_curve_name(NID_secp384r1)) != NULL) {
-			SSL_CTX_set_tmp_ecdh(dom->ssl_ctx, ecdh);
-			EC_KEY_free(ecdh);
-		}
-#endif
+	if ((ecdh = EC_KEY_new_by_curve_name(NID_secp384r1)) != NULL) {
+		SSL_CTX_set_tmp_ecdh(dom->ssl_ctx, ecdh);
+		EC_KEY_free(ecdh);
 	}
+#endif
 
 	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_COMPRESSION);
 

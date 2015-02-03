@@ -159,6 +159,9 @@ static const char *config_data =
 	"\n"
 	"bind\t\t127.0.0.1 8888\n"
 	"load\t\t./%s.so\n"
+#if !defined(KORE_BENCHMARK)
+	"ssl_dhparam\tdh2048.pem\n"
+#endif
 	"\n"
 	"domain 127.0.0.1 {\n"
 #if !defined(KORE_BENCHMARK)
@@ -167,6 +170,16 @@ static const char *config_data =
 #endif
 	"\tstatic\t/\tpage\n"
 	"}\n";
+
+static const char *dh2048_data =
+	"-----BEGIN DH PARAMETERS-----\n"
+	"MIIBCAKCAQEAn4f4Qn5SudFjEYPWTbUaOTLUH85YWmmPFW1+b5bRa9ygr+1wfamv\n"
+	"VKVT7jO8c4msSNikUf6eEfoH0H4VTCaj+Habwu+Sj+I416r3mliMD4SjNsUJrBrY\n"
+	"Y0QV3ZUgZz4A8ARk/WwQcRl8+ZXJz34IaLwAcpyNhoV46iHVxW0ty8ND0U4DIku/\n"
+	"PNayKimu4BXWXk4RfwNVP59t8DQKqjshZ4fDnbotskmSZ+e+FHrd+Kvrq/WButvV\n"
+	"Bzy9fYgnUlJ82g/bziCI83R2xAdtH014fR63MpElkqdNeChb94pPbEdFlNUvYIBN\n"
+	"xx2vTUQMqRbB4UdG2zuzzr5j98HDdblQ+wIBAg==\n"
+	"-----END DH PARAMETERS-----";
 
 static const char *gitignore_data = "*.o\n.objs\n%s.so\nassets.h\ncert\n";
 
@@ -258,7 +271,7 @@ cli_create(int argc, char **argv)
 	printf("%s created succesfully!\n", appl);
 
 #if !defined(KORE_BENCHMARK)
-	printf("note: do not use the generated certificates for production\n");
+	printf("note: do NOT use the created DH parameters/certificates in production\n");
 #endif
 }
 
@@ -736,6 +749,9 @@ cli_generate_certs(void)
 	X509			*x509;
 	RSA			*kpair;
 	char			*fpath, issuer[64];
+
+	/* Write out DH parameters. */
+	cli_file_create("dh2048.pem", dh2048_data, strlen(dh2048_data));
 
 	/* Create new certificate. */
 	if ((x509 = X509_new()) == NULL)
