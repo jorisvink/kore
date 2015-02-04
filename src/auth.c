@@ -85,6 +85,10 @@ kore_auth(struct http_request *req, struct kore_auth *auth)
 		break;
 	}
 
+	/* Authentication types of "request" send their own HTTP responses. */
+	if (auth->type == KORE_AUTH_TYPE_REQUEST)
+		return (r);
+
 	kore_debug("kore_auth() for %s failed", req->path);
 
 	if (auth->redirect == NULL) {
