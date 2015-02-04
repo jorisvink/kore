@@ -171,6 +171,7 @@ static const char *config_data =
 	"\tstatic\t/\tpage\n"
 	"}\n";
 
+#if !defined(KORE_BENCHMARK)
 static const char *dh2048_data =
 	"-----BEGIN DH PARAMETERS-----\n"
 	"MIIBCAKCAQEAn4f4Qn5SudFjEYPWTbUaOTLUH85YWmmPFW1+b5bRa9ygr+1wfamv\n"
@@ -180,6 +181,7 @@ static const char *dh2048_data =
 	"Bzy9fYgnUlJ82g/bziCI83R2xAdtH014fR63MpElkqdNeChb94pPbEdFlNUvYIBN\n"
 	"xx2vTUQMqRbB4UdG2zuzzr5j98HDdblQ+wIBAg==\n"
 	"-----END DH PARAMETERS-----";
+#endif
 
 static const char *gitignore_data = "*.o\n.objs\n%s.so\nassets.h\ncert\n";
 
