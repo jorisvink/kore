@@ -1131,10 +1131,6 @@ http_error_response(struct connection *c, struct spdy_stream *s, int status)
 {
 	kore_debug("http_error_response(%p, %p, %d)", c, s, status);
 
-	c->flags |= CONN_READ_BLOCK;
-	c->flags |= CONN_CLOSE_EMPTY;
-	c->flags &= ~CONN_READ_POSSIBLE;
-
 	switch (c->proto) {
 	case CONN_PROTO_SPDY:
 		http_response_spdy(NULL, c, s, status, NULL, 0);
