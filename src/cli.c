@@ -258,6 +258,8 @@ cli_create(int argc, char **argv)
 
 	appl = argv[0];
 	cli_mkdir(appl, 0755);
+	rootdir = appl;
+
 	for (i = 0; gen_dirs[i] != NULL; i++) {
 		(void)cli_vasprintf(&fpath, "%s/%s", appl, gen_dirs[i]);
 		cli_mkdir(fpath, 0755);
@@ -267,7 +269,6 @@ cli_create(int argc, char **argv)
 	for (i = 0; gen_files[i].cb != NULL; i++)
 		gen_files[i].cb();
 
-	rootdir = appl;
 	cli_generate_certs();
 
 	printf("%s created succesfully!\n", appl);
@@ -550,7 +551,7 @@ cli_file_create(const char *name, const char *data, size_t len)
 	int		fd;
 	char		*fpath;
 
-	(void)cli_vasprintf(&fpath, "%s/%s", appl, name);
+	(void)cli_vasprintf(&fpath, "%s/%s", rootdir, name);
 
 	cli_file_open(fpath, O_CREAT | O_TRUNC | O_WRONLY, &fd);
 	cli_file_write(fd, data, len);
