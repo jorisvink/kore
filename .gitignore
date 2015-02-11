@@ -4,3 +4,4 @@ kore
 *.module
 *.DSYM
 cert
+.vagrant
