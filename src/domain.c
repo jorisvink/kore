@@ -68,6 +68,7 @@ kore_domain_sslstart(struct kore_domain *dom)
 {
 #if !defined(KORE_BENCHMARK)
 	STACK_OF(X509_NAME)	*certs;
+	X509_STORE		*store;
 #if !defined(OPENSSL_NO_EC)
 	EC_KEY		*ecdh;
 #endif
@@ -117,6 +118,11 @@ kore_domain_sslstart(struct kore_domain *dom)
 		SSL_CTX_set_client_CA_list(dom->ssl_ctx, certs);
 		SSL_CTX_set_verify(dom->ssl_ctx, SSL_VERIFY_PEER |
 		    SSL_VERIFY_FAIL_IF_NO_PEER_CERT, NULL);
+
+		if ((store = SSL_CTX_get_cert_store(dom->ssl_ctx)) == NULL)
+			fatal("SSL_CTX_get_cert_store(): %s", ssl_errno_s);
+
+		X509_STORE_set_verify_cb(store, domain_x509_verify);
 	}
 
 	SSL_CTX_set_session_id_context(dom->ssl_ctx,
@@ -198,7 +204,7 @@ domain_load_crl(struct kore_domain *dom)
 	}
 
 	if ((store = SSL_CTX_get_cert_store(dom->ssl_ctx)) == NULL) {
-		kore_log(LOG_ERR, "SSL_CTX_get_cert_store(): %S", ssl_errno_s);
+		kore_log(LOG_ERR, "SSL_CTX_get_cert_store(): %s", ssl_errno_s);
 		return;
 	}
 
@@ -210,7 +216,6 @@ domain_load_crl(struct kore_domain *dom)
 
 	X509_STORE_set_flags(store,
 	    X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
-	X509_STORE_set_verify_cb(store, domain_x509_verify);
 #endif
 }
 
