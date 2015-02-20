@@ -48,6 +48,7 @@ kore_domain_new(char *domain)
 	dom->certkey = NULL;
 	dom->ssl_ctx = NULL;
 	dom->certfile = NULL;
+	dom->crlfile = NULL;
 	dom->domain = kore_strdup(domain);
 	TAILQ_INIT(&(dom->handlers));
 	TAILQ_INSERT_TAIL(&domains, dom, list);
