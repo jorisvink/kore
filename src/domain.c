@@ -26,6 +26,10 @@ DH				*ssl_dhparam = NULL;
 
 static void	domain_load_crl(struct kore_domain *);
 
+#if !defined(KORE_BENCHMARK)
+static int	domain_x509_verify(int, X509_STORE_CTX *);
+#endif
+
 void
 kore_domain_init(void)
 {
@@ -206,5 +210,38 @@ domain_load_crl(struct kore_domain *dom)
 
 	X509_STORE_set_flags(store,
 	    X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
+	X509_STORE_set_verify_cb(store, domain_x509_verify);
 #endif
 }
+
+#if !defined(KORE_BENCHMARK)
+static int
+domain_x509_verify(int ok, X509_STORE_CTX *ctx)
+{
+	X509		*cert;
+	const char	*text;
+	int		error, depth;
+
+	error = X509_STORE_CTX_get_error(ctx);
+	cert = X509_STORE_CTX_get_current_cert(ctx);
+
+	if (ok == 0 && cert != NULL) {
+		text = X509_verify_cert_error_string(error);
+		depth = X509_STORE_CTX_get_error_depth(ctx);
+
+		kore_log(LOG_WARNING, "X509 verification error depth:%d - %s",
+		    depth, text);
+
+		/* Continue on CRL validity errors. */
+		switch (error) {
+		case X509_V_ERR_CRL_HAS_EXPIRED:
+		case X509_V_ERR_CRL_NOT_YET_VALID:
+		case X509_V_ERR_UNABLE_TO_GET_CRL:
+			ok = 1;
+			break;
+		}
+	}
+
+	return (ok);
+}
+#endif
