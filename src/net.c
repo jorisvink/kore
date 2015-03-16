@@ -128,7 +128,7 @@ net_recv_reset(struct connection *c, u_int32_t len, int (*cb)(struct netbuf *))
 	kore_debug("net_recv_reset(): %p %d", c, len);
 
 	if (c->rnb->type != NETBUF_RECV)
-		fatal("net_recv_expand(): wrong netbuf type");
+		fatal("net_recv_reset(): wrong netbuf type");
 
 	c->rnb->cb = cb;
 	c->rnb->s_off = 0;
