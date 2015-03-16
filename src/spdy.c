@@ -100,7 +100,7 @@ spdy_frame_recv(struct netbuf *nb)
 		r = KORE_RESULT_OK;
 
 		if (cb != NULL) {
-			net_recv_expand(c, ctrl.length, NULL, cb);
+			net_recv_expand(c, ctrl.length, cb);
 		} else {
 			kore_debug("no callback for type %u", ctrl.type);
 		}
@@ -124,7 +124,7 @@ spdy_frame_recv(struct netbuf *nb)
 				r = KORE_RESULT_ERROR;
 			} else {
 				r = KORE_RESULT_OK;
-				net_recv_expand(c, data.length, NULL,
+				net_recv_expand(c, data.length,
 				    spdy_data_frame_recv);
 			}
 		}

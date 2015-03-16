@@ -237,7 +237,7 @@ websocket_recv_opcode(struct netbuf *nb)
 	}
 
 	len += WEBSOCKET_MASK_LEN;
-	net_recv_expand(c, len, NULL, websocket_recv_frame);
+	net_recv_expand(c, len, websocket_recv_frame);
 
 	return (KORE_RESULT_OK);
 }
@@ -283,7 +283,7 @@ websocket_recv_frame(struct netbuf *nb)
 	total = len + extra + WEBSOCKET_MASK_LEN;
 	if (total > nb->b_len) {
 		total -= nb->b_len;
-		net_recv_expand(c, total, NULL, websocket_recv_frame);
+		net_recv_expand(c, total, websocket_recv_frame);
 		return (KORE_RESULT_OK);
 	}
 

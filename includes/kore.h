@@ -510,7 +510,7 @@ void		net_recv_reset(struct connection *, u_int32_t,
 void		net_remove_netbuf(struct netbuf_head *, struct netbuf *);
 void		net_recv_queue(struct connection *, u_int32_t, int,
 		    int (*cb)(struct netbuf *));
-void		net_recv_expand(struct connection *c, u_int32_t, void *,
+void		net_recv_expand(struct connection *c, u_int32_t,
 		    int (*cb)(struct netbuf *));
 void		net_send_queue(struct connection *, void *,
 		    u_int32_t, struct spdy_stream *, int);

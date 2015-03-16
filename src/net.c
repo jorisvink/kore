@@ -166,17 +166,15 @@ net_recv_queue(struct connection *c, u_int32_t len, int flags,
 }
 
 void
-net_recv_expand(struct connection *c, u_int32_t len, void *extra,
-    int (*cb)(struct netbuf *))
+net_recv_expand(struct connection *c, u_int32_t len, int (*cb)(struct netbuf *))
 {
-	kore_debug("net_recv_expand(): %p %d %p", c, len, extra);
+	kore_debug("net_recv_expand(): %p %d", c, len);
 
 	if (c->rnb->type != NETBUF_RECV)
 		fatal("net_recv_expand(): wrong netbuf type");
 
 	c->rnb->cb = cb;
 	c->rnb->b_len += len;
-	c->rnb->extra = extra;
 	c->rnb->m_len = c->rnb->b_len;
 	c->rnb->buf = kore_realloc(c->rnb->buf, c->rnb->b_len);
 }
