@@ -50,8 +50,8 @@ extern int daemon(int, int);
 
 #define KORE_VERSION_MAJOR	1
 #define KORE_VERSION_MINOR	2
-#define KORE_VERSION_PATCH	1
-#define KORE_VERSION_STATE	"develop"
+#define KORE_VERSION_PATCH	2
+#define KORE_VERSION_STATE	"rc1"
 
 #define errno_s			strerror(errno)
 #define ssl_errno_s		ERR_error_string(ERR_get_error(), NULL)
