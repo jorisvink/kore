@@ -91,7 +91,7 @@ kore_worker_init(void)
 			fatal("kore_worker_init(): shmget() %s", errno_s);
 	}
 
-	if ((accept_lock = shmat(shm_accept_key, NULL, 0)) == NULL)
+	if ((accept_lock = shmat(shm_accept_key, NULL, 0)) == (void *)-1)
 		fatal("kore_worker_init(): shmat() %s", errno_s);
 
 	accept_lock->lock = 0;
