@@ -161,6 +161,7 @@ struct http_file {
 #define HTTP_REQUEST_SLEEPING		0x04
 #define HTTP_REQUEST_PGSQL_QUEUE	0x10
 #define HTTP_REQUEST_EXPECT_BODY	0x20
+#define HTTP_REQUEST_RETAIN_EXTRA	0x40
 
 struct kore_task;
 

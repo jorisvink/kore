@@ -428,7 +428,8 @@ http_request_free(struct http_request *req)
 
 	if (req->agent != NULL)
 		kore_mem_free(req->agent);
-	if (req->hdlr_extra != NULL)
+	if (req->hdlr_extra != NULL &&
+	    !(req->flags & HTTP_REQUEST_RETAIN_EXTRA))
 		kore_mem_free(req->hdlr_extra);
 
 	kore_pool_put(&http_request_pool, req);
