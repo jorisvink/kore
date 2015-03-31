@@ -690,8 +690,9 @@ cli_register_cfile(char *fpath, struct dirent *dp)
 	struct stat		st;
 	char			*ext, *opath;
 
-	if ((ext = strrchr(fpath, '.')) == NULL || strcmp(ext, ".c"))
+    if ((ext = strrchr(fpath, '.')) == NULL || !(!strcmp(ext, ".c") || !strcmp(ext, ".cpp"))) {
 		return;
+    }
 
 	if (stat(fpath, &st) == -1)
 		cli_fatal("stat(%s): %s", fpath, errno_s);
