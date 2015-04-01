@@ -22,6 +22,10 @@ ifneq ("$(DEBUG)", "")
 	CFLAGS+=-DKORE_DEBUG
 endif
 
+ifneq ("$(KORE_CPP_SUPPORT)", "")
+    CFLAGS+=-DKORE_CPP_SUPPORT
+endif
+
 ifneq ("$(KORE_PEDANTIC_MALLOC)", "")
 	CFLAGS+=-DKORE_PEDANTIC_MALLOC
 endif

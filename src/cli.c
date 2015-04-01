@@ -85,7 +85,6 @@ static void		cli_run_kore(void *);
 static void		cli_generate_certs(void);
 static void		cli_link_library(void *);
 static void		cli_compile_cfile(void *);
-static void     cli_compile_cppfile(void *);
 static void		cli_mkdir(const char *, int);
 static int		cli_dir_exists(const char *);
 static int		cli_file_exists(const char *);
@@ -105,6 +104,13 @@ static void		cli_find_files(const char *,
 			    void (*cb)(char *, struct dirent *));
 static void		cli_add_cfile(char *, char *, char *,
 			    struct stat *, int);
+
+#if defined(KORE_CPP_SUPPORT)
+static void		cli_add_cppfile(char *, char *, char *,
+                struct stat *, int);
+static void		cli_register_cppfile(char *, struct dirent *);
+static void     cli_compile_cppfile(void *);
+#endif
 
 static void		cli_run(int, char **);
 static void		cli_help(int, char **);
@@ -191,9 +197,13 @@ static char			*appl = NULL;
 static char			*rootdir = NULL;
 static char			*compiler = "gcc";
 static struct cfile_list	source_files;
-static struct cfile_list    cpp_files;
 static int			cfiles_count;
 static struct cmd		*command = NULL;
+
+#if defined(KORE_CPP_SUPPORT)
+static char         *cppcompiler = "g++";
+static struct cfile_list    cpp_files;
+#endif
 
 void
 kore_cli_usage(int local)
@@ -305,7 +315,10 @@ cli_build(int argc, char **argv)
 
 	cfiles_count = 0;
 	TAILQ_INIT(&source_files);
+    
+#if defined(KORE_CPP_SUPPORT)
     TAILQ_INIT(&cpp_files);
+#endif
 
 	(void)cli_vasprintf(&src_path, "%s/src", rootdir);
 	(void)cli_vasprintf(&assets_path, "%s/assets", rootdir);
@@ -338,7 +351,12 @@ cli_build(int argc, char **argv)
 	free(assets_path);
 
 	/* Build all source files. */
-	cli_find_files(src_path, cli_register_cfile);
+    cli_find_files(src_path, cli_register_cfile);
+    
+#if defined(KORE_CPP_SUPPORT)
+    cli_find_files(src_path, cli_register_cppfile);
+#endif
+    
 	free(src_path);
 	requires_relink = 0;
 
@@ -359,6 +377,7 @@ cli_build(int argc, char **argv)
 		requires_relink++;
 	}
     
+#if defined(KORE_CPP_SUPPORT)
     TAILQ_FOREACH(cf, &cpp_files, list) {
         if (cf->build == 0)
             continue;
@@ -375,6 +394,7 @@ cli_build(int argc, char **argv)
         
         requires_relink++;
     }
+#endif
 
 	(void)unlink(assets_header);
 	free(assets_header);
@@ -704,6 +724,7 @@ cli_add_cfile(char *name, char *fpath, char *opath, struct stat *st, int build)
 	TAILQ_INSERT_TAIL(&source_files, cf, list);
 }
 
+#if defined(KORE_CPP_SUPPORT)
 static void
 cli_add_cppfile(char *name, char *fpath, char *opath, struct stat *st, int build)
 {
@@ -722,12 +743,37 @@ cli_add_cppfile(char *name, char *fpath, char *opath, struct stat *st, int build
 }
 
 static void
+cli_register_cppfile(char *fpath, struct dirent *dp)
+{
+    struct stat		st;
+    char			*ext, *opath;
+    
+    if ((ext = strrchr(fpath, '.')) == NULL || strcmp(ext, ".cpp")) {
+        return;
+    }
+    
+    if (stat(fpath, &st) == -1)
+        cli_fatal("stat(%s): %s", fpath, errno_s);
+    
+    (void)cli_vasprintf(&opath, "%s/.objs/%s.o", rootdir, dp->d_name);
+    if (!cli_file_requires_build(&st, opath)) {
+        
+        cli_add_cppfile(dp->d_name, fpath, opath, &st, 0);
+        
+        return;
+    }
+    
+    cli_add_cppfile(dp->d_name, fpath, opath, &st, 1);
+}
+#endif
+
+static void
 cli_register_cfile(char *fpath, struct dirent *dp)
 {
 	struct stat		st;
 	char			*ext, *opath;
 
-    if ((ext = strrchr(fpath, '.')) == NULL || !(!strcmp(ext, ".c") || !strcmp(ext, ".cpp"))) {
+    if ((ext = strrchr(fpath, '.')) == NULL || strcmp(ext, ".c")) {
 		return;
     }
 
@@ -736,20 +782,12 @@ cli_register_cfile(char *fpath, struct dirent *dp)
 
 	(void)cli_vasprintf(&opath, "%s/.objs/%s.o", rootdir, dp->d_name);
 	if (!cli_file_requires_build(&st, opath)) {
-        if (!strcmp(ext, ".cpp")) {
-            cli_add_cppfile(dp->d_name, fpath, opath, &st, 0);
-        } else {
-            cli_add_cfile(dp->d_name, fpath, opath, &st, 0);
-        }
+        cli_add_cfile(dp->d_name, fpath, opath, &st, 0);
         
 		return;
 	}
     
-    if (!strcmp(ext, ".cpp")) {
-        cli_add_cppfile(dp->d_name, fpath, opath, &st, 1);
-    } else {
-        cli_add_cfile(dp->d_name, fpath, opath, &st, 1);
-    }
+    cli_add_cfile(dp->d_name, fpath, opath, &st, 1);
 }
 
 static void
@@ -941,6 +979,7 @@ cli_compile_cfile(void *arg)
 	execvp(compiler, args);
 }
 
+#if defined(KORE_CPP_SUPPORT)
 static void
 cli_compile_cppfile(void *arg)
 {
@@ -959,7 +998,7 @@ cli_compile_cppfile(void *arg)
      * somehow by the user if they so choose.
      */
     idx = 0;
-    args[idx++] = compiler;
+    args[idx++] = cppcompiler;
     args[idx++] = ipath[0];
     args[idx++] = ipath[1];
 #if defined(PREFIX)
@@ -998,6 +1037,7 @@ cli_compile_cppfile(void *arg)
     
     execvp(compiler, args);
 }
+#endif
 
 static void
 cli_link_library(void *arg)
@@ -1029,9 +1069,11 @@ cli_link_library(void *arg)
 	TAILQ_FOREACH(cf, &source_files, list)
 		args[idx++] = cf->opath;
     
+#if defined(KORE_CPP_SUPPORT)
     TAILQ_FOREACH(cf, &cpp_files, list)
         args[idx++] = cf->opath;
-
+#endif
+    
 	for (i = 0; i < f; i++)
 		args[idx++] = flags[i];
 
