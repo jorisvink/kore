@@ -22,6 +22,10 @@
 #define KORE_PGSQL_FORMAT_TEXT		0
 #define KORE_PGSQL_FORMAT_BINARY	1
 
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
 struct pgsql_conn {
 	u_int8_t			type;
 	u_int8_t			flags;
@@ -57,6 +61,10 @@ void	kore_pgsql_logerror(struct kore_pgsql *);
 void	kore_pgsql_queue_remove(struct http_request *);
 char	*kore_pgsql_getvalue(struct kore_pgsql *, int, int);
 int	kore_pgsql_getlength(struct kore_pgsql *, int, int);
+
+#if defined(__cplusplus)
+}
+#endif
 
 #define KORE_PGSQL_STATE_INIT		1
 #define KORE_PGSQL_STATE_WAIT		2

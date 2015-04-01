@@ -37,6 +37,10 @@
 #include <unistd.h>
 #include <zlib.h>
 
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
 #if defined(__APPLE__)
 #undef daemon
 extern int daemon(int, int);
@@ -546,5 +550,9 @@ void		spdy_stream_close(struct connection *,
 		    struct spdy_stream *, int);
 
 struct spdy_header_block	*spdy_header_block_create(int);
+
+#if defined(__cplusplus)
+}
+#endif
 
 #endif /* !__H_KORE_H */
