@@ -68,7 +68,7 @@ struct spdy_stream {
 };
 
 extern const unsigned char SPDY_dictionary_txt[];
-    
+	
 #if defined(__cplusplus)
 }
 #endif

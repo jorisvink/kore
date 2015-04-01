@@ -20,12 +20,13 @@
 #include <stdio.h>
 
 class example_class {
-    
+	
 public:
-    example_class();
-    ~example_class();
-    
-    const char* a();
+	example_class();
+	~example_class();
+	
+	const char*
+	a();
 };
 
 #endif /* defined(____example_class__) */

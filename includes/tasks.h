@@ -76,7 +76,7 @@ void		kore_task_set_result(struct kore_task *, int);
 
 int		kore_task_state(struct kore_task *);
 int		kore_task_result(struct kore_task *);
-    
+	
 #if defined(__cplusplus)
 }
 #endif
