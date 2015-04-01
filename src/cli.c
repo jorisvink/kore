@@ -885,6 +885,10 @@ cli_compile_cfile(void *arg)
 	args[idx++] = "-Wsign-compare";
 	args[idx++] = "-fPIC";
 	args[idx++] = "-g";
+    
+    args[idx++] = "-Woverloaded-virtual";
+    args[idx++] = "-Wold-style-cast";
+    args[idx++] = "-Wnon-virtual-dtor";
 
 	args[idx++] = "-c";
 	args[idx++] = cf->fpath;
