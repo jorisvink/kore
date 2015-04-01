@@ -1034,7 +1034,7 @@ cli_compile_cppfile(void *arg)
 	args[idx++] = cf->opath;
 	args[idx] = NULL;
 	
-	execvp(compiler, args);
+	execvp(cppcompiler, args);
 }
 #endif
 
