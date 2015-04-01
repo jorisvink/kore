@@ -990,7 +990,7 @@ cli_compile_cppfile(void *arg)
 {
     int		idx;
     struct cfile	*cf = arg;
-    char		*args[25], *ipath[2];
+    char		*args[24], *ipath[2];
 #if defined(KORE_USE_PGSQL)
     char		*ppath;
 #endif
@@ -1032,7 +1032,6 @@ cli_compile_cppfile(void *arg)
     args[idx++] = "-Wold-style-cast";
     args[idx++] = "-Wnon-virtual-dtor";
     args[idx++] = "-std=c++11";
-    args[idx++] = "-std=gnu++11";
     
     args[idx++] = "-c";
     args[idx++] = cf->fpath;
@@ -1050,7 +1049,7 @@ cli_link_library(void *arg)
 	struct cfile		*cf;
 	int			idx, f, i;
 	char			*p, *libname, *flags[LD_FLAGS_MAX];
-	char			*args[cfiles_count + 10 + LD_FLAGS_MAX];
+	char			*args[cfiles_count + 11 + LD_FLAGS_MAX];
 
 	if ((p = getenv("LDFLAGS")) != NULL)
 		f = kore_split_string(p, " ", flags, LD_FLAGS_MAX);
@@ -1077,6 +1076,8 @@ cli_link_library(void *arg)
 #if defined(KORE_CPP_SUPPORT)
     TAILQ_FOREACH(cf, &cpp_files, list)
         args[idx++] = cf->opath;
+    
+    args[idx++] = "-lstdc++";
 #endif
     
 	for (i = 0; i < f; i++)

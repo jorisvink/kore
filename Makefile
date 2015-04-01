@@ -23,7 +23,8 @@ ifneq ("$(DEBUG)", "")
 endif
 
 ifneq ("$(KORE_CPP_SUPPORT)", "")
-    CFLAGS+=-DKORE_CPP_SUPPORT
+	CFLAGS+=-DKORE_CPP_SUPPORT
+	LDFLAGS+=-lstdc++
 endif
 
 ifneq ("$(KORE_PEDANTIC_MALLOC)", "")
