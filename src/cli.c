@@ -312,6 +312,11 @@ cli_build(int argc, char **argv)
 
 	if ((p = getenv("CC")) != NULL)
 		compiler = p;
+    
+#if defined(KORE_CPP_SUPPORT)
+    if ((p = getenv("CXX")) != NULL)
+        cppcompiler = p;
+#endif
 
 	cfiles_count = 0;
 	TAILQ_INIT(&source_files);
@@ -985,7 +990,7 @@ cli_compile_cppfile(void *arg)
 {
     int		idx;
     struct cfile	*cf = arg;
-    char		*args[20], *ipath[2];
+    char		*args[25], *ipath[2];
 #if defined(KORE_USE_PGSQL)
     char		*ppath;
 #endif
