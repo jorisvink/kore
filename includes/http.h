@@ -17,6 +17,10 @@
 #ifndef __H_HTTP_H
 #define __H_HTTP_H
 
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
 #define HTTP_KEEPALIVE_TIME	20
 #define HTTP_HSTS_ENABLE	31536000
 #define HTTP_HEADER_MAX_LEN	4096
@@ -283,5 +287,7 @@ enum http_status_code {
 	HTTP_STATUS_GATEWAY_TIMEOUT		= 504,
 	HTTP_STATUS_BAD_VERSION			= 505
 };
-
+#if defined(__cplusplus)
+}
+#endif
 #endif /* !__H_HTTP_H */

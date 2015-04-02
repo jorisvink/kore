@@ -20,6 +20,9 @@
 #include <sys/types.h>
 #include <sys/queue.h>
 
+#if defined(__cplusplus)
+extern "C" {
+#endif
 struct spdy_ctrl_frame {
 	u_int16_t	version;
 	u_int16_t	type;
@@ -65,6 +68,10 @@ struct spdy_stream {
 };
 
 extern const unsigned char SPDY_dictionary_txt[];
+	
+#if defined(__cplusplus)
+}
+#endif
 
 #define KORE_SSL_PROTO_STRING		"\x08spdy/3.1\x08http/1.1"
 #define SPDY_CONTROL_FRAME(x)		((x & (1 << 31)))
