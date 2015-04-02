@@ -402,9 +402,9 @@ void		kore_accesslog_init(void);
 int		kore_accesslog_wait(void);
 void		kore_accesslog_worker_init(void);
 
-int			kore_auth(struct http_request *, struct kore_auth *);
-void			kore_auth_init(void);
-int			kore_auth_new(const char *);
+int		kore_auth_run(struct http_request *, struct kore_auth *);
+void		kore_auth_init(void);
+int		kore_auth_new(const char *);
 struct kore_auth	*kore_auth_lookup(const char *);
 
 int		kore_ssl_sni_cb(SSL *, int *, void *);

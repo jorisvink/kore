@@ -54,7 +54,7 @@ kore_auth_new(const char *name)
 }
 
 int
-kore_auth(struct http_request *req, struct kore_auth *auth)
+kore_auth_run(struct http_request *req, struct kore_auth *auth)
 {
 	int		r;
 
@@ -77,7 +77,7 @@ kore_auth(struct http_request *req, struct kore_auth *auth)
 
 	switch (r) {
 	case KORE_RESULT_OK:
-		kore_debug("kore_auth() for %s successful", req->path);
+		kore_debug("kore_auth_run() for %s successful", req->path);
 		/* FALLTHROUGH */
 	case KORE_RESULT_RETRY:
 		return (r);
@@ -89,7 +89,7 @@ kore_auth(struct http_request *req, struct kore_auth *auth)
 	if (auth->type == KORE_AUTH_TYPE_REQUEST)
 		return (r);
 
-	kore_debug("kore_auth() for %s failed", req->path);
+	kore_debug("kore_auth_run() for %s failed", req->path);
 
 	if (auth->redirect == NULL) {
 		http_response(req, 403, NULL, 0);

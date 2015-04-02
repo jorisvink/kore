@@ -262,7 +262,7 @@ http_process_request(struct http_request *req, int retry_only)
 		r = http_generic_404(req);
 	} else {
 		if (req->hdlr != hdlr && hdlr->auth != NULL)
-			r = kore_auth(req, hdlr->auth);
+			r = kore_auth_run(req, hdlr->auth);
 		else
 			r = KORE_RESULT_OK;
 
@@ -279,7 +279,7 @@ http_process_request(struct http_request *req, int retry_only)
 		case KORE_RESULT_ERROR:
 			/*
 			 * Set r to KORE_RESULT_OK so we can properly
-			 * flush the result from kore_auth().
+			 * flush the result from kore_auth_run().
 			 */
 			r = KORE_RESULT_OK;
 			break;
