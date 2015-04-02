@@ -69,8 +69,8 @@ struct filegen {
 
 struct cfile {
 	struct stat		st;
-	int				build;
-	int				cpp;
+	int			build;
+	int			cpp;
 	char			*name;
 	char			*fpath;
 	char			*opath;
@@ -190,7 +190,6 @@ static int			s_fd = -1;
 static char			*appl = NULL;
 static char			*rootdir = NULL;
 static char			*compiler = "gcc";
-static char			*cppcompiler = "g++";
 static struct cfile_list	source_files;
 static int			cfiles_count;
 static struct cmd		*command = NULL;
@@ -302,9 +301,6 @@ cli_build(int argc, char **argv)
 
 	if ((p = getenv("CC")) != NULL)
 		compiler = p;
-	
-	if ((p = getenv("CXX")) != NULL)
-		cppcompiler = p;
 
 	cfiles_count = 0;
 	TAILQ_INIT(&source_files);
@@ -674,7 +670,8 @@ cli_build_asset(char *fpath, struct dirent *dp)
 }
 
 static void
-cli_add_cfile(char *name, char *fpath, char *opath, struct stat *st, int build, int cpp)
+cli_add_cfile(char *name, char *fpath, char *opath, struct stat *st,
+    int build, int cpp)
 {
 	struct cfile		*cf;
 
@@ -696,11 +693,12 @@ cli_register_cfile(char *fpath, struct dirent *dp)
 {
 	struct stat		st;
 	char			*ext, *opath;
-	int				cpp;
+	int			cpp;
 
-	if ((ext = strrchr(fpath, '.')) == NULL || !(!strcmp(ext, ".c") || !strcmp(ext, ".cpp")))
+	if ((ext = strrchr(fpath, '.')) == NULL ||
+	    (strcmp(ext, ".c") && strcmp(ext, ".cpp")))
 		return;
-	
+
 	if (!strcmp(ext, ".cpp"))
 		cpp = 1;
 	else
@@ -714,7 +712,7 @@ cli_register_cfile(char *fpath, struct dirent *dp)
 		cli_add_cfile(dp->d_name, fpath, opath, &st, 0, cpp);
 		return;
 	}
-	
+
 	cli_add_cfile(dp->d_name, fpath, opath, &st, 1, cpp);
 }
 
@@ -860,7 +858,7 @@ cli_compile_cfile(void *arg)
 {
 	int		idx;
 	struct cfile	*cf = arg;
-	char		*args[24], *ipath[2], *cppdialect;
+	char		*args[24], *ipath[2], *p, *cppstandard;
 #if defined(KORE_USE_PGSQL)
 	char		*ppath;
 #endif
@@ -888,8 +886,6 @@ cli_compile_cfile(void *arg)
 #endif
 
 	args[idx++] = "-Wall";
-	args[idx++] = "-Wstrict-prototypes";
-	args[idx++] = "-Wmissing-prototypes";
 	args[idx++] = "-Wmissing-declarations";
 	args[idx++] = "-Wshadow";
 	args[idx++] = "-Wpointer-arith";
@@ -899,38 +895,35 @@ cli_compile_cfile(void *arg)
 	args[idx++] = "-g";
 
 	if (cf->cpp) {
-		
 		args[idx++] = "-Woverloaded-virtual";
 		args[idx++] = "-Wold-style-cast";
 		args[idx++] = "-Wnon-virtual-dtor";
-		
-		if ((cppdialect = getenv("CXXSTD")) != NULL) {
-			char *cppstandard = NULL;
-			(void)cli_vasprintf(&cppstandard, "-std=%s", cppdialect);
+
+		if ((p = getenv("CXXSTD")) != NULL) {
+			(void)cli_vasprintf(&cppstandard, "-std=%s", p);
 			args[idx++] = cppstandard;
 		}
+	} else {
+		args[idx++] = "-Wstrict-prototypes";
+		args[idx++] = "-Wmissing-prototypes";
 	}
-	
+
 	args[idx++] = "-c";
 	args[idx++] = cf->fpath;
 	args[idx++] = "-o";
 	args[idx++] = cf->opath;
 	args[idx] = NULL;
-	
-	if (cf->cpp)
-		execvp(cppcompiler, args);
-	else
-		execvp(compiler, args);
+
+	execvp(compiler, args);
 }
 
 static void
 cli_link_library(void *arg)
 {
 	struct cfile		*cf;
-	int			idx, f, i;
-	char			*p, *libname, *flags[LD_FLAGS_MAX];
+	int			idx, f, i, has_cpp;
 	char			*args[cfiles_count + 11 + LD_FLAGS_MAX];
-	char			*cpplib;
+	char			*p, *libname, *flags[LD_FLAGS_MAX], *cpplib;
 
 	if ((p = getenv("LDFLAGS")) != NULL)
 		f = kore_split_string(p, " ", flags, LD_FLAGS_MAX);
@@ -951,17 +944,21 @@ cli_link_library(void *arg)
 	args[idx++] = "-shared";
 #endif
 
-	TAILQ_FOREACH(cf, &source_files, list)
+	TAILQ_FOREACH(cf, &source_files, list) {
+		if (cf->cpp)
+			has_cpp = 1;
 		args[idx++] = cf->opath;
-	
-	if ((cpplib = getenv("CXXLIB")) != NULL) {
-		char *cpplibrary = NULL;
-		(void)cli_vasprintf(&cpplibrary, "-l%s", cpplib);
-		args[idx++] = cpplibrary;
-	} else {
-		args[idx++] = "-lstdc++";
 	}
-	
+
+	if (has_cpp) {
+		if ((p = getenv("CXXLIB")) != NULL) {
+			(void)cli_vasprintf(&cpplib, "-l%s", p);
+			args[idx++] = cpplib;
+		} else {
+			args[idx++] = "-lstdc++";
+		}
+	}
+
 	for (i = 0; i < f; i++)
 		args[idx++] = flags[i];
 
