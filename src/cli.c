@@ -1027,8 +1027,11 @@ cli_compile_cppfile(void *arg)
 	args[idx++] = "-Wold-style-cast";
 	args[idx++] = "-Wnon-virtual-dtor";
 	
-	if ((cppdialect = getenv("CPPSTD")) != NULL)
-		args[idx++] = cppdialect;
+	if ((cppdialect = getenv("CXXSTD")) != NULL) {
+		char *cppstandard = NULL;
+		(void)cli_vasprintf(&cppstandard, "-std=%s", cppdialect);
+		args[idx++] = cppstandard;
+	}
 	
 	args[idx++] = "-c";
 	args[idx++] = cf->fpath;
@@ -1078,10 +1081,13 @@ cli_link_library(void *arg)
 	TAILQ_FOREACH(cf, &cpp_files, list)
 		args[idx++] = cf->opath;
 	
-	if ((cpplib = getenv("CPPLIB")) != NULL)
-		args[idx++] = strcat("-l", cpplib);
-	else
+	if ((cpplib = getenv("CXXLIB")) != NULL) {
+		char *cpplibrary = NULL;
+		(void)cli_vasprintf(&cpplibrary, "-l%s", cpplib);
+		args[idx++] = cpplibrary;
+	} else {
 		args[idx++] = "-lstdc++";
+	}
 #endif
 	
 	for (i = 0; i < f; i++)

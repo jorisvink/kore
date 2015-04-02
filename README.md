@@ -74,6 +74,7 @@ those by setting a shell environment variable before running **_make_**.
 * DEBUG=1 (enables use of -d for debug)
 * BENCHMARK=1 (compiles Kore without OpenSSL)
 * KORE_PEDANTIC_MALLOC=1 (zero all allocated memory)
+* KORE_CPP_SUPPORT=1 (compiles Kore with support for C++ projects)
 
 Example libraries
 -----------------
