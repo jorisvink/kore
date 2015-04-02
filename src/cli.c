@@ -944,6 +944,7 @@ cli_link_library(void *arg)
 	args[idx++] = "-shared";
 #endif
 
+	has_cpp = 0;
 	TAILQ_FOREACH(cf, &source_files, list) {
 		if (cf->cpp)
 			has_cpp = 1;
