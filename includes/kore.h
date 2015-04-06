@@ -164,6 +164,8 @@ LIST_HEAD(listener_head, listener);
 #define WEBSOCKET_BROADCAST_LOCAL	1
 #define WEBSOCKET_BROADCAST_GLOBAL	2
 
+#define KORE_TIMER_ONESHOT	0x01
+
 struct connection {
 	u_int8_t		type;
 	int			fd;
@@ -406,6 +408,11 @@ int		kore_auth_run(struct http_request *, struct kore_auth *);
 void		kore_auth_init(void);
 int		kore_auth_new(const char *);
 struct kore_auth	*kore_auth_lookup(const char *);
+
+void		kore_timer_init(void);
+u_int64_t	kore_timer_run(u_int64_t);
+void		kore_timer_add(void (*cb)(u_int64_t, u_int64_t),
+		    u_int64_t, int);
 
 int		kore_ssl_sni_cb(SSL *, int *, void *);
 int		kore_server_bind(const char *, const char *);

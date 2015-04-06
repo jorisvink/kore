@@ -186,7 +186,7 @@ kore_worker_entry(struct kore_worker *kw)
 	char			buf[16];
 	struct connection	*c, *cnext;
 	int			quit, had_lock, r;
-	u_int64_t		now, idle_check, next_lock;
+	u_int64_t		now, idle_check, next_lock, netwait;
 
 	worker = kw;
 
@@ -234,6 +234,7 @@ kore_worker_entry(struct kore_worker *kw)
 
 	net_init();
 	http_init();
+	kore_timer_init();
 	kore_connection_init();
 	kore_domain_load_crl();
 	TAILQ_INIT(&disconnected);
@@ -273,6 +274,7 @@ kore_worker_entry(struct kore_worker *kw)
 		}
 
 		now = kore_time_ms();
+		netwait = kore_timer_run(now);
 
 		if (now > next_lock) {
 			if (kore_worker_acceptlock_obtain()) {
@@ -290,7 +292,7 @@ kore_worker_entry(struct kore_worker *kw)
 			}
 		}
 
-		r = kore_platform_event_wait(100);
+		r = kore_platform_event_wait(netwait);
 		if (worker->has_lock && r > 0) {
 			kore_worker_acceptlock_release();
 			next_lock = now + WORKER_LOCK_TIMEOUT;
