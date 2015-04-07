@@ -727,6 +727,7 @@ static void
 cli_find_files(const char *path, void (*cb)(char *, struct dirent *))
 {
 	DIR			*d;
+	struct stat		st;
 	struct dirent		*dp;
 	char			*fpath;
 
@@ -739,12 +740,20 @@ cli_find_files(const char *path, void (*cb)(char *, struct dirent *))
 			continue;
 
 		(void)cli_vasprintf(&fpath, "%s/%s", path, dp->d_name);
+		if (stat(fpath, &st) == -1) {
+			fprintf(stderr, "stat(%s): %s\n", fpath, errno_s);
+			free(fpath);
+			continue;
+		}
 
-		if (dp->d_type == DT_DIR) {
+		if (S_ISDIR(st.st_mode)) {
 			cli_find_files(fpath, cb);
 			free(fpath);
-		} else {
+		} else if (S_ISREG(st.st_mode)) {
 			cb(fpath, dp);
+		} else {
+			fprintf(stderr, "ignoring %s\n", fpath);
+			free(fpath);
 		}
 	}
 
