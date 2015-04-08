@@ -703,6 +703,12 @@ configure_params(char **argv)
 		current_method = HTTP_METHOD_POST;
 	} else if (!strcasecmp(argv[1], "get")) {
 		current_method = HTTP_METHOD_GET;
+	} else if (!strcasecmp(argv[1], "put")) {
+		current_method = HTTP_METHOD_PUT;
+	} else if (!strcasecmp(argv[1], "delete")) {
+		current_method = HTTP_METHOD_DELETE;
+	} else if (!strcasecmp(argv[1], "head")) {
+		current_method = HTTP_METHOD_HEAD;
 	} else {
 		printf("unknown method: %s in params block for %s\n",
 		    argv[1], argv[2]);
