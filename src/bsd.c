@@ -151,8 +151,7 @@ kore_platform_event_wait(u_int64_t timer)
 		case KORE_TYPE_LISTENER:
 			l = (struct listener *)events[i].udata;
 
-			while (r < worker->accept_treshold &&
-			    worker_active_connections <
+			while (worker_active_connections <
 			    worker_max_connections) {
 				kore_connection_accept(l, &c);
 				if (c == NULL)

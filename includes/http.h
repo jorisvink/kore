@@ -30,6 +30,7 @@ extern "C" {
 #define HTTP_REQ_HEADER_MAX	25
 #define HTTP_MAX_QUERY_ARGS	10
 #define HTTP_MAX_COOKIES	10
+#define HTTP_REQUEST_LIMIT	1000
 
 #define HTTP_ARG_TYPE_RAW	0
 #define HTTP_ARG_TYPE_BYTE	1
@@ -209,6 +210,7 @@ extern u_int16_t	http_header_max;
 extern u_int64_t	http_body_max;
 extern u_int64_t	http_hsts_enable;
 extern u_int16_t	http_keepalive_time;
+extern u_int32_t	http_request_limit;
 
 void		http_init(void);
 void		http_process(void);

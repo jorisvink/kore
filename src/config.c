@@ -52,6 +52,7 @@ static int		configure_http_header_max(char **);
 static int		configure_http_body_max(char **);
 static int		configure_http_hsts_enable(char **);
 static int		configure_http_keepalive_time(char **);
+static int		configure_http_request_limit(char **);
 static int		configure_validator(char **);
 static int		configure_params(char **);
 static int		configure_validate(char **);
@@ -63,6 +64,7 @@ static int		configure_authentication_value(char **);
 static int		configure_authentication_validator(char **);
 static int		configure_websocket_maxframe(char **);
 static int		configure_websocket_timeout(char **);
+static int		configure_socket_backlog(char **);
 
 #if defined(KORE_USE_PGSQL)
 static int		configure_pgsql_conn_max(char **);
@@ -99,6 +101,7 @@ static struct {
 	{ "http_body_max",		configure_http_body_max },
 	{ "http_hsts_enable",		configure_http_hsts_enable },
 	{ "http_keepalive_time",	configure_http_keepalive_time },
+	{ "http_request_limit",		configure_http_request_limit },
 	{ "validator",			configure_validator },
 	{ "params",			configure_params },
 	{ "validate",			configure_validate },
@@ -109,6 +112,7 @@ static struct {
 	{ "authentication_validator",	configure_authentication_validator },
 	{ "websocket_maxframe",		configure_websocket_maxframe },
 	{ "websocket_timeout",		configure_websocket_timeout },
+	{ "socket_backlog",		configure_socket_backlog },
 #if defined(KORE_USE_PGSQL)
 	{ "pgsql_conn_max",		configure_pgsql_conn_max },
 #endif
@@ -657,6 +661,23 @@ configure_http_keepalive_time(char **argv)
 }
 
 static int
+configure_http_request_limit(char **argv)
+{
+	int		err;
+
+	if (argv[1] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	http_request_limit = kore_strtonum(argv[1], 10, 0, UINT_MAX, &err);
+	if (err != KORE_RESULT_OK) {
+		printf("bad http_request_limit value: %s\n", argv[1]);
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
 configure_validator(char **argv)
 {
 	u_int8_t	type;
@@ -923,6 +944,23 @@ configure_websocket_timeout(char **argv)
 	}
 
 	kore_websocket_timeout = kore_websocket_timeout * 1000;
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_socket_backlog(char **argv)
+{
+	int		err;
+
+	if (argv[1] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	kore_socket_backlog = kore_strtonum(argv[1], 10, 0, UINT_MAX, &err);
+	if (err != KORE_RESULT_OK) {
+		printf("bad socket_backlog value: %s\n", argv[1]);
+		return (KORE_RESULT_ERROR);
+	}
 
 	return (KORE_RESULT_OK);
 }

@@ -53,7 +53,8 @@ static TAILQ_HEAD(, http_request)	http_requests_sleeping;
 static struct kore_pool			http_request_pool;
 static struct kore_pool			http_header_pool;
 
-int		http_request_count;
+int		http_request_count = 0;
+u_int32_t	http_request_limit = HTTP_REQUEST_LIMIT;
 u_int64_t	http_hsts_enable = HTTP_HSTS_ENABLE;
 u_int16_t	http_header_max = HTTP_HEADER_MAX_LEN;
 u_int16_t	http_keepalive_time = HTTP_KEEPALIVE_TIME;
@@ -64,7 +65,6 @@ http_init(void)
 {
 	int		prealloc, l;
 
-	http_request_count = 0;
 	TAILQ_INIT(&http_requests);
 	TAILQ_INIT(&http_requests_sleeping);
 
@@ -219,11 +219,15 @@ http_request_wakeup(struct http_request *req)
 void
 http_process(void)
 {
+	u_int32_t			count;
 	struct http_request		*req, *next;
 
+	count = 0;
 	for (req = TAILQ_FIRST(&http_requests); req != NULL; req = next) {
-		next = TAILQ_NEXT(req, list);
+		if (count >= http_request_limit)
+			break;
 
+		next = TAILQ_NEXT(req, list);
 		if (req->flags & HTTP_REQUEST_DELETE) {
 			http_request_free(req);
 			continue;
@@ -236,6 +240,7 @@ http_process(void)
 		if (!(req->flags & HTTP_REQUEST_COMPLETE))
 			continue;
 
+		count++;
 		http_process_request(req, 0);
 	}
 }

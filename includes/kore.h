@@ -275,7 +275,6 @@ struct kore_worker {
 	u_int8_t			cpu;
 	pid_t				pid;
 	u_int8_t			has_lock;
-	u_int32_t			accept_treshold;
 	struct kore_module_handle	*active_hdlr;
 };
 
@@ -364,6 +363,7 @@ extern u_int32_t		worker_max_connections;
 extern u_int32_t		worker_active_connections;
 extern u_int64_t		kore_websocket_maxframe;
 extern u_int64_t		kore_websocket_timeout;
+extern u_int32_t		kore_socket_backlog;
 
 extern struct listener_head	listeners;
 extern struct kore_worker	*worker;

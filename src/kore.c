@@ -34,6 +34,7 @@ int			skip_chroot = 0;
 u_int8_t		worker_count = 0;
 char			*runas_user = NULL;
 char			*chroot_path = NULL;
+u_int32_t		kore_socket_backlog = 5000;
 char			*kore_pidfile = KORE_PIDFILE_DEFAULT;
 char			*kore_ssl_cipher_list = KORE_DEFAULT_CIPHER_LIST;
 
@@ -258,7 +259,7 @@ kore_server_bind(const char *ip, const char *port)
 
 	freeaddrinfo(results);
 
-	if (listen(l->fd, 5000) == -1) {
+	if (listen(l->fd, kore_socket_backlog) == -1) {
 		close(l->fd);
 		kore_mem_free(l);
 		kore_debug("listen(): %s", errno_s);
