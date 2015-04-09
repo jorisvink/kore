@@ -542,7 +542,7 @@ configure_max_connections(char **argv)
 	if (argv[1] == NULL)
 		return (KORE_RESULT_ERROR);
 
-	worker_max_connections = kore_strtonum(argv[1], 10, 1, 65535, &err);
+	worker_max_connections = kore_strtonum(argv[1], 10, 1, UINT_MAX, &err);
 	if (err != KORE_RESULT_OK) {
 		printf("bad value for worker_max_connections: %s\n", argv[1]);
 		return (KORE_RESULT_ERROR);
