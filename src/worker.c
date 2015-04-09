@@ -197,6 +197,13 @@ kore_worker_entry(struct kore_worker *kw)
 			fatal("cannot chdir(): %s", errno_s);
 	}
 
+	rl.rlim_cur = worker_rlimit_nofiles;
+	rl.rlim_max = worker_rlimit_nofiles;
+	if (setrlimit(RLIMIT_NOFILE, &rl) == -1) {
+		kore_log(LOG_ERR, "setrlimit(RLIMIT_NOFILE, %d): %s",
+		    worker_rlimit_nofiles, errno_s);
+	}
+
 	if (getuid() != pw->pw_uid) {
 		if (setgroups(1, &pw->pw_gid) ||
 #ifdef __MACH__
@@ -207,13 +214,6 @@ kore_worker_entry(struct kore_worker *kw)
 		    setresuid(pw->pw_uid, pw->pw_uid, pw->pw_uid))
 #endif
 			fatal("unable to drop privileges");
-	}
-
-	rl.rlim_cur = worker_rlimit_nofiles;
-	rl.rlim_max = worker_rlimit_nofiles;
-	if (setrlimit(RLIMIT_NOFILE, &rl) == -1) {
-		kore_log(LOG_ERR, "setrlimit(RLIMIT_NOFILE, %d): %s",
-		    worker_rlimit_nofiles, errno_s);
 	}
 
 	(void)snprintf(buf, sizeof(buf), "kore [wrk %d]", kw->id);
