@@ -75,6 +75,8 @@ kore_task_run(struct kore_task *t)
 {
 	struct kore_task_thread		*tt;
 
+	kore_platform_schedule_read(t->fds[0], t);
+
 	pthread_mutex_lock(&task_thread_lock);
 	if (TAILQ_EMPTY(&task_threads))
 		task_thread_spawn(&tt);
@@ -100,7 +102,6 @@ kore_task_bind_request(struct kore_task *t, struct http_request *req)
 	LIST_INSERT_HEAD(&(req->tasks), t, rlist);
 
 	http_request_sleep(req);
-	kore_platform_schedule_read(t->fds[0], t);
 }
 
 void
@@ -174,6 +175,7 @@ kore_task_handle(struct kore_task *t, int finished)
 		http_request_wakeup(t->req);
 
 	if (finished) {
+		kore_platform_disable_read(t->fds[0]);
 		kore_task_set_state(t, KORE_TASK_STATE_FINISHED);
 		if (t->req != NULL) {
 			if (t->req->flags & HTTP_REQUEST_DELETE)
