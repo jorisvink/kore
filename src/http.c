@@ -52,6 +52,8 @@ static TAILQ_HEAD(, http_request)	http_requests;
 static TAILQ_HEAD(, http_request)	http_requests_sleeping;
 static struct kore_pool			http_request_pool;
 static struct kore_pool			http_header_pool;
+static struct kore_pool			http_host_pool;
+static struct kore_pool			http_path_pool;
 
 int		http_request_count = 0;
 u_int32_t	http_request_limit = HTTP_REQUEST_LIMIT;
@@ -89,6 +91,11 @@ http_init(void)
 	    sizeof(struct http_request), prealloc);
 	kore_pool_init(&http_header_pool, "http_header_pool",
 	    sizeof(struct http_header), prealloc * HTTP_REQ_HEADER_MAX);
+
+	kore_pool_init(&http_host_pool,
+	    "http_host_pool", KORE_DOMAINNAME_LEN, prealloc);
+	kore_pool_init(&http_path_pool,
+	    "http_path_pool", HTTP_URI_LEN, prealloc);
 }
 
 int
@@ -99,16 +106,17 @@ http_request_new(struct connection *c, struct spdy_stream *s, const char *host,
 	char				*p;
 	struct http_request		*req;
 	int				m, flags;
+	size_t				hostlen, pathlen;
 
 	kore_debug("http_request_new(%p, %p, %s, %s, %s, %s)", c, s,
 	    host, method, path, version);
 
-	if (strlen(host) >= KORE_DOMAINNAME_LEN - 1) {
+	if ((hostlen = strlen(host)) >= KORE_DOMAINNAME_LEN - 1) {
 		http_error_response(c, s, 500);
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (strlen(path) >= HTTP_URI_LEN - 1) {
+	if ((pathlen = strlen(path)) >= HTTP_URI_LEN - 1) {
 		http_error_response(c, s, 414);
 		return (KORE_RESULT_ERROR);
 	}
@@ -158,8 +166,13 @@ http_request_new(struct connection *c, struct spdy_stream *s, const char *host,
 	if ((p = strrchr(host, ':')) != NULL)
 		*p = '\0';
 
-	req->host = kore_strdup(host);
-	req->path = kore_strdup(path);
+	req->host = kore_pool_get(&http_host_pool);
+	(void)memcpy(req->host, host, hostlen);
+	req->host[hostlen] = '\0';
+
+	req->path = kore_pool_get(&http_path_pool);
+	(void)memcpy(req->path, path, pathlen);
+	req->path[pathlen] = '\0';
 
 	if ((req->query_string = strchr(req->path, '?')) != NULL)
 		*(req->query_string)++ = '\0';
@@ -376,8 +389,8 @@ http_request_free(struct http_request *req)
 
 	kore_debug("http_request_free: %p->%p", req->owner, req);
 
-	kore_mem_free(req->host);
-	kore_mem_free(req->path);
+	kore_pool_put(&http_host_pool, req->host);
+	kore_pool_put(&http_path_pool, req->path);
 
 	req->host = NULL;
 	req->path = NULL;
@@ -560,8 +573,7 @@ http_header_recv(struct netbuf *nb)
 	skip = 0;
 	host[0] = NULL;
 	for (i = 0; i < h; i++) {
-		if (strncasecmp(headers[i], "host",
-		    MIN(strlen(headers[i]), strlen("host"))))
+		if (strncasecmp(headers[i], "host", 4))
 			continue;
 
 		v = kore_split_string(headers[i], ":", host, 3);
@@ -570,8 +582,8 @@ http_header_recv(struct netbuf *nb)
 			return (KORE_RESULT_OK);
 		}
 
-		if (strlen(host[0]) != 4 || strncasecmp(host[0], "host", 4) ||
-		    strlen(host[1]) < 4) {
+		if ((host[1] - host[0]) != 5 ||
+		    strncasecmp(host[0], "host", 4) || host[1] == '\0') {
 			http_error_response(c, NULL, 400);
 			return (KORE_RESULT_OK);
 		}
