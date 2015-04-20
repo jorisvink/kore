@@ -20,6 +20,7 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 
+#include <fcntl.h>
 #include <grp.h>
 #include <pwd.h>
 #include <signal.h>
@@ -182,6 +183,7 @@ kore_worker_dispatch_signal(int sig)
 void
 kore_worker_entry(struct kore_worker *kw)
 {
+	size_t			fd;
 	struct rlimit		rl;
 	char			buf[16];
 	struct connection	*c, *cnext;
@@ -195,6 +197,16 @@ kore_worker_entry(struct kore_worker *kw)
 			fatal("cannot chroot(): %s", errno_s);
 		if (chdir("/") == -1)
 			fatal("cannot chdir(): %s", errno_s);
+	}
+
+	if (getrlimit(RLIMIT_NOFILE, &rl) == -1) {
+		kore_log(LOG_WARNING, "getrlimit(RLIMIT_NOFILE): %s", errno_s);
+	} else {
+		for (fd = 0; fd < rl.rlim_cur; fd++) {
+			if (fcntl(fd, F_GETFD, NULL) != -1) {
+				worker_rlimit_nofiles++;
+			}
+		}
 	}
 
 	rl.rlim_cur = worker_rlimit_nofiles;

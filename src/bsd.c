@@ -153,7 +153,11 @@ kore_platform_event_wait(u_int64_t timer)
 
 			while (worker_active_connections <
 			    worker_max_connections) {
-				kore_connection_accept(l, &c);
+				if (!kore_connection_accept(l, &c)) {
+					r = 1;
+					break;
+				}
+
 				if (c == NULL)
 					break;
 
