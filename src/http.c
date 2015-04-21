@@ -666,8 +666,9 @@ http_header_recv(struct netbuf *nb)
 		if (bytes_left > 0) {
 			kore_debug("%ld/%ld (%ld - %ld) more bytes for body",
 			    bytes_left, clen, nb->s_off, len);
-			c->rnb->extra = req;
 			net_recv_reset(c, bytes_left, http_body_recv);
+			c->rnb->extra = req;
+			c->rnb->flags &= ~NETBUF_CALL_CB_ALWAYS;
 		} else if (bytes_left == 0) {
 			req->flags |= HTTP_REQUEST_COMPLETE;
 			req->flags &= ~HTTP_REQUEST_EXPECT_BODY;
