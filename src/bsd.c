@@ -34,8 +34,6 @@
 
 static int			kfd = -1;
 static struct kevent		*events;
-static u_int32_t		nchanges;
-static struct kevent		*changelist;
 static u_int32_t		event_count = 0;
 
 void
@@ -81,10 +79,8 @@ kore_platform_event_init(void)
 	if ((kfd = kqueue()) == -1)
 		fatal("kqueue(): %s", errno_s);
 
-	nchanges = 0;
 	event_count = (worker_max_connections * 2) + nlisteners;
 	events = kore_calloc(event_count, sizeof(struct kevent));
-	changelist = kore_calloc(event_count, sizeof(struct kevent));
 
 	LIST_FOREACH(l, &listeners, list) {
 		kore_platform_event_schedule(l->fd,
@@ -104,14 +100,13 @@ kore_platform_event_wait(u_int64_t timer)
 
 	timeo.tv_sec = timer / 1000;
 	timeo.tv_nsec = (timer % 1000) * 1000000;
-	n = kevent(kfd, changelist, nchanges, events, event_count, &timeo);
+	n = kevent(kfd, NULL, 0, events, event_count, &timeo);
 	if (n == -1) {
 		if (errno == EINTR)
 			return (0);
 		fatal("kevent(): %s", errno_s);
 	}
 
-	nchanges = 0;
 	if (n > 0)
 		kore_debug("main(): %d sockets available", n);
 
@@ -216,13 +211,11 @@ kore_platform_event_all(int fd, void *c)
 void
 kore_platform_event_schedule(int fd, int type, int flags, void *data)
 {
-	if (nchanges >= event_count) {
-		kore_log(LOG_WARNING, "cannot schedule %d (%d) on %d",
-		    type, flags, fd);
-	} else {
-		EV_SET(&changelist[nchanges], fd, type, flags, 0, 0, data);
-		nchanges++;
-	}
+	struct kevent		event[1];
+
+	EV_SET(&event[0], fd, type, flags, 0, 0, data);
+	if (kevent(kfd, event, 1, NULL, 0, NULL) == -1)
+		fatal("kevent: %s", errno_s);
 }
 
 void
