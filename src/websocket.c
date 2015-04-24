@@ -64,12 +64,14 @@ kore_websocket_handshake(struct http_request *req, struct kore_wscbs *wscbs)
 	}
 
 	if (!http_request_header(req, "sec-websocket-version", &version)) {
+		kore_mem_free(key);
 		http_response_header(req, "sec-websocket-version", "13");
 		http_response(req, HTTP_STATUS_BAD_REQUEST, NULL, 0);
 		return;
 	}
 
 	if (strcmp(version, "13")) {
+		kore_mem_free(key);
 		kore_mem_free(version);
 		http_response_header(req, "sec-websocket-version", "13");
 		http_response(req, HTTP_STATUS_BAD_REQUEST, NULL, 0);
