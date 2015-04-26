@@ -230,12 +230,14 @@ kore_server_bind(const char *ip, const char *port)
 		kore_mem_free(l);
 		freeaddrinfo(results);
 		kore_debug("socket(): %s", errno_s);
+		printf("failed to create socket: %s\n", errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
 	if (!kore_connection_nonblock(l->fd)) {
 		kore_mem_free(l);
 		freeaddrinfo(results);
+		printf("failed to make socket non blocking: %s\n", errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -246,6 +248,7 @@ kore_server_bind(const char *ip, const char *port)
 		kore_mem_free(l);
 		freeaddrinfo(results);
 		kore_debug("setsockopt(): %s", errno_s);
+		printf("failed to set SO_REUSEADDR: %s\n", errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -254,6 +257,7 @@ kore_server_bind(const char *ip, const char *port)
 		kore_mem_free(l);
 		freeaddrinfo(results);
 		kore_debug("bind(): %s", errno_s);
+		printf("failed to bind to %s port %s: %s\n", ip, port, errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -263,6 +267,7 @@ kore_server_bind(const char *ip, const char *port)
 		close(l->fd);
 		kore_mem_free(l);
 		kore_debug("listen(): %s", errno_s);
+		printf("failed to listen on socket: %s\n", errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
