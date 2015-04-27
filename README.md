@@ -37,10 +37,11 @@ See https://kore.io/doc/#requirements for more information.
 
 Latest release
 --------------
-* [2014-12-12] version 1.2.1 - https://kore.io/release/kore-1.2.1-release.tgz
+* [2015-04-09] version 1.2.2 - https://kore.io/release/kore-1.2.2-release.tgz
 
 Old releases
 ------------
+* [2014-12-12] version 1.2.1 - https://kore.io/release/kore-1.2.1-release.tgz
 * [2014-08-25] version 1.2 - https://kore.io/release/kore-1.2-stable.tgz
 * [2014-03-01] version 1.1 - https://kore.io/release/kore-1.1-stable.tgz
 
@@ -51,10 +52,10 @@ Requirements
 * libz
 * openssl >= 1.0.1i
 
-Requirements for background tasks
+Requirements for background tasks (optional)
 * pthreads
 
-Requirements for pgsql
+Requirements for pgsql (optional)
 * libpq
 
 Normal compilation and installation:
