@@ -32,6 +32,10 @@ workers		4
 # This is disabled by default.
 #worker_accept_treshold		0
 
+# Workers bind themselves to a single CPU by default.
+# Turn this off by setting this option to 0
+#worker_set_affinity		1
+
 # Store the main process its pid in this file.
 #pidfile	kore.pid
 
