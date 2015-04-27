@@ -1095,11 +1095,7 @@ http_argument_add(struct http_request *req, const char *name,
 				len = strlen(value);
 			}
 
-			if (!kore_validator_check(req, p->validator, value)) {
-				kore_log(LOG_NOTICE,
-				    "validator %s (%s) for %s failed",
-				    p->validator->name, p->name, req->path);
-			} else {
+			if (kore_validator_check(req, p->validator, value)) {
 				q = kore_malloc(sizeof(struct http_arg));
 				q->len = len;
 				q->s_value = NULL;
@@ -1112,8 +1108,6 @@ http_argument_add(struct http_request *req, const char *name,
 			return;
 		}
 	}
-
-	kore_log(LOG_NOTICE, "unexpected parameter %s for %s", name, req->path);
 }
 
 static void
