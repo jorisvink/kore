@@ -68,6 +68,7 @@ static struct wlock			*accept_lock;
 extern volatile sig_atomic_t	sig_recv;
 struct kore_worker		*worker = NULL;
 struct connection_list		worker_clients;
+u_int8_t			worker_set_affinity = 1;
 u_int32_t			worker_accept_treshold = 0;
 u_int32_t			worker_rlimit_nofiles = 1024;
 u_int32_t			worker_max_connections = 250;
@@ -231,7 +232,9 @@ kore_worker_entry(struct kore_worker *kw)
 
 	(void)snprintf(buf, sizeof(buf), "kore [wrk %d]", kw->id);
 	kore_platform_proctitle(buf);
-	kore_platform_worker_setcpu(kw);
+
+	if (worker_set_affinity == 1)
+		kore_platform_worker_setcpu(kw);
 
 	kore_pid = kw->pid;
 

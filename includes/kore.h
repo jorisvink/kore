@@ -358,6 +358,7 @@ extern u_int8_t			nlisteners;
 extern u_int64_t		spdy_idle_time;
 extern u_int16_t		cpu_count;
 extern u_int8_t			worker_count;
+extern u_int8_t			worker_set_affinity;
 extern u_int32_t		worker_rlimit_nofiles;
 extern u_int32_t		worker_max_connections;
 extern u_int32_t		worker_active_connections;

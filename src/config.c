@@ -45,6 +45,7 @@ static int		configure_certkey(char **);
 static int		configure_rlimit_nofiles(char **);
 static int		configure_max_connections(char **);
 static int		configure_accept_treshold(char **);
+static int		configure_set_affinity(char **);
 static int		configure_ssl_cipher(char **);
 static int		configure_ssl_dhparam(char **);
 static int		configure_ssl_no_compression(char **);
@@ -94,6 +95,7 @@ static struct {
 	{ "worker_max_connections",	configure_max_connections },
 	{ "worker_rlimit_nofiles",	configure_rlimit_nofiles },
 	{ "worker_accept_treshold",	configure_accept_treshold },
+	{ "worker_set_affinity",	configure_set_affinity },
 	{ "pidfile",			configure_pidfile },
 	{ "accesslog",			configure_accesslog },
 	{ "certfile",			configure_certfile },
@@ -585,6 +587,23 @@ configure_accept_treshold(char **argv)
 	worker_accept_treshold = kore_strtonum(argv[1], 0, 1, UINT_MAX, &err);
 	if (err != KORE_RESULT_OK) {
 		printf("bad value for worker_accept_treshold: %s\n", argv[1]);
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_set_affinity(char **argv)
+{
+	int		err;
+
+	if (argv[1] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	worker_set_affinity = kore_strtonum(argv[1], 10, 0, 1, &err);
+	if (err != KORE_RESULT_OK) {
+		printf("bad value for worker_set_affinity: %s\n", argv[1]);
 		return (KORE_RESULT_ERROR);
 	}
 
