@@ -368,11 +368,6 @@ cli_build(int argc, char **argv)
 	}
 	free(cpath);
 
-	(void)cli_vasprintf(&cpath, "%s/dh2048.pem", rootdir);
-	if (!cli_file_exists(cpath))
-		cli_file_create("dh2048.pem", dh2048_data, strlen(dh2048_data));
-	free(cpath);
-
 	if (requires_relink) {
 		cli_spawn_proc(cli_link_library, NULL);
 		printf("%s built succesfully!\n", appl);
@@ -777,6 +772,9 @@ cli_generate_certs(void)
 	X509			*x509;
 	RSA			*kpair;
 	char			*fpath, issuer[64];
+
+	/* Write out DH parameters. */
+	cli_file_create("dh2048.pem", dh2048_data, strlen(dh2048_data));
 
 	/* Create new certificate. */
 	if ((x509 = X509_new()) == NULL)
