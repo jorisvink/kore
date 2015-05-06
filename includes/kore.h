@@ -57,6 +57,10 @@ extern int daemon(int, int);
 #define KORE_VERSION_PATCH	3
 #define KORE_VERSION_STATE	"rc1"
 
+#define KORE_TLS_VERSION_1_2	0
+#define KORE_TLS_VERSION_1_0	1
+#define KORE_TLS_VERSION_BOTH	2
+
 #define errno_s			strerror(errno)
 #define ssl_errno_s		ERR_error_string(ERR_get_error(), NULL)
 
@@ -351,8 +355,9 @@ extern char	*chroot_path;
 extern char	*runas_user;
 extern char	*kore_pidfile;
 extern char	*config_file;
-extern char	*kore_ssl_cipher_list;
-extern DH	*ssl_dhparam;
+extern char	*kore_tls_cipher_list;
+extern int	tls_version;
+extern DH	*tls_dhparam;
 
 extern u_int8_t			nlisteners;
 extern u_int64_t		spdy_idle_time;
@@ -416,9 +421,9 @@ u_int64_t	kore_timer_run(u_int64_t);
 void		kore_timer_add(void (*cb)(u_int64_t, u_int64_t),
 		    u_int64_t, int);
 
-int		kore_ssl_sni_cb(SSL *, int *, void *);
+int		kore_tls_sni_cb(SSL *, int *, void *);
 int		kore_server_bind(const char *, const char *);
-int		kore_ssl_npn_cb(SSL *, const u_char **, unsigned int *, void *);
+int		kore_tls_npn_cb(SSL *, const u_char **, unsigned int *, void *);
 
 void			kore_connection_init(void);
 struct connection	*kore_connection_new(void *);

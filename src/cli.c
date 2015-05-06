@@ -161,7 +161,7 @@ static const char *config_data =
 	"bind\t\t127.0.0.1 8888\n"
 	"load\t\t./%s.so\n"
 #if !defined(KORE_BENCHMARK)
-	"ssl_dhparam\tdh2048.pem\n"
+	"tls_dhparam\tdh2048.pem\n"
 #endif
 	"\n"
 	"domain 127.0.0.1 {\n"

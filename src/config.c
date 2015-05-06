@@ -46,9 +46,9 @@ static int		configure_rlimit_nofiles(char **);
 static int		configure_max_connections(char **);
 static int		configure_accept_treshold(char **);
 static int		configure_set_affinity(char **);
-static int		configure_ssl_cipher(char **);
-static int		configure_ssl_dhparam(char **);
-static int		configure_ssl_no_compression(char **);
+static int		configure_tls_version(char **);
+static int		configure_tls_cipher(char **);
+static int		configure_tls_dhparam(char **);
 static int		configure_spdy_idle_time(char **);
 static int		configure_http_header_max(char **);
 static int		configure_http_body_max(char **);
@@ -84,9 +84,9 @@ static struct {
 	{ "load",			configure_load },
 	{ "static",			configure_handler },
 	{ "dynamic",			configure_handler },
-	{ "ssl_cipher",			configure_ssl_cipher },
-	{ "ssl_dhparam",		configure_ssl_dhparam },
-	{ "ssl_no_compression",		configure_ssl_no_compression },
+	{ "tls_version",		configure_tls_version },
+	{ "tls_cipher",			configure_tls_cipher },
+	{ "tls_dhparam",		configure_tls_dhparam },
 	{ "spdy_idle_time",		configure_spdy_idle_time },
 	{ "domain",			configure_domain },
 	{ "chroot",			configure_chroot },
@@ -220,6 +220,11 @@ kore_parse_config_file(char *fpath)
 			}
 		}
 
+		if (config_names[i].name == NULL) {
+			printf("unknown configuration option on line %d\n",
+			    lineno);
+		}
+
 		lineno++;
 	}
 
@@ -258,22 +263,42 @@ configure_load(char **argv)
 }
 
 static int
-configure_ssl_cipher(char **argv)
+configure_tls_version(char **argv)
 {
 	if (argv[1] == NULL)
 		return (KORE_RESULT_ERROR);
 
-	if (strcmp(kore_ssl_cipher_list, KORE_DEFAULT_CIPHER_LIST)) {
-		kore_debug("duplicate ssl_cipher directive specified");
+	if (!strcmp(argv[1], "1.2")) {
+		tls_version = KORE_TLS_VERSION_1_2;
+	} else if (!strcmp(argv[1], "1.0")) {
+		tls_version = KORE_TLS_VERSION_1_0;
+	} else if (!strcmp(argv[1], "both")) {
+		tls_version = KORE_TLS_VERSION_BOTH;
+	} else {
+		printf("unknown value for tls_version: %s\n", argv[1]);
 		return (KORE_RESULT_ERROR);
 	}
 
-	kore_ssl_cipher_list = kore_strdup(argv[1]);
 	return (KORE_RESULT_OK);
 }
 
 static int
-configure_ssl_dhparam(char **argv)
+configure_tls_cipher(char **argv)
+{
+	if (argv[1] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	if (strcmp(kore_tls_cipher_list, KORE_DEFAULT_CIPHER_LIST)) {
+		kore_debug("duplicate tls_cipher directive specified");
+		return (KORE_RESULT_ERROR);
+	}
+
+	kore_tls_cipher_list = kore_strdup(argv[1]);
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_tls_dhparam(char **argv)
 {
 #if !defined(KORE_BENCHMARK)
 	BIO		*bio;
@@ -281,8 +306,8 @@ configure_ssl_dhparam(char **argv)
 	if (argv[1] == NULL)
 		return (KORE_RESULT_ERROR);
 
-	if (ssl_dhparam != NULL) {
-		kore_debug("duplicate ssl_dhparam directive specified");
+	if (tls_dhparam != NULL) {
+		kore_debug("duplicate tls_dhparam directive specified");
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -291,21 +316,14 @@ configure_ssl_dhparam(char **argv)
 		return (KORE_RESULT_ERROR);
 	}
 
-	ssl_dhparam = PEM_read_bio_DHparams(bio, NULL, NULL, NULL);
+	tls_dhparam = PEM_read_bio_DHparams(bio, NULL, NULL, NULL);
 	BIO_free(bio);
 
-	if (ssl_dhparam == NULL) {
+	if (tls_dhparam == NULL) {
 		printf("PEM_read_bio_DHparams(): %s\n", ssl_errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 #endif
-	return (KORE_RESULT_OK);
-}
-
-static int
-configure_ssl_no_compression(char **argv)
-{
-	printf("ssl_no_compression is deprecated, and always on by default\n");
 	return (KORE_RESULT_OK);
 }
 

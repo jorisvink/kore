@@ -36,7 +36,7 @@ char			*runas_user = NULL;
 char			*chroot_path = NULL;
 u_int32_t		kore_socket_backlog = 5000;
 char			*kore_pidfile = KORE_PIDFILE_DEFAULT;
-char			*kore_ssl_cipher_list = KORE_DEFAULT_CIPHER_LIST;
+char			*kore_tls_cipher_list = KORE_DEFAULT_CIPHER_LIST;
 
 static void	usage(void);
 static void	version(void);
@@ -169,9 +169,9 @@ main(int argc, char *argv[])
 
 #if !defined(KORE_BENCHMARK)
 int
-kore_ssl_npn_cb(SSL *ssl, const u_char **data, unsigned int *len, void *arg)
+kore_tls_npn_cb(SSL *ssl, const u_char **data, unsigned int *len, void *arg)
 {
-	kore_debug("kore_ssl_npn_cb(): sending protocols");
+	kore_debug("kore_tls_npn_cb(): sending protocols");
 
 	*data = (const unsigned char *)KORE_SSL_PROTO_STRING;
 	*len = strlen(KORE_SSL_PROTO_STRING);
@@ -180,13 +180,13 @@ kore_ssl_npn_cb(SSL *ssl, const u_char **data, unsigned int *len, void *arg)
 }
 
 int
-kore_ssl_sni_cb(SSL *ssl, int *ad, void *arg)
+kore_tls_sni_cb(SSL *ssl, int *ad, void *arg)
 {
 	struct kore_domain	*dom;
 	const char		*sname;
 
 	sname = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
-	kore_debug("kore_ssl_sni_cb(): received host %s", sname);
+	kore_debug("kore_tls_sni_cb(): received host %s", sname);
 
 	if (sname != NULL && (dom = kore_domain_lookup(sname)) != NULL) {
 		kore_debug("kore_ssl_sni_cb(): Using %s CTX", sname);

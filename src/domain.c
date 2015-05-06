@@ -22,7 +22,8 @@
 
 struct kore_domain_h		domains;
 struct kore_domain		*primary_dom = NULL;
-DH				*ssl_dhparam = NULL;
+DH				*tls_dhparam = NULL;
+int				tls_version = KORE_TLS_VERSION_1_2;
 
 static void	domain_load_crl(struct kore_domain *);
 
@@ -69,13 +70,28 @@ kore_domain_sslstart(struct kore_domain *dom)
 #if !defined(KORE_BENCHMARK)
 	STACK_OF(X509_NAME)	*certs;
 	X509_STORE		*store;
+	const SSL_METHOD	*method;
 #if !defined(OPENSSL_NO_EC)
 	EC_KEY		*ecdh;
 #endif
 
 	kore_debug("kore_domain_sslstart(%s)", dom->domain);
 
-	dom->ssl_ctx = SSL_CTX_new(SSLv23_server_method());
+	switch (tls_version) {
+	case KORE_TLS_VERSION_1_2:
+		method = TLSv1_2_server_method();
+		break;
+	case KORE_TLS_VERSION_1_0:
+		method = TLSv1_server_method();
+		break;
+	case KORE_TLS_VERSION_BOTH:
+		method = SSLv23_server_method();
+		break;
+	default:
+		fatal("unknown tls_version: %d", tls_version);
+	}
+
+	dom->ssl_ctx = SSL_CTX_new(method);
 	if (dom->ssl_ctx == NULL)
 		fatal("kore_domain_sslstart(): SSL_ctx_new(): %s", ssl_errno_s);
 	if (!SSL_CTX_use_certificate_chain_file(dom->ssl_ctx, dom->certfile)) {
@@ -92,10 +108,10 @@ kore_domain_sslstart(struct kore_domain *dom)
 	if (!SSL_CTX_check_private_key(dom->ssl_ctx))
 		fatal("Public/Private key for %s do not match", dom->domain);
 
-	if (ssl_dhparam == NULL)
+	if (tls_dhparam == NULL)
 		fatal("No DH parameters given");
 
-	SSL_CTX_set_tmp_dh(dom->ssl_ctx, ssl_dhparam);
+	SSL_CTX_set_tmp_dh(dom->ssl_ctx, tls_dhparam);
 	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_SINGLE_DH_USE);
 
 #if !defined(OPENSSL_NO_EC)
@@ -142,14 +158,18 @@ kore_domain_sslstart(struct kore_domain *dom)
 #endif
 	SSL_CTX_set_mode(dom->ssl_ctx, SSL_MODE_ENABLE_PARTIAL_WRITE);
 
-	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_SSLv2);
-	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_SSLv3);
-	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_CIPHER_SERVER_PREFERENCE);
-	SSL_CTX_set_cipher_list(dom->ssl_ctx, kore_ssl_cipher_list);
+	if (tls_version == KORE_TLS_VERSION_BOTH) {
+		SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_SSLv2);
+		SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_SSLv3);
+		SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_TLSv1_1);
+	}
 
-	SSL_CTX_set_tlsext_servername_callback(dom->ssl_ctx, kore_ssl_sni_cb);
+	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_CIPHER_SERVER_PREFERENCE);
+	SSL_CTX_set_cipher_list(dom->ssl_ctx, kore_tls_cipher_list);
+
+	SSL_CTX_set_tlsext_servername_callback(dom->ssl_ctx, kore_tls_sni_cb);
 	SSL_CTX_set_next_protos_advertised_cb(dom->ssl_ctx,
-	    kore_ssl_npn_cb, NULL);
+	    kore_tls_npn_cb, NULL);
 
 	kore_mem_free(dom->certfile);
 	kore_mem_free(dom->certkey);
