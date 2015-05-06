@@ -59,6 +59,8 @@ struct http_state	mystates[] = {
 	{ "REQ_STATE_DONE",		request_done },
 };
 
+#define mystates_size		(sizeof(mystates) / sizeof(mystates[0]))
+
 struct rstate {
 	struct kore_pgsql	sql;
 };
@@ -77,7 +79,7 @@ page(struct http_request *req)
 {
 	/* Drop into our state machine. */
 	kore_log(LOG_NOTICE, "page start");
-	return (http_state_run(mystates, sizeof(mystates), req));
+	return (http_state_run(mystates, mystates_size, req));
 }
 
 /* The initial state, we setup our context and fire off the pgsql query. */
