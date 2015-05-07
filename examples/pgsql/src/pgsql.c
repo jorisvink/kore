@@ -42,7 +42,7 @@
 #define REQ_STATE_ERROR			3
 #define REQ_STATE_DONE			4
 
-void			init(int);
+int			init(int);
 int			page(struct http_request *);
 
 static int		request_perform_query(struct http_request *);
@@ -66,11 +66,13 @@ struct rstate {
 };
 
 /* Called when our module is loaded (see config) */
-void
+int
 init(int state)
 {
 	/* Set our connection string. */
 	pgsql_conn_string = "host=/var/run/postgresql/ dbname=test";
+
+	return (KORE_RESULT_OK);
 }
 
 /* Page handler entry point (see config) */

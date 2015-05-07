@@ -19,7 +19,7 @@
 
 #include "assets.h"
 
-void		example_load(int);
+int		example_load(int);
 
 int		serve_style_css(struct http_request *);
 int		serve_index(struct http_request *);
@@ -47,7 +47,7 @@ char *b64tests[] = {
 	NULL
 };
 
-void
+int
 example_load(int state)
 {
 	switch (state) {
@@ -61,6 +61,8 @@ example_load(int state)
 		kore_log(LOG_NOTICE, "state %d unknown!", state);
 		break;
 	}
+
+	return (KORE_RESULT_OK);
 }
 
 int

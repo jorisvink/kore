@@ -253,7 +253,7 @@ struct kore_module {
 	void			*handle;
 	char			*path;
 	char			*onload;
-	void			(*ocb)(int);
+	int			(*ocb)(int);
 
 	time_t			mtime;
 

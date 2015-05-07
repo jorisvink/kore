@@ -69,7 +69,7 @@ kore_module_onload(void)
 		if (module->ocb == NULL)
 			continue;
 
-		module->ocb(KORE_MODULE_LOAD);
+		(void)module->ocb(KORE_MODULE_LOAD);
 	}
 }
 
@@ -91,8 +91,13 @@ kore_module_reload(int cbs)
 		if (module->mtime == st.st_mtime)
 			continue;
 
-		if (module->ocb != NULL && cbs == 1)
-			module->ocb(KORE_MODULE_UNLOAD);
+		if (module->ocb != NULL && cbs == 1) {
+			if (!module->ocb(KORE_MODULE_UNLOAD)) {
+				kore_log(LOG_NOTICE,
+				    "not reloading %s", module->path);
+				continue;
+			}
+		}
 
 		module->mtime = st.st_mtime;
 		if (dlclose(module->handle))
@@ -110,7 +115,7 @@ kore_module_reload(int cbs)
 			}
 
 			if (cbs)
-				module->ocb(KORE_MODULE_LOAD);
+				(void)module->ocb(KORE_MODULE_LOAD);
 		}
 
 		kore_log(LOG_NOTICE, "reloaded '%s' module", module->path);
