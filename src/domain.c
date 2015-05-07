@@ -89,6 +89,7 @@ kore_domain_sslstart(struct kore_domain *dom)
 		break;
 	default:
 		fatal("unknown tls_version: %d", tls_version);
+		return;
 	}
 
 	dom->ssl_ctx = SSL_CTX_new(method);
