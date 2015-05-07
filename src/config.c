@@ -209,6 +209,11 @@ kore_parse_config_file(char *fpath)
 		if (!strcmp(p, "}") && current_domain != NULL)
 			domain_sslstart();
 
+		if (!strcmp(p, "}")) {
+			lineno++;
+			continue;
+		}
+
 		kore_split_string(p, " ", argv, 5);
 		for (i = 0; config_names[i].name != NULL; i++) {
 			if (!strcmp(config_names[i].name, argv[0])) {
@@ -221,7 +226,7 @@ kore_parse_config_file(char *fpath)
 		}
 
 		if (config_names[i].name == NULL) {
-			printf("unknown configuration option on line %d\n",
+			printf("unknown configuration option \"%s\" on line %d\n", p,
 			    lineno);
 		}
 
