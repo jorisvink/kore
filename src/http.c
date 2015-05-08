@@ -1069,7 +1069,9 @@ http_state_run(struct http_state *states, u_int8_t elm,
 		}
 	}
 
+	req->fsm_state = 0;
 	kore_debug("http_state_run(%p): done", req);
+
 	return (KORE_RESULT_OK);
 }
 
