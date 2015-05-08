@@ -840,7 +840,7 @@ cli_generate_certs(void)
 		cli_fatal("X509_sign(): %s", ssl_errno_s);
 
 	(void)cli_vasprintf(&fpath, "%s/cert/server.key", rootdir);
-	if ((fp = fopen(fpath, "w+")) == NULL)
+	if ((fp = fopen(fpath, "w")) == NULL)
 		cli_fatal("fopen(%s): %s", fpath, errno_s);
 	free(fpath);
 
@@ -849,7 +849,7 @@ cli_generate_certs(void)
 	fclose(fp);
 
 	(void)cli_vasprintf(&fpath, "%s/cert/server.crt", rootdir);
-	if ((fp = fopen(fpath, "w+")) == NULL)
+	if ((fp = fopen(fpath, "w")) == NULL)
 		cli_fatal("fopen(%s): %s", fpath, errno_s);
 	free(fpath);
 
