@@ -497,7 +497,7 @@ cli_dir_exists(const char *fpath)
 static void
 cli_file_open(const char *fpath, int flags, int *fd)
 {
-	if ((*fd = open(fpath, flags, 0755)) == -1)
+	if ((*fd = open(fpath, flags, 0644)) == -1)
 		cli_fatal("cli_file_open(%s): %s", fpath, errno_s);
 }
 
