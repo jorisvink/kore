@@ -611,7 +611,7 @@ cli_build_asset(char *fpath, struct dirent *dp)
 		return;
 	}
 
-	/* Open the file we're convering. */
+	/* Open the file we're converting. */
 	cli_file_open(fpath, O_RDONLY, &in);
 
 	/* mmap our in file. */
