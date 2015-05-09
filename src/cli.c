@@ -15,6 +15,7 @@
  */
 
 #include <sys/param.h>
+#include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/queue.h>
 #include <sys/wait.h>
@@ -223,6 +224,8 @@ kore_cli_main(int argc, char **argv)
 
 	if (argc < 1)
 		kore_cli_usage(1);
+
+	(void)umask(S_IWGRP|S_IWOTH);
 
 	for (i = 0; cmds[i].name != NULL; i++) {
 		if (!strcmp(argv[0], cmds[i].name)) {
