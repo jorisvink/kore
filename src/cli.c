@@ -15,6 +15,7 @@
  */
 
 #include <sys/param.h>
+#include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/queue.h>
 #include <sys/wait.h>
@@ -223,6 +224,8 @@ kore_cli_main(int argc, char **argv)
 
 	if (argc < 1)
 		kore_cli_usage(1);
+
+	(void)umask(S_IWGRP|S_IWOTH);
 
 	for (i = 0; cmds[i].name != NULL; i++) {
 		if (!strcmp(argv[0], cmds[i].name)) {
@@ -497,7 +500,7 @@ cli_dir_exists(const char *fpath)
 static void
 cli_file_open(const char *fpath, int flags, int *fd)
 {
-	if ((*fd = open(fpath, flags, 0755)) == -1)
+	if ((*fd = open(fpath, flags, 0644)) == -1)
 		cli_fatal("cli_file_open(%s): %s", fpath, errno_s);
 }
 
@@ -611,7 +614,7 @@ cli_build_asset(char *fpath, struct dirent *dp)
 		return;
 	}
 
-	/* Open the file we're convering. */
+	/* Open the file we're converting. */
 	cli_file_open(fpath, O_RDONLY, &in);
 
 	/* mmap our in file. */
@@ -840,7 +843,7 @@ cli_generate_certs(void)
 		cli_fatal("X509_sign(): %s", ssl_errno_s);
 
 	(void)cli_vasprintf(&fpath, "%s/cert/server.key", rootdir);
-	if ((fp = fopen(fpath, "w+")) == NULL)
+	if ((fp = fopen(fpath, "w")) == NULL)
 		cli_fatal("fopen(%s): %s", fpath, errno_s);
 	free(fpath);
 
@@ -849,7 +852,7 @@ cli_generate_certs(void)
 	fclose(fp);
 
 	(void)cli_vasprintf(&fpath, "%s/cert/server.crt", rootdir);
-	if ((fp = fopen(fpath, "w+")) == NULL)
+	if ((fp = fopen(fpath, "w")) == NULL)
 		cli_fatal("fopen(%s): %s", fpath, errno_s);
 	free(fpath);
 
