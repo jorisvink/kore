@@ -253,7 +253,7 @@ net_recv_flush(struct connection *c)
 	kore_debug("net_recv_flush(%p)", c);
 
 	if (c->rnb == NULL)
-		fatal("net_recv_flush(): nb->cb == NULL");
+		fatal("net_recv_flush(): c->rnb == NULL");
 
 	while (c->flags & CONN_READ_POSSIBLE) {
 		if (!c->read(c, &r))
