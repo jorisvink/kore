@@ -1,0 +1,11 @@
+language: c
+
+compiler:
+  - clang
+  - gcc
+
+install:
+  - sudo apt-get update -qq
+  - sudo apt-get install libssl-dev
+
+script: make
