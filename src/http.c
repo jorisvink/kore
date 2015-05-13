@@ -1266,7 +1266,7 @@ http_response_normal(struct http_request *req, struct connection *c,
 		}
 	}
 
-	if (len > 0)
+	if (status != 204 && 99 < status && status < 200)
 		kore_buf_appendf(header_buf, "content-length: %d\r\n", len);
 
 	kore_buf_append(header_buf, "\r\n", 2);
