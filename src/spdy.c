@@ -414,7 +414,7 @@ spdy_update_wsize(struct connection *c, struct spdy_stream *s, u_int32_t len)
 		s->flags |= SPDY_DATAFRAME_PRELUDE;
 	}
 
-	if (s->send_size == 0) {
+	if (s->send_size == 0 && !(s->flags & SPDY_NO_CLOSE)) {
 		if (!(s->flags & SPDY_KORE_FIN)) {
 			s->flags |= SPDY_KORE_FIN;
 			kore_debug("sending final frame %u", s->stream_id);
@@ -442,6 +442,9 @@ spdy_stream_close(struct connection *c, struct spdy_stream *s, int rb)
 	struct netbuf			*nb, *nt;
 
 	kore_debug("spdy_stream_close(%p, %p) <%d>", c, s, s->stream_id);
+
+	if (s->onclose != NULL)
+		s->onclose(c, s);
 
 	if (rb) {
 		for (nb = TAILQ_FIRST(&(c->send_queue)); nb != NULL; nb = nt) {
@@ -525,6 +528,7 @@ spdy_ctrl_frame_syn_stream(struct netbuf *nb)
 	s->send_size = 0;
 	s->frame_size = 0;
 	s->httpreq = NULL;
+	s->onclose = NULL;
 	s->prio = syn.prio;
 	s->flags = ctrl.flags;
 	s->recv_wsize = spdy_recv_wsize;

@@ -23,6 +23,11 @@
 #if defined(__cplusplus)
 extern "C" {
 #endif
+
+/* XXX */
+struct connection;
+struct http_request;
+
 struct spdy_ctrl_frame {
 	u_int16_t	version;
 	u_int16_t	type;
@@ -60,10 +65,10 @@ struct spdy_stream {
 	u_int32_t	frame_size;
 	u_int32_t	recv_wsize;
 	u_int32_t	send_wsize;
+	void		(*onclose)(struct connection *, struct spdy_stream *);
 
-	void				*httpreq;
+	struct http_request		*httpreq;
 	struct spdy_header_block	*hblock;
-
 	TAILQ_ENTRY(spdy_stream)	list;
 };
 
@@ -119,6 +124,7 @@ extern const unsigned char SPDY_dictionary_txt[];
 /* internal flags (make sure they don't clash with SPDY stream flags) */
 #define SPDY_KORE_FIN			0x10
 #define SPDY_DATAFRAME_PRELUDE		0x20
+#define SPDY_NO_CLOSE			0x40
 
 #define SPDY_KEEP_NETBUFS		0
 #define SPDY_REMOVE_NETBUFS		1
