@@ -347,6 +347,16 @@ struct kore_wscbs {
 	void		(*disconnect)(struct connection *);
 };
 
+struct kore_timer {
+	u_int64_t	nextrun;
+	u_int64_t	interval;
+	int		flags;
+	void		*arg;
+	void		(*cb)(void *, u_int64_t, u_int64_t);
+
+	TAILQ_ENTRY(kore_timer)	list;
+};
+
 extern pid_t	kore_pid;
 extern int	foreground;
 extern int	kore_debug;
@@ -418,8 +428,9 @@ struct kore_auth	*kore_auth_lookup(const char *);
 
 void		kore_timer_init(void);
 u_int64_t	kore_timer_run(u_int64_t);
-void		kore_timer_add(void (*cb)(u_int64_t, u_int64_t),
-		    u_int64_t, int);
+void		kore_timer_remove(struct kore_timer *);
+struct kore_timer	*kore_timer_add(void (*cb)(void *, u_int64_t,
+			    u_int64_t), u_int64_t, void *, int);
 
 int		kore_tls_sni_cb(SSL *, int *, void *);
 int		kore_server_bind(const char *, const char *);

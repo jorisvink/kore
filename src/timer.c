@@ -19,15 +19,7 @@
 
 #include "kore.h"
 
-struct timer {
-	u_int64_t		nextrun;
-	u_int64_t		interval;
-	int			flags;
-	void			(*cb)(u_int64_t, u_int64_t);
-	TAILQ_ENTRY(timer)	list;
-};
-
-TAILQ_HEAD(timerlist, timer)	kore_timers;
+TAILQ_HEAD(timerlist, kore_timer)	kore_timers;
 
 void
 kore_timer_init(void)
@@ -35,14 +27,16 @@ kore_timer_init(void)
 	TAILQ_INIT(&kore_timers);
 }
 
-void
-kore_timer_add(void (*cb)(u_int64_t, u_int64_t), u_int64_t interval, int flags)
+struct kore_timer *
+kore_timer_add(void (*cb)(void *, u_int64_t, u_int64_t), u_int64_t interval,
+    void *arg, int flags)
 {
-	struct timer	*timer, *t;
+	struct kore_timer	*timer, *t;
 
 	timer = kore_malloc(sizeof(*timer));
 
 	timer->cb = cb;
+	timer->arg = arg;
 	timer->flags = flags;
 	timer->interval = interval;
 	timer->nextrun = kore_time_ms() + timer->interval;
@@ -50,18 +44,26 @@ kore_timer_add(void (*cb)(u_int64_t, u_int64_t), u_int64_t interval, int flags)
 	TAILQ_FOREACH(t, &kore_timers, list) {
 		if (t->nextrun > timer->nextrun) {
 			TAILQ_INSERT_BEFORE(t, timer, list);
-			return;
+			return (timer);
 		}
 	}
 
 	TAILQ_INSERT_TAIL(&kore_timers, timer, list);
+	return (timer);
+}
+
+void
+kore_timer_remove(struct kore_timer *timer)
+{
+	TAILQ_REMOVE(&kore_timers, timer, list);
+	kore_mem_free(timer);
 }
 
 u_int64_t
 kore_timer_run(u_int64_t now)
 {
-	struct timer	*timer, *t;
-	u_int64_t	next_timer, delta;
+	struct kore_timer	*timer, *t;
+	u_int64_t		next_timer, delta;
 
 	next_timer = 100;
 
@@ -73,7 +75,7 @@ kore_timer_run(u_int64_t now)
 
 		TAILQ_REMOVE(&kore_timers, timer, list);
 		delta = now - timer->nextrun;
-		timer->cb(now, delta);
+		timer->cb(timer->arg, now, delta);
 
 		if (timer->flags & KORE_TIMER_ONESHOT) {
 			kore_mem_free(timer);
