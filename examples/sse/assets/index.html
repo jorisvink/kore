@@ -1,0 +1,54 @@
+<!doctype>
+<html>
+<head>
+<script>
+var source = new EventSource("/subscribe");
+source.addEventListener("message", function(evt) {
+	console.log(evt.data);
+});
+
+source.addEventListener("join", function(evt) {
+	console.log("join event: " + evt.data);
+	prepend("join event");
+});
+
+source.addEventListener("leave", function(evt) {
+	console.log("leave event: " + evt.data);
+	prepend("leave event");
+});
+
+source.addEventListener("ping", function(evt) {
+	console.log("got ping");
+	prepend("ping event");
+});
+
+source.addEventListener("open", function(evt) {
+	console.log("connected");
+	prepend("connected");
+});
+
+source.addEventListener("error", function(evt) {
+	console.log("error");
+	prepend("error");
+});
+
+function prepend(txt) {
+	var obj = document.getElementById("events");
+	var now = new Date();
+
+	var time = now.getFullYear() + "/" + (now.getMonth() + 1) + "/" +
+	    now.getDate() + " " + now.getHours() + ":" + now.getMinutes() +
+	   ":" + now.getSeconds();
+
+	obj.innerHTML = "<p>" + time + " - " + txt + "</p>" + obj.innerHTML;
+}
+
+</script>
+
+<body>
+<h3>events</h3>
+<div id="events">
+</div>
+</body>
+
+</html>
