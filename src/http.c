@@ -1209,7 +1209,9 @@ http_response_spdy(struct http_request *req, struct connection *c,
 
 		if (d != NULL)
 			net_send_queue(c, d, len, s, NETBUF_LAST_CHAIN);
-	} else {
+	}
+
+	if (req->method == HTTP_METHOD_HEAD) {
 		spdy_frame_send(c, SPDY_DATA_FRAME, FLAG_FIN, 0, s, 0);
 		spdy_stream_close(c, s, SPDY_KEEP_NETBUFS);
 	}
@@ -1266,7 +1268,8 @@ http_response_normal(struct http_request *req, struct connection *c,
 		}
 	}
 
-	if (status != 204 && status >= 200)
+	if (status != 204 && status >= 200 &&
+	    !(req->flags & HTTP_REQUEST_NO_CONTENT_LENGTH))
 		kore_buf_appendf(header_buf, "content-length: %d\r\n", len);
 
 	kore_buf_append(header_buf, "\r\n", 2);

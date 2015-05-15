@@ -167,6 +167,7 @@ struct http_file {
 #define HTTP_REQUEST_PGSQL_QUEUE	0x10
 #define HTTP_REQUEST_EXPECT_BODY	0x20
 #define HTTP_REQUEST_RETAIN_EXTRA	0x40
+#define HTTP_REQUEST_NO_CONTENT_LENGTH	0x80
 
 struct kore_task;
 
