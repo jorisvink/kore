@@ -99,8 +99,7 @@ kore_platform_event_wait(u_int64_t timer)
 		type = *(u_int8_t *)events[i].data.ptr;
 
 		if (events[i].events & EPOLLERR ||
-		    events[i].events & EPOLLHUP ||
-		    events[i].events & EPOLLRDHUP) {
+		    events[i].events & EPOLLHUP) {
 			switch (type) {
 			case KORE_TYPE_LISTENER:
 				fatal("failed on listener socket");
