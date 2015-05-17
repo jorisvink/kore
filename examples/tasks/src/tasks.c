@@ -101,7 +101,7 @@ page_handler(struct http_request *req)
 	 * Our page handler is scheduled to be called when either the
 	 * task finishes or has written data onto the channel.
 	 *
-	 * In order to distuingish between the two we can inspect the
+	 * In order to distinguish between the two we can inspect the
 	 * state of the task.
 	 */
 	if (kore_task_state(&state->task) != KORE_TASK_STATE_FINISHED) {

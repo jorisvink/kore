@@ -95,7 +95,7 @@ validator	v_session	function	v_session_validate
 #tls_dhparam	dh2048.pem
 
 # Specify the amount of seconds a SPDY connection is kept open.
-# You can keep it open indefinately by setting this to 0.
+# You can keep it open indefinitely by setting this to 0.
 #spdy_idle_time		120
 
 # Authentication configuration
@@ -118,7 +118,7 @@ authentication auth_example {
 	# Allow values:
 	#	- cookie (checks for the cookie presence + pass to validator)
 	#	- header (checks for header presence + pass to validator)
-	#	- requuest (passes the http_request to the validator)
+	#	- request (passes the http_request to the validator)
 	#
 	# Use cases for request could for example be IP based ACLs or
 	# any other criteria that can be extracted from a http_request.

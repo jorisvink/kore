@@ -183,7 +183,7 @@ request_db_read(struct http_request *req)
 	return (HTTP_STATE_CONTINUE);
 }
 
-/* An error occured. */
+/* An error occurred. */
 int
 request_error(struct http_request *req)
 {
