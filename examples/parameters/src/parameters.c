@@ -42,7 +42,7 @@ page(struct http_request *req)
 	 * get any parameters returned from Kore.
 	 *
 	 * http_populate_arguments() returns the number of arguments
-	 * that were succesfully processed and are available.
+	 * that were successfully processed and are available.
 	 */
 	p = http_populate_arguments(req);
 
