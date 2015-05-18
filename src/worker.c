@@ -69,7 +69,7 @@ extern volatile sig_atomic_t	sig_recv;
 struct kore_worker		*worker = NULL;
 struct connection_list		worker_clients;
 u_int8_t			worker_set_affinity = 1;
-u_int32_t			worker_accept_treshold = 0;
+u_int32_t			worker_accept_threshold = 0;
 u_int32_t			worker_rlimit_nofiles = 1024;
 u_int32_t			worker_max_connections = 250;
 u_int32_t			worker_active_connections = 0;

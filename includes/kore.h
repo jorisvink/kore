@@ -377,7 +377,7 @@ extern u_int8_t			worker_set_affinity;
 extern u_int32_t		worker_rlimit_nofiles;
 extern u_int32_t		worker_max_connections;
 extern u_int32_t		worker_active_connections;
-extern u_int32_t		worker_accept_treshold;
+extern u_int32_t		worker_accept_threshold;
 extern u_int64_t		kore_websocket_maxframe;
 extern u_int64_t		kore_websocket_timeout;
 extern u_int32_t		kore_socket_backlog;

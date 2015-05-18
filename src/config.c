@@ -44,7 +44,7 @@ static int		configure_certfile(char **);
 static int		configure_certkey(char **);
 static int		configure_rlimit_nofiles(char **);
 static int		configure_max_connections(char **);
-static int		configure_accept_treshold(char **);
+static int		configure_accept_threshold(char **);
 static int		configure_set_affinity(char **);
 static int		configure_tls_version(char **);
 static int		configure_tls_cipher(char **);
@@ -94,7 +94,7 @@ static struct {
 	{ "workers",			configure_workers },
 	{ "worker_max_connections",	configure_max_connections },
 	{ "worker_rlimit_nofiles",	configure_rlimit_nofiles },
-	{ "worker_accept_treshold",	configure_accept_treshold },
+	{ "worker_accept_threshold",	configure_accept_threshold },
 	{ "worker_set_affinity",	configure_set_affinity },
 	{ "pidfile",			configure_pidfile },
 	{ "accesslog",			configure_accesslog },
@@ -600,16 +600,16 @@ configure_rlimit_nofiles(char **argv)
 }
 
 static int
-configure_accept_treshold(char **argv)
+configure_accept_threshold(char **argv)
 {
 	int		err;
 
 	if (argv[1] == NULL)
 		return (KORE_RESULT_ERROR);
 
-	worker_accept_treshold = kore_strtonum(argv[1], 0, 1, UINT_MAX, &err);
+	worker_accept_threshold = kore_strtonum(argv[1], 0, 1, UINT_MAX, &err);
 	if (err != KORE_RESULT_OK) {
-		printf("bad value for worker_accept_treshold: %s\n", argv[1]);
+		printf("bad value for worker_accept_threshold: %s\n", argv[1]);
 		return (KORE_RESULT_ERROR);
 	}
 

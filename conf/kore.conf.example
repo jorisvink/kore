@@ -30,7 +30,7 @@ workers		4
 # how new connections are spread across worker processes.
 #
 # This is disabled by default.
-#worker_accept_treshold		0
+#worker_accept_threshold		0
 
 # Workers bind themselves to a single CPU by default.
 # Turn this off by setting this option to 0

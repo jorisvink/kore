@@ -148,8 +148,8 @@ kore_platform_event_wait(u_int64_t timer)
 
 			while (worker_active_connections <
 			    worker_max_connections) {
-				if (worker_accept_treshold != 0 &&
-				    r >= worker_accept_treshold)
+				if (worker_accept_threshold != 0 &&
+				    r >= worker_accept_threshold)
 					break;
 
 				if (!kore_connection_accept(l, &c)) {
