@@ -25,15 +25,15 @@ volatile sig_atomic_t			sig_recv;
 
 struct listener_head	listeners;
 u_int8_t		nlisteners;
-struct passwd		*pw = NULL;
 pid_t			kore_pid = -1;
 u_int16_t		cpu_count = 1;
 int			foreground = 0;
 int			kore_debug = 0;
-int			skip_chroot = 0;
 u_int8_t		worker_count = 0;
-char			*runas_user = NULL;
+int			skip_chroot = 0;
 char			*chroot_path = NULL;
+int			skip_runas = 0;
+char			*runas_user = NULL;
 u_int32_t		kore_socket_backlog = 5000;
 char			*kore_pidfile = KORE_PIDFILE_DEFAULT;
 char			*kore_tls_cipher_list = KORE_DEFAULT_CIPHER_LIST;
@@ -55,6 +55,7 @@ usage(void)
 	fprintf(stderr, "\t-f\tstart kore in foreground mode\n");
 	fprintf(stderr, "\t-h\tthis help text\n");
 	fprintf(stderr, "\t-n\tdo not chroot (if not starting kore as root)\n");
+	fprintf(stderr, "\t-r\tdo not runas (uid drop) (if not starting kore as root)\n");
 	fprintf(stderr, "\t-v\tdisplay kore's version information\n");
 
 	kore_cli_usage(0);
@@ -84,7 +85,7 @@ main(int argc, char *argv[])
 
 	flags = 0;
 
-	while ((ch = getopt(argc, argv, "c:dfhnv")) != -1) {
+	while ((ch = getopt(argc, argv, "c:dfhnrv")) != -1) {
 		flags++;
 		switch (ch) {
 		case 'c':
@@ -105,6 +106,9 @@ main(int argc, char *argv[])
 			break;
 		case 'n':
 			skip_chroot = 1;
+			break;
+		case 'r':
+			skip_runas = 1;
 			break;
 		case 'v':
 			version();
@@ -301,8 +305,6 @@ static void
 kore_server_start(void)
 {
 	int		quit;
-
-	kore_mem_free(runas_user);
 
 	if (foreground == 0 && daemon(1, 1) == -1)
 		fatal("cannot daemon(): %s", errno_s);

@@ -119,7 +119,7 @@ static void		file_create_gitignore(void);
 
 static struct cmd cmds[] = {
 	{ "help",	"this help text",			cli_help },
-	{ "run",	"run an application (-fn implied)",	cli_run },
+	{ "run",	"run an application (-fnr implied)",	cli_run },
 	{ "build",	"build an application",			cli_build },
 	{ "clean",	"cleanup the build files",		cli_clean },
 	{ "create",	"create a new application skeleton",	cli_create },
@@ -990,7 +990,7 @@ cli_run_kore(void *arg)
 	(void)cli_vasprintf(&cpath, "conf/%s.conf", appl);
 
 	args[0] = "kore";
-	args[1] = "-fnc";
+	args[1] = "-fnrc";
 	args[2] = cpath;
 	args[3] = NULL;
 

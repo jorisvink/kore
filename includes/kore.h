@@ -68,6 +68,9 @@ extern int daemon(int, int);
 #define KORE_PIDFILE_DEFAULT		"kore.pid"
 #define KORE_DEFAULT_CIPHER_LIST	"ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA256:DHE-DSS-AES256-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:HIGH:!aNULL:!eNULL:!EXPORT:!DES:!3DES:!MD5:!PSK:!kRSA:!kDSA"
 
+#define KORE_DEFAULT_USER	"nobody"
+#define KORE_DEFAULT_CHROOT	"/var/empty"
+
 #if defined(KORE_DEBUG)
 #define kore_debug(fmt, ...)	\
 	if (kore_debug)		\
@@ -362,6 +365,7 @@ extern int	foreground;
 extern int	kore_debug;
 extern int	skip_chroot;
 extern char	*chroot_path;
+extern int	skip_runas;
 extern char	*runas_user;
 extern char	*kore_pidfile;
 extern char	*config_file;
@@ -386,7 +390,6 @@ extern struct listener_head	listeners;
 extern struct kore_worker	*worker;
 extern struct kore_domain_h	domains;
 extern struct kore_domain	*primary_dom;
-extern struct passwd		*pw;
 extern struct kore_pool		nb_pool;
 
 void		kore_cli_usage(int);
