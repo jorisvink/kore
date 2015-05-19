@@ -80,7 +80,7 @@ struct cfile {
 
 TAILQ_HEAD(cfile_list, cfile);
 
-static void		cli_fatal(const char *, ...);
+static void		cli_fatal(const char *, ...) __attribute__((noreturn));
 
 static void		cli_file_close(int);
 static void		cli_run_kore(void *);
