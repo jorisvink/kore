@@ -1211,7 +1211,7 @@ http_response_spdy(struct http_request *req, struct connection *c,
 			net_send_queue(c, d, len, s, NETBUF_LAST_CHAIN);
 	}
 
-	if (req != NULL && req->method == HTTP_METHOD_HEAD ||
+	if ((req != NULL && req->method == HTTP_METHOD_HEAD) ||
 	    (len == 0 && !(s->flags & SPDY_NO_CLOSE))) {
 		spdy_frame_send(c, SPDY_DATA_FRAME, FLAG_FIN, 0, s, 0);
 		spdy_stream_close(c, s, SPDY_KEEP_NETBUFS);
