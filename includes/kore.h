@@ -516,7 +516,7 @@ int		kore_validator_check(struct http_request *,
 		    struct kore_validator *, void *);
 struct kore_validator	*kore_validator_lookup(const char *);
 
-void		fatal(const char *, ...);
+void		fatal(const char *, ...) __attribute__((noreturn));
 void		kore_debug_internal(char *, int, const char *, ...);
 
 u_int16_t	net_read16(u_int8_t *);
