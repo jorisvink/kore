@@ -1,5 +1,10 @@
 # Example Kore configuration
 
+# Below you will find all available configuration
+# options for Kore. Options which have a default value
+# and can be left out of the configuration are commented
+# out with their default value specified.
+
 # Maximum length to queue pending connections (see listen(2))
 # MUST be set before any bind directive.
 #socket_backlog			5000
@@ -29,14 +34,16 @@ workers		4
 # NOTE: This can have a *MASSIVE* impact as this controls
 # how new connections are spread across worker processes.
 #
-# This is disabled by default.
+# This is disabled by default. If you wish to enable this
+# specify the number of connections a worker will accept
+# before returning from the accept loop.
 #worker_accept_threshold		0
 
 # Workers bind themselves to a single CPU by default.
 # Turn this off by setting this option to 0
 #worker_set_affinity		1
 
-# Store the main process its pid in this file.
+# Store the pid of the main process in this file.
 #pidfile	kore.pid
 
 # HTTP specific settings.
