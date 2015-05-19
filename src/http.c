@@ -1267,11 +1267,18 @@ http_response_normal(struct http_request *req, struct connection *c,
 			kore_buf_appendf(header_buf, "%s: %s\r\n",
 			    hdr->header, hdr->value);
 		}
-	}
 
-	if (req != NULL && status != 204 && status >= 200 &&
-	    !(req->flags & HTTP_REQUEST_NO_CONTENT_LENGTH))
-		kore_buf_appendf(header_buf, "content-length: %d\r\n", len);
+		if (status != 204 && status >= 200 &&
+		    !(req->flags & HTTP_REQUEST_NO_CONTENT_LENGTH)) {
+			kore_buf_appendf(header_buf,
+			    "content-length: %d\r\n", len);
+		}
+	} else {
+		if (status != 204 && status >= 200) {
+			kore_buf_appendf(header_buf,
+			    "content-length: %d\r\n", len);
+		}
+	}
 
 	kore_buf_append(header_buf, "\r\n", 2);
 	net_send_queue(c, header_buf->data, header_buf->offset,
