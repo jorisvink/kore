@@ -200,8 +200,11 @@ kore_worker_entry(struct kore_worker *kw)
 	}
 
 	if (skip_chroot == 0) {
-		if (chroot(chroot_path) == -1)
-			fatal("cannot chroot(\"%s\"): %s", chroot_path, errno_s);
+		if (chroot(chroot_path) == -1) {
+			fatal("cannot chroot(\"%s\"): %s",
+			    chroot_path, errno_s);
+		}
+
 		if (chdir("/") == -1)
 			fatal("cannot chdir(\"/\"): %s", errno_s);
 	}
