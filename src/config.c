@@ -132,8 +132,6 @@ static struct kore_module_handle	*current_handler = NULL;
 void
 kore_parse_config(void)
 {
-	char		*p;
-
 	kore_parse_config_file(config_file);
 
 	if (!kore_module_loaded())
@@ -142,22 +140,19 @@ kore_parse_config(void)
 	if (LIST_EMPTY(&listeners))
 		fatal("no listeners defined");
 
-	if (skip_chroot != 1 && chroot_path == NULL)
+	if (skip_chroot != 1 && chroot_path == NULL) {
 		fatal("missing a chroot path");
-
-	if (runas_user == NULL) {
-		if ((p = getlogin()) == NULL)
-			fatal("missing a username to run as");
-
-		/* runas_user is free'd later down the line. */
-		runas_user = kore_strdup(p);
+	}
+	if (getuid() != 0 && skip_chroot == 0) {
+		fatal("cannot chroot, use -n to skip it");
 	}
 
-	if ((pw = getpwnam(runas_user)) == NULL)
-		fatal("user '%s' does not exist", runas_user);
-
-	if (getuid() != 0 && skip_chroot == 0)
-		fatal("Cannot chroot(), use -n to skip it");
+	if (skip_runas != 1 && runas_user == NULL) {
+		fatal("missing runas user");
+	}
+	if (getuid() != 0 && skip_runas == 0) {
+		fatal("cannot drop privileges, use -p to skip it");
+	}
 }
 
 static void

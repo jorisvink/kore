@@ -362,6 +362,7 @@ extern int	foreground;
 extern int	kore_debug;
 extern int	skip_chroot;
 extern char	*chroot_path;
+extern int	skip_runas;
 extern char	*runas_user;
 extern char	*kore_pidfile;
 extern char	*config_file;
@@ -386,7 +387,6 @@ extern struct listener_head	listeners;
 extern struct kore_worker	*worker;
 extern struct kore_domain_h	domains;
 extern struct kore_domain	*primary_dom;
-extern struct passwd		*pw;
 extern struct kore_pool		nb_pool;
 
 void		kore_cli_usage(int);

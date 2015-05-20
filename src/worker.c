@@ -186,14 +186,24 @@ kore_worker_entry(struct kore_worker *kw)
 	struct connection	*c, *cnext;
 	int			quit, had_lock, r;
 	u_int64_t		now, idle_check, next_lock, netwait;
+	struct passwd		*pw = NULL;
 
 	worker = kw;
 
+	/* Must happen before chroot. */
+	if (skip_runas == 0) {
+		pw = getpwnam(runas_user);
+		if (pw == NULL) {
+			fatal("cannot getpwnam(\"%s\") runas user: %s",
+			    runas_user, errno_s);
+		}
+	}
+
 	if (skip_chroot == 0) {
 		if (chroot(chroot_path) == -1)
-			fatal("cannot chroot(): %s", errno_s);
+			fatal("cannot chroot(\"%s\"): %s", chroot_path, errno_s);
 		if (chdir("/") == -1)
-			fatal("cannot chdir(): %s", errno_s);
+			fatal("cannot chdir(\"/\"): %s", errno_s);
 	}
 
 	if (getrlimit(RLIMIT_NOFILE, &rl) == -1) {
@@ -213,7 +223,7 @@ kore_worker_entry(struct kore_worker *kw)
 		    worker_rlimit_nofiles, errno_s);
 	}
 
-	if (getuid() != pw->pw_uid) {
+	if (skip_runas == 0) {
 		if (setgroups(1, &pw->pw_gid) ||
 #ifdef __MACH__
 		    setgid(pw->pw_gid) || setegid(pw->pw_gid) ||
@@ -222,7 +232,7 @@ kore_worker_entry(struct kore_worker *kw)
 		    setresgid(pw->pw_gid, pw->pw_gid, pw->pw_gid) ||
 		    setresuid(pw->pw_uid, pw->pw_uid, pw->pw_uid))
 #endif
-			fatal("unable to drop privileges");
+			fatal("cannot drop privileges");
 	}
 
 	(void)snprintf(buf, sizeof(buf), "kore [wrk %d]", kw->id);
