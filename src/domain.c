@@ -168,6 +168,7 @@ kore_domain_sslstart(struct kore_domain *dom)
 	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_CIPHER_SERVER_PREFERENCE);
 	SSL_CTX_set_cipher_list(dom->ssl_ctx, kore_tls_cipher_list);
 
+	SSL_CTX_set_info_callback(dom->ssl_ctx, kore_tls_info_callback);
 	SSL_CTX_set_tlsext_servername_callback(dom->ssl_ctx, kore_tls_sni_cb);
 	SSL_CTX_set_next_protos_advertised_cb(dom->ssl_ctx,
 	    kore_tls_npn_cb, NULL);

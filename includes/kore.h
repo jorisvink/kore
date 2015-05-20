@@ -55,7 +55,7 @@ extern int daemon(int, int);
 #define KORE_VERSION_MAJOR	1
 #define KORE_VERSION_MINOR	2
 #define KORE_VERSION_PATCH	3
-#define KORE_VERSION_STATE	"rc2"
+#define KORE_VERSION_STATE	"rc3"
 
 #define KORE_TLS_VERSION_1_2	0
 #define KORE_TLS_VERSION_1_0	1
@@ -181,6 +181,7 @@ struct connection {
 	void			*hdlr_extra;
 	X509			*cert;
 	void			*wscbs;
+	int			tls_reneg;
 
 	void			(*disconnect)(struct connection *);
 	int			(*read)(struct connection *, int *);
@@ -435,6 +436,7 @@ struct kore_timer	*kore_timer_add(void (*cb)(void *, u_int64_t,
 int		kore_tls_sni_cb(SSL *, int *, void *);
 int		kore_server_bind(const char *, const char *);
 int		kore_tls_npn_cb(SSL *, const u_char **, unsigned int *, void *);
+void		kore_tls_info_callback(const SSL *, int, int);
 
 void			kore_connection_init(void);
 struct connection	*kore_connection_new(void *);

@@ -47,6 +47,7 @@ kore_connection_new(void *owner)
 	c->cert = NULL;
 	c->wscbs = NULL;
 	c->owner = owner;
+	c->tls_reneg = 0;
 	c->disconnect = NULL;
 	c->hdlr_extra = NULL;
 	c->inflate_started = 0;
@@ -162,6 +163,7 @@ kore_connection_handle(struct connection *c)
 
 			SSL_set_fd(c->ssl, c->fd);
 			SSL_set_accept_state(c->ssl);
+			SSL_set_app_data(c->ssl, c);
 		}
 
 		r = SSL_accept(c->ssl);

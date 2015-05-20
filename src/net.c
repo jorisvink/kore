@@ -308,6 +308,9 @@ net_write_ssl(struct connection *c, int len, int *written)
 	int		r;
 
 	r = SSL_write(c->ssl, (c->snb->buf + c->snb->s_off), len);
+	if (c->tls_reneg > 1)
+		return (KORE_RESULT_ERROR);
+
 	if (r <= 0) {
 		r = SSL_get_error(c->ssl, r);
 		switch (r) {
@@ -333,6 +336,10 @@ net_read_ssl(struct connection *c, int *bytes)
 
 	r = SSL_read(c->ssl, (c->rnb->buf + c->rnb->s_off),
 	    (c->rnb->b_len - c->rnb->s_off));
+
+	if (c->tls_reneg > 1)
+		return (KORE_RESULT_ERROR);
+
 	if (r <= 0) {
 		r = SSL_get_error(c->ssl, r);
 		switch (r) {

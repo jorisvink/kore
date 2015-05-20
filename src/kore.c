@@ -14,7 +14,9 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/resource.h>
 
 #include <netdb.h>
 #include <signal.h>
@@ -207,6 +209,18 @@ kore_tls_sni_cb(SSL *ssl, int *ad, void *arg)
 	}
 
 	return (SSL_TLSEXT_ERR_NOACK);
+}
+
+void
+kore_tls_info_callback(const SSL *ssl, int flags, int ret)
+{
+	struct connection	*c;
+
+	if (flags & SSL_CB_HANDSHAKE_START) {
+		if ((c = SSL_get_app_data(ssl)) == NULL)
+			fatal("no SSL_get_app_data");
+		c->tls_reneg++;
+	}
 }
 #endif
 
