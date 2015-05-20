@@ -141,14 +141,14 @@ kore_parse_config(void)
 		fatal("no listeners defined");
 
 	if (skip_chroot != 1 && chroot_path == NULL) {
-		chroot_path = kore_strdup(KORE_DEFAULT_CHROOT);
+		fatal("missing a chroot path");
 	}
 	if (getuid() != 0 && skip_chroot == 0) {
 		fatal("cannot chroot, use -n to skip it");
 	}
 
 	if (skip_runas != 1 && runas_user == NULL) {
-		runas_user = kore_strdup(KORE_DEFAULT_USER);
+		fatal("missing runas user");
 	}
 	if (getuid() != 0 && skip_runas == 0) {
 		fatal("cannot drop privileges, use -p to skip it");
