@@ -143,6 +143,7 @@ kore_parse_config(void)
 	if (skip_chroot != 1 && chroot_path == NULL) {
 		fatal("missing a chroot path");
 	}
+
 	if (getuid() != 0 && skip_chroot == 0) {
 		fatal("cannot chroot, use -n to skip it");
 	}
@@ -150,6 +151,7 @@ kore_parse_config(void)
 	if (skip_runas != 1 && runas_user == NULL) {
 		fatal("missing runas user");
 	}
+
 	if (getuid() != 0 && skip_runas == 0) {
 		fatal("cannot drop privileges, use -p to skip it");
 	}
