@@ -1,7 +1,7 @@
 FROM kore/build
 MAINTAINER Thordur I. Bjornsson <thorduri@secnorth.net>
 
-ENV KORE_VERSION 1.2.2
+ENV KORE_VERSION 1.2.3
 
 WORKDIR /kore
 
