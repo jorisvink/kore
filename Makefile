@@ -77,4 +77,4 @@ clean:
 	find . -type f -name \*.o -exec rm {} \;
 	rm -f $(KORE)
 
-.PHONY: clean contain
+.PHONY: clean
