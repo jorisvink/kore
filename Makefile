@@ -77,4 +77,8 @@ clean:
 	find . -type f -name \*.o -exec rm {} \;
 	rm -f $(KORE)
 
-.PHONY: clean
+contain:
+	docker build -t kore .
+	docker run -itP --name kore --rm -v ${PWD}/:/kore kore
+
+.PHONY: clean contain
