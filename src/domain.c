@@ -27,7 +27,7 @@ int				tls_version = KORE_TLS_VERSION_1_2;
 
 static void	domain_load_crl(struct kore_domain *);
 
-#if !defined(KORE_BENCHMARK)
+#if !defined(KORE_NO_TLS)
 static int	domain_x509_verify(int, X509_STORE_CTX *);
 #endif
 
@@ -67,7 +67,7 @@ kore_domain_new(char *domain)
 void
 kore_domain_sslstart(struct kore_domain *dom)
 {
-#if !defined(KORE_BENCHMARK)
+#if !defined(KORE_NO_TLS)
 	STACK_OF(X509_NAME)	*certs;
 	X509_STORE		*store;
 	const SSL_METHOD	*method;
@@ -212,7 +212,7 @@ kore_domain_load_crl(void)
 static void
 domain_load_crl(struct kore_domain *dom)
 {
-#if !defined(KORE_BENCHMARK)
+#if !defined(KORE_NO_TLS)
 	X509_STORE		*store;
 
 	ERR_clear_error();
@@ -241,7 +241,7 @@ domain_load_crl(struct kore_domain *dom)
 #endif
 }
 
-#if !defined(KORE_BENCHMARK)
+#if !defined(KORE_NO_TLS)
 static int
 domain_x509_verify(int ok, X509_STORE_CTX *ctx)
 {

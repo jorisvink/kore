@@ -297,7 +297,7 @@ net_remove_netbuf(struct netbuf_head *list, struct netbuf *nb)
 	kore_pool_put(&nb_pool, nb);
 }
 
-#if !defined(KORE_BENCHMARK)
+#if !defined(KORE_NO_TLS)
 int
 net_write_ssl(struct connection *c, int len, int *written)
 {

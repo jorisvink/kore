@@ -135,7 +135,7 @@ static struct filegen gen_files[] = {
 
 static const char *gen_dirs[] = {
 	"src",
-#if !defined(KORE_BENCHMARK)
+#if !defined(KORE_NO_TLS)
 	"cert",
 #endif
 	"conf",
@@ -161,19 +161,19 @@ static const char *config_data =
 	"\n"
 	"bind\t\t127.0.0.1 8888\n"
 	"load\t\t./%s.so\n"
-#if !defined(KORE_BENCHMARK)
+#if !defined(KORE_NO_TLS)
 	"tls_dhparam\tdh2048.pem\n"
 #endif
 	"\n"
 	"domain 127.0.0.1 {\n"
-#if !defined(KORE_BENCHMARK)
+#if !defined(KORE_NO_TLS)
 	"\tcertfile\tcert/server.crt\n"
 	"\tcertkey\t\tcert/server.key\n"
 #endif
 	"\tstatic\t/\tpage\n"
 	"}\n";
 
-#if !defined(KORE_BENCHMARK)
+#if !defined(KORE_NO_TLS)
 static const char *dh2048_data =
 	"-----BEGIN DH PARAMETERS-----\n"
 	"MIIBCAKCAQEAn4f4Qn5SudFjEYPWTbUaOTLUH85YWmmPFW1+b5bRa9ygr+1wfamv\n"
@@ -277,7 +277,7 @@ cli_create(int argc, char **argv)
 
 	printf("%s created succesfully!\n", appl);
 
-#if !defined(KORE_BENCHMARK)
+#if !defined(KORE_NO_TLS)
 	printf("note: do NOT use the created DH parameters/certificates in production\n");
 #endif
 }
@@ -766,7 +766,7 @@ cli_find_files(const char *path, void (*cb)(char *, struct dirent *))
 static void
 cli_generate_certs(void)
 {
-#if !defined(KORE_BENCHMARK)
+#if !defined(KORE_NO_TLS)
 	BIGNUM			*e;
 	FILE			*fp;
 	time_t			now;
