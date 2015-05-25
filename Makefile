@@ -26,8 +26,8 @@ ifneq ("$(KORE_PEDANTIC_MALLOC)", "")
 	CFLAGS+=-DKORE_PEDANTIC_MALLOC
 endif
 
-ifneq ("$(BENCHMARK)", "")
-	CFLAGS+=-DKORE_BENCHMARK
+ifneq ("$(NO_SSL)", "")
+	CFLAGS+=-DKORE_NO_SSL
 	LDFLAGS=-rdynamic -lz -lcrypto
 endif
 
