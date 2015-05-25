@@ -173,7 +173,7 @@ main(int argc, char *argv[])
 	return (0);
 }
 
-#if !defined(KORE_NO_SSL)
+#if !defined(KORE_NO_TLS)
 int
 kore_tls_npn_cb(SSL *ssl, const u_char **data, unsigned int *len, void *arg)
 {
@@ -307,7 +307,7 @@ kore_signal(int sig)
 static void
 kore_server_sslstart(void)
 {
-#if !defined(KORE_NO_SSL)
+#if !defined(KORE_NO_TLS)
 	kore_debug("kore_server_sslstart()");
 
 	SSL_library_init();

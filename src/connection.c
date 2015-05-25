@@ -101,7 +101,7 @@ kore_connection_accept(struct listener *l, struct connection **out)
 		return (KORE_RESULT_ERROR);
 	}
 
-#if !defined(KORE_NO_SSL)
+#if !defined(KORE_NO_TLS)
 	c->state = CONN_STATE_SSL_SHAKE;
 	c->write = net_write_ssl;
 	c->read = net_read_ssl;
@@ -141,7 +141,7 @@ kore_connection_disconnect(struct connection *c)
 int
 kore_connection_handle(struct connection *c)
 {
-#if !defined(KORE_NO_SSL)
+#if !defined(KORE_NO_TLS)
 	int			r;
 	u_int32_t		len;
 	const u_char		*data;
@@ -152,7 +152,7 @@ kore_connection_handle(struct connection *c)
 	kore_connection_stop_idletimer(c);
 
 	switch (c->state) {
-#if !defined(KORE_NO_SSL)
+#if !defined(KORE_NO_TLS)
 	case CONN_STATE_SSL_SHAKE:
 		if (c->ssl == NULL) {
 			c->ssl = SSL_new(primary_dom->ssl_ctx);
@@ -237,7 +237,7 @@ kore_connection_handle(struct connection *c)
 
 		c->state = CONN_STATE_ESTABLISHED;
 		/* FALLTHROUGH */
-#endif /* !KORE_NO_SSL */
+#endif /* !KORE_NO_TLS */
 	case CONN_STATE_ESTABLISHED:
 		if (c->flags & CONN_READ_POSSIBLE) {
 			if (!net_recv_flush(c))
@@ -270,7 +270,7 @@ kore_connection_remove(struct connection *c)
 
 	kore_debug("kore_connection_remove(%p)", c);
 
-#if !defined(KORE_NO_SSL)
+#if !defined(KORE_NO_TLS)
 	if (c->ssl != NULL) {
 		SSL_shutdown(c->ssl);
 		SSL_free(c->ssl);

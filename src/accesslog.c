@@ -184,7 +184,7 @@ kore_accesslog(struct http_request *req)
 	}
 
 	memset(logpacket.cn, '\0', sizeof(logpacket.cn));
-#if !defined(KORE_NO_SSL)
+#if !defined(KORE_NO_TLS)
 	if (req->owner->cert != NULL) {
 		if (X509_GET_CN(req->owner->cert,
 		    logpacket.cn, sizeof(logpacket.cn)) == -1) {

@@ -302,7 +302,7 @@ configure_tls_cipher(char **argv)
 static int
 configure_tls_dhparam(char **argv)
 {
-#if !defined(KORE_NO_SSL)
+#if !defined(KORE_NO_TLS)
 	BIO		*bio;
 
 	if (argv[1] == NULL)
