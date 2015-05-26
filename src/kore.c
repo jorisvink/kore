@@ -292,8 +292,13 @@ kore_server_bind(const char *ip, const char *port)
 	nlisteners++;
 	LIST_INSERT_HEAD(&listeners, l, list);
 
-	if (foreground)
+	if (foreground) {
+#if !defined(KORE_NO_TLS)
 		kore_log(LOG_NOTICE, "running on https://%s:%s", ip, port);
+#else
+		kore_log(LOG_NOTICE, "running on http://%s:%s", ip, port);
+#endif
+	}
 
 	return (KORE_RESULT_OK);
 }
