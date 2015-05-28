@@ -37,7 +37,7 @@ struct video {
 	TAILQ_ENTRY(video)	list;
 };
 
-void		init(int);
+int		init(int);
 int		serve_page(struct http_request *);
 int		video_stream(struct http_request *);
 
@@ -48,17 +48,16 @@ static int	video_open(struct http_request *, struct video **);
 
 TAILQ_HEAD(, video)		videos;
 
-void
+int
 init(int state)
 {
-	switch (state) {
-	case KORE_MODULE_LOAD:
-		TAILQ_INIT(&videos);
-		break;
-	case KORE_MODULE_UNLOAD:
-		fatal("cannot reload this module, i should fix this");
-		break;
+	if (state == KORE_MODULE_UNLOAD) {
+		kore_log(LOG_NOTICE, "not reloading module");
+		return (KORE_RESULT_ERROR);
 	}
+
+	TAILQ_INIT(&videos);
+	return (KORE_RESULT_OK);
 }
 
 int
