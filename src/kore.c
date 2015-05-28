@@ -56,8 +56,8 @@ usage(void)
 	fprintf(stderr, "\t-d\trun with debug on (if compiled in)\n");
 	fprintf(stderr, "\t-f\tstart kore in foreground mode\n");
 	fprintf(stderr, "\t-h\tthis help text\n");
-	fprintf(stderr, "\t-n\tdo not chroot (if not starting kore as root)\n");
-	fprintf(stderr, "\t-r\tdo not runas (uid drop) (if not starting kore as root)\n");
+	fprintf(stderr, "\t-n\tdo not chroot\n");
+	fprintf(stderr, "\t-r\tdo not drop privs\n");
 	fprintf(stderr, "\t-v\tdisplay kore's version information\n");
 
 	kore_cli_usage(0);
