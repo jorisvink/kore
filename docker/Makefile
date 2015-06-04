@@ -1,14 +1,20 @@
-all: build app
+TAG=$(shell git describe --abbrev=0 --tags `git rev-list --tags --max-count=1`)
+
+all: build run
 
 build:
 	docker build -t kore-build -f build/Dockerfile build/
-	docker tag kore-build kore/build
+build-tag:
+	docker tag -f kore-build kore/build
 
-app:
-	docker build -t kore-app -f app/Dockerfile app/
-	docker tag kore-app kore/app
+run:
+	docker build -t kore-run -f run/Dockerfile run/
+run-tag:
+	docker tag -f kore-run kore/run:$(TAG)
+
+release: build build-tag run run-tag
 
 clean:
-	docker rmi -f kore-build kore-app
+	docker rmi -f kore-build kore-run
 
-.PHONY: all build app clean
+.PHONY: all build build-tag run run-tag release clean
