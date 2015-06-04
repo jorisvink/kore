@@ -28,6 +28,10 @@
 #include "pgsql.h"
 #endif
 
+#if defined(KORE_USE_TASKS)
+#include "tasks.h"
+#endif
+
 /* XXX - This is becoming a clusterfuck. Fix it. */
 
 static int		configure_include(char **);
@@ -70,6 +74,10 @@ static int		configure_socket_backlog(char **);
 
 #if defined(KORE_USE_PGSQL)
 static int		configure_pgsql_conn_max(char **);
+#endif
+
+#if defined(KORE_USE_TASKS)
+static int		configure_task_threads(char **);
 #endif
 
 static void		domain_sslstart(void);
@@ -119,6 +127,9 @@ static struct {
 	{ "socket_backlog",		configure_socket_backlog },
 #if defined(KORE_USE_PGSQL)
 	{ "pgsql_conn_max",		configure_pgsql_conn_max },
+#endif
+#if defined(KORE_USE_TASKS)
+	{ "task_threads",		configure_task_threads },
 #endif
 	{ NULL,				NULL },
 };
@@ -1031,7 +1042,6 @@ domain_sslstart(void)
 }
 
 #if defined(KORE_USE_PGSQL)
-
 static int
 configure_pgsql_conn_max(char **argv)
 {
@@ -1050,5 +1060,25 @@ configure_pgsql_conn_max(char **argv)
 
 	return (KORE_RESULT_OK);
 }
+#endif
 
+#if defined(KORE_USE_TASKS)
+static int
+configure_task_threads(char **argv)
+{
+	int		err;
+
+	if (argv[1] == NULL) {
+		printf("missing parameter for task_threads\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	kore_task_threads = kore_strtonum(argv[1], 10, 0, UCHAR_MAX, &err);
+	if (err != KORE_RESULT_OK) {
+		printf("bad value for task_threads: %s\n", argv[1]);
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
 #endif

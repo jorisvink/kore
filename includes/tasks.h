@@ -24,6 +24,8 @@
 #define KORE_TASK_STATE_FINISHED	3
 #define KORE_TASK_STATE_ABORT		4
 
+#define KORE_TASK_THREADS		2
+
 #if defined(__cplusplus)
 extern "C" {
 #endif
@@ -76,7 +78,9 @@ void		kore_task_set_result(struct kore_task *, int);
 
 int		kore_task_state(struct kore_task *);
 int		kore_task_result(struct kore_task *);
-	
+
+extern u_int16_t	kore_task_threads;
+
 #if defined(__cplusplus)
 }
 #endif

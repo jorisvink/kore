@@ -27,9 +27,9 @@
 #include "tasks.h"
 
 static u_int8_t				threads;
-static pthread_mutex_t			task_thread_lock;
-
 static TAILQ_HEAD(, kore_task_thread)	task_threads;
+
+u_int16_t	kore_task_threads = KORE_TASK_THREADS;
 
 static void	*task_thread(void *);
 static void	task_channel_read(int, void *, u_int32_t);
@@ -48,13 +48,8 @@ static void	task_thread_spawn(struct kore_task_thread **);
 void
 kore_task_init(void)
 {
-	int		r;
-
 	threads = 0;
-
 	TAILQ_INIT(&task_threads);
-	if ((r = pthread_mutex_init(&task_thread_lock, NULL)) != 0)
-		fatal("kore_task_init: pthread_mutex_init: %d", r);
 }
 
 void
@@ -76,15 +71,17 @@ kore_task_run(struct kore_task *t)
 	struct kore_task_thread		*tt;
 
 	kore_platform_schedule_read(t->fds[0], t);
-
-	pthread_mutex_lock(&task_thread_lock);
-	if (TAILQ_EMPTY(&task_threads))
+	if (threads < kore_task_threads) {
+		/* task_thread_spawn() will lock tt->lock for us. */
 		task_thread_spawn(&tt);
-	else
-		tt = TAILQ_FIRST(&task_threads);
-
-	pthread_mutex_unlock(&task_thread_lock);
-	pthread_mutex_lock(&(tt->lock));
+	} else {
+		/* Cycle task around. */
+		if ((tt = TAILQ_FIRST(&task_threads)) == NULL)
+			fatal("no available tasks threads?");
+		pthread_mutex_lock(&(tt->lock));
+		TAILQ_REMOVE(&task_threads, tt, list);
+		TAILQ_INSERT_TAIL(&task_threads, tt, list);
+	}
 
 	t->thread = tt;
 	TAILQ_INSERT_TAIL(&(tt->tasks), t, list);
@@ -293,6 +290,8 @@ task_thread_spawn(struct kore_task_thread **out)
 	TAILQ_INIT(&(tt->tasks));
 	pthread_cond_init(&(tt->cond), NULL);
 	pthread_mutex_init(&(tt->lock), NULL);
+	pthread_mutex_lock(&(tt->lock));
+	TAILQ_INSERT_TAIL(&task_threads, tt, list);
 
 	if (pthread_create(&(tt->tid), NULL, task_thread, tt) != 0)
 		fatal("pthread_create: %s", errno_s);
@@ -310,10 +309,6 @@ task_thread(void *arg)
 
 	pthread_mutex_lock(&(tt->lock));
 
-	pthread_mutex_lock(&task_thread_lock);
-	TAILQ_INSERT_TAIL(&task_threads, tt, list);
-	pthread_mutex_unlock(&task_thread_lock);
-
 	for (;;) {
 		if (TAILQ_EMPTY(&(tt->tasks)))
 			pthread_cond_wait(&(tt->cond), &(tt->lock));
@@ -324,19 +319,11 @@ task_thread(void *arg)
 		TAILQ_REMOVE(&(tt->tasks), t, list);
 		pthread_mutex_unlock(&(tt->lock));
 
-		pthread_mutex_lock(&task_thread_lock);
-		TAILQ_REMOVE(&task_threads, tt, list);
-		pthread_mutex_unlock(&task_thread_lock);
-
 		kore_debug("task_thread#%d: executing %p", tt->idx, t);
 
 		kore_task_set_state(t, KORE_TASK_STATE_RUNNING);
 		kore_task_set_result(t, t->entry(t));
 		kore_task_finish(t);
-
-		pthread_mutex_lock(&task_thread_lock);
-		TAILQ_INSERT_HEAD(&task_threads, tt, list);
-		pthread_mutex_unlock(&task_thread_lock);
 
 		pthread_mutex_lock(&(tt->lock));
 	}

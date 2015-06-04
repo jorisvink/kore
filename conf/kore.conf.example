@@ -74,6 +74,9 @@ workers		4
 #websocket_maxframe	16384
 #websocket_timeout	120
 
+# Configure the number of available threads for background tasks.
+#task_threads		2
+
 # Load modules (you can load multiple at the same time).
 # An additional parameter can be specified as the "onload" function
 # which Kore will call when the module is loaded/reloaded.
