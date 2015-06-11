@@ -601,6 +601,12 @@ cli_build_asset(char *fpath, struct dirent *dp)
 	if (stat(fpath, &st) == -1)
 		cli_fatal("stat: %s %s", fpath, errno_s);
 
+	/* If this file was empty, skip it. */
+	if (st.st_size == 0) {
+		printf("skipping empty asset %s\n", name);
+		return;
+	}
+
 	(void)cli_vasprintf(&opath, "%s/.objs/%s.o", rootdir, name);
 	(void)cli_vasprintf(&cpath, "%s/.objs/%s.c", rootdir, name);
 
