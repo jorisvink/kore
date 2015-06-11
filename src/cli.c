@@ -57,6 +57,7 @@
 #endif
 
 #define LD_FLAGS_MAX		10
+#define CFLAGS_MAX		10
 
 struct cmd {
 	const char		*name;
@@ -868,9 +869,10 @@ cli_generate_certs(void)
 static void
 cli_compile_cfile(void *arg)
 {
-	int		idx;
+	int		idx, f, i;
 	struct cfile	*cf = arg;
-	char		*args[24], *ipath[2], *p, *cppstandard;
+	char		*flags[CFLAGS_MAX], *p;
+	char		*args[30 + CFLAGS_MAX], *ipath[2], *cppstandard;
 #if defined(KORE_USE_PGSQL)
 	char		*ppath;
 #endif
@@ -891,6 +893,15 @@ cli_compile_cfile(void *arg)
 #else
 	args[idx++] = "-I/usr/local/include";
 #endif
+
+	/* Add any user specified flags. */
+	if ((p = getenv("CFLAGS")) != NULL)
+		f = kore_split_string(p, " ", flags, CFLAGS_MAX);
+	else
+		f = 0;
+
+	for (i = 0; i < f; i++)
+		args[idx++] = flags[i];
 
 #if defined(KORE_USE_PGSQL)
 	(void)cli_vasprintf(&ppath, "-I%s", PGSQL_INCLUDE_PATH);
