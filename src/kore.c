@@ -229,11 +229,17 @@ kore_server_bind(const char *ip, const char *port)
 {
 	struct listener		*l;
 	int			on, r;
-	struct addrinfo		*results;
+	struct addrinfo		hints, *results;
 
 	kore_debug("kore_server_bind(%s, %s)", ip, port);
 
-	r = getaddrinfo(ip, port, NULL, &results);
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_protocol = IPPROTO_TCP;
+	hints.ai_flags = 0;
+
+	r = getaddrinfo(ip, port, &hints, &results);
 	if (r != 0)
 		fatal("getaddrinfo(%s): %s", ip, gai_strerror(r));
 
