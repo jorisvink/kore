@@ -14,7 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include <sys/types.h>
+#include <sys/param.h>
 #include <sys/shm.h>
 #include <sys/wait.h>
 #include <sys/time.h>
@@ -228,8 +228,8 @@ kore_worker_entry(struct kore_worker *kw)
 
 	if (skip_runas == 0) {
 		if (setgroups(1, &pw->pw_gid) ||
-#ifdef __MACH__
-		    setgid(pw->pw_gid) || setegid(pw->pw_gid) ||
+#if defined(__MACH__) || defined(NetBSD)
+		    setgid(Pw->pw_gid) || setegid(pw->pw_gid) ||
 		    setuid(pw->pw_uid) || seteuid(pw->pw_uid))
 #else
 		    setresgid(pw->pw_gid, pw->pw_gid, pw->pw_gid) ||

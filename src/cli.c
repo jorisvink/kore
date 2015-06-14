@@ -40,7 +40,7 @@
 
 #include "kore.h"
 
-#if defined(OpenBSD) || defined(__FreeBSD_version)
+#if defined(OpenBSD) || defined(__FreeBSD_version) || defined(NetBSD)
 #define PRI_TIME_T		"d"
 #endif
 
