@@ -41,7 +41,7 @@
 #include "kore.h"
 
 #if defined(OpenBSD) || defined(__FreeBSD_version) || \
-    defined(NetBSD) || defined(__DragonFly__version)
+    defined(NetBSD) || defined(__DragonFly_version)
 #define PRI_TIME_T		"d"
 #endif
 
