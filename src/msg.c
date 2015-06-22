@@ -33,7 +33,6 @@ static struct msg_type	*msg_type_lookup(u_int8_t);
 static int		msg_recv_worker(struct netbuf *);
 static int		msg_recv_parent(struct netbuf *);
 static int		msg_recv_worker_data(struct netbuf *);
-static void		msg_type_websocket(const void *, u_int32_t);
 static void		msg_disconnected_parent(struct connection *);
 
 void
@@ -82,8 +81,6 @@ kore_msg_parent_remove(struct kore_worker *kw)
 void
 kore_msg_worker_init(void)
 {
-	kore_msg_register(KORE_MSG_WEBSOCKET, msg_type_websocket);
-
 	worker->msg[1] = kore_connection_new(NULL);
 	worker->msg[1]->fd = worker->pipe[1];
 	worker->msg[1]->read = net_read;
@@ -173,11 +170,6 @@ msg_disconnected_parent(struct connection *c)
 	kore_log(LOG_ERR, "parent gone, shutting down");
 	if (kill(worker->pid, SIGQUIT) == -1)
 		kore_log(LOG_ERR, "failed to send SIGQUIT: %s", errno_s);
-}
-
-static void
-msg_type_websocket(const void *data, u_int32_t len)
-{
 }
 
 static struct msg_type *

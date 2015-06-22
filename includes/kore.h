@@ -365,9 +365,6 @@ struct kore_timer {
 	TAILQ_ENTRY(kore_timer)	list;
 };
 
-/* These are reserved message types. */
-#define KORE_MSG_WEBSOCKET	1
-
 struct kore_msg {
 	u_int8_t	id;
 	u_int32_t	length;
