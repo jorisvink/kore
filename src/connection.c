@@ -100,7 +100,7 @@ kore_connection_accept(struct listener *l, struct connection **out)
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (!kore_connection_nonblock(c->fd)) {
+	if (!kore_connection_nonblock(c->fd, 1)) {
 		close(c->fd);
 		kore_pool_put(&connection_pool, c);
 		return (KORE_RESULT_ERROR);
@@ -410,7 +410,7 @@ kore_connection_stop_idletimer(struct connection *c)
 }
 
 int
-kore_connection_nonblock(int fd)
+kore_connection_nonblock(int fd, int nodelay)
 {
 	int		flags;
 
@@ -427,11 +427,13 @@ kore_connection_nonblock(int fd)
 		return (KORE_RESULT_ERROR);
 	}
 
-	flags = 1;
-	if (setsockopt(fd, IPPROTO_TCP,
-	    TCP_NODELAY, (char *)&flags, sizeof(flags)) == -1) {
-		kore_log(LOG_NOTICE,
-		    "failed to set TCP_NODELAY on %d", fd);
+	if (nodelay) {
+		flags = 1;
+		if (setsockopt(fd, IPPROTO_TCP,
+		    TCP_NODELAY, (char *)&flags, sizeof(flags)) == -1) {
+			kore_log(LOG_NOTICE,
+			    "failed to set TCP_NODELAY on %d", fd);
+		}
 	}
 
 	return (KORE_RESULT_OK);

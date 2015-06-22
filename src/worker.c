@@ -127,8 +127,8 @@ kore_worker_spawn(u_int16_t id, u_int16_t cpu)
 	if (socketpair(AF_UNIX, SOCK_STREAM, 0, kw->pipe) == -1)
 		fatal("socketpair(): %s", errno_s);
 
-	if (!kore_connection_nonblock(kw->pipe[0]) ||
-	    !kore_connection_nonblock(kw->pipe[1]))
+	if (!kore_connection_nonblock(kw->pipe[0], 0) ||
+	    !kore_connection_nonblock(kw->pipe[1], 0))
 		fatal("could not set pipe fds to nonblocking: %s", errno_s);
 
 	kw->pid = fork();

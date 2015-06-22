@@ -454,7 +454,7 @@ void			kore_connection_init(void);
 void			kore_connection_prune(int);
 struct connection	*kore_connection_new(void *);
 void			kore_connection_check_timeout(void);
-int			kore_connection_nonblock(int);
+int			kore_connection_nonblock(int, int);
 int			kore_connection_handle(struct connection *);
 void			kore_connection_remove(struct connection *);
 void			kore_connection_disconnect(struct connection *);

@@ -258,7 +258,7 @@ kore_server_bind(const char *ip, const char *port)
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (!kore_connection_nonblock(l->fd)) {
+	if (!kore_connection_nonblock(l->fd, 1)) {
 		kore_mem_free(l);
 		freeaddrinfo(results);
 		printf("failed to make socket non blocking: %s\n", errno_s);
