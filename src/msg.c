@@ -155,8 +155,6 @@ msg_recv_parent(struct netbuf *nb)
 {
 	struct connection	*c;
 
-	kore_log(LOG_NOTICE, "got %d bytes", nb->s_off);
-
 	TAILQ_FOREACH(c, &connections, list) {
 		if (c == nb->owner)
 			continue;
