@@ -6,10 +6,11 @@ KORE=kore
 INSTALL_DIR=$(PREFIX)/bin
 INCLUDE_DIR=$(PREFIX)/include/kore
 
-S_SRC=	src/kore.c src/accesslog.c src/auth.c src/buf.c src/cli.c src/config.c \
-	src/connection.c src/domain.c src/http.c src/mem.c src/module.c \
-	src/net.c src/pool.c src/spdy.c src/timer.c src/validator.c \
-	src/utils.c src/websocket.c src/worker.c src/zlib_dict.c
+S_SRC=	src/kore.c src/accesslog.c src/auth.c src/buf.c src/cli.c \
+	src/config.c src/connection.c src/domain.c src/http.c src/mem.c \
+	src/msg.c src/module.c src/net.c src/pool.c src/spdy.c src/timer.c \
+	src/validator.c src/utils.c src/websocket.c src/worker.c \
+	src/zlib_dict.c
 S_OBJS=	$(S_SRC:.c=.o)
 
 CFLAGS+=-Wall -Wstrict-prototypes -Wmissing-prototypes

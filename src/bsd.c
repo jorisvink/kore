@@ -82,9 +82,12 @@ kore_platform_event_init(void)
 	event_count = (worker_max_connections * 2) + nlisteners;
 	events = kore_calloc(event_count, sizeof(struct kevent));
 
-	LIST_FOREACH(l, &listeners, list) {
-		kore_platform_event_schedule(l->fd,
-		    EVFILT_READ, EV_ADD | EV_DISABLE, l);
+	/* Hack to check if we're running under the parent or not. */
+	if (worker != NULL) {
+		LIST_FOREACH(l, &listeners, list) {
+			kore_platform_event_schedule(l->fd,
+			    EVFILT_READ, EV_ADD | EV_DISABLE, l);
+		}
 	}
 }
 

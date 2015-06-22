@@ -67,7 +67,7 @@ kore_accesslog_wait(void)
 	pfd[0].events = POLLIN;
 	pfd[0].revents = 0;
 
-	nfds = poll(pfd, 1, 1000);
+	nfds = poll(pfd, 1, 100);
 	if (nfds == -1 || (pfd[0].revents & (POLLERR | POLLHUP | POLLNVAL))) {
 		if (nfds == -1 && errno == EINTR)
 			return (KORE_RESULT_OK);

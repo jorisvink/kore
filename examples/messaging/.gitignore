@@ -1,0 +1,5 @@
+*.o
+.objs
+messaging.so
+assets.h
+cert

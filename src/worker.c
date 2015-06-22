@@ -19,6 +19,7 @@
 #include <sys/wait.h>
 #include <sys/time.h>
 #include <sys/resource.h>
+#include <sys/socket.h>
 
 #include <fcntl.h>
 #include <grp.h>
@@ -60,14 +61,12 @@ static void	worker_unlock(void);
 static inline int	kore_worker_acceptlock_obtain(void);
 static inline void	kore_worker_acceptlock_release(void);
 
-static struct connection_list		disconnected;
 static struct kore_worker		*kore_workers;
 static int				shm_accept_key;
 static struct wlock			*accept_lock;
 
 extern volatile sig_atomic_t	sig_recv;
 struct kore_worker		*worker = NULL;
-struct connection_list		worker_clients;
 u_int8_t			worker_set_affinity = 1;
 u_int32_t			worker_accept_threshold = 0;
 u_int32_t			worker_rlimit_nofiles = 1024;
@@ -125,6 +124,13 @@ kore_worker_spawn(u_int16_t id, u_int16_t cpu)
 	kw->has_lock = 0;
 	kw->active_hdlr = NULL;
 
+	if (socketpair(AF_UNIX, SOCK_STREAM, 0, kw->pipe) == -1)
+		fatal("socketpair(): %s", errno_s);
+
+	if (!kore_connection_nonblock(kw->pipe[0]) ||
+	    !kore_connection_nonblock(kw->pipe[1]))
+		fatal("could not set pipe fds to nonblocking: %s", errno_s);
+
 	kw->pid = fork();
 	if (kw->pid == -1)
 		fatal("could not spawn worker child: %s", errno_s);
@@ -134,6 +140,15 @@ kore_worker_spawn(u_int16_t id, u_int16_t cpu)
 		kore_worker_entry(kw);
 		/* NOTREACHED */
 	}
+}
+
+struct kore_worker *
+kore_worker_data(u_int8_t id)
+{
+	if (id >= worker_count)
+		fatal("id %u too large for worker count", id);
+
+	return (WORKER(id));
 }
 
 void
@@ -183,7 +198,6 @@ kore_worker_entry(struct kore_worker *kw)
 	size_t			fd;
 	struct rlimit		rl;
 	char			buf[16];
-	struct connection	*c, *cnext;
 	int			quit, had_lock, r;
 	u_int64_t		now, idle_check, next_lock, netwait;
 	struct passwd		*pw = NULL;
@@ -261,8 +275,6 @@ kore_worker_entry(struct kore_worker *kw)
 	kore_timer_init();
 	kore_connection_init();
 	kore_domain_load_crl();
-	TAILQ_INIT(&disconnected);
-	TAILQ_INIT(&worker_clients);
 
 	quit = 0;
 	had_lock = 0;
@@ -270,6 +282,7 @@ kore_worker_entry(struct kore_worker *kw)
 	idle_check = 0;
 	kore_platform_event_init();
 	kore_accesslog_worker_init();
+	kore_msg_worker_init();
 
 #if defined(KORE_USE_PGSQL)
 	kore_pgsql_init();
@@ -321,76 +334,18 @@ kore_worker_entry(struct kore_worker *kw)
 
 		if ((now - idle_check) >= 10000) {
 			idle_check = now;
-			now = kore_time_ms();
-			TAILQ_FOREACH(c, &worker_clients, list) {
-				if (c->proto == CONN_PROTO_SPDY &&
-				    c->idle_timer.length == 0 &&
-				    !(c->flags & CONN_WRITE_BLOCK) &&
-				    !(c->flags & CONN_READ_BLOCK))
-					continue;
-				if (!(c->flags & CONN_IDLE_TIMER_ACT))
-					continue;
-				kore_connection_check_idletimer(now, c);
-			}
+			kore_connection_check_timeout();
 		}
 
-		for (c = TAILQ_FIRST(&disconnected); c != NULL; c = cnext) {
-			cnext = TAILQ_NEXT(c, list);
-			TAILQ_REMOVE(&disconnected, c, list);
-			kore_connection_remove(c);
-		}
+		kore_connection_prune(KORE_CONNECTION_PRUNE_DISCONNECT);
 
 		if (quit && http_request_count == 0)
 			break;
 	}
 
-	for (c = TAILQ_FIRST(&worker_clients); c != NULL; c = cnext) {
-		cnext = TAILQ_NEXT(c, list);
-		net_send_flush(c);
-		kore_connection_disconnect(c);
-	}
-
-	for (c = TAILQ_FIRST(&disconnected); c != NULL; c = cnext) {
-		cnext = TAILQ_NEXT(c, list);
-		net_send_flush(c);
-		TAILQ_REMOVE(&disconnected, c, list);
-		kore_connection_remove(c);
-	}
-
+	kore_connection_prune(KORE_CONNECTION_PRUNE_ALL);
 	kore_debug("worker %d shutting down", kw->id);
 	exit(0);
-}
-
-void
-kore_worker_connection_add(struct connection *c)
-{
-	TAILQ_INSERT_TAIL(&worker_clients, c, list);
-	worker_active_connections++;
-}
-
-void
-kore_worker_connection_move(struct connection *c)
-{
-	TAILQ_REMOVE(&worker_clients, c, list);
-	TAILQ_INSERT_TAIL(&disconnected, c, list);
-}
-
-void
-kore_worker_connection_remove(struct connection *c)
-{
-	worker_active_connections--;
-}
-
-void
-kore_worker_websocket_broadcast(struct connection *src,
-    void (*cb)(struct connection *, void *), void *args)
-{
-	struct connection	*c;
-
-	TAILQ_FOREACH(c, &worker_clients, list) {
-		if (c != src && c->proto == CONN_PROTO_WEBSOCKET)
-			cb(c, args);
-	}
 }
 
 void
@@ -447,7 +402,9 @@ kore_worker_wait(int final)
 			}
 
 			kore_log(LOG_NOTICE, "restarting worker %d", kw->id);
+			kore_msg_parent_remove(kw);
 			kore_worker_spawn(kw->id, kw->cpu);
+			kore_msg_parent_add(kw);
 		} else {
 			kore_log(LOG_NOTICE,
 			    "worker %d (pid: %d) signaled us (%d)",

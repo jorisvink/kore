@@ -329,6 +329,7 @@ kore_server_sslstart(void)
 static void
 kore_server_start(void)
 {
+	u_int32_t	tmp;
 	int		quit;
 
 	if (foreground == 0 && daemon(1, 1) == -1)
@@ -347,9 +348,20 @@ kore_server_start(void)
 #endif
 
 	kore_platform_proctitle("kore [parent]");
+	kore_msg_init();
 	kore_worker_init();
 
+	/* Set worker_max_connections for kore_connection_init(). */
+	tmp = worker_max_connections;
+	worker_max_connections = worker_count;
+
+	net_init();
+	kore_connection_init();
+	kore_platform_event_init();
+	kore_msg_parent_init();
+
 	quit = 0;
+	worker_max_connections = tmp;
 	while (quit != 1) {
 		if (sig_recv != 0) {
 			switch (sig_recv) {
@@ -371,10 +383,15 @@ kore_server_start(void)
 			sig_recv = 0;
 		}
 
-		if (!kore_accesslog_wait())
+		/* XXX - The accesslog should move to our msg framework. */
+		if (!kore_accesslog_wait()) {
+			kore_worker_dispatch_signal(SIGQUIT);
 			break;
+		}
 
 		kore_worker_wait(0);
+		kore_platform_event_wait(100);
+		kore_connection_prune(KORE_CONNECTION_PRUNE_DISCONNECT);
 	}
 }
 

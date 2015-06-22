@@ -25,10 +25,15 @@
 #include "http.h"
 
 struct kore_pool		connection_pool;
+struct connection_list		connections;
+struct connection_list		disconnected;
 
 void
 kore_connection_init(void)
 {
+	TAILQ_INIT(&connections);
+	TAILQ_INIT(&disconnected);
+
 	kore_pool_init(&connection_pool, "connection_pool",
 	    sizeof(struct connection), worker_max_connections);
 }
@@ -118,11 +123,52 @@ kore_connection_accept(struct listener *l, struct connection **out)
 	    http_header_recv);
 #endif
 
-	kore_worker_connection_add(c);
+	TAILQ_INSERT_TAIL(&connections, c, list);
 	kore_connection_start_idletimer(c);
 
 	*out = c;
 	return (KORE_RESULT_OK);
+}
+
+void
+kore_connection_check_timeout(void)
+{
+	struct connection	*c;
+	u_int64_t		now;
+
+	now = kore_time_ms();
+	TAILQ_FOREACH(c, &connections, list) {
+		if (c->proto == CONN_PROTO_MSG)
+			continue;
+		if (c->proto == CONN_PROTO_SPDY &&
+		    c->idle_timer.length == 0 &&
+		    !(c->flags & CONN_WRITE_BLOCK) &&
+		    !(c->flags & CONN_READ_BLOCK))
+			continue;
+		if (!(c->flags & CONN_IDLE_TIMER_ACT))
+			continue;
+		kore_connection_check_idletimer(now, c);
+	}
+}
+
+void
+kore_connection_prune(int all)
+{
+	struct connection	*c, *cnext;
+
+	if (all) {
+		for (c = TAILQ_FIRST(&connections); c != NULL; c = cnext) {
+			cnext = TAILQ_NEXT(c, list);
+			net_send_flush(c);
+			kore_connection_disconnect(c);
+		}
+	}
+
+	for (c = TAILQ_FIRST(&disconnected); c != NULL; c = cnext) {
+		cnext = TAILQ_NEXT(c, list);
+		TAILQ_REMOVE(&disconnected, c, list);
+		kore_connection_remove(c);
+	}
 }
 
 void
@@ -134,7 +180,8 @@ kore_connection_disconnect(struct connection *c)
 		if (c->disconnect)
 			c->disconnect(c);
 
-		kore_worker_connection_move(c);
+		TAILQ_REMOVE(&connections, c, list);
+		TAILQ_INSERT_TAIL(&disconnected, c, list);
 	}
 }
 
@@ -326,7 +373,6 @@ kore_connection_remove(struct connection *c)
 		kore_mem_free(s);
 	}
 
-	kore_worker_connection_remove(c);
 	kore_pool_put(&connection_pool, c);
 }
 

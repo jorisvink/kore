@@ -147,6 +147,7 @@ LIST_HEAD(listener_head, listener);
 #define CONN_PROTO_SPDY		1
 #define CONN_PROTO_HTTP		2
 #define CONN_PROTO_WEBSOCKET	3
+#define CONN_PROTO_MSG		4
 
 #define CONN_READ_POSSIBLE	0x01
 #define CONN_WRITE_POSSIBLE	0x02
@@ -169,6 +170,9 @@ LIST_HEAD(listener_head, listener);
 #define WEBSOCKET_BROADCAST_GLOBAL	2
 
 #define KORE_TIMER_ONESHOT	0x01
+
+#define KORE_CONNECTION_PRUNE_DISCONNECT	0
+#define KORE_CONNECTION_PRUNE_ALL		1
 
 struct connection {
 	u_int8_t		type;
@@ -220,7 +224,8 @@ struct connection {
 };
 
 TAILQ_HEAD(connection_list, connection);
-extern struct connection_list	worker_clients;
+extern struct connection_list	connections;
+extern struct connection_list	disconnected;
 
 struct kore_handler_params {
 	char			*name;
@@ -279,6 +284,8 @@ struct kore_worker {
 	u_int8_t			id;
 	u_int8_t			cpu;
 	pid_t				pid;
+	int				pipe[2];
+	struct connection		*msg[2];
 	u_int8_t			has_lock;
 	struct kore_module_handle	*active_hdlr;
 };
@@ -358,6 +365,14 @@ struct kore_timer {
 	TAILQ_ENTRY(kore_timer)	list;
 };
 
+/* These are reserved message types. */
+#define KORE_MSG_WEBSOCKET	1
+
+struct kore_msg {
+	u_int8_t	id;
+	u_int32_t	length;
+};
+
 extern pid_t	kore_pid;
 extern int	foreground;
 extern int	kore_debug;
@@ -400,11 +415,8 @@ void		kore_worker_shutdown(void);
 void		kore_worker_dispatch_signal(int);
 void		kore_worker_spawn(u_int16_t, u_int16_t);
 void		kore_worker_entry(struct kore_worker *);
-void		kore_worker_connection_add(struct connection *);
-void		kore_worker_connection_move(struct connection *);
-void		kore_worker_connection_remove(struct connection *);
-void		kore_worker_websocket_broadcast(struct connection *,
-		    void (*cb)(struct connection *, void *), void *);
+
+struct kore_worker	*kore_worker_data(u_int8_t);
 
 void		kore_platform_init(void);
 void		kore_platform_event_init(void);
@@ -439,7 +451,9 @@ int		kore_tls_npn_cb(SSL *, const u_char **, unsigned int *, void *);
 void		kore_tls_info_callback(const SSL *, int, int);
 
 void			kore_connection_init(void);
+void			kore_connection_prune(int);
 struct connection	*kore_connection_new(void *);
+void			kore_connection_check_timeout(void);
 int			kore_connection_nonblock(int);
 int			kore_connection_handle(struct connection *);
 void			kore_connection_remove(struct connection *);
@@ -491,6 +505,15 @@ void		kore_websocket_send(struct connection *,
 		    u_int8_t, void *, size_t);
 void		kore_websocket_broadcast(struct connection *,
 		    u_int8_t, void *, size_t, int);
+
+void		kore_msg_init(void);
+void		kore_msg_worker_init(void);
+void		kore_msg_parent_init(void);
+void		kore_msg_parent_add(struct kore_worker *);
+void		kore_msg_parent_remove(struct kore_worker *);
+void		kore_msg_send(u_int8_t, void *, u_int32_t);
+int		kore_msg_register(u_int8_t,
+		    void (*cb)(const void *, u_int32_t));
 
 void		kore_domain_init(void);
 int		kore_domain_new(char *);

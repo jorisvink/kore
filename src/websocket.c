@@ -35,11 +35,6 @@
 
 #define WEBSOCKET_SERVER_RESPONSE	"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
-struct websocket_data {
-	u_int8_t		op;
-	void			*data;
-	size_t			len;
-};
 
 u_int64_t	kore_websocket_timeout = 120000;
 u_int64_t	kore_websocket_maxframe = 16384;
@@ -47,7 +42,8 @@ u_int64_t	kore_websocket_maxframe = 16384;
 static int	websocket_recv_frame(struct netbuf *);
 static int	websocket_recv_opcode(struct netbuf *);
 static void	websocket_disconnect(struct connection *);
-static void	websocket_send_single(struct connection *, void *);
+static void	websocket_send_single(struct connection *,
+		    u_int8_t, void *, size_t);
 void		websocket_send(struct connection *, u_int8_t, void *, size_t);
 
 void
@@ -167,26 +163,24 @@ kore_websocket_send(struct connection *c, u_int8_t op, void *data, size_t len)
 }
 
 void
-kore_websocket_broadcast(struct connection *c, u_int8_t op, void *data,
+kore_websocket_broadcast(struct connection *src, u_int8_t op, void *data,
     size_t len, int scope)
 {
-	struct websocket_data	arg;
+	struct connection	*c;
 
-	arg.op = op;
-	arg.len = len;
-	arg.data = data;
-	kore_worker_websocket_broadcast(c, websocket_send_single, &arg);
+	TAILQ_FOREACH(c, &connections, list) {
+		if (c != src && c->proto == CONN_PROTO_WEBSOCKET)
+			websocket_send_single(c, op, data, len);
+	}
 
 	if (scope == WEBSOCKET_BROADCAST_GLOBAL)
 		fatal("kore_websocket_broadcast: no global scope yet");
 }
 
 static void
-websocket_send_single(struct connection *c, void *args)
+websocket_send_single(struct connection *c, u_int8_t op, void *data, size_t len)
 {
-	struct websocket_data	*arg = args;
-
-	kore_websocket_send(c, arg->op, arg->data, arg->len);
+	kore_websocket_send(c, op, data, len);
 	net_send_flush(c);
 }
 
