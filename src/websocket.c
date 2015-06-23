@@ -42,9 +42,8 @@ u_int64_t	kore_websocket_maxframe = 16384;
 static int	websocket_recv_frame(struct netbuf *);
 static int	websocket_recv_opcode(struct netbuf *);
 static void	websocket_disconnect(struct connection *);
-static void	websocket_send_single(struct connection *,
-		    u_int8_t, void *, size_t);
-void		websocket_send(struct connection *, u_int8_t, void *, size_t);
+static void	websocket_frame_build(struct kore_buf *, u_int8_t,
+		    const void *, size_t);
 
 void
 kore_websocket_handshake(struct http_request *req, struct kore_wscbs *wscbs)
@@ -115,17 +114,48 @@ kore_websocket_handshake(struct http_request *req, struct kore_wscbs *wscbs)
 }
 
 void
-kore_websocket_send(struct connection *c, u_int8_t op, void *data, size_t len)
+kore_websocket_send(struct connection *c, u_int8_t op, const void *data,
+    size_t len)
+{
+	struct kore_buf		*frame;
+
+	frame = kore_buf_create(len);
+	websocket_frame_build(frame, op, data, len);
+	net_send_queue(c, frame->data, frame->offset, NULL, NETBUF_LAST_CHAIN);
+	kore_buf_free(frame);
+}
+
+void
+kore_websocket_broadcast(struct connection *src, u_int8_t op, const void *data,
+    size_t len, int scope)
+{
+	struct connection	*c;
+	struct kore_buf		*frame;
+
+	frame = kore_buf_create(len);
+	websocket_frame_build(frame, op, data, len);
+
+	TAILQ_FOREACH(c, &connections, list) {
+		if (c != src && c->proto == CONN_PROTO_WEBSOCKET) {
+			net_send_queue(c, frame->data, frame->offset,
+			    NULL, NETBUF_LAST_CHAIN);
+			net_send_flush(c);
+		}
+	}
+
+	if (scope == WEBSOCKET_BROADCAST_GLOBAL)
+		kore_msg_send(KORE_MSG_WEBSOCKET, frame->data, frame->offset);
+
+	kore_buf_free(frame);
+}
+
+static void
+websocket_frame_build(struct kore_buf *frame, u_int8_t op, const void *data,
+    size_t len)
 {
 	u_int8_t		len_1;
 	u_int16_t		len16;
 	u_int64_t		len64;
-	struct kore_buf		*frame;
-
-	if (c->proto != CONN_PROTO_WEBSOCKET)
-		fatal("kore_websocket_send(): to non websocket connection");
-
-	kore_debug("%p: sending %ld bytes", c, len);
 
 	if (len > WEBSOCKET_PAYLOAD_SINGLE) {
 		if (len < USHRT_MAX)
@@ -135,8 +165,6 @@ kore_websocket_send(struct connection *c, u_int8_t op, void *data, size_t len)
 	} else {
 		len_1 = len;
 	}
-
-	frame = kore_buf_create(len);
 
 	op |= (1 << 7);
 	kore_buf_append(frame, &op, sizeof(op));
@@ -158,30 +186,6 @@ kore_websocket_send(struct connection *c, u_int8_t op, void *data, size_t len)
 	}
 
 	kore_buf_append(frame, data, len);
-	net_send_queue(c, frame->data, frame->offset, NULL, NETBUF_LAST_CHAIN);
-	kore_buf_free(frame);
-}
-
-void
-kore_websocket_broadcast(struct connection *src, u_int8_t op, void *data,
-    size_t len, int scope)
-{
-	struct connection	*c;
-
-	TAILQ_FOREACH(c, &connections, list) {
-		if (c != src && c->proto == CONN_PROTO_WEBSOCKET)
-			websocket_send_single(c, op, data, len);
-	}
-
-	if (scope == WEBSOCKET_BROADCAST_GLOBAL)
-		fatal("kore_websocket_broadcast: no global scope yet");
-}
-
-static void
-websocket_send_single(struct connection *c, u_int8_t op, void *data, size_t len)
-{
-	kore_websocket_send(c, op, data, len);
-	net_send_flush(c);
 }
 
 static int

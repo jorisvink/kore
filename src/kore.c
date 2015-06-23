@@ -383,12 +383,6 @@ kore_server_start(void)
 			sig_recv = 0;
 		}
 
-		/* XXX - The accesslog should move to our msg framework. */
-		if (!kore_accesslog_wait()) {
-			kore_worker_dispatch_signal(SIGQUIT);
-			break;
-		}
-
 		kore_worker_wait(0);
 		kore_platform_event_wait(100);
 		kore_connection_prune(KORE_CONNECTION_PRUNE_DISCONNECT);

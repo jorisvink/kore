@@ -37,10 +37,10 @@ net_init(void)
 }
 
 void
-net_send_queue(struct connection *c, void *data, u_int32_t len,
+net_send_queue(struct connection *c, const void *data, u_int32_t len,
     struct spdy_stream *s, int before)
 {
-	u_int8_t		*d;
+	const u_int8_t		*d;
 	struct netbuf		*nb;
 	u_int32_t		avail;
 

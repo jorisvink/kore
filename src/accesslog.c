@@ -21,8 +21,6 @@
 #include "kore.h"
 #include "http.h"
 
-static int		accesslog_fd[2];
-
 struct kore_log_packet {
 	u_int8_t	method;
 	int		status;
@@ -40,52 +38,29 @@ struct kore_log_packet {
 void
 kore_accesslog_init(void)
 {
-	if (socketpair(AF_UNIX, SOCK_STREAM, 0, accesslog_fd) == -1)
-		fatal("kore_accesslog_init(): socketpair() %s", errno_s);
 }
 
 void
 kore_accesslog_worker_init(void)
 {
-	close(accesslog_fd[0]);
 	kore_domain_closelogs();
 }
 
 int
-kore_accesslog_wait(void)
+kore_accesslog_write(const void *data, u_int32_t len)
 {
-	ssize_t			len;
+	int			l;
 	time_t			now;
+	ssize_t			sent;
 	struct kore_domain	*dom;
-	struct pollfd		pfd[1];
-	int			nfds, l;
 	struct kore_log_packet	logpacket;
 	char			addr[INET6_ADDRSTRLEN];
 	char			*method, *buf, *tbuf, *cn;
 
-	pfd[0].fd = accesslog_fd[0];
-	pfd[0].events = POLLIN;
-	pfd[0].revents = 0;
-
-	nfds = poll(pfd, 1, 100);
-	if (nfds == -1 || (pfd[0].revents & (POLLERR | POLLHUP | POLLNVAL))) {
-		if (nfds == -1 && errno == EINTR)
-			return (KORE_RESULT_OK);
-		kore_log(LOG_WARNING, "poll(): %s", errno_s);
+	if (len != sizeof(struct kore_log_packet))
 		return (KORE_RESULT_ERROR);
-	}
 
-	if (nfds == 0)
-		return (KORE_RESULT_OK);
-
-	len = recv(accesslog_fd[0], &logpacket, sizeof(logpacket), 0);
-	if (len == -1) {
-		kore_log(LOG_WARNING, "recv(): %s", errno_s);
-		return (KORE_RESULT_ERROR);
-	}
-
-	if (len != sizeof(logpacket))
-		return (KORE_RESULT_ERROR);
+	(void)memcpy(&logpacket, data, sizeof(logpacket));
 
 	if ((dom = kore_domain_lookup(logpacket.host)) == NULL) {
 		kore_log(LOG_WARNING,
@@ -131,19 +106,19 @@ kore_accesslog_wait(void)
 	    logpacket.worker_id, logpacket.time_req, cn, logpacket.agent);
 	if (l == -1) {
 		kore_log(LOG_WARNING,
-		    "kore_accesslog_wait(): asprintf() == -1");
+		    "kore_accesslog_write(): asprintf() == -1");
 		return (KORE_RESULT_ERROR);
 	}
 
-	len = write(dom->accesslog, buf, l);
-	if (len == -1) {
+	sent = write(dom->accesslog, buf, l);
+	if (sent == -1) {
 		free(buf);
 		kore_log(LOG_WARNING,
-		    "kore_accesslog_wait(): write(): %s", errno_s);
+		    "kore_accesslog_write(): write(): %s", errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (len != l)
+	if (sent != l)
 		kore_log(LOG_NOTICE, "accesslog: %s", buf);
 
 	free(buf);
@@ -153,7 +128,6 @@ kore_accesslog_wait(void)
 void
 kore_accesslog(struct http_request *req)
 {
-	ssize_t			len;
 	struct kore_log_packet	logpacket;
 
 	logpacket.addrtype = req->owner->addrtype;
@@ -193,10 +167,5 @@ kore_accesslog(struct http_request *req)
 	}
 #endif
 
-	len = send(accesslog_fd[1], &logpacket, sizeof(logpacket), 0);
-	if (len == -1) {
-		kore_log(LOG_WARNING, "kore_accesslog(): send(): %s", errno_s);
-	} else if (len != sizeof(logpacket)) {
-		kore_log(LOG_WARNING, "short accesslog packet sent");
-	}
+	kore_msg_send(KORE_MSG_ACCESSLOG, &logpacket, sizeof(logpacket));
 }

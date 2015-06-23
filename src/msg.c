@@ -23,17 +23,18 @@
 
 struct msg_type {
 	u_int8_t		id;
-	void			(*cb)(const void *, u_int32_t);
+	void			(*cb)(struct kore_msg *, const void *);
 	TAILQ_ENTRY(msg_type)	list;
 };
 
 TAILQ_HEAD(, msg_type)		msg_types;
 
 static struct msg_type	*msg_type_lookup(u_int8_t);
-static int		msg_recv_worker(struct netbuf *);
-static int		msg_recv_parent(struct netbuf *);
-static int		msg_recv_worker_data(struct netbuf *);
+static int		msg_recv_packet(struct netbuf *);
+static int		msg_recv_data(struct netbuf *);
 static void		msg_disconnected_parent(struct connection *);
+static void		msg_type_accesslog(struct kore_msg *, const void *);
+static void		msg_type_websocket(struct kore_msg *, const void *);
 
 void
 kore_msg_init(void)
@@ -51,6 +52,8 @@ kore_msg_parent_init(void)
 		kw = kore_worker_data(i);
 		kore_msg_parent_add(kw);
 	}
+
+	kore_msg_register(KORE_MSG_ACCESSLOG, msg_type_accesslog);
 }
 
 void
@@ -66,8 +69,7 @@ kore_msg_parent_add(struct kore_worker *kw)
 	TAILQ_INSERT_TAIL(&connections, kw->msg[0], list);
 	kore_platform_event_all(kw->msg[0]->fd, kw->msg[0]);
 
-	net_recv_queue(kw->msg[0], NETBUF_SEND_PAYLOAD_MAX,
-	    NETBUF_CALL_CB_ALWAYS, msg_recv_parent);
+	net_recv_queue(kw->msg[0], sizeof(struct kore_msg), 0, msg_recv_packet);
 }
 
 void
@@ -81,6 +83,8 @@ kore_msg_parent_remove(struct kore_worker *kw)
 void
 kore_msg_worker_init(void)
 {
+	kore_msg_register(KORE_MSG_WEBSOCKET, msg_type_websocket);
+
 	worker->msg[1] = kore_connection_new(NULL);
 	worker->msg[1]->fd = worker->pipe[1];
 	worker->msg[1]->read = net_read;
@@ -93,11 +97,11 @@ kore_msg_worker_init(void)
 	kore_platform_event_all(worker->msg[1]->fd, worker->msg[1]);
 
 	net_recv_queue(worker->msg[1],
-	    sizeof(struct kore_msg), 0, msg_recv_worker);
+	    sizeof(struct kore_msg), 0, msg_recv_packet);
 }
 
 int
-kore_msg_register(u_int8_t id, void (*cb)(const void *, u_int32_t))
+kore_msg_register(u_int8_t id, void (*cb)(struct kore_msg *, const void *))
 {
 	struct msg_type		*type;
 
@@ -126,41 +130,35 @@ kore_msg_send(u_int8_t id, void *data, u_int32_t len)
 }
 
 static int
-msg_recv_worker(struct netbuf *nb)
+msg_recv_packet(struct netbuf *nb)
 {
 	struct kore_msg		*msg = (struct kore_msg *)nb->buf;
 
-	net_recv_expand(nb->owner, msg->length, msg_recv_worker_data);
+	net_recv_expand(nb->owner, msg->length, msg_recv_data);
 	return (KORE_RESULT_OK);
 }
 
 static int
-msg_recv_worker_data(struct netbuf *nb)
+msg_recv_data(struct netbuf *nb)
 {
+	struct connection	*c;
 	struct msg_type		*type;
 	struct kore_msg		*msg = (struct kore_msg *)nb->buf;
 
 	if ((type = msg_type_lookup(msg->id)) != NULL)
-		type->cb(nb->buf + sizeof(*msg), nb->s_off - sizeof(*msg));
+		type->cb(msg, nb->buf + sizeof(*msg));
 
-	net_recv_reset(nb->owner, sizeof(struct kore_msg), msg_recv_worker);
-	return (KORE_RESULT_OK);
-}
-
-static int
-msg_recv_parent(struct netbuf *nb)
-{
-	struct connection	*c;
-
-	TAILQ_FOREACH(c, &connections, list) {
-		if (c == nb->owner)
-			continue;
-		net_send_queue(c, nb->buf, nb->s_off, NULL, NETBUF_LAST_CHAIN);
-		net_send_flush(c);
+	if (worker == NULL && type == NULL) {
+		TAILQ_FOREACH(c, &connections, list) {
+			if (c == nb->owner)
+				continue;
+			net_send_queue(c, nb->buf, nb->s_off,
+			    NULL, NETBUF_LAST_CHAIN);
+			net_send_flush(c);
+		}
 	}
 
-	net_recv_reset(nb->owner, NETBUF_SEND_PAYLOAD_MAX, msg_recv_parent);
-
+	net_recv_reset(nb->owner, sizeof(struct kore_msg), msg_recv_packet);
 	return (KORE_RESULT_OK);
 }
 
@@ -170,6 +168,27 @@ msg_disconnected_parent(struct connection *c)
 	kore_log(LOG_ERR, "parent gone, shutting down");
 	if (kill(worker->pid, SIGQUIT) == -1)
 		kore_log(LOG_ERR, "failed to send SIGQUIT: %s", errno_s);
+}
+
+static void
+msg_type_accesslog(struct kore_msg *msg, const void *data)
+{
+	if (kore_accesslog_write(data, msg->length) == -1)
+		kore_log(LOG_WARNING, "failed to write to accesslog");
+}
+
+static void
+msg_type_websocket(struct kore_msg *msg, const void *data)
+{
+	struct connection	*c;
+
+	TAILQ_FOREACH(c, &connections, list) {
+		if (c->proto == CONN_PROTO_WEBSOCKET) {
+			net_send_queue(c, data, msg->length,
+			    NULL, NETBUF_LAST_CHAIN);
+			net_send_flush(c);
+		}
+	}
 }
 
 static struct msg_type *

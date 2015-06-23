@@ -30,7 +30,7 @@ kore_buf_create(u_int32_t initial)
 }
 
 void
-kore_buf_append(struct kore_buf *buf, void *d, u_int32_t len)
+kore_buf_append(struct kore_buf *buf, const void *d, u_int32_t len)
 {
 	if ((buf->offset + len) >= buf->length) {
 		buf->length += len + KORE_BUF_INCREMENT;

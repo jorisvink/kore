@@ -365,6 +365,10 @@ struct kore_timer {
 	TAILQ_ENTRY(kore_timer)	list;
 };
 
+/* Reserved message ids, registered on workers. */
+#define KORE_MSG_ACCESSLOG	1
+#define KORE_MSG_WEBSOCKET	2
+
 struct kore_msg {
 	u_int8_t	id;
 	u_int32_t	length;
@@ -428,8 +432,8 @@ void		kore_platform_event_schedule(int, int, int, void *);
 void		kore_platform_worker_setcpu(struct kore_worker *);
 
 void		kore_accesslog_init(void);
-int		kore_accesslog_wait(void);
 void		kore_accesslog_worker_init(void);
+int		kore_accesslog_write(const void *, u_int32_t);
 
 int		kore_auth_run(struct http_request *, struct kore_auth *);
 void		kore_auth_init(void);
@@ -499,9 +503,9 @@ void		*kore_mem_find(void *, size_t, void *, u_int32_t);
 void		kore_websocket_handshake(struct http_request *,
 		    struct kore_wscbs *);
 void		kore_websocket_send(struct connection *,
-		    u_int8_t, void *, size_t);
+		    u_int8_t, const void *, size_t);
 void		kore_websocket_broadcast(struct connection *,
-		    u_int8_t, void *, size_t, int);
+		    u_int8_t, const void *, size_t, int);
 
 void		kore_msg_init(void);
 void		kore_msg_worker_init(void);
@@ -510,7 +514,7 @@ void		kore_msg_parent_add(struct kore_worker *);
 void		kore_msg_parent_remove(struct kore_worker *);
 void		kore_msg_send(u_int8_t, void *, u_int32_t);
 int		kore_msg_register(u_int8_t,
-		    void (*cb)(const void *, u_int32_t));
+		    void (*cb)(struct kore_msg *, const void *));
 
 void		kore_domain_init(void);
 int		kore_domain_new(char *);
@@ -563,7 +567,7 @@ void		net_recv_queue(struct connection *, u_int32_t, int,
 		    int (*cb)(struct netbuf *));
 void		net_recv_expand(struct connection *c, u_int32_t,
 		    int (*cb)(struct netbuf *));
-void		net_send_queue(struct connection *, void *,
+void		net_send_queue(struct connection *, const void *,
 		    u_int32_t, struct spdy_stream *, int);
 void		net_send_stream(struct connection *, void *,
 		    u_int32_t, struct spdy_stream *,
@@ -571,8 +575,9 @@ void		net_send_stream(struct connection *, void *,
 
 void		kore_buf_free(struct kore_buf *);
 struct kore_buf	*kore_buf_create(u_int32_t);
-void		kore_buf_append(struct kore_buf *, void *, u_int32_t);
+void		kore_buf_append(struct kore_buf *, const void *, u_int32_t);
 u_int8_t	*kore_buf_release(struct kore_buf *, u_int32_t *);
+
 void	kore_buf_appendf(struct kore_buf *, const char *, ...);
 void	kore_buf_appendv(struct kore_buf *, const char *, va_list);
 void	kore_buf_appendb(struct kore_buf *, struct kore_buf *);

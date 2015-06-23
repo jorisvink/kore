@@ -28,7 +28,7 @@
 
 int	init(int);
 int	page(struct http_request *);
-void	received_message(const void *, u_int32_t);
+void	received_message(struct kore_msg *, const void *);
 
 /* Initialization callback. */
 int
@@ -51,10 +51,10 @@ init(int state)
  * Callback for receiving a message MY_MESSAGE_ID.
  */
 void
-received_message(const void *data, u_int32_t len)
+received_message(struct kore_msg *msg, const void *data)
 {
-	kore_log(LOG_INFO, "got message (%d bytes): %.*s", len,
-	    len, (const char *)data);
+	kore_log(LOG_INFO, "got message (%d bytes): %.*s", msg->length,
+	    msg->length, (const char *)data);
 }
 
 /*
