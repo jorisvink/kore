@@ -176,15 +176,8 @@ kore_platform_event_wait(u_int64_t timer)
 			    !(c->flags & CONN_WRITE_BLOCK))
 				c->flags |= CONN_WRITE_POSSIBLE;
 
-			if (!kore_connection_handle(c)) {
+			if (!kore_connection_handle(c))
 				kore_connection_disconnect(c);
-			} else {
-				if (!TAILQ_EMPTY(&(c->send_queue))) {
-					kore_platform_event_schedule(c->fd,
-					    EVFILT_WRITE, EV_ADD | EV_ONESHOT,
-					    c);
-				}
-			}
 			break;
 #if defined(KORE_USE_PGSQL)
 		case KORE_TYPE_PGSQL_CONN:
@@ -207,8 +200,8 @@ kore_platform_event_wait(u_int64_t timer)
 void
 kore_platform_event_all(int fd, void *c)
 {
-	kore_platform_event_schedule(fd, EVFILT_READ, EV_ADD, c);
-	kore_platform_event_schedule(fd, EVFILT_WRITE, EV_ADD | EV_ONESHOT, c);
+	kore_platform_event_schedule(fd, EVFILT_READ, EV_ADD | EV_CLEAR, c);
+	kore_platform_event_schedule(fd, EVFILT_WRITE, EV_ADD | EV_CLEAR, c);
 }
 
 void
