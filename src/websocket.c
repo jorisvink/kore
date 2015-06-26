@@ -98,12 +98,12 @@ kore_websocket_handshake(struct http_request *req, struct kore_wscbs *wscbs)
 
 	kore_debug("%p: new websocket connection", req->owner);
 
+	req->owner->proto = CONN_PROTO_WEBSOCKET;
 	http_response(req, HTTP_STATUS_SWITCHING_PROTOCOLS, NULL, 0);
 	net_recv_reset(req->owner, WEBSOCKET_FRAME_HDR, websocket_recv_opcode);
 
 	req->owner->disconnect = websocket_disconnect;
 	req->owner->rnb->flags &= ~NETBUF_CALL_CB_ALWAYS;
-	req->owner->proto = CONN_PROTO_WEBSOCKET;
 
 	req->owner->wscbs = wscbs;
 	req->owner->idle_timer.start = kore_time_ms();
