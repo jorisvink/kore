@@ -879,7 +879,7 @@ cli_compile_cfile(void *arg)
 	int		idx, f, i;
 	struct cfile	*cf = arg;
 	char		*flags[CFLAGS_MAX], *p;
-	char		*args[30 + CFLAGS_MAX], *ipath[2], *cppstandard;
+	char		*args[32 + CFLAGS_MAX], *ipath[2], *cppstandard;
 #if defined(KORE_USE_PGSQL)
 	char		*ppath;
 #endif
@@ -887,10 +887,6 @@ cli_compile_cfile(void *arg)
 	(void)cli_vasprintf(&ipath[0], "-I%s/src", rootdir);
 	(void)cli_vasprintf(&ipath[1], "-I%s/src/includes", rootdir);
 
-	/*
-	 * These compiler options should be settable
-	 * somehow by the user if they so choose.
-	 */
 	idx = 0;
 	args[idx++] = compiler;
 	args[idx++] = ipath[0];
@@ -899,6 +895,12 @@ cli_compile_cfile(void *arg)
 	(void)cli_vasprintf(&args[idx++], "-I%s/include", PREFIX);
 #else
 	args[idx++] = "-I/usr/local/include";
+#endif
+
+#if defined(__MACH__)
+	/* Add default openssl include path from homebrew / ports under OSX. */
+	args[idx++] = "-I/opt/local/include";
+	args[idx++] = "-I/usr/local/opt/openssl/include";
 #endif
 
 	/* Add any user specified flags. */
