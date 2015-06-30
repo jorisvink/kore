@@ -1251,7 +1251,7 @@ http_response_normal(struct http_request *req, struct connection *c,
 		if (req->owner->proto != CONN_PROTO_WEBSOCKET) {
 			kore_buf_appendf(header_buf, "connection: keep-alive\r\n");
 			kore_buf_appendf(header_buf, "keep-alive: timeout=%d\r\n",
-		    	http_keepalive_time);
+		    	    http_keepalive_time);
 		}
 	} else {
 		c->flags |= CONN_CLOSE_EMPTY;
