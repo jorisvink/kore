@@ -1247,15 +1247,16 @@ http_response_normal(struct http_request *req, struct connection *c,
 		}
 	}
 
-	if (http_keepalive_time && connection_close == 0) {
-		if (req->owner->proto != CONN_PROTO_WEBSOCKET) {
-			kore_buf_appendf(header_buf, "connection: keep-alive\r\n");
-			kore_buf_appendf(header_buf, "keep-alive: timeout=%d\r\n",
-		    	    http_keepalive_time);
+	if (req->owner->proto != CONN_PROTO_WEBSOCKET) {
+		if (http_keepalive_time && connection_close == 0) {
+			kore_buf_appendf(header_buf,
+			    "connection: keep-alive\r\n");
+			kore_buf_appendf(header_buf,
+			    "keep-alive: timeout=%d\r\n", http_keepalive_time);
+		} else {
+			c->flags |= CONN_CLOSE_EMPTY;
+			kore_buf_appendf(header_buf, "connection: close\r\n");
 		}
-	} else {
-		c->flags |= CONN_CLOSE_EMPTY;
-		kore_buf_appendf(header_buf, "connection: close\r\n");
 	}
 
 	if (http_hsts_enable) {
