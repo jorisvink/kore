@@ -55,6 +55,7 @@ kore_task_init(void)
 void
 kore_task_create(struct kore_task *t, int (*entry)(struct kore_task *))
 {
+	t->cb = NULL;
 	t->req = NULL;
 	t->entry = entry;
 	t->type = KORE_TYPE_TASK;
@@ -95,10 +96,22 @@ kore_task_bind_request(struct kore_task *t, struct http_request *req)
 {
 	kore_debug("kore_task_bind_request: %p bound to %p", req, t);
 
+	if (t->cb != NULL)
+		fatal("cannot bind cbs and requests at the same time");
+
 	t->req = req;
 	LIST_INSERT_HEAD(&(req->tasks), t, rlist);
 
 	http_request_sleep(req);
+}
+
+void
+kore_task_bind_callback(struct kore_task *t, void (*cb)(struct kore_task *))
+{
+	if (t->req != NULL)
+		fatal("cannot bind requests and cbs at the same time");
+
+	t->cb = cb;
 }
 
 void
@@ -196,6 +209,9 @@ kore_task_handle(struct kore_task *t, int finished)
 				kore_task_destroy(t);
 		}
 	}
+
+	if (t->cb != NULL)
+		t->cb(t);
 }
 
 int

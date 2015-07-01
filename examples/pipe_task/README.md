@@ -18,8 +18,8 @@ Test:
 
 	Hit the connect button to open a websocket session.
 
-	Now connect a writer endpoint to the named pipe (/tmp/pipe), a great
-	test is tcpdump, you should see all output scroll on the browser.
+	Now connect a writer endpoint to the named pipe (/tmp/pipe):
+		$ echo "hello" > /tmp/pipe
 
-	# tcpdump -l -i interface -n > /tmp/pipe
+	You should see the result in your browser.
 ```
