@@ -1,0 +1,5 @@
+*.o
+.objs
+websocket.so
+assets.h
+cert

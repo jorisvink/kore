@@ -1,0 +1,42 @@
+<!DOCTYPE>
+<html>
+<head>
+<script>
+var socket = null;
+var sent = 0;
+var recv = 0;
+var length = 65536;
+
+function open(evt) {
+}
+
+function message(msg) {
+}
+
+function onmessage(evt) {
+    var obj = document.getElementById("log");
+    obj.innerHTML = "<p>" + evt.data + "</p>" + obj.innerHTML;
+}
+
+function connect() {
+	socket = new WebSocket("wss://127.0.0.1:8888/connect");
+
+	socket.onopen = function(evt) { open(evt) };
+	socket.onclose = function(evt) { alert("closed"); };
+	socket.onmessage = function(evt) { onmessage(evt) };
+	socket.onerror = function(evt) { alert("onerror"); };
+}
+</script>
+</head>
+
+<body>
+
+<form action="/" onsubmit="connect(); return false;">
+<input type="submit" value="connect">
+</form>
+
+<div id="log">
+</div>
+
+</body>
+</html>
