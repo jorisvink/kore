@@ -143,8 +143,10 @@ kore_websocket_broadcast(struct connection *src, u_int8_t op, const void *data,
 		}
 	}
 
-	if (scope == WEBSOCKET_BROADCAST_GLOBAL)
-		kore_msg_send(KORE_MSG_WEBSOCKET, frame->data, frame->offset);
+	if (scope == WEBSOCKET_BROADCAST_GLOBAL) {
+		kore_msg_send(KORE_MSG_WORKER_ALL,
+		    KORE_MSG_WEBSOCKET, frame->data, frame->offset);
+	}
 
 	kore_buf_free(frame);
 }

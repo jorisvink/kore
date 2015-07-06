@@ -53,8 +53,8 @@ init(int state)
 void
 received_message(struct kore_msg *msg, const void *data)
 {
-	kore_log(LOG_INFO, "got message (%d bytes): %.*s", msg->length,
-	    msg->length, (const char *)data);
+	kore_log(LOG_INFO, "got message from %u (%d bytes): %.*s", msg->src,
+	    msg->length, msg->length, (const char *)data);
 }
 
 /*
@@ -64,8 +64,12 @@ received_message(struct kore_msg *msg, const void *data)
 int
 page(struct http_request *req)
 {
-	kore_msg_send(MY_MESSAGE_ID, "hello", 5);
-	http_response(req, 200, NULL, 0);
+	/* Send to all workers first. */
+	kore_msg_send(KORE_MSG_WORKER_ALL, MY_MESSAGE_ID, "hello", 5);
 
+	/* Now send something to worker number #2 only. */
+	kore_msg_send(2, MY_MESSAGE_ID, "hello number 2", 14);
+
+	http_response(req, 200, NULL, 0);
 	return (KORE_RESULT_OK);
 }

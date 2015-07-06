@@ -369,8 +369,14 @@ struct kore_timer {
 #define KORE_MSG_ACCESSLOG	1
 #define KORE_MSG_WEBSOCKET	2
 
+/* Predefined message targets. */
+#define KORE_MSG_PARENT		1000
+#define KORE_MSG_WORKER_ALL	1001
+
 struct kore_msg {
 	u_int8_t	id;
+	u_int16_t	src;
+	u_int16_t	dst;
 	u_int32_t	length;
 };
 
@@ -512,7 +518,7 @@ void		kore_msg_worker_init(void);
 void		kore_msg_parent_init(void);
 void		kore_msg_parent_add(struct kore_worker *);
 void		kore_msg_parent_remove(struct kore_worker *);
-void		kore_msg_send(u_int8_t, void *, u_int32_t);
+void		kore_msg_send(u_int16_t, u_int8_t, void *, u_int32_t);
 int		kore_msg_register(u_int8_t,
 		    void (*cb)(struct kore_msg *, const void *));
 

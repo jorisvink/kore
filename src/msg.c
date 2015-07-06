@@ -33,6 +33,7 @@ static struct msg_type	*msg_type_lookup(u_int8_t);
 static int		msg_recv_packet(struct netbuf *);
 static int		msg_recv_data(struct netbuf *);
 static void		msg_disconnected_parent(struct connection *);
+static void		msg_disconnected_worker(struct connection *);
 static void		msg_type_accesslog(struct kore_msg *, const void *);
 static void		msg_type_websocket(struct kore_msg *, const void *);
 
@@ -59,12 +60,19 @@ kore_msg_parent_init(void)
 void
 kore_msg_parent_add(struct kore_worker *kw)
 {
+	u_int8_t	*worker_id;
+
+	worker_id = kore_malloc(sizeof(*worker_id));
+	*worker_id = kw->id;
+
 	kw->msg[0] = kore_connection_new(NULL);
 	kw->msg[0]->fd = kw->pipe[0];
 	kw->msg[0]->read = net_read;
 	kw->msg[0]->write = net_write;
 	kw->msg[0]->proto = CONN_PROTO_MSG;
 	kw->msg[0]->state = CONN_STATE_ESTABLISHED;
+	kw->msg[0]->hdlr_extra = worker_id;
+	kw->msg[0]->disconnect = msg_disconnected_worker;
 
 	TAILQ_INSERT_TAIL(&connections, kw->msg[0], list);
 	kore_platform_event_all(kw->msg[0]->fd, kw->msg[0]);
@@ -117,12 +125,14 @@ kore_msg_register(u_int8_t id, void (*cb)(struct kore_msg *, const void *))
 }
 
 void
-kore_msg_send(u_int8_t id, void *data, u_int32_t len)
+kore_msg_send(u_int16_t dst, u_int8_t id, void *data, u_int32_t len)
 {
 	struct kore_msg		m;
 
 	m.id = id;
+	m.dst = dst;
 	m.length = len;
+	m.src = worker->id;
 
 	net_send_queue(worker->msg[1], &m, sizeof(m), NULL, NETBUF_LAST_CHAIN);
 	net_send_queue(worker->msg[1], data, len, NULL, NETBUF_LAST_CHAIN);
@@ -145,13 +155,23 @@ msg_recv_data(struct netbuf *nb)
 	struct msg_type		*type;
 	struct kore_msg		*msg = (struct kore_msg *)nb->buf;
 
-	if ((type = msg_type_lookup(msg->id)) != NULL)
+	if ((type = msg_type_lookup(msg->id)) != NULL) {
+		if (worker == NULL && msg->dst != KORE_MSG_PARENT)
+			fatal("received parent msg for non parent dst");
 		type->cb(msg, nb->buf + sizeof(*msg));
+	}
 
 	if (worker == NULL && type == NULL) {
 		TAILQ_FOREACH(c, &connections, list) {
 			if (c == nb->owner)
 				continue;
+			if (c->proto != CONN_PROTO_MSG || c->hdlr_extra == NULL)
+				continue;
+
+			if (msg->dst != KORE_MSG_WORKER_ALL &&
+			    *(u_int8_t *)c->hdlr_extra != msg->dst)
+				continue;
+
 			net_send_queue(c, nb->buf, nb->s_off,
 			    NULL, NETBUF_LAST_CHAIN);
 			net_send_flush(c);
@@ -168,6 +188,13 @@ msg_disconnected_parent(struct connection *c)
 	kore_log(LOG_ERR, "parent gone, shutting down");
 	if (kill(worker->pid, SIGQUIT) == -1)
 		kore_log(LOG_ERR, "failed to send SIGQUIT: %s", errno_s);
+}
+
+static void
+msg_disconnected_worker(struct connection *c)
+{
+	kore_mem_free(c->hdlr_extra);
+	c->hdlr_extra = NULL;
 }
 
 static void
