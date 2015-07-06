@@ -153,24 +153,32 @@ msg_recv_data(struct netbuf *nb)
 {
 	struct connection	*c;
 	struct msg_type		*type;
+	u_int16_t		destination;
 	struct kore_msg		*msg = (struct kore_msg *)nb->buf;
 
 	if ((type = msg_type_lookup(msg->id)) != NULL) {
 		if (worker == NULL && msg->dst != KORE_MSG_PARENT)
 			fatal("received parent msg for non parent dst");
+		if (worker != NULL && msg->dst != worker->id)
+			fatal("received message for incorrect worker");
+
 		type->cb(msg, nb->buf + sizeof(*msg));
 	}
 
 	if (worker == NULL && type == NULL) {
+		destination = msg->dst;
 		TAILQ_FOREACH(c, &connections, list) {
 			if (c == nb->owner)
 				continue;
 			if (c->proto != CONN_PROTO_MSG || c->hdlr_extra == NULL)
 				continue;
 
-			if (msg->dst != KORE_MSG_WORKER_ALL &&
-			    *(u_int8_t *)c->hdlr_extra != msg->dst)
+			if (destination != KORE_MSG_WORKER_ALL &&
+			    *(u_int8_t *)c->hdlr_extra != destination)
 				continue;
+
+			/* This allows the worker to receive the correct id. */
+			msg->dst = *(u_int8_t *)c->hdlr_extra;
 
 			net_send_queue(c, nb->buf, nb->s_off,
 			    NULL, NETBUF_LAST_CHAIN);
