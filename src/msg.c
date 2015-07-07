@@ -60,18 +60,13 @@ kore_msg_parent_init(void)
 void
 kore_msg_parent_add(struct kore_worker *kw)
 {
-	u_int8_t	*worker_id;
-
-	worker_id = kore_malloc(sizeof(*worker_id));
-	*worker_id = kw->id;
-
 	kw->msg[0] = kore_connection_new(NULL);
 	kw->msg[0]->fd = kw->pipe[0];
 	kw->msg[0]->read = net_read;
 	kw->msg[0]->write = net_write;
 	kw->msg[0]->proto = CONN_PROTO_MSG;
 	kw->msg[0]->state = CONN_STATE_ESTABLISHED;
-	kw->msg[0]->hdlr_extra = worker_id;
+	kw->msg[0]->hdlr_extra = &kw->id;
 	kw->msg[0]->disconnect = msg_disconnected_worker;
 
 	TAILQ_INSERT_TAIL(&connections, kw->msg[0], list);
@@ -201,7 +196,6 @@ msg_disconnected_parent(struct connection *c)
 static void
 msg_disconnected_worker(struct connection *c)
 {
-	kore_mem_free(c->hdlr_extra);
 	c->hdlr_extra = NULL;
 }
 
