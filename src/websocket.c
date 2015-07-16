@@ -174,7 +174,7 @@ websocket_frame_build(struct kore_buf *frame, u_int8_t op, const void *data,
 	len_1 &= ~(1 << 7);
 	kore_buf_append(frame, &len_1, sizeof(len_1));
 
-	if (len_1 != len) {
+	if (len_1 > WEBSOCKET_PAYLOAD_SINGLE) {
 		switch (len_1) {
 		case WEBSOCKET_PAYLOAD_EXTEND_1:
 			net_write16((u_int8_t *)&len16, len);
