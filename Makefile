@@ -58,8 +58,10 @@ else
 	S_SRC+=src/bsd.c
 endif
 
-all: $(S_OBJS)
+$(KORE): $(S_OBJS)
 	$(CC) $(S_OBJS) $(LDFLAGS) -o $(KORE)
+
+all: $(KORE)
 
 install:
 	mkdir -p $(INCLUDE_DIR)
@@ -78,4 +80,4 @@ clean:
 	find . -type f -name \*.o -exec rm {} \;
 	rm -f $(KORE)
 
-.PHONY: clean
+.PHONY: all clean
