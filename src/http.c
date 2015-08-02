@@ -1247,7 +1247,8 @@ http_response_normal(struct http_request *req, struct connection *c,
 		}
 	}
 
-	if (req->owner->proto != CONN_PROTO_WEBSOCKET) {
+	/* Note that req CAN be NULL. */
+	if (req != NULL && req->owner->proto != CONN_PROTO_WEBSOCKET) {
 		if (http_keepalive_time && connection_close == 0) {
 			kore_buf_appendf(header_buf,
 			    "connection: keep-alive\r\n");
