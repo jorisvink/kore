@@ -29,10 +29,10 @@
 
 #include "assets.h"
 
+void	sse_ping(void *, u_int64_t);
 int	page(struct http_request *);
 int	subscribe(struct http_request *);
 void	sse_disconnect(struct connection *);
-void	sse_ping(void *, u_int64_t, u_int64_t);
 void	sse_send(struct connection *, void *, size_t);
 void	sse_broadcast(struct connection *, void *, size_t);
 void	sse_spdy_stream_closed(struct connection *, struct spdy_stream *);
@@ -135,7 +135,7 @@ sse_broadcast(struct connection *src, void *data, size_t len)
 	struct connection	*c;
 
 	/* Broadcast the message to all other clients. */
-	TAILQ_FOREACH(c, &worker_clients, list) {
+	TAILQ_FOREACH(c, &connections, list) {
 		if (c == src)
 			continue;
 		sse_send(c, data, len);
@@ -174,7 +174,7 @@ sse_send(struct connection *c, void *data, size_t len)
 }
 
 void
-sse_ping(void *arg, u_int64_t now, u_int64_t delta)
+sse_ping(void *arg, u_int64_t now)
 {
 	struct connection		*c = arg;
 	char				*ping = "event:ping\ndata:\n\n";
