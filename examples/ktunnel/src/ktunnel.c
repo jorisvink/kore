@@ -115,7 +115,7 @@ ktunnel_pipe_create(struct connection *c, const char *host, const char *port)
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (!kore_connection_nonblock(fd)) {
+	if (!kore_connection_nonblock(fd, 1)) {
 		close(fd);
 		return (KORE_RESULT_ERROR);
 	}
@@ -138,7 +138,6 @@ ktunnel_pipe_create(struct connection *c, const char *host, const char *port)
 	c->disconnect = ktunnel_pipe_disconnect;
 	cpipe->disconnect = ktunnel_pipe_disconnect;
 
-	kore_worker_connection_add(cpipe);
 	kore_connection_start_idletimer(cpipe);
 	kore_platform_event_all(cpipe->fd, cpipe);
 
