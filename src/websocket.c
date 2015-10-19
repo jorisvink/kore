@@ -48,10 +48,13 @@ static void	websocket_frame_build(struct kore_buf *, u_int8_t,
 void
 kore_websocket_handshake(struct http_request *req, struct kore_wscbs *wscbs)
 {
+#if !defined(KORE_NO_TLS)
 	SHA_CTX			sctx;
-	struct kore_buf		*buf;
-	char			*key, *base64, *version;
+	char			*base64;
 	u_int8_t		digest[SHA_DIGEST_LENGTH];
+#endif
+	struct kore_buf		*buf;
+	char			*key, *version;
 
 	if (!http_request_header(req, "sec-websocket-key", &key)) {
 		http_response(req, HTTP_STATUS_BAD_REQUEST, NULL, 0);
@@ -79,22 +82,28 @@ kore_websocket_handshake(struct http_request *req, struct kore_wscbs *wscbs)
 	kore_buf_appendf(buf, "%s%s", key, WEBSOCKET_SERVER_RESPONSE);
 	kore_mem_free(key);
 
+#if !defined(KORE_NO_TLS)
 	(void)SHA1_Init(&sctx);
 	(void)SHA1_Update(&sctx, buf->data, buf->offset);
 	(void)SHA1_Final(digest, &sctx);
+#endif
 
 	kore_buf_free(buf);
 
+#if !defined(KORE_NO_TLS)
 	if (!kore_base64_encode(digest, sizeof(digest), &base64)) {
 		kore_debug("failed to base64 encode digest");
 		http_response(req, HTTP_STATUS_INTERNAL_ERROR, NULL, 0);
 		return;
 	}
+#endif
 
 	http_response_header(req, "upgrade", "websocket");
 	http_response_header(req, "connection", "upgrade");
+#if !defined(KORE_NO_TLS)
 	http_response_header(req, "sec-websocket-accept", base64);
 	kore_mem_free(base64);
+#endif
 
 	kore_debug("%p: new websocket connection", req->owner);
 

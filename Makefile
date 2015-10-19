@@ -29,7 +29,7 @@ endif
 
 ifneq ("$(NOTLS)", "")
 	CFLAGS+=-DKORE_NO_TLS
-	LDFLAGS=-rdynamic -lz -lcrypto
+	LDFLAGS=-rdynamic -lz
 endif
 
 ifneq ("$(PGSQL)", "")
