@@ -27,17 +27,11 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#include <openssl/ssl.h>
+
 #if !defined(KORE_NO_TLS)
 #include <openssl/err.h>
 #include <openssl/dh.h>
-#include <openssl/ssl.h>
-#else
-#include <sys/time.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdarg.h>
-#include <time.h>
 #endif
 
 #include <errno.h>
