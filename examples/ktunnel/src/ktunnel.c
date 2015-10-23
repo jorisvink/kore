@@ -121,6 +121,8 @@ ktunnel_pipe_create(struct connection *c, const char *host, const char *port)
 	}
 
 	cpipe = kore_connection_new(c);
+	TAILQ_INSERT_TAIL(&connections, cpipe, list);
+
 	cpipe->fd = fd;
 	cpipe->addr.ipv4 = sin;
 	cpipe->read = net_read;
