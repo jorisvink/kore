@@ -277,7 +277,7 @@ cli_create(int argc, char **argv)
 
 	cli_generate_certs();
 
-	printf("%s created succesfully!\n", appl);
+	printf("%s created successfully!\n", appl);
 
 #if !defined(KORE_NO_TLS)
 	printf("note: do NOT use the created DH parameters/certificates in production\n");
@@ -375,7 +375,7 @@ cli_build(int argc, char **argv)
 
 	if (requires_relink) {
 		cli_spawn_proc(cli_link_library, NULL);
-		printf("%s built succesfully!\n", appl);
+		printf("%s built successfully!\n", appl);
 	} else {
 		printf("nothing to be done\n");
 	}
