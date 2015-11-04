@@ -195,7 +195,7 @@ request_error(struct http_request *req)
 	return (HTTP_STATE_COMPLETE);
 }
 
-/* Request was completed succesfully. */
+/* Request was completed successfully. */
 int
 request_done(struct http_request *req)
 {
