@@ -49,9 +49,10 @@ void
 kore_websocket_handshake(struct http_request *req, struct kore_wscbs *wscbs)
 {
 	SHA_CTX			sctx;
-	struct kore_buf		*buf;
-	char			*key, *base64, *version;
+	char			*base64;
 	u_int8_t		digest[SHA_DIGEST_LENGTH];
+	struct kore_buf		*buf;
+	char			*key, *version;
 
 	if (!http_request_header(req, "sec-websocket-key", &key)) {
 		http_response(req, HTTP_STATUS_BAD_REQUEST, NULL, 0);

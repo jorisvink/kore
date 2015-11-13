@@ -44,15 +44,17 @@ static int		configure_runas(char **);
 static int		configure_workers(char **);
 static int		configure_pidfile(char **);
 static int		configure_accesslog(char **);
+#if !defined(KORE_NO_TLS)
 static int		configure_certfile(char **);
 static int		configure_certkey(char **);
+static int		configure_tls_version(char **);
+static int		configure_tls_cipher(char **);
+static int		configure_tls_dhparam(char **);
+#endif
 static int		configure_rlimit_nofiles(char **);
 static int		configure_max_connections(char **);
 static int		configure_accept_threshold(char **);
 static int		configure_set_affinity(char **);
-static int		configure_tls_version(char **);
-static int		configure_tls_cipher(char **);
-static int		configure_tls_dhparam(char **);
 static int		configure_spdy_idle_time(char **);
 static int		configure_http_header_max(char **);
 static int		configure_http_body_max(char **);
@@ -92,9 +94,13 @@ static struct {
 	{ "load",			configure_load },
 	{ "static",			configure_handler },
 	{ "dynamic",			configure_handler },
+#if !defined(KORE_NO_TLS)
 	{ "tls_version",		configure_tls_version },
 	{ "tls_cipher",			configure_tls_cipher },
 	{ "tls_dhparam",		configure_tls_dhparam },
+	{ "certfile",			configure_certfile },
+	{ "certkey",			configure_certkey },
+#endif
 	{ "spdy_idle_time",		configure_spdy_idle_time },
 	{ "domain",			configure_domain },
 	{ "chroot",			configure_chroot },
@@ -106,8 +112,6 @@ static struct {
 	{ "worker_set_affinity",	configure_set_affinity },
 	{ "pidfile",			configure_pidfile },
 	{ "accesslog",			configure_accesslog },
-	{ "certfile",			configure_certfile },
-	{ "certkey",			configure_certkey },
 	{ "client_certificates",	configure_client_certificates },
 	{ "http_header_max",		configure_http_header_max },
 	{ "http_body_max",		configure_http_body_max },
@@ -275,6 +279,7 @@ configure_load(char **argv)
 	return (KORE_RESULT_OK);
 }
 
+#if !defined(KORE_NO_TLS)
 static int
 configure_tls_version(char **argv)
 {
@@ -313,7 +318,6 @@ configure_tls_cipher(char **argv)
 static int
 configure_tls_dhparam(char **argv)
 {
-#if !defined(KORE_NO_TLS)
 	BIO		*bio;
 
 	if (argv[1] == NULL)
@@ -336,9 +340,50 @@ configure_tls_dhparam(char **argv)
 		printf("PEM_read_bio_DHparams(): %s\n", ssl_errno_s);
 		return (KORE_RESULT_ERROR);
 	}
-#endif
+
 	return (KORE_RESULT_OK);
 }
+
+static int
+configure_certfile(char **argv)
+{
+	if (argv[1] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	if (current_domain == NULL) {
+		printf("missing domain for certfile\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (current_domain->certfile != NULL) {
+		kore_debug("domain already has a certfile set");
+		return (KORE_RESULT_ERROR);
+	}
+
+	current_domain->certfile = kore_strdup(argv[1]);
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_certkey(char **argv)
+{
+	if (argv[1] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	if (current_domain == NULL) {
+		printf("missing domain for certkey\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (current_domain->certkey != NULL) {
+		kore_debug("domain already has a certkey set");
+		return (KORE_RESULT_ERROR);
+	}
+
+	current_domain->certkey = kore_strdup(argv[1]);
+	return (KORE_RESULT_OK);
+}
+#endif
 
 static int
 configure_spdy_idle_time(char **argv)
@@ -530,46 +575,6 @@ configure_accesslog(char **argv)
 		return (KORE_RESULT_ERROR);
 	}
 
-	return (KORE_RESULT_OK);
-}
-
-static int
-configure_certfile(char **argv)
-{
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
-
-	if (current_domain == NULL) {
-		printf("missing domain for certfile\n");
-		return (KORE_RESULT_ERROR);
-	}
-
-	if (current_domain->certfile != NULL) {
-		kore_debug("domain already has a certfile set");
-		return (KORE_RESULT_ERROR);
-	}
-
-	current_domain->certfile = kore_strdup(argv[1]);
-	return (KORE_RESULT_OK);
-}
-
-static int
-configure_certkey(char **argv)
-{
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
-
-	if (current_domain == NULL) {
-		printf("missing domain for certkey\n");
-		return (KORE_RESULT_ERROR);
-	}
-
-	if (current_domain->certkey != NULL) {
-		kore_debug("domain already has a certkey set");
-		return (KORE_RESULT_ERROR);
-	}
-
-	current_domain->certkey = kore_strdup(argv[1]);
 	return (KORE_RESULT_OK);
 }
 

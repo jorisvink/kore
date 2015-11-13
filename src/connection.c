@@ -45,11 +45,13 @@ kore_connection_new(void *owner)
 
 	c = kore_pool_get(&connection_pool);
 
+#if !defined(KORE_NO_TLS)
 	c->ssl = NULL;
+	c->cert = NULL;
+#endif
 	c->flags = 0;
 	c->rnb = NULL;
 	c->snb = NULL;
-	c->cert = NULL;
 	c->wscbs = NULL;
 	c->owner = owner;
 	c->tls_reneg = 0;

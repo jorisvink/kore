@@ -22,8 +22,10 @@
 
 struct kore_domain_h		domains;
 struct kore_domain		*primary_dom = NULL;
+#if !defined(KORE_NO_TLS)
 DH				*tls_dhparam = NULL;
 int				tls_version = KORE_TLS_VERSION_1_2;
+#endif
 
 static void	domain_load_crl(struct kore_domain *);
 
@@ -49,11 +51,13 @@ kore_domain_new(char *domain)
 
 	dom = kore_malloc(sizeof(*dom));
 	dom->accesslog = -1;
+#if !defined(KORE_NO_TLS)
 	dom->cafile = NULL;
 	dom->certkey = NULL;
 	dom->ssl_ctx = NULL;
 	dom->certfile = NULL;
 	dom->crlfile = NULL;
+#endif
 	dom->domain = kore_strdup(domain);
 	TAILQ_INIT(&(dom->handlers));
 	TAILQ_INSERT_TAIL(&domains, dom, list);
