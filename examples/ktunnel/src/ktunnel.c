@@ -42,7 +42,7 @@ open_connection(struct http_request *req)
 {
 	char			*host, *port;
 
-	/* Don't want to deal with SPDY connections. */
+	/* Make sure its HTTP. */
 	if (req->owner->proto != CONN_PROTO_HTTP) {
 		http_response(req, HTTP_STATUS_BAD_REQUEST, NULL, 0);
 		return (KORE_RESULT_OK);
