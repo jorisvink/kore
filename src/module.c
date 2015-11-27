@@ -26,7 +26,6 @@ void
 kore_module_init(void)
 {
 	TAILQ_INIT(&modules);
-	TAILQ_INIT(&domains);
 }
 
 void
