@@ -880,7 +880,7 @@ configure_websocket_timeout(char **argv)
 	return (KORE_RESULT_OK);
 }
 
-#endif /* ! KORE_NO_HTTP */
+#endif /* !KORE_NO_HTTP */
 
 static int
 configure_chroot(char **argv)
