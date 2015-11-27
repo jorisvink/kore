@@ -96,7 +96,6 @@ subscribe(struct http_request *req)
 
 	/* Allocate a state to be carried by our connection. */
 	state = kore_malloc(sizeof(*state));
-	state->stream = req->stream;
 	req->owner->hdlr_extra = state;
 
 	/* Now start a timer to send a ping back every 10 second. */
@@ -133,7 +132,7 @@ sse_send(struct connection *c, void *data, size_t len)
 		return;
 
 	/* Queue outgoing data now. */
-	net_send_queue(c, data, len, state->stream, NETBUF_LAST_CHAIN);
+	net_send_queue(c, data, len);
 	net_send_flush(c);
 }
 
