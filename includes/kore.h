@@ -46,8 +46,6 @@ extern "C" {
 extern int daemon(int, int);
 #endif
 
-#include "spdy.h"
-
 #define KORE_RESULT_ERROR	0
 #define KORE_RESULT_OK		1
 #define KORE_RESULT_RETRY	2
@@ -95,8 +93,10 @@ extern int daemon(int, int);
 #define X509_CN_LENGTH		(ub_common_name + 1)
 
 /* XXX hackish. */
+#if !defined(KORE_NO_HTTP)
 struct http_request;
-struct spdy_stream;
+#endif
+struct connection;
 
 struct netbuf {
 	u_int8_t		*buf;
@@ -107,7 +107,6 @@ struct netbuf {
 	u_int8_t		flags;
 
 	void			*owner;
-	struct spdy_stream	*stream;
 
 	void			*extra;
 	int			(*cb)(struct netbuf *);
@@ -124,9 +123,9 @@ TAILQ_HEAD(netbuf_head, netbuf);
 
 struct listener {
 	u_int8_t		type;
-
-	int			fd;
 	u_int8_t		addrtype;
+	int			fd;
+	void			(*connect)(struct connection *);
 
 	union {
 		struct sockaddr_in	ipv4;
@@ -144,10 +143,9 @@ LIST_HEAD(listener_head, listener);
 #define CONN_STATE_DISCONNECTING	3
 
 #define CONN_PROTO_UNKNOWN	0
-#define CONN_PROTO_SPDY		1
-#define CONN_PROTO_HTTP		2
-#define CONN_PROTO_WEBSOCKET	3
-#define CONN_PROTO_MSG		4
+#define CONN_PROTO_HTTP		1
+#define CONN_PROTO_WEBSOCKET	2
+#define CONN_PROTO_MSG		3
 
 #define CONN_READ_POSSIBLE	0x01
 #define CONN_WRITE_POSSIBLE	0x02
@@ -155,7 +153,6 @@ LIST_HEAD(listener_head, listener);
 #define CONN_IDLE_TIMER_ACT	0x10
 #define CONN_READ_BLOCK		0x20
 #define CONN_CLOSE_EMPTY	0x40
-#define SPDY_CONN_GOAWAY	0x80
 
 #define KORE_IDLE_TIMER_MAX	20000
 
@@ -202,22 +199,13 @@ struct connection {
 		u_int64_t	start;
 	} idle_timer;
 
-	u_int8_t		inflate_started;
-	z_stream		z_inflate;
-	u_int8_t		deflate_started;
-	z_stream		z_deflate;
-
-	u_int32_t		wsize_initial;
-	u_int32_t		spdy_send_wsize;
-	u_int32_t		spdy_recv_wsize;
-
 	struct netbuf_head	send_queue;
 	struct netbuf		*snb;
 	struct netbuf		*rnb;
 
-	u_int32_t			client_stream_id;
-	TAILQ_HEAD(, spdy_stream)	spdy_streams;
+#if !defined(KORE_NO_HTTP)
 	TAILQ_HEAD(, http_request)	http_requests;
+#endif
 
 	TAILQ_ENTRY(connection)	list;
 	TAILQ_ENTRY(connection)	flush_list;
@@ -226,6 +214,8 @@ struct connection {
 TAILQ_HEAD(connection_list, connection);
 extern struct connection_list	connections;
 extern struct connection_list	disconnected;
+
+#if !defined(KORE_NO_HTTP)
 
 struct kore_handler_params {
 	char			*name;
@@ -249,11 +239,13 @@ struct kore_auth {
 	TAILQ_ENTRY(kore_auth)	list;
 };
 
-#define KORE_MODULE_LOAD	1
-#define KORE_MODULE_UNLOAD	2
-
 #define HANDLER_TYPE_STATIC	1
 #define HANDLER_TYPE_DYNAMIC	2
+
+#endif
+
+#define KORE_MODULE_LOAD	1
+#define KORE_MODULE_UNLOAD	2
 
 struct kore_module {
 	void			*handle;
@@ -274,9 +266,10 @@ struct kore_module_handle {
 	int			errors;
 	regex_t			rctx;
 	struct kore_domain	*dom;
+#if !defined(KORE_NO_HTTP)
 	struct kore_auth	*auth;
-
 	TAILQ_HEAD(, kore_handler_params)	params;
+#endif
 	TAILQ_ENTRY(kore_module_handle)		list;
 };
 
@@ -304,6 +297,8 @@ struct kore_domain {
 
 TAILQ_HEAD(kore_domain_h, kore_domain);
 
+#if !defined(KORE_NO_HTTP)
+
 #define KORE_VALIDATOR_TYPE_REGEX	1
 #define KORE_VALIDATOR_TYPE_FUNCTION	2
 
@@ -316,6 +311,7 @@ struct kore_validator {
 
 	TAILQ_ENTRY(kore_validator)	list;
 };
+#endif
 
 #define KORE_BUF_INITIAL	128
 #define KORE_BUF_INCREMENT	KORE_BUF_INITIAL
@@ -394,7 +390,6 @@ extern int	tls_version;
 extern DH	*tls_dhparam;
 
 extern u_int8_t			nlisteners;
-extern u_int64_t		spdy_idle_time;
 extern u_int16_t		cpu_count;
 extern u_int8_t			worker_count;
 extern u_int8_t			worker_set_affinity;
@@ -441,10 +436,12 @@ void		kore_accesslog_init(void);
 void		kore_accesslog_worker_init(void);
 int		kore_accesslog_write(const void *, u_int32_t);
 
+#if !defined(KORE_NO_HTTP)
 int		kore_auth_run(struct http_request *, struct kore_auth *);
 void		kore_auth_init(void);
 int		kore_auth_new(const char *);
 struct kore_auth	*kore_auth_lookup(const char *);
+#endif
 
 void		kore_timer_init(void);
 u_int64_t	kore_timer_run(u_int64_t);
@@ -453,8 +450,7 @@ struct kore_timer	*kore_timer_add(void (*cb)(void *, u_int64_t),
 			    u_int64_t, void *, int);
 
 int		kore_tls_sni_cb(SSL *, int *, void *);
-int		kore_server_bind(const char *, const char *);
-int		kore_tls_npn_cb(SSL *, const u_char **, unsigned int *, void *);
+int		kore_server_bind(const char *, const char *, const char *);
 void		kore_tls_info_callback(const SSL *, int, int);
 
 void			kore_connection_init(void);
@@ -482,10 +478,6 @@ void		*kore_realloc(void *, size_t);
 void		kore_mem_free(void *);
 void		kore_mem_init(void);
 
-#if defined(KORE_PEDANTIC_MALLOC)
-void		explicit_bzero(void *, size_t);
-#endif
-
 void		*kore_pool_get(struct kore_pool *);
 void		kore_pool_put(struct kore_pool *, void *);
 void		kore_pool_init(struct kore_pool *, const char *,
@@ -506,19 +498,21 @@ int		kore_base64_encode(u_int8_t *, u_int32_t, char **);
 int		kore_base64_decode(char *, u_int8_t **, u_int32_t *);
 void		*kore_mem_find(void *, size_t, void *, u_int32_t);
 
+#if !defined(KORE_NO_HTTP)
 void		kore_websocket_handshake(struct http_request *,
 		    struct kore_wscbs *);
 void		kore_websocket_send(struct connection *,
 		    u_int8_t, const void *, size_t);
 void		kore_websocket_broadcast(struct connection *,
 		    u_int8_t, const void *, size_t, int);
+#endif
 
 void		kore_msg_init(void);
 void		kore_msg_worker_init(void);
 void		kore_msg_parent_init(void);
 void		kore_msg_parent_add(struct kore_worker *);
 void		kore_msg_parent_remove(struct kore_worker *);
-void		kore_msg_send(u_int16_t, u_int8_t, void *, u_int32_t);
+void		kore_msg_send(u_int16_t, u_int8_t, const void *, u_int32_t);
 int		kore_msg_register(u_int8_t,
 		    void (*cb)(struct kore_msg *, const void *));
 
@@ -540,6 +534,7 @@ struct kore_domain		*kore_domain_lookup(const char *);
 struct kore_module_handle	*kore_module_handler_find(const char *,
 				    const char *);
 
+#if !defined(KORE_NO_HTTP)
 void		kore_validator_init(void);
 void		kore_validator_reload(void);
 int		kore_validator_add(const char *, u_int8_t, const char *);
@@ -547,6 +542,7 @@ int		kore_validator_run(struct http_request *, const char *, char *);
 int		kore_validator_check(struct http_request *,
 		    struct kore_validator *, void *);
 struct kore_validator	*kore_validator_lookup(const char *);
+#endif
 
 void		fatal(const char *, ...) __attribute__((noreturn));
 void		kore_debug_internal(char *, int, const char *, ...);
@@ -573,11 +569,9 @@ void		net_recv_queue(struct connection *, u_int32_t, int,
 		    int (*cb)(struct netbuf *));
 void		net_recv_expand(struct connection *c, u_int32_t,
 		    int (*cb)(struct netbuf *));
-void		net_send_queue(struct connection *, const void *,
-		    u_int32_t, struct spdy_stream *, int);
+void		net_send_queue(struct connection *, const void *, u_int32_t);
 void		net_send_stream(struct connection *, void *,
-		    u_int32_t, struct spdy_stream *,
-		    int (*cb)(struct netbuf *), struct netbuf **);
+		    u_int32_t, int (*cb)(struct netbuf *), struct netbuf **);
 
 void		kore_buf_free(struct kore_buf *);
 struct kore_buf	*kore_buf_create(u_int32_t);
@@ -588,26 +582,6 @@ void	kore_buf_appendf(struct kore_buf *, const char *, ...);
 void	kore_buf_appendv(struct kore_buf *, const char *, va_list);
 void	kore_buf_appendb(struct kore_buf *, struct kore_buf *);
 void	kore_buf_replace_string(struct kore_buf *, char *, void *, size_t);
-
-struct spdy_stream	*spdy_stream_lookup(struct connection *, u_int32_t);
-int			spdy_stream_get_header(struct spdy_header_block *,
-			    const char *, char **);
-void			spdy_update_wsize(struct connection *,
-			    struct spdy_stream *, u_int32_t);
-
-int		spdy_frame_recv(struct netbuf *);
-int		spdy_dataframe_begin(struct connection *);
-void		spdy_session_teardown(struct connection *c, u_int8_t);
-void		spdy_frame_send(struct connection *, u_int16_t,
-		    u_int8_t, u_int32_t, struct spdy_stream *, u_int32_t);
-void		spdy_header_block_add(struct spdy_header_block *,
-		    char *, char *);
-u_int8_t	*spdy_header_block_release(struct connection *,
-		    struct spdy_header_block *, u_int32_t *);
-void		spdy_stream_close(struct connection *,
-		    struct spdy_stream *, int);
-
-struct spdy_header_block	*spdy_header_block_create(int);
 
 #if defined(__cplusplus)
 }

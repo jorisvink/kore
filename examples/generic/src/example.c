@@ -25,7 +25,6 @@ int		serve_style_css(struct http_request *);
 int		serve_index(struct http_request *);
 int		serve_intro(struct http_request *);
 int		serve_b64test(struct http_request *);
-int		serve_spdyreset(struct http_request *);
 int		serve_file_upload(struct http_request *);
 int		serve_validator(struct http_request *);
 int		serve_params_test(struct http_request *);
@@ -129,13 +128,6 @@ serve_b64test(struct http_request *req)
 	http_response(req, 200, data, len);
 	kore_mem_free(data);
 
-	return (KORE_RESULT_OK);
-}
-
-int
-serve_spdyreset(struct http_request *req)
-{
-	spdy_session_teardown(req->owner, SPDY_SESSION_ERROR_OK);
 	return (KORE_RESULT_OK);
 }
 

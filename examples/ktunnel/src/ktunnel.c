@@ -163,7 +163,7 @@ ktunnel_pipe_data(struct netbuf *nb)
 
 	printf("received %d bytes on pipe %p (-> %p)\n", nb->s_off, src, dst);
 
-	net_send_queue(dst, nb->buf, nb->s_off, NULL, NETBUF_LAST_CHAIN);
+	net_send_queue(dst, nb->buf, nb->s_off);
 	net_send_flush(dst);
 	net_recv_reset(src, NETBUF_SEND_PAYLOAD_MAX, ktunnel_pipe_data);
 

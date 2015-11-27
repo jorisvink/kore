@@ -6,30 +6,35 @@ KORE=kore
 INSTALL_DIR=$(PREFIX)/bin
 INCLUDE_DIR=$(PREFIX)/include/kore
 
-S_SRC=	src/kore.c src/accesslog.c src/auth.c src/buf.c src/cli.c \
-	src/config.c src/connection.c src/domain.c src/http.c src/mem.c \
-	src/msg.c src/module.c src/net.c src/pool.c src/spdy.c src/timer.c \
-	src/validator.c src/utils.c src/websocket.c src/worker.c \
-	src/zlib_dict.c
+S_SRC=	src/kore.c src/buf.c src/cli.c src/config.c src/connection.c \
+	src/domain.c src/mem.c src/msg.c src/module.c src/net.c \
+	src/pool.c src/timer.c src/utils.c src/worker.c
 S_OBJS=	$(S_SRC:.c=.o)
 
 CFLAGS+=-Wall -Wstrict-prototypes -Wmissing-prototypes
 CFLAGS+=-Wmissing-declarations -Wshadow -Wpointer-arith -Wcast-qual
 CFLAGS+=-Wsign-compare -Iincludes -g
 CFLAGS+=-DPREFIX='"$(PREFIX)"'
-LDFLAGS+=-rdynamic -lssl -lcrypto -lz
+LDFLAGS=-rdynamic -lssl -lcrypto
 
 ifneq ("$(DEBUG)", "")
 	CFLAGS+=-DKORE_DEBUG
 endif
 
-ifneq ("$(KORE_PEDANTIC_MALLOC)", "")
-	CFLAGS+=-DKORE_PEDANTIC_MALLOC
+ifneq ("$(NOHTTP)", "")
+	CFLAGS+=-DKORE_NO_HTTP
+else
+	S_SRC+= src/auth.c src/accesslog.c src/http.c \
+		src/validator.c src/websocket.c src/zlib_dict.c
 endif
 
 ifneq ("$(NOTLS)", "")
 	CFLAGS+=-DKORE_NO_TLS
-	LDFLAGS=-rdynamic -lz -lcrypto
+	ifneq ("$(NOHTTP)", "")
+		LDFLAGS=-rdynamic
+	else
+		LDFLAGS=-rdynamic -lcrypto
+	endif
 endif
 
 ifneq ("$(PGSQL)", "")

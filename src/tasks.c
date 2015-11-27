@@ -56,7 +56,9 @@ void
 kore_task_create(struct kore_task *t, int (*entry)(struct kore_task *))
 {
 	t->cb = NULL;
+#if !defined(KORE_NO_HTTP)
 	t->req = NULL;
+#endif
 	t->entry = entry;
 	t->type = KORE_TYPE_TASK;
 	t->state = KORE_TASK_STATE_CREATED;
@@ -91,6 +93,7 @@ kore_task_run(struct kore_task *t)
 	pthread_cond_signal(&(tt->cond));
 }
 
+#if !defined(KORE_NO_HTTP)
 void
 kore_task_bind_request(struct kore_task *t, struct http_request *req)
 {
@@ -104,13 +107,15 @@ kore_task_bind_request(struct kore_task *t, struct http_request *req)
 
 	http_request_sleep(req);
 }
+#endif
 
 void
 kore_task_bind_callback(struct kore_task *t, void (*cb)(struct kore_task *))
 {
+#if !defined(KORE_NO_HTTP)
 	if (t->req != NULL)
 		fatal("cannot bind requests and cbs at the same time");
-
+#endif
 	t->cb = cb;
 }
 
@@ -119,10 +124,12 @@ kore_task_destroy(struct kore_task *t)
 {
 	kore_debug("kore_task_destroy: %p", t);
 
+#if !defined(KORE_NO_HTTP)
 	if (t->req != NULL) {
 		t->req = NULL;
 		LIST_REMOVE(t, rlist);
 	}
+#endif
 
 	pthread_rwlock_wrlock(&(t->lock));
 
@@ -198,16 +205,20 @@ kore_task_handle(struct kore_task *t, int finished)
 {
 	kore_debug("kore_task_handle: %p, %d", t, finished);
 
+#if !defined(KORE_NO_HTTP)
 	if (t->req != NULL)
 		http_request_wakeup(t->req);
+#endif
 
 	if (finished) {
 		kore_platform_disable_read(t->fds[0]);
 		kore_task_set_state(t, KORE_TASK_STATE_FINISHED);
+#if !defined(KORE_NO_HTTP)
 		if (t->req != NULL) {
 			if (t->req->flags & HTTP_REQUEST_DELETE)
 				kore_task_destroy(t);
 		}
+#endif
 	}
 
 	if (t->cb != NULL)

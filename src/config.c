@@ -37,23 +37,29 @@
 static int		configure_include(char **);
 static int		configure_bind(char **);
 static int		configure_load(char **);
-static int		configure_handler(char **);
 static int		configure_domain(char **);
 static int		configure_chroot(char **);
 static int		configure_runas(char **);
 static int		configure_workers(char **);
 static int		configure_pidfile(char **);
-static int		configure_accesslog(char **);
-static int		configure_certfile(char **);
-static int		configure_certkey(char **);
 static int		configure_rlimit_nofiles(char **);
 static int		configure_max_connections(char **);
 static int		configure_accept_threshold(char **);
 static int		configure_set_affinity(char **);
+static int		configure_socket_backlog(char **);
+
+#if !defined(KORE_NO_TLS)
+static int		configure_certfile(char **);
+static int		configure_certkey(char **);
 static int		configure_tls_version(char **);
 static int		configure_tls_cipher(char **);
 static int		configure_tls_dhparam(char **);
-static int		configure_spdy_idle_time(char **);
+static int		configure_client_certificates(char **);
+#endif
+
+#if !defined(KORE_NO_HTTP)
+static int		configure_handler(char **);
+static int		configure_accesslog(char **);
 static int		configure_http_header_max(char **);
 static int		configure_http_body_max(char **);
 static int		configure_http_hsts_enable(char **);
@@ -62,7 +68,6 @@ static int		configure_http_request_limit(char **);
 static int		configure_validator(char **);
 static int		configure_params(char **);
 static int		configure_validate(char **);
-static int		configure_client_certificates(char **);
 static int		configure_authentication(char **);
 static int		configure_authentication_uri(char **);
 static int		configure_authentication_type(char **);
@@ -70,7 +75,7 @@ static int		configure_authentication_value(char **);
 static int		configure_authentication_validator(char **);
 static int		configure_websocket_maxframe(char **);
 static int		configure_websocket_timeout(char **);
-static int		configure_socket_backlog(char **);
+#endif
 
 #if defined(KORE_USE_PGSQL)
 static int		configure_pgsql_conn_max(char **);
@@ -90,12 +95,6 @@ static struct {
 	{ "include",			configure_include },
 	{ "bind",			configure_bind },
 	{ "load",			configure_load },
-	{ "static",			configure_handler },
-	{ "dynamic",			configure_handler },
-	{ "tls_version",		configure_tls_version },
-	{ "tls_cipher",			configure_tls_cipher },
-	{ "tls_dhparam",		configure_tls_dhparam },
-	{ "spdy_idle_time",		configure_spdy_idle_time },
 	{ "domain",			configure_domain },
 	{ "chroot",			configure_chroot },
 	{ "runas",			configure_runas },
@@ -105,10 +104,19 @@ static struct {
 	{ "worker_accept_threshold",	configure_accept_threshold },
 	{ "worker_set_affinity",	configure_set_affinity },
 	{ "pidfile",			configure_pidfile },
-	{ "accesslog",			configure_accesslog },
+	{ "socket_backlog",		configure_socket_backlog },
+#if !defined(KORE_NO_TLS)
+	{ "tls_version",		configure_tls_version },
+	{ "tls_cipher",			configure_tls_cipher },
+	{ "tls_dhparam",		configure_tls_dhparam },
 	{ "certfile",			configure_certfile },
 	{ "certkey",			configure_certkey },
 	{ "client_certificates",	configure_client_certificates },
+#endif
+#if !defined(KORE_NO_HTTP)
+	{ "static",			configure_handler },
+	{ "dynamic",			configure_handler },
+	{ "accesslog",			configure_accesslog },
 	{ "http_header_max",		configure_http_header_max },
 	{ "http_body_max",		configure_http_body_max },
 	{ "http_hsts_enable",		configure_http_hsts_enable },
@@ -124,7 +132,7 @@ static struct {
 	{ "authentication_validator",	configure_authentication_validator },
 	{ "websocket_maxframe",		configure_websocket_maxframe },
 	{ "websocket_timeout",		configure_websocket_timeout },
-	{ "socket_backlog",		configure_socket_backlog },
+#endif
 #if defined(KORE_USE_PGSQL)
 	{ "pgsql_conn_max",		configure_pgsql_conn_max },
 #endif
@@ -135,10 +143,14 @@ static struct {
 };
 
 char					*config_file = NULL;
+
+#if !defined(KORE_NO_HTTP)
 static u_int8_t				current_method = 0;
 static struct kore_auth			*current_auth = NULL;
-static struct kore_domain		*current_domain = NULL;
 static struct kore_module_handle	*current_handler = NULL;
+#endif
+
+static struct kore_domain		*current_domain = NULL;
 
 void
 kore_parse_config(void)
@@ -197,6 +209,7 @@ kore_parse_config_file(char *fpath)
 				*t = ' ';
 		}
 
+#if !defined(KORE_NO_HTTP)
 		if (!strcmp(p, "}") && current_handler != NULL) {
 			lineno++;
 			current_handler = NULL;
@@ -213,6 +226,7 @@ kore_parse_config_file(char *fpath)
 			current_auth = NULL;
 			continue;
 		}
+#endif
 
 		if (!strcmp(p, "}") && current_domain != NULL)
 			domain_sslstart();
@@ -262,7 +276,7 @@ configure_bind(char **argv)
 	if (argv[1] == NULL || argv[2] == NULL)
 		return (KORE_RESULT_ERROR);
 
-	return (kore_server_bind(argv[1], argv[2]));
+	return (kore_server_bind(argv[1], argv[2], argv[3]));
 }
 
 static int
@@ -275,6 +289,7 @@ configure_load(char **argv)
 	return (KORE_RESULT_OK);
 }
 
+#if !defined(KORE_NO_TLS)
 static int
 configure_tls_version(char **argv)
 {
@@ -313,7 +328,6 @@ configure_tls_cipher(char **argv)
 static int
 configure_tls_dhparam(char **argv)
 {
-#if !defined(KORE_NO_TLS)
 	BIO		*bio;
 
 	if (argv[1] == NULL)
@@ -336,79 +350,6 @@ configure_tls_dhparam(char **argv)
 		printf("PEM_read_bio_DHparams(): %s\n", ssl_errno_s);
 		return (KORE_RESULT_ERROR);
 	}
-#endif
-	return (KORE_RESULT_OK);
-}
-
-static int
-configure_spdy_idle_time(char **argv)
-{
-	int		err;
-
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
-
-	spdy_idle_time = kore_strtonum(argv[1], 10, 0, 65535, &err);
-	if (err != KORE_RESULT_OK) {
-		printf("spdy_idle_time has invalid value: %s\n", argv[1]);
-		return (KORE_RESULT_ERROR);
-	}
-
-	spdy_idle_time = spdy_idle_time * 1000;
-	return (KORE_RESULT_OK);
-}
-
-static int
-configure_domain(char **argv)
-{
-	if (argv[2] == NULL)
-		return (KORE_RESULT_ERROR);
-
-	if (current_domain != NULL) {
-		printf("previous domain configuration not closed\n");
-		return (KORE_RESULT_ERROR);
-	}
-
-	if (strcmp(argv[2], "{")) {
-		printf("missing { for domain directive\n");
-		return (KORE_RESULT_ERROR);
-	}
-
-	if (!kore_domain_new(argv[1])) {
-		printf("could not create new domain %s\n", argv[1]);
-		return (KORE_RESULT_ERROR);
-	}
-
-	current_domain = kore_domain_lookup(argv[1]);
-	return (KORE_RESULT_OK);
-}
-
-static int
-configure_handler(char **argv)
-{
-	int		type;
-
-	if (current_domain == NULL) {
-		printf("missing domain for page handler\n");
-		return (KORE_RESULT_ERROR);
-	}
-
-	if (argv[1] == NULL || argv[2] == NULL)
-		return (KORE_RESULT_ERROR);
-
-	if (!strcmp(argv[0], "static"))
-		type = HANDLER_TYPE_STATIC;
-	else if (!strcmp(argv[0], "dynamic"))
-		type = HANDLER_TYPE_DYNAMIC;
-	else
-		return (KORE_RESULT_ERROR);
-
-	if (!kore_module_handler_new(argv[1],
-	    current_domain->domain, argv[2], argv[3], type)) {
-		kore_debug("cannot create handler for %s", argv[1]);
-		return (KORE_RESULT_ERROR);
-	}
-
 	return (KORE_RESULT_OK);
 }
 
@@ -434,101 +375,6 @@ configure_client_certificates(char **argv)
 	current_domain->cafile = kore_strdup(argv[1]);
 	if (argv[2] != NULL)
 		current_domain->crlfile = kore_strdup(argv[2]);
-
-	return (KORE_RESULT_OK);
-}
-
-static int
-configure_chroot(char **argv)
-{
-	if (chroot_path != NULL) {
-		kore_debug("duplicate chroot path specified");
-		return (KORE_RESULT_ERROR);
-	}
-
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
-
-	chroot_path = kore_strdup(argv[1]);
-	return (KORE_RESULT_OK);
-}
-
-static int
-configure_runas(char **argv)
-{
-	if (runas_user != NULL) {
-		kore_debug("duplicate runas user specified");
-		return (KORE_RESULT_ERROR);
-	}
-
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
-
-	runas_user = kore_strdup(argv[1]);
-	return (KORE_RESULT_OK);
-}
-
-static int
-configure_workers(char **argv)
-{
-	int		err;
-
-	if (worker_count != 0) {
-		kore_debug("duplicate worker directive specified");
-		return (KORE_RESULT_ERROR);
-	}
-
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
-
-	worker_count = kore_strtonum(argv[1], 10, 1, 255, &err);
-	if (err != KORE_RESULT_OK) {
-		printf("%s is not a correct worker number\n", argv[1]);
-		return (KORE_RESULT_ERROR);
-	}
-
-	return (KORE_RESULT_OK);
-}
-
-static int
-configure_pidfile(char **argv)
-{
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
-
-	if (strcmp(kore_pidfile, KORE_PIDFILE_DEFAULT)) {
-		kore_debug("duplicate pidfile directive specified");
-		return (KORE_RESULT_ERROR);
-	}
-
-	kore_pidfile = kore_strdup(argv[1]);
-	return (KORE_RESULT_OK);
-}
-
-static int
-configure_accesslog(char **argv)
-{
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
-
-	if (current_domain == NULL) {
-		kore_debug("missing domain for accesslog");
-		return (KORE_RESULT_ERROR);
-	}
-
-	if (current_domain->accesslog != -1) {
-		kore_debug("domain %s already has an open accesslog",
-		    current_domain->domain);
-		return (KORE_RESULT_ERROR);
-	}
-
-	current_domain->accesslog = open(argv[1],
-	    O_CREAT | O_APPEND | O_WRONLY,
-	    S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-	if (current_domain->accesslog == -1) {
-		kore_debug("open(%s): %s", argv[1], errno_s);
-		return (KORE_RESULT_ERROR);
-	}
 
 	return (KORE_RESULT_OK);
 }
@@ -573,17 +419,57 @@ configure_certkey(char **argv)
 	return (KORE_RESULT_OK);
 }
 
-static int
-configure_max_connections(char **argv)
-{
-	int		err;
+#endif /* !KORE_NO_TLS */
 
-	if (argv[1] == NULL)
+static int
+configure_domain(char **argv)
+{
+	if (argv[2] == NULL)
 		return (KORE_RESULT_ERROR);
 
-	worker_max_connections = kore_strtonum(argv[1], 10, 1, UINT_MAX, &err);
-	if (err != KORE_RESULT_OK) {
-		printf("bad value for worker_max_connections: %s\n", argv[1]);
+	if (current_domain != NULL) {
+		printf("previous domain configuration not closed\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (strcmp(argv[2], "{")) {
+		printf("missing { for domain directive\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (!kore_domain_new(argv[1])) {
+		printf("could not create new domain %s\n", argv[1]);
+		return (KORE_RESULT_ERROR);
+	}
+
+	current_domain = kore_domain_lookup(argv[1]);
+	return (KORE_RESULT_OK);
+}
+
+#if !defined(KORE_NO_HTTP)
+static int
+configure_handler(char **argv)
+{
+	int		type;
+
+	if (current_domain == NULL) {
+		printf("missing domain for page handler\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (argv[1] == NULL || argv[2] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	if (!strcmp(argv[0], "static"))
+		type = HANDLER_TYPE_STATIC;
+	else if (!strcmp(argv[0], "dynamic"))
+		type = HANDLER_TYPE_DYNAMIC;
+	else
+		return (KORE_RESULT_ERROR);
+
+	if (!kore_module_handler_new(argv[1],
+	    current_domain->domain, argv[2], argv[3], type)) {
+		kore_debug("cannot create handler for %s", argv[1]);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -591,50 +477,27 @@ configure_max_connections(char **argv)
 }
 
 static int
-configure_rlimit_nofiles(char **argv)
+configure_accesslog(char **argv)
 {
-	int		err;
-
 	if (argv[1] == NULL)
 		return (KORE_RESULT_ERROR);
 
-	worker_rlimit_nofiles = kore_strtonum(argv[1], 10, 1, UINT_MAX, &err);
-	if (err != KORE_RESULT_OK) {
-		printf("bad value for worker_rlimit_nofiles: %s\n", argv[1]);
+	if (current_domain == NULL) {
+		kore_debug("missing domain for accesslog");
 		return (KORE_RESULT_ERROR);
 	}
 
-	return (KORE_RESULT_OK);
-}
-
-static int
-configure_accept_threshold(char **argv)
-{
-	int		err;
-
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
-
-	worker_accept_threshold = kore_strtonum(argv[1], 0, 1, UINT_MAX, &err);
-	if (err != KORE_RESULT_OK) {
-		printf("bad value for worker_accept_threshold: %s\n", argv[1]);
+	if (current_domain->accesslog != -1) {
+		kore_debug("domain %s already has an open accesslog",
+		    current_domain->domain);
 		return (KORE_RESULT_ERROR);
 	}
 
-	return (KORE_RESULT_OK);
-}
-
-static int
-configure_set_affinity(char **argv)
-{
-	int		err;
-
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
-
-	worker_set_affinity = kore_strtonum(argv[1], 10, 0, 1, &err);
-	if (err != KORE_RESULT_OK) {
-		printf("bad value for worker_set_affinity: %s\n", argv[1]);
+	current_domain->accesslog = open(argv[1],
+	    O_CREAT | O_APPEND | O_WRONLY,
+	    S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+	if (current_domain->accesslog == -1) {
+		kore_debug("open(%s): %s", argv[1], errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -1013,6 +876,143 @@ configure_websocket_timeout(char **argv)
 	}
 
 	kore_websocket_timeout = kore_websocket_timeout * 1000;
+
+	return (KORE_RESULT_OK);
+}
+
+#endif /* ! KORE_NO_HTTP */
+
+static int
+configure_chroot(char **argv)
+{
+	if (chroot_path != NULL) {
+		kore_debug("duplicate chroot path specified");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (argv[1] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	chroot_path = kore_strdup(argv[1]);
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_runas(char **argv)
+{
+	if (runas_user != NULL) {
+		kore_debug("duplicate runas user specified");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (argv[1] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	runas_user = kore_strdup(argv[1]);
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_workers(char **argv)
+{
+	int		err;
+
+	if (worker_count != 0) {
+		kore_debug("duplicate worker directive specified");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (argv[1] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	worker_count = kore_strtonum(argv[1], 10, 1, 255, &err);
+	if (err != KORE_RESULT_OK) {
+		printf("%s is not a correct worker number\n", argv[1]);
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_pidfile(char **argv)
+{
+	if (argv[1] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	if (strcmp(kore_pidfile, KORE_PIDFILE_DEFAULT)) {
+		kore_debug("duplicate pidfile directive specified");
+		return (KORE_RESULT_ERROR);
+	}
+
+	kore_pidfile = kore_strdup(argv[1]);
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_max_connections(char **argv)
+{
+	int		err;
+
+	if (argv[1] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	worker_max_connections = kore_strtonum(argv[1], 10, 1, UINT_MAX, &err);
+	if (err != KORE_RESULT_OK) {
+		printf("bad value for worker_max_connections: %s\n", argv[1]);
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_rlimit_nofiles(char **argv)
+{
+	int		err;
+
+	if (argv[1] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	worker_rlimit_nofiles = kore_strtonum(argv[1], 10, 1, UINT_MAX, &err);
+	if (err != KORE_RESULT_OK) {
+		printf("bad value for worker_rlimit_nofiles: %s\n", argv[1]);
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_accept_threshold(char **argv)
+{
+	int		err;
+
+	if (argv[1] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	worker_accept_threshold = kore_strtonum(argv[1], 0, 1, UINT_MAX, &err);
+	if (err != KORE_RESULT_OK) {
+		printf("bad value for worker_accept_threshold: %s\n", argv[1]);
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_set_affinity(char **argv)
+{
+	int		err;
+
+	if (argv[1] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	worker_set_affinity = kore_strtonum(argv[1], 10, 0, 1, &err);
+	if (err != KORE_RESULT_OK) {
+		printf("bad value for worker_set_affinity: %s\n", argv[1]);
+		return (KORE_RESULT_ERROR);
+	}
 
 	return (KORE_RESULT_OK);
 }

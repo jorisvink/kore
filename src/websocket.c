@@ -121,7 +121,7 @@ kore_websocket_send(struct connection *c, u_int8_t op, const void *data,
 
 	frame = kore_buf_create(len);
 	websocket_frame_build(frame, op, data, len);
-	net_send_queue(c, frame->data, frame->offset, NULL, NETBUF_LAST_CHAIN);
+	net_send_queue(c, frame->data, frame->offset);
 	kore_buf_free(frame);
 }
 
@@ -137,8 +137,7 @@ kore_websocket_broadcast(struct connection *src, u_int8_t op, const void *data,
 
 	TAILQ_FOREACH(c, &connections, list) {
 		if (c != src && c->proto == CONN_PROTO_WEBSOCKET) {
-			net_send_queue(c, frame->data, frame->offset,
-			    NULL, NETBUF_LAST_CHAIN);
+			net_send_queue(c, frame->data, frame->offset);
 			net_send_flush(c);
 		}
 	}

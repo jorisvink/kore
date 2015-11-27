@@ -30,7 +30,9 @@
 extern "C" {
 #endif
 
+#if !defined(KORE_NO_HTTP)
 struct http_request;
+#endif
 
 struct kore_task {
 	u_int8_t		type;
@@ -38,7 +40,10 @@ struct kore_task {
 	int			result;
 	pthread_rwlock_t	lock;
 
+#if !defined(KORE_NO_HTTP)
 	struct http_request	*req;
+#endif
+
 	int			fds[2];
 	int			(*entry)(struct kore_task *);
 	void			(*cb)(struct kore_task *);
@@ -66,8 +71,10 @@ void		kore_task_destroy(struct kore_task *);
 int		kore_task_finished(struct kore_task *);
 void		kore_task_handle(struct kore_task *, int);
 
+#if !defined(KORE_NO_HTTP)
 void		kore_task_bind_request(struct kore_task *,
 		    struct http_request *);
+#endif
 void		kore_task_bind_callback(struct kore_task *,
 		    void (*cb)(struct kore_task *));
 void		kore_task_create(struct kore_task *,

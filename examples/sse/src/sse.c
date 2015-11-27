@@ -16,7 +16,6 @@
 
 /*
  * Simple example of how SSE (Server Side Events) could be used in Kore.
- * We deal with SSE both over normal HTTP/1.1 and over SPDY connections.
  *
  * Upon new arrivals, a join event is broadcast to all clients.
  * If a client goes away a leave event is broadcasted.
@@ -35,7 +34,6 @@ int	subscribe(struct http_request *);
 void	sse_disconnect(struct connection *);
 void	sse_send(struct connection *, void *, size_t);
 void	sse_broadcast(struct connection *, void *, size_t);
-void	sse_spdy_stream_closed(struct connection *, struct spdy_stream *);
 int	check_header(struct http_request *, const char *, const char *);
 
 /*
@@ -43,7 +41,6 @@ int	check_header(struct http_request *, const char *, const char *);
  * to their hdlr_extra pointer member.
  */
 struct sse_state {
-	struct spdy_stream		*stream;
 	struct kore_timer		*timer;
 };
 
@@ -94,29 +91,13 @@ subscribe(struct http_request *req)
 	/* Set a disconnection method so we know when this client goes away. */
 	req->owner->disconnect = sse_disconnect;
 
-	/* For non SPDY clients we do not expect any more data to arrive. */
-	if (req->owner->proto != CONN_PROTO_SPDY)
-		req->owner->flags |= CONN_READ_BLOCK;
+	/* We do not expect any more data to arrive. */
+	req->owner->flags |= CONN_READ_BLOCK;
 
 	/* Allocate a state to be carried by our connection. */
 	state = kore_malloc(sizeof(*state));
 	state->stream = req->stream;
 	req->owner->hdlr_extra = state;
-
-	/* SSE over SPDY will need this extra love. */
-	if (req->owner->proto == CONN_PROTO_SPDY) {
-		/* Unset the http request attached to our SPDY stream. */
-		req->stream->httpreq = NULL;
-
-		/*
-		 * Do not let the stream close unless a RST occurs or
-		 * until we close it ourselves.
-		 */
-		req->stream->flags |= SPDY_NO_CLOSE;
-
-		/* Set a callback in case this stream gets a RST. */
-		req->stream->onclose = sse_spdy_stream_closed;
-	}
 
 	/* Now start a timer to send a ping back every 10 second. */
 	state->timer = kore_timer_add(sse_ping, 10000, req->owner, 0);
@@ -151,23 +132,6 @@ sse_send(struct connection *c, void *data, size_t len)
 	if (state == NULL)
 		return;
 
-	/* SPDY connections need this extra bit of magic. */
-	if (c->proto == CONN_PROTO_SPDY) {
-		if (state->stream == NULL) {
-			kore_log(LOG_ERR, "no SPDY stream for sse_send()");
-			kore_connection_disconnect(c);
-			return;
-		}
-
-		/*
-		 * Tell Kore to send a dataframe prelude + increase the
-		 * length of our stream to be sent.
-		 */
-		if (state->stream->send_size == 0)
-			state->stream->flags |= SPDY_DATAFRAME_PRELUDE;
-		state->stream->send_size += len;
-	}
-
 	/* Queue outgoing data now. */
 	net_send_queue(c, data, len, state->stream, NETBUF_LAST_CHAIN);
 	net_send_flush(c);
@@ -194,12 +158,6 @@ sse_disconnect(struct connection *c)
 	/* Tell others we are leaving. */
 	sse_broadcast(c, leaving, strlen(leaving));
 
-	/* Make sure we cleanup our hooked stream if any. */
-	if (c->proto == CONN_PROTO_SPDY && state->stream != NULL) {
-		state->stream->onclose = NULL;
-		spdy_stream_close(c, state->stream, SPDY_REMOVE_NETBUFS);
-	}
-
 	/* Kill our timer and free/remove the state. */
 	kore_timer_remove(state->timer);
 	kore_mem_free(state);
@@ -207,23 +165,6 @@ sse_disconnect(struct connection *c)
 	/* Prevent us to be called again. */
 	c->hdlr_extra = NULL;
 	c->disconnect = NULL;
-}
-
-void
-sse_spdy_stream_closed(struct connection *c, struct spdy_stream *s)
-{
-	struct sse_state	*state = c->hdlr_extra;
-
-	/* Paranoia. */
-	if (state->stream != s) {
-		state->stream = NULL;
-		kore_connection_disconnect(c);
-		return;
-	}
-
-	/* Set our stream to NULL and call sse_disconnect. */
-	state->stream = NULL;
-	sse_disconnect(c);
 }
 
 int

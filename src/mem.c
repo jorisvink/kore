@@ -49,7 +49,7 @@ kore_malloc(size_t len)
 		fatal("kore_malloc(): zero size");
 
 	mlen = sizeof(u_int32_t) + len + sizeof(struct meminfo);
-	if ((ptr = malloc(mlen)) == NULL)
+	if ((ptr = calloc(1, mlen)) == NULL)
 		fatal("kore_malloc(%d): %d", len, errno);
 
 	plen = (u_int32_t *)ptr;
@@ -58,10 +58,6 @@ kore_malloc(size_t len)
 
 	mem = KORE_MEMINFO(addr);
 	mem->magic = KORE_MEM_MAGIC;
-
-#if defined(KORE_PEDANTIC_MALLOC)
-	explicit_bzero(addr, len);
-#endif
 
 	return (addr);
 }
@@ -114,10 +110,6 @@ kore_mem_free(void *ptr)
 	if (mem->magic != KORE_MEM_MAGIC)
 		fatal("kore_mem_free(): magic boundary not found");
 
-#if defined(KORE_PEDANTIC_MALLOC)
-	explicit_bzero(ptr, KORE_MEMSIZE(ptr));
-#endif
-
 	addr = (u_int8_t *)ptr - sizeof(u_int32_t);
 	free(addr);
 }
@@ -134,11 +126,3 @@ kore_strdup(const char *str)
 
 	return (nstr);
 }
-
-#if defined(KORE_PEDANTIC_MALLOC)
-void
-explicit_bzero(void *addr, size_t len)
-{
-	bzero(addr, len);
-}
-#endif

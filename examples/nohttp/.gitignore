@@ -1,0 +1,5 @@
+*.o
+.objs
+nohttp.so
+assets.h
+cert

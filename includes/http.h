@@ -14,6 +14,8 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#if !defined(KORE_NO_HTTP)
+
 #ifndef __H_HTTP_H
 #define __H_HTTP_H
 
@@ -183,7 +185,6 @@ struct http_request {
 	char				*path;
 	char				*agent;
 	struct connection		*owner;
-	struct spdy_stream		*stream;
 	struct kore_buf			*http_body;
 	void				*hdlr_extra;
 	char				*query_string;
@@ -230,8 +231,8 @@ int		http_request_header(struct http_request *,
 		    const char *, char **);
 void		http_response_header(struct http_request *,
 		    const char *, const char *);
-int		http_request_new(struct connection *, struct spdy_stream *,
-		    const char *, const char *, const char *, const char *,
+int		http_request_new(struct connection *, const char *,
+		    const char *, const char *, const char *,
 		    struct http_request **);
 int		http_state_run(struct http_state *, u_int8_t,
 		    struct http_request *);
@@ -294,3 +295,5 @@ enum http_status_code {
 }
 #endif
 #endif /* !__H_HTTP_H */
+
+#endif /* ! KORE_NO_HTTP */

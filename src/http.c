@@ -19,7 +19,6 @@
 #include <ctype.h>
 #include <inttypes.h>
 
-#include "spdy.h"
 #include "kore.h"
 #include "http.h"
 
@@ -32,22 +31,17 @@
 #endif
 
 static int		http_body_recv(struct netbuf *);
-static void		http_error_response(struct connection *,
-			    struct spdy_stream *, int);
+static void		http_error_response(struct connection *, int);
 static void		http_argument_add(struct http_request *, const char *,
 			    void *, u_int32_t, int);
 static void		http_file_add(struct http_request *, const char *,
 			    const char *, u_int8_t *, u_int32_t);
 static void		http_response_normal(struct http_request *,
 			    struct connection *, int, void *, u_int32_t);
-static void		http_response_spdy(struct http_request *,
-			    struct connection *, struct spdy_stream *,
-			    int, void *, u_int32_t);
 
 static struct kore_buf			*header_buf;
 static char				http_version[32];
 static u_int16_t			http_version_len;
-static char				http_version_spdy[32];
 static TAILQ_HEAD(, http_request)	http_requests;
 static TAILQ_HEAD(, http_request)	http_requests_sleeping;
 static struct kore_pool			http_request_pool;
@@ -72,12 +66,6 @@ http_init(void)
 
 	header_buf = kore_buf_create(1024);
 
-	l = snprintf(http_version_spdy, sizeof(http_version_spdy),
-	    "kore (%d.%d.%d-%s)", KORE_VERSION_MAJOR, KORE_VERSION_MINOR,
-	    KORE_VERSION_PATCH, KORE_VERSION_STATE);
-	if (l == -1 || (size_t)l >= sizeof(http_version_spdy))
-		fatal("http_init(): http_version_spdy buffer too small");
-
 	l = snprintf(http_version, sizeof(http_version),
 	    "server: kore (%d.%d.%d-%s)\r\n", KORE_VERSION_MAJOR,
 	    KORE_VERSION_MINOR, KORE_VERSION_PATCH, KORE_VERSION_STATE);
@@ -99,7 +87,7 @@ http_init(void)
 }
 
 int
-http_request_new(struct connection *c, struct spdy_stream *s, const char *host,
+http_request_new(struct connection *c, const char *host,
     const char *method, const char *path, const char *version,
     struct http_request **out)
 {
@@ -108,21 +96,21 @@ http_request_new(struct connection *c, struct spdy_stream *s, const char *host,
 	int				m, flags;
 	size_t				hostlen, pathlen;
 
-	kore_debug("http_request_new(%p, %p, %s, %s, %s, %s)", c, s,
-	    host, method, path, version);
+	kore_debug("http_request_new(%p, %s, %s, %s, %s)", c, host,
+	    method, path, version);
 
 	if ((hostlen = strlen(host)) >= KORE_DOMAINNAME_LEN - 1) {
-		http_error_response(c, s, 500);
+		http_error_response(c, 500);
 		return (KORE_RESULT_ERROR);
 	}
 
 	if ((pathlen = strlen(path)) >= HTTP_URI_LEN - 1) {
-		http_error_response(c, s, 414);
+		http_error_response(c, 414);
 		return (KORE_RESULT_ERROR);
 	}
 
 	if (strcasecmp(version, "http/1.1")) {
-		http_error_response(c, s, 505);
+		http_error_response(c, 505);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -142,7 +130,7 @@ http_request_new(struct connection *c, struct spdy_stream *s, const char *host,
 		m = HTTP_METHOD_HEAD;
 		flags = HTTP_REQUEST_COMPLETE;
 	} else {
-		http_error_response(c, s, 400);
+		http_error_response(c, 400);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -152,7 +140,6 @@ http_request_new(struct connection *c, struct spdy_stream *s, const char *host,
 	req->start = 0;
 	req->owner = c;
 	req->status = 0;
-	req->stream = s;
 	req->method = m;
 	req->hdlr = NULL;
 	req->agent = NULL;
@@ -182,10 +169,8 @@ http_request_new(struct connection *c, struct spdy_stream *s, const char *host,
 	TAILQ_INIT(&(req->arguments));
 	TAILQ_INIT(&(req->files));
 
-	if (s != NULL) {
-		if (!http_request_header(req, "user-agent", &(req->agent)))
-			req->agent = kore_strdup("unknown");
-	}
+	if (!http_request_header(req, "user-agent", &(req->agent)))
+		req->agent = kore_strdup("unknown");
 
 #if defined(KORE_USE_TASKS)
 	LIST_INIT(&(req->tasks));
@@ -462,9 +447,6 @@ http_response(struct http_request *req, int status, void *d, u_int32_t l)
 	req->status = status;
 
 	switch (req->owner->proto) {
-	case CONN_PROTO_SPDY:
-		http_response_spdy(req, req->owner, req->stream, status, d, l);
-		break;
 	case CONN_PROTO_HTTP:
 	case CONN_PROTO_WEBSOCKET:
 		http_response_normal(req, req->owner, status, d, l);
@@ -484,10 +466,6 @@ http_response_stream(struct http_request *req, int status, void *base,
 	req->status = status;
 
 	switch (req->owner->proto) {
-	case CONN_PROTO_SPDY:
-		http_response_spdy(req, req->owner,
-		    req->stream, status, NULL, len);
-		break;
 	case CONN_PROTO_HTTP:
 		http_response_normal(req, req->owner, status, NULL, len);
 		break;
@@ -497,7 +475,7 @@ http_response_stream(struct http_request *req, int status, void *base,
 	}
 
 	if (req->method != HTTP_METHOD_HEAD) {
-		net_send_stream(req->owner, base, len, req->stream, cb, &nb);
+		net_send_stream(req->owner, base, len, cb, &nb);
 		nb->extra = arg;
 	}
 }
@@ -508,22 +486,16 @@ http_request_header(struct http_request *req, const char *header, char **out)
 	int			r;
 	struct http_header	*hdr;
 
-	if (req->owner->proto == CONN_PROTO_SPDY) {
-		r = spdy_stream_get_header(req->stream->hblock, header, out);
-	} else {
-		TAILQ_FOREACH(hdr, &(req->req_headers), list) {
-			if (!strcasecmp(hdr->header, header)) {
-				r = strlen(hdr->value) + 1;
-				*out = kore_malloc(r);
-				kore_strlcpy(*out, hdr->value, r);
-				return (KORE_RESULT_OK);
-			}
+	TAILQ_FOREACH(hdr, &(req->req_headers), list) {
+		if (!strcasecmp(hdr->header, header)) {
+			r = strlen(hdr->value) + 1;
+			*out = kore_malloc(r);
+			kore_strlcpy(*out, hdr->value, r);
+			return (KORE_RESULT_OK);
 		}
-
-		r = KORE_RESULT_ERROR;
 	}
 
-	return (r);
+	return (KORE_RESULT_ERROR);
 }
 
 int
@@ -561,13 +533,13 @@ http_header_recv(struct netbuf *nb)
 
 	h = kore_split_string(hbuf, "\r\n", headers, HTTP_REQ_HEADER_MAX);
 	if (h < 2) {
-		http_error_response(c, NULL, 400);
+		http_error_response(c, 400);
 		return (KORE_RESULT_OK);
 	}
 
 	v = kore_split_string(headers[0], " ", request, 4);
 	if (v != 3) {
-		http_error_response(c, NULL, 400);
+		http_error_response(c, 400);
 		return (KORE_RESULT_OK);
 	}
 
@@ -579,13 +551,13 @@ http_header_recv(struct netbuf *nb)
 
 		v = kore_split_string(headers[i], ":", host, 3);
 		if (v != 2) {
-			http_error_response(c, NULL, 400);
+			http_error_response(c, 400);
 			return (KORE_RESULT_OK);
 		}
 
 		if ((host[1] - host[0]) != 5 ||
 		    strncasecmp(host[0], "host", 4) || host[1] == '\0') {
-			http_error_response(c, NULL, 400);
+			http_error_response(c, 400);
 			return (KORE_RESULT_OK);
 		}
 
@@ -595,11 +567,11 @@ http_header_recv(struct netbuf *nb)
 	}
 
 	if (host[0] == NULL) {
-		http_error_response(c, NULL, 400);
+		http_error_response(c, 400);
 		return (KORE_RESULT_OK);
 	}
 
-	if (!http_request_new(c, NULL, host[1],
+	if (!http_request_new(c, host[1],
 	    request[0], request[1], request[2], &req))
 		return (KORE_RESULT_OK);
 
@@ -630,7 +602,7 @@ http_header_recv(struct netbuf *nb)
 		if (!http_request_header(req, "content-length", &p)) {
 			kore_debug("expected body but no content-length");
 			req->flags |= HTTP_REQUEST_DELETE;
-			http_error_response(req->owner, NULL, 411);
+			http_error_response(req->owner, 411);
 			return (KORE_RESULT_OK);
 		}
 
@@ -639,7 +611,7 @@ http_header_recv(struct netbuf *nb)
 			kore_debug("content-length invalid: %s", p);
 			kore_mem_free(p);
 			req->flags |= HTTP_REQUEST_DELETE;
-			http_error_response(req->owner, NULL, 411);
+			http_error_response(req->owner, 411);
 			return (KORE_RESULT_OK);
 		}
 
@@ -655,7 +627,7 @@ http_header_recv(struct netbuf *nb)
 			kore_log(LOG_NOTICE, "body too large (%ld > %ld)",
 			    clen, http_body_max);
 			req->flags |= HTTP_REQUEST_DELETE;
-			http_error_response(req->owner, NULL, 411);
+			http_error_response(req->owner, 411);
 			return (KORE_RESULT_OK);
 		}
 
@@ -675,7 +647,7 @@ http_header_recv(struct netbuf *nb)
 			req->flags &= ~HTTP_REQUEST_EXPECT_BODY;
 		} else {
 			kore_debug("bytes_left would become zero (%ld)", clen);
-			http_error_response(req->owner, NULL, 500);
+			http_error_response(req->owner, 500);
 		}
 	}
 
@@ -1145,77 +1117,17 @@ http_body_recv(struct netbuf *nb)
 }
 
 static void
-http_error_response(struct connection *c, struct spdy_stream *s, int status)
+http_error_response(struct connection *c, int status)
 {
-	kore_debug("http_error_response(%p, %p, %d)", c, s, status);
+	kore_debug("http_error_response(%p, %d)", c, status);
 
 	switch (c->proto) {
-	case CONN_PROTO_SPDY:
-		http_response_spdy(NULL, c, s, status, NULL, 0);
-		break;
 	case CONN_PROTO_HTTP:
-		if (s != NULL)
-			kore_log(LOG_NOTICE, "http_error_response: s != NULL");
 		http_response_normal(NULL, c, status, NULL, 0);
 		break;
 	default:
 		fatal("http_error_response() bad proto %d", c->proto);
 		/* NOTREACHED. */
-	}
-}
-
-static void
-http_response_spdy(struct http_request *req, struct connection *c,
-    struct spdy_stream *s, int status, void *d, u_int32_t len)
-{
-	u_int32_t			hlen;
-	struct http_header		*hdr;
-	u_int8_t			*htext;
-	struct spdy_header_block	*hblock;
-	char				sbuf[512];
-
-	(void)snprintf(sbuf, sizeof(sbuf), "%d %s",
-	    status, http_status_text(status));
-
-	hblock = spdy_header_block_create(SPDY_HBLOCK_NORMAL);
-	spdy_header_block_add(hblock, ":status", sbuf);
-	spdy_header_block_add(hblock, ":version", "HTTP/1.1");
-	spdy_header_block_add(hblock, ":server", http_version_spdy);
-
-	if (http_hsts_enable) {
-		(void)snprintf(sbuf, sizeof(sbuf),
-		    "max-age=%" PRIu64 "; includeSubDomains", http_hsts_enable);
-		spdy_header_block_add(hblock,
-		    ":strict-transport-security", sbuf);
-	}
-
-	if (req != NULL) {
-		TAILQ_FOREACH(hdr, &(req->resp_headers), list)
-			spdy_header_block_add(hblock, hdr->header, hdr->value);
-	}
-
-	htext = spdy_header_block_release(c, hblock, &hlen);
-	if (htext == NULL) {
-		spdy_session_teardown(c, SPDY_SESSION_ERROR_INTERNAL);
-		return;
-	}
-
-	spdy_frame_send(c, SPDY_CTRL_FRAME_SYN_REPLY, 0, hlen, s, 0);
-	net_send_queue(c, htext, hlen, NULL, NETBUF_LAST_CHAIN);
-	kore_mem_free(htext);
-
-	if (len > 0 && req != NULL && req->method != HTTP_METHOD_HEAD) {
-		s->send_size += len;
-		s->flags |= SPDY_DATAFRAME_PRELUDE;
-
-		if (d != NULL)
-			net_send_queue(c, d, len, s, NETBUF_LAST_CHAIN);
-	}
-
-	if ((req != NULL && req->method == HTTP_METHOD_HEAD) ||
-	    (len == 0 && !(s->flags & SPDY_NO_CLOSE))) {
-		spdy_frame_send(c, SPDY_DATA_FRAME, FLAG_FIN, 0, s, 0);
-		spdy_stream_close(c, s, SPDY_KEEP_NETBUFS);
 	}
 }
 
@@ -1286,11 +1198,10 @@ http_response_normal(struct http_request *req, struct connection *c,
 	}
 
 	kore_buf_append(header_buf, "\r\n", 2);
-	net_send_queue(c, header_buf->data, header_buf->offset,
-	    NULL, NETBUF_LAST_CHAIN);
+	net_send_queue(c, header_buf->data, header_buf->offset);
 
 	if (d != NULL && req != NULL && req->method != HTTP_METHOD_HEAD)
-		net_send_queue(c, d, len, NULL, NETBUF_LAST_CHAIN);
+		net_send_queue(c, d, len);
 
 	if (!(c->flags & CONN_CLOSE_EMPTY))
 		net_recv_reset(c, http_header_max, http_header_recv);

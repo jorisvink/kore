@@ -27,7 +27,10 @@
 #include <signal.h>
 
 #include "kore.h"
+
+#if !defined(KORE_NO_HTTP)
 #include "http.h"
+#endif
 
 #if defined(KORE_USE_PGSQL)
 #include "pgsql.h"
@@ -271,7 +274,10 @@ kore_worker_entry(struct kore_worker *kw)
 		signal(SIGINT, SIG_IGN);
 
 	net_init();
+#if !defined(KORE_NO_HTTP)
 	http_init();
+	kore_accesslog_worker_init();
+#endif
 	kore_timer_init();
 	kore_connection_init();
 	kore_domain_load_crl();
@@ -281,7 +287,6 @@ kore_worker_entry(struct kore_worker *kw)
 	next_lock = 0;
 	idle_check = 0;
 	kore_platform_event_init();
-	kore_accesslog_worker_init();
 	kore_msg_worker_init();
 
 #if defined(KORE_USE_PGSQL)
@@ -330,7 +335,9 @@ kore_worker_entry(struct kore_worker *kw)
 			next_lock = now + WORKER_LOCK_TIMEOUT;
 		}
 
+#if !defined(KORE_NO_HTTP)
 		http_process();
+#endif
 
 		if ((now - idle_check) >= 10000) {
 			idle_check = now;
@@ -339,8 +346,13 @@ kore_worker_entry(struct kore_worker *kw)
 
 		kore_connection_prune(KORE_CONNECTION_PRUNE_DISCONNECT);
 
+#if !defined(KORE_NO_HTTP)
 		if (quit && http_request_count == 0)
 			break;
+#else
+		if (quit)
+			break;
+#endif
 	}
 
 	kore_connection_prune(KORE_CONNECTION_PRUNE_ALL);

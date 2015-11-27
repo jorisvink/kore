@@ -104,10 +104,6 @@ validator	v_session	function	v_session_validate
 # a generated DH key (See OpenSSL dhparam).
 #tls_dhparam	dh2048.pem
 
-# Specify the amount of seconds a SPDY connection is kept open.
-# You can keep it open indefinitely by setting this to 0.
-#spdy_idle_time		120
-
 # Authentication configuration
 #
 # Using authentication blocks you can define a standard way for
@@ -187,7 +183,6 @@ domain localhost {
 	static		/			serve_index
 	static		/intro.jpg		serve_intro
 	static		/b64test		serve_b64test
-	static		/spdy-reset		serve_spdyreset
 	static		/upload			serve_file_upload
 	static		/lock-test		serve_lock_test
 	static		/validator		serve_validator

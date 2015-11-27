@@ -170,8 +170,6 @@ kore_domain_sslstart(struct kore_domain *dom)
 
 	SSL_CTX_set_info_callback(dom->ssl_ctx, kore_tls_info_callback);
 	SSL_CTX_set_tlsext_servername_callback(dom->ssl_ctx, kore_tls_sni_cb);
-	SSL_CTX_set_next_protos_advertised_cb(dom->ssl_ctx,
-	    kore_tls_npn_cb, NULL);
 
 	kore_mem_free(dom->certfile);
 	kore_mem_free(dom->certkey);

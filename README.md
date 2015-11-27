@@ -11,7 +11,6 @@ Because of this Kore is an ideal candidate for building robust, scalable and sec
 Features
 --------
 * Supports SNI
-* Supports SPDY/3.1
 * Supports HTTP/1.1
 * Websocket support
 * Lightweight background tasks
@@ -52,8 +51,8 @@ Building Kore
 -------------
 
 Requirements
-* libz
-* openssl >= 1.0.1i
+* openssl (latest is always the safest bet, right?)
+  (note: this requirement drops away when building with NOTLS=1 NOHTTP=1)
 
 Requirements for background tasks (optional)
 * pthreads
@@ -64,7 +63,6 @@ Requirements for pgsql (optional)
 Normal compilation and installation:
 
 ```
-# git clone https://github.com/jorisvink/kore.git
 # cd kore
 # make
 # make install
@@ -77,7 +75,7 @@ those by setting a shell environment variable before running **_make_**.
 * PGSQL=1 (compiles in pgsql support)
 * DEBUG=1 (enables use of -d for debug)
 * NOTLS=1 (compiles Kore without TLS)
-* KORE_PEDANTIC_MALLOC=1 (zero all allocated memory)
+* NOHTTP=1 (compiles Kore without HTTP support)
 
 Example libraries
 -----------------

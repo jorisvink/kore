@@ -129,7 +129,9 @@ kore_module_reload(int cbs)
 		}
 	}
 
+#if !defined(KORE_NO_HTTP)
 	kore_validator_reload();
+#endif
 }
 
 int
@@ -141,6 +143,7 @@ kore_module_loaded(void)
 	return (1);
 }
 
+#if !defined(KORE_NO_HTTP)
 int
 kore_module_handler_new(const char *path, const char *domain,
     const char *func, const char *auth, int type)
@@ -215,6 +218,8 @@ kore_module_handler_find(const char *domain, const char *path)
 
 	return (NULL);
 }
+
+#endif /* !KORE_NO_HTTP */
 
 void *
 kore_module_getsym(const char *symbol)
