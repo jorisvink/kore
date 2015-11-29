@@ -170,7 +170,7 @@ http_request_new(struct connection *c, const char *host,
 	TAILQ_INIT(&(req->files));
 
 	if (!http_request_header(req, "user-agent", &(req->agent)))
-		req->agent = kore_strdup("unknown");
+		req->agent = "unknown";
 
 #if defined(KORE_USE_TASKS)
 	LIST_INIT(&(req->tasks));
@@ -429,8 +429,6 @@ http_request_free(struct http_request *req)
 	if (req->multipart_body != NULL)
 		kore_mem_free(req->multipart_body);
 
-	if (req->agent != NULL)
-		kore_mem_free(req->agent);
 	if (req->hdlr_extra != NULL &&
 	    !(req->flags & HTTP_REQUEST_RETAIN_EXTRA))
 		kore_mem_free(req->hdlr_extra);
@@ -592,7 +590,7 @@ http_header_recv(struct netbuf *nb)
 
 		if (req->agent == NULL &&
 		    !strcasecmp(hdr->header, "user-agent"))
-			req->agent = kore_strdup(hdr->value);
+			req->agent = hdr->value;
 	}
 
 	if (req->flags & HTTP_REQUEST_EXPECT_BODY) {
@@ -606,13 +604,10 @@ http_header_recv(struct netbuf *nb)
 		clen = kore_strtonum(p, 10, 0, LONG_MAX, &v);
 		if (v == KORE_RESULT_ERROR) {
 			kore_debug("content-length invalid: %s", p);
-			kore_mem_free(p);
 			req->flags |= HTTP_REQUEST_DELETE;
 			http_error_response(req->owner, 411);
 			return (KORE_RESULT_OK);
 		}
-
-		kore_mem_free(p);
 
 		if (clen == 0) {
 			req->flags |= HTTP_REQUEST_COMPLETE;
@@ -827,32 +822,24 @@ http_populate_multipart_form(struct http_request *req, int *v)
 		return (KORE_RESULT_ERROR);
 
 	h = kore_split_string(type, ";", args, 3);
-	if (h != 2) {
-		kore_mem_free(type);
+	if (h != 2)
 		return (KORE_RESULT_ERROR);
-	}
 
-	if (strcasecmp(args[0], "multipart/form-data")) {
-		kore_mem_free(type);
+	if (strcasecmp(args[0], "multipart/form-data"))
 		return (KORE_RESULT_ERROR);
-	}
 
-	if ((val = strchr(args[1], '=')) == NULL) {
-		kore_mem_free(type);
+	if ((val = strchr(args[1], '=')) == NULL)
 		return (KORE_RESULT_ERROR);
-	}
 
 	val++;
 	slen = strlen(val);
 	boundary = kore_malloc(slen + 3);
 	if (!kore_snprintf(boundary, slen + 3, &l, "--%s", val)) {
 		kore_mem_free(boundary);
-		kore_mem_free(type);
 		return (KORE_RESULT_ERROR);
 	}
 
 	slen = l;
-	kore_mem_free(type);
 
 	req->multipart_body = http_body_bytes(req, &blen);
 	if (slen < 3 || blen < (slen * 2)) {
@@ -1152,7 +1139,6 @@ http_response_normal(struct http_request *req, struct connection *c,
 			if ((*conn == 'c' || *conn == 'C') &&
 			    !strcasecmp(conn, "close"))
 				connection_close = 1;
-			kore_mem_free(conn);
 		}
 	}
 
