@@ -483,14 +483,11 @@ http_response_stream(struct http_request *req, int status, void *base,
 int
 http_request_header(struct http_request *req, const char *header, char **out)
 {
-	int			r;
 	struct http_header	*hdr;
 
 	TAILQ_FOREACH(hdr, &(req->req_headers), list) {
 		if (!strcasecmp(hdr->header, header)) {
-			r = strlen(hdr->value) + 1;
-			*out = kore_malloc(r);
-			kore_strlcpy(*out, hdr->value, r);
+			*out = hdr->value;
 			return (KORE_RESULT_OK);
 		}
 	}

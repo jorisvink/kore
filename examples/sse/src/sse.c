@@ -177,11 +177,9 @@ check_header(struct http_request *req, const char *name, const char *value)
 	}
 
 	if (strcmp(hdr, value)) {
-		kore_mem_free(hdr);
 		http_response(req, 400, NULL, 0);
 		return (KORE_RESULT_ERROR);
 	}
 
-	kore_mem_free(hdr);
 	return (KORE_RESULT_OK);
 }

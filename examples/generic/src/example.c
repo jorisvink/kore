@@ -73,8 +73,6 @@ serve_style_css(struct http_request *req)
 	tstamp = 0;
 	if (http_request_header(req, "if-modified-since", &date)) {
 		tstamp = kore_date_to_time(date);
-		kore_mem_free(date);
-
 		kore_debug("header was present with %ld", tstamp);
 	}
 
