@@ -50,7 +50,6 @@ kore_connection_new(void *owner)
 	c->rnb = NULL;
 	c->snb = NULL;
 	c->cert = NULL;
-	c->wscbs = NULL;
 	c->owner = owner;
 	c->tls_reneg = 0;
 	c->disconnect = NULL;
@@ -61,6 +60,7 @@ kore_connection_new(void *owner)
 	c->idle_timer.length = KORE_IDLE_TIMER_MAX;
 
 #if !defined(KORE_NO_HTTP)
+	c->wscbs = NULL;
 	TAILQ_INIT(&(c->http_requests));
 #endif
 
@@ -265,8 +265,8 @@ kore_connection_handle(struct connection *c)
 		    NETBUF_CALL_CB_ALWAYS, http_header_recv);
 #endif
 
-tls_established:
 		c->state = CONN_STATE_ESTABLISHED;
+tls_established:
 		/* FALLTHROUGH */
 #endif /* !KORE_NO_TLS */
 	case CONN_STATE_ESTABLISHED:

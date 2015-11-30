@@ -40,6 +40,9 @@ connection_setup(struct connection *c)
 	 * 128 bytes were read.
 	 */
 	net_recv_queue(c, 128, NETBUF_CALL_CB_ALWAYS, connection_recv_data);
+
+	/* We are responsible for setting the connection state. */
+	c->state = CONN_STATE_ESTABLISHED;
 }
 
 /*

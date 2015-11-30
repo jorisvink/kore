@@ -917,6 +917,10 @@ cli_compile_cfile(void *arg)
 	args[idx++] = ppath;
 #endif
 
+#if defined(KORE_NO_HTTP)
+	args[idx++] = "-DKORE_NO_HTTP";
+#endif
+
 	args[idx++] = "-Wall";
 	args[idx++] = "-Wmissing-declarations";
 	args[idx++] = "-Wshadow";

@@ -96,7 +96,6 @@ extern int daemon(int, int);
 #if !defined(KORE_NO_HTTP)
 struct http_request;
 #endif
-struct connection;
 
 struct netbuf {
 	u_int8_t		*buf;
@@ -120,22 +119,6 @@ TAILQ_HEAD(netbuf_head, netbuf);
 #define KORE_TYPE_CONNECTION	2
 #define KORE_TYPE_PGSQL_CONN	3
 #define KORE_TYPE_TASK		4
-
-struct listener {
-	u_int8_t		type;
-	u_int8_t		addrtype;
-	int			fd;
-	void			(*connect)(struct connection *);
-
-	union {
-		struct sockaddr_in	ipv4;
-		struct sockaddr_in6	ipv6;
-	} addr;
-
-	LIST_ENTRY(listener)	list;
-};
-
-LIST_HEAD(listener_head, listener);
 
 #define CONN_STATE_UNKNOWN		0
 #define CONN_STATE_SSL_SHAKE		1
@@ -181,7 +164,6 @@ struct connection {
 	u_int8_t		flags;
 	void			*hdlr_extra;
 	X509			*cert;
-	void			*wscbs;
 	int			tls_reneg;
 
 	void			(*disconnect)(struct connection *);
@@ -204,16 +186,32 @@ struct connection {
 	struct netbuf		*rnb;
 
 #if !defined(KORE_NO_HTTP)
+	void				*wscbs;
 	TAILQ_HEAD(, http_request)	http_requests;
 #endif
 
 	TAILQ_ENTRY(connection)	list;
-	TAILQ_ENTRY(connection)	flush_list;
 };
 
 TAILQ_HEAD(connection_list, connection);
 extern struct connection_list	connections;
 extern struct connection_list	disconnected;
+
+struct listener {
+	u_int8_t		type;
+	u_int8_t		addrtype;
+	int			fd;
+	void			(*connect)(struct connection *);
+
+	union {
+		struct sockaddr_in	ipv4;
+		struct sockaddr_in6	ipv6;
+	} addr;
+
+	LIST_ENTRY(listener)	list;
+};
+
+LIST_HEAD(listener_head, listener);
 
 #if !defined(KORE_NO_HTTP)
 
