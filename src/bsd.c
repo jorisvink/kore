@@ -176,7 +176,7 @@ kore_platform_event_wait(u_int64_t timer)
 			    !(c->flags & CONN_WRITE_BLOCK))
 				c->flags |= CONN_WRITE_POSSIBLE;
 
-			if (!kore_connection_handle(c))
+			if (c->handle != NULL && !c->handle(c))
 				kore_connection_disconnect(c);
 			break;
 #if defined(KORE_USE_PGSQL)

@@ -27,6 +27,7 @@
 #include <kore/kore.h>
 
 void		connection_setup(struct connection *);
+int		connection_handle(struct connection *);
 int		connection_recv_data(struct netbuf *);
 
 void
@@ -43,6 +44,27 @@ connection_setup(struct connection *c)
 
 	/* We are responsible for setting the connection state. */
 	c->state = CONN_STATE_ESTABLISHED;
+
+	/* Override the handle function, called when new events occur. */
+	c->handle = connection_handle;
+}
+
+/*
+ * This function is called everytime a new event is triggered on the
+ * connection. In this demo we just use it as a stub for the normal
+ * callback kore_connection_handle().
+ *
+ * In this callback you would generally look at the state of the connection
+ * in c->state and perform the required actions like writing / reading using
+ * net_send_flush() or net_recv_flush() if CONN_SEND_POSSIBLE or
+ * CONN_READ_POSSIBLE are set respectively. Returning KORE_RESULT_ERROR from
+ * this callback will disconnect the connection alltogether.
+ */
+int
+connection_handle(struct connection *c)
+{
+	kore_log(LOG_NOTICE, "connection_handle: %p", c);
+	return (kore_connection_handle(c));
 }
 
 /*

@@ -166,6 +166,7 @@ struct connection {
 	X509			*cert;
 	int			tls_reneg;
 
+	int			(*handle)(struct connection *);
 	void			(*disconnect)(struct connection *);
 	int			(*read)(struct connection *, int *);
 	int			(*write)(struct connection *, int, int *);

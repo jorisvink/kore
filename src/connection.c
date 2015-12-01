@@ -52,6 +52,7 @@ kore_connection_new(void *owner)
 	c->cert = NULL;
 	c->owner = owner;
 	c->tls_reneg = 0;
+	c->handle = NULL;
 	c->disconnect = NULL;
 	c->hdlr_extra = NULL;
 	c->proto = CONN_PROTO_UNKNOWN;
@@ -102,6 +103,7 @@ kore_connection_accept(struct listener *listener, struct connection **out)
 		return (KORE_RESULT_ERROR);
 	}
 
+	c->handle = kore_connection_handle;
 	TAILQ_INSERT_TAIL(&connections, c, list);
 
 #if !defined(KORE_NO_TLS)
@@ -250,7 +252,7 @@ kore_connection_handle(struct connection *c)
 			listener = (struct listener *)c->owner;
 			if (listener->connect != NULL) {
 				listener->connect(c);
-				goto tls_established;
+				return (KORE_RESULT_OK);
 			}
 		}
 
@@ -266,7 +268,6 @@ kore_connection_handle(struct connection *c)
 #endif
 
 		c->state = CONN_STATE_ESTABLISHED;
-tls_established:
 		/* FALLTHROUGH */
 #endif /* !KORE_NO_TLS */
 	case CONN_STATE_ESTABLISHED:
