@@ -1,0 +1,5 @@
+*.o
+.objs
+tls-proxy.so
+assets.h
+cert
