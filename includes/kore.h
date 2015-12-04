@@ -35,7 +35,6 @@
 #include <regex.h>
 #include <syslog.h>
 #include <unistd.h>
-#include <zlib.h>
 
 #if defined(__cplusplus)
 extern "C" {
