@@ -57,8 +57,8 @@
 #define PRI_TIME_T		"ld"
 #endif
 
-#define LD_FLAGS_MAX		10
-#define CFLAGS_MAX		10
+#define LD_FLAGS_MAX		30
+#define CFLAGS_MAX		30
 
 struct cmd {
 	const char		*name;
