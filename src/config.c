@@ -176,7 +176,7 @@ kore_parse_config(void)
 	}
 
 	if (getuid() != 0 && skip_runas == 0) {
-		fatal("cannot drop privileges, use -p to skip it");
+		fatal("cannot drop privileges, use -r to skip it");
 	}
 }
 
