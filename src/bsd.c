@@ -239,6 +239,12 @@ kore_platform_schedule_read(int fd, void *data)
 }
 
 void
+kore_platform_schedule_write(int fd, void *data)
+{
+	kore_platform_event_schedule(fd, EVFILT_WRITE, EV_ADD, data);
+}
+
+void
 kore_platform_disable_read(int fd)
 {
 	kore_platform_event_schedule(fd, EVFILT_READ, EV_DELETE, NULL);

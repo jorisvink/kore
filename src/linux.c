@@ -209,6 +209,12 @@ kore_platform_schedule_read(int fd, void *data)
 }
 
 void
+kore_platform_schedule_write(int fd, void *data)
+{
+	kore_platform_event_schedule(fd, EPOLLOUT, 0, data);
+}
+
+void
 kore_platform_disable_read(int fd)
 {
 	if (epoll_ctl(efd, EPOLL_CTL_DEL, fd, NULL) == -1)
