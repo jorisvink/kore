@@ -1,8 +1,9 @@
 Kore as a TLS-proxy.
 
-Note that this example requires a Kore binary built with NOHTTP set to 1.
+Edit src/proxy.c and add your backends to the backends[] data structure.
 
-Edit src/proxy.c and update PROXY_HOST and PROXY_PORT to match your needs.
+If you want to reduce attack surface you can build Kore with NOHTTP=1 to
+completely remove the HTTP component and only run the net code.
 
 Run:
 ```
