@@ -49,8 +49,8 @@ extern int daemon(int, int);
 #define KORE_RESULT_OK		1
 #define KORE_RESULT_RETRY	2
 
-#define KORE_VERSION_MAJOR	1
-#define KORE_VERSION_MINOR	3
+#define KORE_VERSION_MAJOR	2
+#define KORE_VERSION_MINOR	0
 #define KORE_VERSION_PATCH	0
 #define KORE_VERSION_STATE	"devel"
 
