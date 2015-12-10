@@ -169,9 +169,6 @@ http_request_new(struct connection *c, const char *host,
 	TAILQ_INIT(&(req->arguments));
 	TAILQ_INIT(&(req->files));
 
-	if (!http_request_header(req, "user-agent", &(req->agent)))
-		req->agent = "unknown";
-
 #if defined(KORE_USE_TASKS)
 	LIST_INIT(&(req->tasks));
 #endif
