@@ -73,6 +73,7 @@ kore_msg_parent_add(struct kore_worker *kw)
 	kw->msg[0]->state = CONN_STATE_ESTABLISHED;
 	kw->msg[0]->hdlr_extra = &kw->id;
 	kw->msg[0]->disconnect = msg_disconnected_worker;
+	kw->msg[0]->handle = kore_connection_handle;
 
 	TAILQ_INSERT_TAIL(&connections, kw->msg[0], list);
 	kore_platform_event_all(kw->msg[0]->fd, kw->msg[0]);
@@ -102,6 +103,7 @@ kore_msg_worker_init(void)
 	worker->msg[1]->proto = CONN_PROTO_MSG;
 	worker->msg[1]->state = CONN_STATE_ESTABLISHED;
 	worker->msg[1]->disconnect = msg_disconnected_parent;
+	worker->msg[1]->handle = kore_connection_handle;
 
 	TAILQ_INSERT_TAIL(&connections, worker->msg[1], list);
 	kore_platform_event_all(worker->msg[1]->fd, worker->msg[1]);
