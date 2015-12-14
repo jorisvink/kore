@@ -109,8 +109,10 @@ kore_auth_cookie(struct http_request *req, struct kore_auth *auth)
 	size_t		len, slen;
 	char		*value, *c, *cookie, *cookies[HTTP_MAX_COOKIES];
 
-	if (!http_request_header(req, "cookie", &cookie))
+	if (!http_request_header(req, "cookie", &c))
 		return (KORE_RESULT_ERROR);
+
+	cookie = kore_strdup(c);
 
 	slen = strlen(auth->value);
 	v = kore_split_string(cookie, ";", cookies, HTTP_MAX_COOKIES);
@@ -123,14 +125,20 @@ kore_auth_cookie(struct http_request *req, struct kore_auth *auth)
 			break;
 	}
 
-	if (i == v)
+	if (i == v) {
+		kore_mem_free(cookie);
 		return (KORE_RESULT_ERROR);
+	}
 
 	c = cookies[i];
-	if ((value = strchr(c, '=')) == NULL)
+	if ((value = strchr(c, '=')) == NULL) {
+		kore_mem_free(cookie);
 		return (KORE_RESULT_ERROR);
+	}
 
 	i = kore_validator_check(req, auth->validator, ++value);
+	kore_mem_free(cookie);
+
 	return (i);
 }
 
