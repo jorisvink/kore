@@ -18,8 +18,12 @@ chroot		/home/joris/src/kore
 # Worker processes will run as the specified user.
 runas		joris
 
-# Set workers to the amount of CPU's available in your system,
-# kore will automatically distribute all workers on them.
+# How many worker processes Kore will spawn. If the directive
+# worker_set_affinity is set to 1 (the default) Kore will automatically
+# pin these worker processes to different CPU cores in your system.
+# NOTE: If you set this to the maximum number of cores you have
+# in your system (or more) you might consider turning off affinity
+# if you are running CPU heavy services on the same machine.
 workers		4
 
 # The number of active connections each worker can handle.
