@@ -34,9 +34,14 @@ workers		4
 #worker_rlimit_nofiles		1024
 
 # Limit the number of new connections a worker can accept
-# in a single event loop.
-# NOTE: This can have a *MASSIVE* impact as this controls
-# how new connections are spread across worker processes.
+# in a single event loop. By default Kore will accept as
+# many new connections it can up to worker_max_connections.
+#
+# NOTE: If you are running benchmark tools that throw all
+# connections at Kore at the same time (when they are less
+# then worker_max_connections) or you have an actual reason
+# to not spend too much time in the accept loop this setting
+# will make a HUGE positive difference.
 #
 # This is disabled by default. If you wish to enable this
 # specify the number of connections a worker will accept
