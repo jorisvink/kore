@@ -145,5 +145,4 @@ void
 kore_buf_reset(struct kore_buf *buf) 
 {
 	buf->offset = 0;
-	memset(buf->data, 0, buf->length);
 }
