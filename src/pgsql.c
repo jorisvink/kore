@@ -42,6 +42,8 @@ struct pgsql_wait {
 
 #define PGSQL_CONN_MAX		2
 #define PGSQL_CONN_FREE		0x01
+#define PGSQL_ERROR_MAX_CONN	"Max DB Connections reached"
+#define PGSQL_ERROR_CONNECTING	"Error Connecting to Postgres"
 
 static void	pgsql_queue_wakeup(void);
 static int	pgsql_conn_create(struct kore_pgsql *);
@@ -74,10 +76,9 @@ kore_pgsql_init(void)
 	    sizeof(struct pgsql_wait), 100);
 }
 
-struct kore_pgsql *
-kore_pgsql_init_sync(void)
+int
+kore_pgsql_init_sync(struct kore_pgsql *pgsql)
 {
-	struct kore_pgsql *pgsql = kore_malloc(sizeof(struct kore_pgsql));
 	struct pgsql_conn *conn;
 
 	pgsql->state = KORE_PGSQL_STATE_INIT;
@@ -86,11 +87,15 @@ kore_pgsql_init_sync(void)
 	pgsql->conn = NULL;
 
 	if (TAILQ_EMPTY(&pgsql_conn_free)) {
-		if (pgsql_conn_count >= pgsql_conn_max) 
+		if (pgsql_conn_count >= pgsql_conn_max) {
+			pgsql->error = kore_strdup(PGSQL_ERROR_MAX_CONN);
 			return (KORE_RESULT_ERROR);
+		}
 
-		if (!pgsql_conn_create(pgsql))
+		if (!pgsql_conn_create(pgsql)) {
+			pgsql->error = kore_strdup(PGSQL_ERROR_CONNECTING);
 			return (KORE_RESULT_ERROR);
+		}
 	}
 
 	conn = TAILQ_FIRST(&pgsql_conn_free);
@@ -101,7 +106,7 @@ kore_pgsql_init_sync(void)
 	TAILQ_REMOVE(&pgsql_conn_free, conn, list);
 
 	pgsql->conn = conn;
-	return pgsql;
+	return (KORE_RESULT_OK);
 }
 
 int
@@ -326,12 +331,15 @@ pgsql_prepare(struct kore_pgsql *pgsql, struct http_request *req,
 
 	if (TAILQ_EMPTY(&pgsql_conn_free)) {
 		if (pgsql_conn_count >= pgsql_conn_max) {
+			pgsql->error = kore_strdup(PGSQL_ERROR_MAX_CONN);
 			pgsql_queue_add(req);
 			return (KORE_RESULT_ERROR);
 		}
 
-		if (!pgsql_conn_create(pgsql))
+		if (!pgsql_conn_create(pgsql)) {
+			pgsql->error = kore_strdup(PGSQL_ERROR_CONNECTING);
 			return (KORE_RESULT_ERROR);
+		}
 	}
 
 	http_request_sleep(req);

@@ -48,7 +48,7 @@ extern u_int16_t	pgsql_conn_max;
 extern char		*pgsql_conn_string;
 
 void	kore_pgsql_init(void);
-struct kore_pgsql *kore_pgsql_init_sync(void);
+int	kore_pgsql_init_sync(struct kore_pgsql *);
 void	kore_pgsql_handle(void *, int);
 void	kore_pgsql_cleanup(struct kore_pgsql *);
 void	kore_pgsql_continue(struct http_request *, struct kore_pgsql *);
