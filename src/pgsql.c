@@ -78,8 +78,7 @@ struct kore_pgsql *
 kore_pgsql_init_sync(void)
 {
 	struct kore_pgsql *pgsql = kore_malloc(sizeof(struct kore_pgsql));
-	memset(pgsql, 0, sizeof(struct kore_pgsql));
-	struct pgsql_conn	*conn;
+	struct pgsql_conn *conn;
 
 	pgsql->state = KORE_PGSQL_STATE_INIT;
 	pgsql->result = NULL;
