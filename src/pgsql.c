@@ -46,7 +46,7 @@ struct pgsql_wait {
 #define PGSQL_ERROR_NO_DATABASE	"No Database Alias found"
 
 static void	pgsql_queue_wakeup(void);
-static int	pgsql_conn_create(struct kore_pgsql *);
+static int	pgsql_conn_create(struct kore_pgsql *, struct pgsql_db *);
 static void	pgsql_queue_add(struct http_request *);
 static void	pgsql_conn_release(struct kore_pgsql *);
 static void	pgsql_conn_cleanup(struct pgsql_conn *);
@@ -54,7 +54,7 @@ static void	pgsql_read_result(struct kore_pgsql *, int);
 static void	pgsql_schedule(struct kore_pgsql *, struct http_request *);
 static int	pgsql_prepare(struct kore_pgsql *, struct http_request *,
 		    const char *);
-static struct pgsql_conn *pgsql_conn_next_free(struct kore_pgsql *);
+static struct pgsql_conn *pgsql_conn_next_free(struct kore_pgsql *, const char *);
 
 
 static struct kore_pool			pgsql_job_pool;
@@ -81,39 +81,55 @@ kore_pgsql_init(void)
 }
 
 int
-kore_pgsql_init_sync(struct kore_pgsql *pgsql, const char *dbname)
+kore_pgsql_query_init(struct kore_pgsql *pgsql, const char *dbname)
 {
-	struct pgsql_conn *conn;
+	struct pgsql_db		*db_conn;
+	struct pgsql_conn	*conn;
 
 	pgsql->state = KORE_PGSQL_STATE_INIT;
 	pgsql->result = NULL;
 	pgsql->error = NULL;
 	pgsql->conn = NULL;
-	pgsql->db_conn = NULL;
 
-	kore_pgsql_set_database(pgsql, dbname);
+	/* Set Database */
+        if (LIST_EMPTY(&pgsql_db_conn_strings)) {
+                pgsql->error = kore_strdup(PGSQL_ERROR_NO_DATABASE);
+                return (KORE_RESULT_ERROR);
+        }
 
+        LIST_FOREACH(db_conn, &pgsql_db_conn_strings, rlist) {
+                if (!strcmp(db_conn->name, dbname))
+                	break;
+        }
+
+	if (db_conn == NULL) {
+        	pgsql->error = kore_strdup(PGSQL_ERROR_NO_DATABASE);
+		return (KORE_RESULT_ERROR);
+	}
+
+	/* Set Connection */
 	if (TAILQ_EMPTY(&pgsql_conn_free)) {
 		if (pgsql_conn_count >= pgsql_conn_max) {
 			pgsql->error = kore_strdup(PGSQL_ERROR_MAX_CONN);
+/*	pgsql_queue_add(req);  TBDEFINED this should be called for an async */
 			return (KORE_RESULT_ERROR);
 		}
 
-		if (!pgsql_conn_create(pgsql)) 
+		if (!pgsql_conn_create(pgsql, db_conn)) 
 			return (KORE_RESULT_ERROR);
 	}
 
-	conn = pgsql_conn_next_free(pgsql);
+	conn = pgsql_conn_next_free(pgsql, db_conn->name);
 	if (conn == NULL) {
 		if (pgsql_conn_count >= pgsql_conn_max) {
 			pgsql->error = kore_strdup(PGSQL_ERROR_MAX_CONN);
 			return (KORE_RESULT_ERROR);
 		}
 
-		if (!pgsql_conn_create(pgsql))
+		if (!pgsql_conn_create(pgsql, db_conn))
 			return (KORE_RESULT_ERROR);
 
-		conn = pgsql_conn_next_free(pgsql);
+		conn = pgsql_conn_next_free(pgsql, db_conn->name);
 	}
 
 	conn->flags &= ~PGSQL_CONN_FREE;
@@ -221,27 +237,6 @@ kore_pgsql_register(const char *alias, const char *connstring)
 	LIST_INSERT_HEAD(&pgsql_db_conn_strings, pgsqldb, rlist);
 
 	return (KORE_RESULT_OK);
-}
-
-int
-kore_pgsql_set_database(struct kore_pgsql *pgsql, const char *dbname)
-{
-	struct pgsql_db *pgsqldb;
-
-	if (LIST_EMPTY(&pgsql_db_conn_strings)) {
-		pgsql->error = kore_strdup(PGSQL_ERROR_NO_DATABASE);
-		return (KORE_RESULT_ERROR);
-	}
-
-	LIST_FOREACH(pgsqldb, &pgsql_db_conn_strings, rlist) {
-		if (!strcmp(pgsqldb->name, dbname)) {
-			pgsql->db_conn = pgsqldb;
-			return (KORE_RESULT_OK);
-		}
-	}
-
-	pgsql->error = kore_strdup(PGSQL_ERROR_NO_DATABASE);
-	return (KORE_RESULT_ERROR);
 }
 
 void
@@ -380,61 +375,19 @@ static int
 pgsql_prepare(struct kore_pgsql *pgsql, struct http_request *req,
     const char *query)
 {
-	struct pgsql_conn	*conn;
-
-	pgsql->state = KORE_PGSQL_STATE_INIT;
-	pgsql->result = NULL;
-	pgsql->error = NULL;
-	pgsql->conn = NULL;
-
-	if (TAILQ_EMPTY(&pgsql_conn_free)) {
-		if (pgsql_conn_count >= pgsql_conn_max) {
-			pgsql->error = kore_strdup(PGSQL_ERROR_MAX_CONN);
-			pgsql_queue_add(req);
-			return (KORE_RESULT_ERROR);
-		}
-
-		if (!pgsql_conn_create(pgsql))
-			return (KORE_RESULT_ERROR);
-	}
-
 	http_request_sleep(req);
 
-/*	conn = TAILQ_FIRST(&pgsql_conn_free);
-	if (!(conn->flags & PGSQL_CONN_FREE))
-		fatal("received a pgsql conn that was not free?"); TBD */
-
-	conn = pgsql_conn_next_free(pgsql);
-
-	if (conn == NULL) {
-		if (pgsql_conn_count >= pgsql_conn_max) {
-			pgsql->error = kore_strdup(PGSQL_ERROR_MAX_CONN);
-			pgsql_queue_add(req);
-			return (KORE_RESULT_ERROR);
-		}
-
-		if (!pgsql_conn_create(pgsql))
-			return (KORE_RESULT_ERROR);
-
-		conn = pgsql_conn_next_free(pgsql);
-	}
-
-	conn->flags &= ~PGSQL_CONN_FREE;
-	TAILQ_REMOVE(&pgsql_conn_free, conn, list);
-
-	pgsql->conn = conn;
-
-	conn->job = kore_pool_get(&pgsql_job_pool);
-	conn->job->query = kore_strdup(query);
-	conn->job->pgsql = pgsql;
-	conn->job->req = req;
+	pgsql->conn->job = kore_pool_get(&pgsql_job_pool);
+	pgsql->conn->job->query = kore_strdup(query);
+	pgsql->conn->job->pgsql = pgsql;
+	pgsql->conn->job->req = req;
 
 	LIST_INSERT_HEAD(&(req->pgsqls), pgsql, rlist);
 	return (KORE_RESULT_OK);
 }
 
 static struct pgsql_conn *
-pgsql_conn_next_free(struct kore_pgsql *pgsql)
+pgsql_conn_next_free(struct kore_pgsql *pgsql, const char *dbname)
 {
 	struct pgsql_conn	*conn, *next;
 
@@ -443,7 +396,7 @@ pgsql_conn_next_free(struct kore_pgsql *pgsql)
                         fatal("received a pgsql conn that was not free?");
 
                 next = TAILQ_NEXT(conn, list);
-                if (!strcmp(conn->name, pgsql->db_conn->name))
+                if (!strcmp(conn->name, dbname))
                         break;
         }
 
@@ -497,21 +450,18 @@ pgsql_queue_wakeup(void)
 }
 
 static int
-pgsql_conn_create(struct kore_pgsql *pgsql)
+pgsql_conn_create(struct kore_pgsql *pgsql, struct pgsql_db *db_conn)
 {
 	struct pgsql_conn	*conn;
 
-/*	if (pgsql_conn_string == NULL) TBD */
-	if (pgsql->db_conn == NULL || pgsql->db_conn->conn_string == NULL)
+	if (db_conn == NULL || db_conn->conn_string == NULL)
 		fatal("pgsql_conn_create: no connection string"); 
 
 	pgsql_conn_count++;
 	conn = kore_malloc(sizeof(*conn));
 	kore_debug("pgsql_conn_create(): %p", conn);
-/*	memset(conn, 0, sizeof(*conn)); TBD */
 
-/*	conn->db = PQconnectdb(pgsql_conn_string); TBD */
-	conn->db = PQconnectdb(pgsql->db_conn->conn_string);
+	conn->db = PQconnectdb(db_conn->conn_string);
 	if (conn->db == NULL || (PQstatus(conn->db) != CONNECTION_OK)) {
 		pgsql->state = KORE_PGSQL_STATE_ERROR;
 		pgsql->error = kore_strdup(PQerrorMessage(conn->db));
@@ -519,7 +469,7 @@ pgsql_conn_create(struct kore_pgsql *pgsql)
 		return (KORE_RESULT_ERROR);
 	}
 
-	conn->name = pgsql->db_conn->name;
+	conn->name = db_conn->name;
 	conn->job = NULL;
 	conn->flags = PGSQL_CONN_FREE;
 	conn->type = KORE_TYPE_PGSQL_CONN;

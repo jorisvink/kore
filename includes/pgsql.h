@@ -47,7 +47,6 @@ struct kore_pgsql {
 	u_int8_t		state;
 	char			*error;
 	PGresult		*result;
-	struct pgsql_db		*db_conn;
 	struct pgsql_conn	*conn;
 
 	LIST_ENTRY(kore_pgsql)	rlist;
@@ -57,7 +56,7 @@ extern u_int16_t	pgsql_conn_max;
 /*extern char		*pgsql_conn_string; TBD */
 
 void	kore_pgsql_init(void);
-int	kore_pgsql_init_sync(struct kore_pgsql *, const char *);
+int	kore_pgsql_query_init(struct kore_pgsql *, const char *);
 void	kore_pgsql_handle(void *, int);
 void	kore_pgsql_cleanup(struct kore_pgsql *);
 void	kore_pgsql_continue(struct http_request *, struct kore_pgsql *);
@@ -67,7 +66,6 @@ int	kore_pgsql_query_params(struct kore_pgsql *, struct http_request *,
 	    const char *, int, u_int8_t, ...);
 int	kore_pgsql_query_sync(struct kore_pgsql *, const char *);
 int	kore_pgsql_register(const char *, const char *);
-int	kore_pgsql_set_database(struct kore_pgsql *, const char *);
 int	kore_pgsql_ntuples(struct kore_pgsql *);
 void	kore_pgsql_logerror(struct kore_pgsql *);
 void	kore_pgsql_queue_remove(struct http_request *);
