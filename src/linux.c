@@ -71,6 +71,20 @@ kore_platform_event_init(void)
 	events = kore_calloc(event_count, sizeof(struct epoll_event));
 }
 
+void
+kore_platform_event_fini(void)
+{
+	if (efd >= 0) {
+		close(efd);
+		efd = -1;
+	}
+
+	if (events != NULL) {
+		kore_mem_free(events);
+		events = NULL;
+	}
+}
+
 int
 kore_platform_event_wait(u_int64_t timer)
 {

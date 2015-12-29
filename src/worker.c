@@ -355,7 +355,12 @@ kore_worker_entry(struct kore_worker *kw)
 #endif
 	}
 
-	kore_connection_prune(KORE_CONNECTION_PRUNE_ALL);
+	kore_platform_event_fini();
+	kore_connection_fini();
+#if !defined(KORE_NO_HTTP)
+	http_fini();
+#endif
+	net_fini();
 	kore_debug("worker %d shutting down", kw->id);
 	exit(0);
 }

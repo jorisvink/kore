@@ -38,6 +38,16 @@ kore_connection_init(void)
 	    sizeof(struct connection), worker_max_connections);
 }
 
+void
+kore_connection_fini(void)
+{
+	kore_debug("connection_fini()");
+
+	/* Drop all connections */
+	kore_connection_prune(KORE_CONNECTION_PRUNE_ALL);
+	kore_pool_fini(&connection_pool);
+}
+
 struct connection *
 kore_connection_new(void *owner)
 {

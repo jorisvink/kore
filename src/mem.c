@@ -50,7 +50,7 @@ kore_malloc(size_t len)
 
 	mlen = sizeof(u_int32_t) + len + sizeof(struct meminfo);
 	if ((ptr = calloc(1, mlen)) == NULL)
-		fatal("kore_malloc(%d): %d", len, errno);
+		fatal("kore_malloc(%zd): %d", len, errno);
 
 	plen = (u_int32_t *)ptr;
 	*plen = len;
@@ -89,12 +89,19 @@ kore_realloc(void *ptr, size_t len)
 void *
 kore_calloc(size_t memb, size_t len)
 {
-	if (memb == 0 || len == 0)
-		fatal("kore_calloc(): zero size");
-	if (SIZE_MAX / memb < len)
-		fatal("kore_calloc: memb * len > SIZE_MAX");
+	void *result;
+	const size_t nbytes = memb * len;
 
-	return (kore_malloc(memb * len));
+	if (nbytes == 0)
+		fatal("kore_calloc(): zero size");
+	if (nbytes > SIZE_MAX)
+		fatal("kore_calloc: memb * len > SIZE_MAX");
+	
+	result = kore_malloc(nbytes);
+	if (result == NULL)
+		fatal("kore_calloc: alloc failed for %zd bytes", nbytes);
+
+	return (result);
 }
 
 void

@@ -37,6 +37,13 @@ net_init(void)
 }
 
 void
+net_fini(void)
+{
+	kore_debug("net_fini()");
+	kore_pool_fini(&nb_pool);
+}
+
+void
 net_send_queue(struct connection *c, const void *data, u_int32_t len)
 {
 	const u_int8_t		*d;

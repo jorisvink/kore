@@ -215,6 +215,7 @@ extern u_int16_t	http_keepalive_time;
 extern u_int32_t	http_request_limit;
 
 void		http_init(void);
+void		http_fini(void);
 void		http_process(void);
 const char	*http_status_text(int);
 time_t		http_date_to_time(char *);

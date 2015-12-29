@@ -86,6 +86,20 @@ http_init(void)
 	    "http_path_pool", HTTP_URI_LEN, prealloc);
 }
 
+void
+http_fini(void)
+{
+	if (header_buf != NULL) {
+		kore_buf_free(header_buf);
+		header_buf = NULL;
+	}
+
+	kore_pool_fini(&http_request_pool);
+	kore_pool_fini(&http_header_pool);
+	kore_pool_fini(&http_host_pool);
+	kore_pool_fini(&http_path_pool);
+}
+
 int
 http_request_new(struct connection *c, const char *host,
     const char *method, const char *path, const char *version,
