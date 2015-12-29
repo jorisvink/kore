@@ -22,6 +22,9 @@
 #define KORE_PGSQL_FORMAT_TEXT		0
 #define KORE_PGSQL_FORMAT_BINARY	1
 
+#define KORE_PGSQL_SYNC			0
+#define KORE_PGSQL_ASYNC		1
+
 #if defined(__cplusplus)
 extern "C" {
 #endif
@@ -53,18 +56,15 @@ struct kore_pgsql {
 };
 
 extern u_int16_t	pgsql_conn_max;
-/*extern char		*pgsql_conn_string; TBD */
 
 void	kore_pgsql_init(void);
-int	kore_pgsql_query_init(struct kore_pgsql *, const char *);
+int	kore_pgsql_query_init(struct kore_pgsql *, struct http_request *, const char *, int);
 void	kore_pgsql_handle(void *, int);
 void	kore_pgsql_cleanup(struct kore_pgsql *);
 void	kore_pgsql_continue(struct http_request *, struct kore_pgsql *);
-int	kore_pgsql_query(struct kore_pgsql *, struct http_request *,
-	    const char *);
-int	kore_pgsql_query_params(struct kore_pgsql *, struct http_request *,
+int	kore_pgsql_query(struct kore_pgsql *, const char *);
+int	kore_pgsql_query_params(struct kore_pgsql *, 
 	    const char *, int, u_int8_t, ...);
-int	kore_pgsql_query_sync(struct kore_pgsql *, const char *);
 int	kore_pgsql_register(const char *, const char *);
 int	kore_pgsql_ntuples(struct kore_pgsql *);
 void	kore_pgsql_logerror(struct kore_pgsql *);
