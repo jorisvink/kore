@@ -89,19 +89,12 @@ kore_realloc(void *ptr, size_t len)
 void *
 kore_calloc(size_t memb, size_t len)
 {
-	void *result;
-	const size_t nbytes = memb * len;
-
-	if (nbytes == 0)
+	if (memb == 0 || len == 0)
 		fatal("kore_calloc(): zero size");
-	if (nbytes > SIZE_MAX)
+	if (SIZE_MAX / memb < len)
 		fatal("kore_calloc: memb * len > SIZE_MAX");
-	
-	result = kore_malloc(nbytes);
-	if (result == NULL)
-		fatal("kore_calloc: alloc failed for %zd bytes", nbytes);
 
-	return (result);
+	return (kore_malloc(memb * len));
 }
 
 void
