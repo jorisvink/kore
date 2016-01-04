@@ -16,7 +16,8 @@
 
 /*
  * This example demonstrates on how to use state machines and
- * asynchronous pgsql queries.
+ * asynchronous pgsql queries. For a synchronous query example
+ * see the pgsql-sync/ example under the examples/ directory.
  *
  * While this example might seem overly complex for a simple pgsql
  * query, there is a reason behind its complexity:
@@ -36,15 +37,17 @@
 #include <kore/http.h>
 #include <kore/pgsql.h>
 
-#define REQ_STATE_QUERY			0
-#define REQ_STATE_DB_WAIT		1
-#define REQ_STATE_DB_READ		2
-#define REQ_STATE_ERROR			3
-#define REQ_STATE_DONE			4
+#define REQ_STATE_INIT			0
+#define REQ_STATE_QUERY			1
+#define REQ_STATE_DB_WAIT		2
+#define REQ_STATE_DB_READ		3
+#define REQ_STATE_ERROR			4
+#define REQ_STATE_DONE			5
 
 int			init(int);
 int			page(struct http_request *);
 
+static int		request_perform_init(struct http_request *);
 static int		request_perform_query(struct http_request *);
 static int		request_db_wait(struct http_request *);
 static int		request_db_read(struct http_request *);
@@ -52,6 +55,7 @@ static int		request_error(struct http_request *);
 static int		request_done(struct http_request *);
 
 struct http_state	mystates[] = {
+	{ "REQ_STATE_INIT",		request_perform_init },
 	{ "REQ_STATE_QUERY",		request_perform_query },
 	{ "REQ_STATE_DB_WAIT",		request_db_wait },
 	{ "REQ_STATE_DB_READ",		request_db_read },
@@ -62,6 +66,7 @@ struct http_state	mystates[] = {
 #define mystates_size		(sizeof(mystates) / sizeof(mystates[0]))
 
 struct rstate {
+	int			cnt;
 	struct kore_pgsql	sql;
 };
 
@@ -69,8 +74,8 @@ struct rstate {
 int
 init(int state)
 {
-	/* Set our connection string. */
-	pgsql_conn_string = "host=/var/run/postgresql/ dbname=test";
+	/* Register our database. */
+	kore_pgsql_register("db", "host=/tmp dbname=test");
 
 	return (KORE_RESULT_OK);
 }
@@ -84,29 +89,48 @@ page(struct http_request *req)
 	return (http_state_run(mystates, mystates_size, req));
 }
 
-/* The initial state, we setup our context and fire off the pgsql query. */
+/* Initialize our PGSQL data structure and prepare for an async query. */
 int
-request_perform_query(struct http_request *req)
+request_perform_init(struct http_request *req)
 {
 	struct rstate	*state;
 
-	/* Setup our state context. */
-	state = kore_malloc(sizeof(*state));
+	/* Setup our state context (if not yet set). */
+	if (req->hdlr_extra == NULL) {
+		state = kore_malloc(sizeof(*state));
+		req->hdlr_extra = state;
+	} else {
+		state = req->hdlr_extra;
+	}
 
-	/* Attach the state to our request. */
-	req->hdlr_extra = state;
+	/* Initialize our kore_pgsql data structure. */
+	if (!kore_pgsql_query_init(&state->sql, req, "db", KORE_PGSQL_ASYNC)) {
+		/* If the state was still INIT, we'll try again later. */
+		if (state->sql.state == KORE_PGSQL_STATE_INIT) {
+			req->fsm_state = REQ_STATE_INIT;
+			return (HTTP_STATE_RETRY);
+		}
+
+		kore_pgsql_logerror(&state->sql);
+		req->fsm_state = REQ_STATE_ERROR;
+	} else {
+		req->fsm_state = REQ_STATE_QUERY;
+	}
+
+	return (HTTP_STATE_CONTINUE);
+}
+
+/* After setting everything up we will execute our async query. */
+int
+request_perform_query(struct http_request *req)
+{
+	struct rstate	*state = req->hdlr_extra;
 
 	/* We want to move to read result after this. */
 	req->fsm_state = REQ_STATE_DB_WAIT;
 
 	/* Fire off the query. */
-	if (!kore_pgsql_query(&state->sql, req, "SELECT * FROM coders")) {
-		/* If the state was still INIT, we'll try again later. */
-		if (state->sql.state == KORE_PGSQL_STATE_INIT) {
-			req->fsm_state = REQ_STATE_QUERY;
-			return (HTTP_STATE_RETRY);
-		}
-
+	if (!kore_pgsql_query(&state->sql, "SELECT * FROM coders")) {
 		/*
 		 * Let the state machine continue immediately since we
 		 * have an error anyway.
