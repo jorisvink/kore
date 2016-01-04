@@ -142,7 +142,7 @@ kore_buf_replace_string(struct kore_buf *b, char *src, void *dst, size_t len)
 }
 
 void
-kore_buf_reset(struct kore_buf *buf) 
+kore_buf_reset(struct kore_buf *buf)
 {
 	buf->offset = 0;
 }
