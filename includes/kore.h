@@ -420,7 +420,7 @@ struct kore_worker	*kore_worker_data(u_int8_t);
 
 void		kore_platform_init(void);
 void		kore_platform_event_init(void);
-void		kore_platform_event_fini(void);
+void		kore_platform_event_cleanup(void);
 void		kore_platform_proctitle(char *);
 void		kore_platform_disable_read(int);
 void		kore_platform_enable_accept(void);
@@ -454,7 +454,7 @@ int		kore_server_bind(const char *, const char *, const char *);
 void		kore_tls_info_callback(const SSL *, int, int);
 
 void			kore_connection_init(void);
-void			kore_connection_fini(void);
+void			kore_connection_cleanup(void);
 void			kore_connection_prune(int);
 struct connection	*kore_connection_new(void *);
 void			kore_connection_check_timeout(void);
@@ -483,7 +483,7 @@ void		*kore_pool_get(struct kore_pool *);
 void		kore_pool_put(struct kore_pool *, void *);
 void		kore_pool_init(struct kore_pool *, const char *,
 		    u_int32_t, u_int32_t);
-void		kore_pool_fini(struct kore_pool *);
+void		kore_pool_cleanup(struct kore_pool *);
 
 time_t		kore_date_to_time(char *);
 char		*kore_time_to_date(time_t);
@@ -557,7 +557,7 @@ void		net_write32(u_int8_t *, u_int32_t);
 void		net_write64(u_int8_t *, u_int64_t);
 
 void		net_init(void);
-void		net_fini(void);
+void		net_cleanup(void);
 int		net_send(struct connection *);
 int		net_send_flush(struct connection *);
 int		net_recv_flush(struct connection *);

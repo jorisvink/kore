@@ -43,7 +43,7 @@ kore_pool_init(struct kore_pool *pool, const char *name,
 }
 
 void
-kore_pool_fini(struct kore_pool *pool)
+kore_pool_cleanup(struct kore_pool *pool)
 {
 	if (pool->inuse)
 		kore_debug("Pool %s: destroyed with %u allocs in use", 

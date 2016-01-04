@@ -403,9 +403,9 @@ kore_server_start(void)
 		kore_connection_prune(KORE_CONNECTION_PRUNE_DISCONNECT);
 	}
 
-	kore_platform_event_fini();
-	kore_connection_fini();
-	net_fini();
+	kore_platform_event_cleanup();
+	kore_connection_cleanup();
+	net_cleanup();
 }
 
 static void

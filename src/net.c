@@ -37,10 +37,10 @@ net_init(void)
 }
 
 void
-net_fini(void)
+net_cleanup(void)
 {
-	kore_debug("net_fini()");
-	kore_pool_fini(&nb_pool);
+	kore_debug("net_cleanup()");
+	kore_pool_cleanup(&nb_pool);
 }
 
 void

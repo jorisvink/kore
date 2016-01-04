@@ -87,17 +87,17 @@ http_init(void)
 }
 
 void
-http_fini(void)
+http_cleanup(void)
 {
 	if (header_buf != NULL) {
 		kore_buf_free(header_buf);
 		header_buf = NULL;
 	}
 
-	kore_pool_fini(&http_request_pool);
-	kore_pool_fini(&http_header_pool);
-	kore_pool_fini(&http_host_pool);
-	kore_pool_fini(&http_path_pool);
+	kore_pool_cleanup(&http_request_pool);
+	kore_pool_cleanup(&http_header_pool);
+	kore_pool_cleanup(&http_host_pool);
+	kore_pool_cleanup(&http_path_pool);
 }
 
 int

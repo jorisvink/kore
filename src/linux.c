@@ -72,7 +72,7 @@ kore_platform_event_init(void)
 }
 
 void
-kore_platform_event_fini(void)
+kore_platform_event_cleanup(void)
 {
 	if (efd >= 0) {
 		close(efd);

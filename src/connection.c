@@ -39,13 +39,13 @@ kore_connection_init(void)
 }
 
 void
-kore_connection_fini(void)
+kore_connection_cleanup(void)
 {
-	kore_debug("connection_fini()");
+	kore_debug("connection_cleanup()");
 
 	/* Drop all connections */
 	kore_connection_prune(KORE_CONNECTION_PRUNE_ALL);
-	kore_pool_fini(&connection_pool);
+	kore_pool_cleanup(&connection_pool);
 }
 
 struct connection *
