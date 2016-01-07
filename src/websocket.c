@@ -16,6 +16,8 @@
 
 #include <sys/param.h>
 
+#include <openssl/sha.h>
+
 #include <limits.h>
 
 #include "kore.h"

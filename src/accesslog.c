@@ -32,7 +32,9 @@ struct kore_log_packet {
 	char		host[KORE_DOMAINNAME_LEN];
 	char		path[HTTP_URI_LEN];
 	char		agent[HTTP_USERAGENT_LEN];
+#if !defined(KORE_NO_TLS)
 	char		cn[X509_CN_LENGTH];
+#endif
 };
 
 void
@@ -90,10 +92,11 @@ kore_accesslog_write(const void *data, u_int32_t len)
 		break;
 	}
 
+	cn = "none";
+#if !defined(KORE_NO_TLS)
 	if (logpacket.cn[0] != '\0')
 		cn = logpacket.cn;
-	else
-		cn = "none";
+#endif
 
 	if (inet_ntop(logpacket.addrtype, &(logpacket.addr),
 	    addr, sizeof(addr)) == NULL)
@@ -157,8 +160,8 @@ kore_accesslog(struct http_request *req)
 		    sizeof(logpacket.agent));
 	}
 
-	memset(logpacket.cn, '\0', sizeof(logpacket.cn));
 #if !defined(KORE_NO_TLS)
+	memset(logpacket.cn, '\0', sizeof(logpacket.cn));
 	if (req->owner->cert != NULL) {
 		if (X509_GET_CN(req->owner->cert,
 		    logpacket.cn, sizeof(logpacket.cn)) == -1) {

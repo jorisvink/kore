@@ -920,7 +920,9 @@ cli_compile_cfile(void *arg)
 #if defined(KORE_NO_HTTP)
 	args[idx++] = "-DKORE_NO_HTTP";
 #endif
-
+#if defined(KORE_NO_TLS)
+	args[idx++] = "-DKORE_NO_TLS";
+#endif
 	args[idx++] = "-Wall";
 	args[idx++] = "-Wmissing-declarations";
 	args[idx++] = "-Wshadow";

@@ -22,17 +22,24 @@
 #endif
 
 #include <sys/types.h>
+#include <sys/time.h>
 #include <sys/queue.h>
 
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#if !defined(KORE_NO_TLS)
 #include <openssl/err.h>
 #include <openssl/dh.h>
 #include <openssl/ssl.h>
+#endif
 
 #include <errno.h>
 #include <regex.h>
+#include <stdarg.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
 #include <syslog.h>
 #include <unistd.h>
 
@@ -159,11 +166,13 @@ struct connection {
 	u_int8_t		state;
 	u_int8_t		proto;
 	void			*owner;
+#if !defined(KORE_NO_TLS)
+	X509			*cert;
 	SSL			*ssl;
+	int			tls_reneg;
+#endif
 	u_int8_t		flags;
 	void			*hdlr_extra;
-	X509			*cert;
-	int			tls_reneg;
 
 	int			(*handle)(struct connection *);
 	void			(*disconnect)(struct connection *);
@@ -283,12 +292,14 @@ struct kore_worker {
 
 struct kore_domain {
 	char					*domain;
-	char					*certfile;
-	char					*certkey;
+	int					accesslog;
+#if !defined(KORE_NO_TLS)
 	char					*cafile;
 	char					*crlfile;
-	int					accesslog;
+	char					*certfile;
+	char					*certkey;
 	SSL_CTX					*ssl_ctx;
+#endif
 	TAILQ_HEAD(, kore_module_handle)	handlers;
 	TAILQ_ENTRY(kore_domain)		list;
 };
@@ -385,7 +396,10 @@ extern char	*kore_pidfile;
 extern char	*config_file;
 extern char	*kore_tls_cipher_list;
 extern int	tls_version;
+
+#if !defined(KORE_NO_TLS)
 extern DH	*tls_dhparam;
+#endif
 
 extern u_int8_t			nlisteners;
 extern u_int16_t		cpu_count;
@@ -448,9 +462,11 @@ void		kore_timer_remove(struct kore_timer *);
 struct kore_timer	*kore_timer_add(void (*cb)(void *, u_int64_t),
 			    u_int64_t, void *, int);
 
-int		kore_tls_sni_cb(SSL *, int *, void *);
 int		kore_server_bind(const char *, const char *, const char *);
+#if !defined(KORE_NO_TLS)
+int		kore_tls_sni_cb(SSL *, int *, void *);
 void		kore_tls_info_callback(const SSL *, int, int);
+#endif
 
 void			kore_connection_init(void);
 void			kore_connection_prune(int);
