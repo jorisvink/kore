@@ -17,6 +17,7 @@
 #include <sys/socket.h>
 
 #include <poll.h>
+#include <time.h>
 
 #include "kore.h"
 #include "http.h"
