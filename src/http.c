@@ -1092,6 +1092,8 @@ http_body_recv(struct netbuf *nb)
 	req->flags &= ~HTTP_REQUEST_EXPECT_BODY;
 
 	nb->extra = NULL;
+	nb->flags |= NETBUF_CALL_CB_ALWAYS;
+
 	kore_debug("received all body data for request %p", req);
 
 	return (KORE_RESULT_OK);
