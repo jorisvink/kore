@@ -160,9 +160,6 @@ kore_parse_config(void)
 	if (!kore_module_loaded())
 		fatal("no site module was loaded");
 
-	if (LIST_EMPTY(&listeners))
-		fatal("no listeners defined");
-
 	if (skip_chroot != 1 && chroot_path == NULL) {
 		fatal("missing a chroot path");
 	}
