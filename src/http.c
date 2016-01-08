@@ -616,7 +616,7 @@ http_header_recv(struct netbuf *nb)
 			kore_log(LOG_NOTICE, "body too large (%ld > %ld)",
 			    clen, http_body_max);
 			req->flags |= HTTP_REQUEST_DELETE;
-			http_error_response(req->owner, 411);
+			http_error_response(req->owner, 413);
 			return (KORE_RESULT_OK);
 		}
 
