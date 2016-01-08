@@ -812,7 +812,7 @@ int
 http_populate_multipart_form(struct http_request *req, int *v)
 {
 	int		h, i, c, l;
-	u_int32_t	blen, slen, len;
+	u_int32_t	blen, slen;
 	u_int8_t	*s, *end, *e, *end_headers, *data;
 	char		*d, *val, *type, *boundary, *fname;
 	char		*headers[5], *args[5], *opt[5], *name;
@@ -920,8 +920,7 @@ http_populate_multipart_form(struct http_request *req, int *v)
 			for (d = opt[2]; isspace(*d); d++)
 				;
 
-			len = MIN(strlen("filename="), strlen(d));
-			if (!strncasecmp(d, "filename=", len)) {
+			if (!strncasecmp(d, "filename=", 9)) {
 				if ((val = strchr(d, '=')) == NULL) {
 					kore_mem_free(name);
 					continue;
