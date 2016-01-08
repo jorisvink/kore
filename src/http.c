@@ -591,6 +591,12 @@ http_header_recv(struct netbuf *nb)
 	}
 
 	if (req->flags & HTTP_REQUEST_EXPECT_BODY) {
+		if (http_body_max == 0) {
+			req->flags |= HTTP_REQUEST_DELETE;
+			http_error_response(req->owner, 405);
+			return (KORE_RESULT_OK);
+		}
+
 		if (!http_request_header(req, "content-length", &p)) {
 			kore_debug("expected body but no content-length");
 			req->flags |= HTTP_REQUEST_DELETE;

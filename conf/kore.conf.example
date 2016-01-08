@@ -59,7 +59,8 @@ workers		4
 #	http_header_max		Maximum size of HTTP headers (in bytes).
 #
 #	http_body_max		Maximum size of an HTTP body (in bytes).
-#
+#				If set to 0 disallows requests with a body
+#				all together.
 #	http_keepalive_time	Maximum seconds an HTTP connection can be
 #				kept alive by the browser.
 #				(Set to 0 to disable keepalive completely).
@@ -71,7 +72,7 @@ workers		4
 #	http_request_limit	Limit the number of requests Kore processes
 #				in a single event loop.
 #http_header_max	4096
-#http_body_max		10240000
+#http_body_max		1024000
 #http_keepalive_time	0
 #http_hsts_enable	31536000
 #http_request_limit	1000
