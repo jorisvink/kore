@@ -494,11 +494,11 @@ int
 http_header_recv(struct netbuf *nb)
 {
 	size_t			len;
-	u_int64_t		clen;
 	struct http_header	*hdr;
 	struct http_request	*req;
+	u_int64_t		bytes_left;
 	u_int8_t		*end_headers;
-	int			h, i, v, skip, bytes_left;
+	int			h, i, v, skip;
 	char			*request[4], *host[3], *hbuf;
 	char			*p, *headers[HTTP_REQ_HEADER_MAX];
 	struct connection	*c = (struct connection *)nb->owner;
@@ -604,7 +604,7 @@ http_header_recv(struct netbuf *nb)
 			return (KORE_RESULT_OK);
 		}
 
-		clen = kore_strtonum(p, 10, 0, LONG_MAX, &v);
+		req->content_length = kore_strtonum(p, 10, 0, LONG_MAX, &v);
 		if (v == KORE_RESULT_ERROR) {
 			kore_debug("content-length invalid: %s", p);
 			req->flags |= HTTP_REQUEST_DELETE;
@@ -612,36 +612,37 @@ http_header_recv(struct netbuf *nb)
 			return (KORE_RESULT_OK);
 		}
 
-		if (clen == 0) {
+		if (req->content_length == 0) {
 			req->flags |= HTTP_REQUEST_COMPLETE;
 			req->flags &= ~HTTP_REQUEST_EXPECT_BODY;
 			return (KORE_RESULT_OK);
 		}
 
-		if (clen > http_body_max) {
+		if (req->content_length > http_body_max) {
 			kore_log(LOG_NOTICE, "body too large (%ld > %ld)",
-			    clen, http_body_max);
+			    req->content_length, http_body_max);
 			req->flags |= HTTP_REQUEST_DELETE;
 			http_error_response(req->owner, 413);
 			return (KORE_RESULT_OK);
 		}
 
-		req->http_body = kore_buf_create(clen);
+		req->http_body = kore_buf_create(req->content_length);
 		kore_buf_append(req->http_body, end_headers,
 		    (nb->s_off - len));
 
-		bytes_left = clen - (nb->s_off - len);
+		bytes_left = req->content_length - (nb->s_off - len);
 		if (bytes_left > 0) {
 			kore_debug("%ld/%ld (%ld - %ld) more bytes for body",
-			    bytes_left, clen, nb->s_off, len);
-			net_recv_reset(c, bytes_left, http_body_recv);
+			    bytes_left, req->content_length, nb->s_off, len);
+			net_recv_reset(c,
+			    MIN(bytes_left, NETBUF_SEND_PAYLOAD_MAX),
+			    http_body_recv);
 			c->rnb->extra = req;
-			c->rnb->flags &= ~NETBUF_CALL_CB_ALWAYS;
+			http_request_sleep(req);
 		} else if (bytes_left == 0) {
 			req->flags |= HTTP_REQUEST_COMPLETE;
 			req->flags &= ~HTTP_REQUEST_EXPECT_BODY;
 		} else {
-			kore_debug("bytes_left would become zero (%ld)", clen);
 			http_error_response(req->owner, 500);
 		}
 	}
@@ -1090,17 +1091,23 @@ http_file_add(struct http_request *req, const char *name, const char *filename,
 static int
 http_body_recv(struct netbuf *nb)
 {
+	u_int64_t		bytes_left;
 	struct http_request	*req = (struct http_request *)nb->extra;
 
 	kore_buf_append(req->http_body, nb->buf, nb->s_off);
 
-	req->flags |= HTTP_REQUEST_COMPLETE;
-	req->flags &= ~HTTP_REQUEST_EXPECT_BODY;
-
-	nb->extra = NULL;
-	nb->flags |= NETBUF_CALL_CB_ALWAYS;
-
-	kore_debug("received all body data for request %p", req);
+	if (req->http_body->offset == req->content_length) {
+		nb->extra = NULL;
+		req->flags |= HTTP_REQUEST_COMPLETE;
+		req->flags &= ~HTTP_REQUEST_EXPECT_BODY;
+		http_request_wakeup(req);
+		net_recv_reset(nb->owner, http_header_max, http_header_recv);
+	} else {
+		bytes_left = req->content_length - req->http_body->offset;
+		net_recv_reset(nb->owner,
+		    MIN(bytes_left, NETBUF_SEND_PAYLOAD_MAX),
+		    http_body_recv);
+	}
 
 	return (KORE_RESULT_OK);
 }

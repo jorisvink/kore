@@ -186,6 +186,7 @@ struct http_request {
 	char				*agent;
 	struct connection		*owner;
 	struct kore_buf			*http_body;
+	u_int64_t			content_length;
 	void				*hdlr_extra;
 	char				*query_string;
 	u_int8_t			*multipart_body;
