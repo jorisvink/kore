@@ -286,6 +286,19 @@ net_write_ssl(struct connection *c, int len, int *written)
 			c->snb->flags |= NETBUF_MUST_RESEND;
 			c->flags &= ~CONN_WRITE_POSSIBLE;
 			return (KORE_RESULT_OK);
+		case SSL_ERROR_SYSCALL:
+			switch (errno) {
+			case EINTR:
+				*written = 0;
+				return (KORE_RESULT_OK);
+			case EAGAIN:
+				c->snb->flags |= NETBUF_MUST_RESEND;
+				c->flags &= ~CONN_WRITE_POSSIBLE;
+				return (KORE_RESULT_OK);
+			default:
+				break;
+			}
+			/* FALLTHROUGH */
 		default:
 			kore_debug("SSL_write(): %s", ssl_errno_s);
 			return (KORE_RESULT_ERROR);
@@ -314,6 +327,19 @@ net_read_ssl(struct connection *c, int *bytes)
 		case SSL_ERROR_WANT_WRITE:
 			c->flags &= ~CONN_READ_POSSIBLE;
 			return (KORE_RESULT_OK);
+		case SSL_ERROR_SYSCALL:
+			switch (errno) {
+			case EINTR:
+				*bytes = 0;
+				return (KORE_RESULT_OK);
+			case EAGAIN:
+				c->snb->flags |= NETBUF_MUST_RESEND;
+				c->flags &= ~CONN_WRITE_POSSIBLE;
+				return (KORE_RESULT_OK);
+			default:
+				break;
+			}
+			/* FALLTHROUGH */
 		default:
 			kore_debug("SSL_read(): %s", ssl_errno_s);
 			return (KORE_RESULT_ERROR);
