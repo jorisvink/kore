@@ -334,6 +334,8 @@ net_write(struct connection *c, int len, int *written)
 	if (r <= -1) {
 		switch (errno) {
 		case EINTR:
+			*written = 0;
+			return (KORE_RESULT_OK);
 		case EAGAIN:
 			c->flags &= ~CONN_WRITE_POSSIBLE;
 			return (KORE_RESULT_OK);
@@ -357,6 +359,8 @@ net_read(struct connection *c, int *bytes)
 	if (r <= 0) {
 		switch (errno) {
 		case EINTR:
+			*bytes = 0;
+			return (KORE_RESULT_OK);
 		case EAGAIN:
 			c->flags &= ~CONN_READ_POSSIBLE;
 			return (KORE_RESULT_OK);
