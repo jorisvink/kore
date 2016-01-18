@@ -952,7 +952,7 @@ http_populate_get(struct http_request *req)
 void
 http_populate_multipart_form(struct http_request *req)
 {
-	int			h, blen, count;
+	int			h, blen;
 	struct kore_buf		*in, *out;
 	char			*type, *val, *args[3];
 	char			boundary[HTTP_BOUNDARY_MAX];
@@ -983,8 +983,6 @@ http_populate_multipart_form(struct http_request *req)
 
 	if (!multipart_find_data(in, NULL, NULL, req, boundary, blen))
 		goto cleanup;
-
-	count = 0;
 
 	for (;;) {
 		if (!multipart_find_data(in, NULL, NULL, req, "\r\n", 2))
