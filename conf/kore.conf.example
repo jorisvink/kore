@@ -61,6 +61,16 @@ workers		4
 #	http_body_max		Maximum size of an HTTP body (in bytes).
 #				If set to 0 disallows requests with a body
 #				all together.
+#
+#	http_body_disk_offload	Number of bytes after which Kore will use
+#				a temporary file to hold the HTTP body
+#				instead of holding it in memory. If set to
+#				0 no disk offloading will be done. This is
+#				turned off by default.
+#
+#	http_body_disk_path	Path where Kore will store any temporary
+#				HTTP body files.
+#
 #	http_keepalive_time	Maximum seconds an HTTP connection can be
 #				kept alive by the browser.
 #				(Set to 0 to disable keepalive completely).
@@ -76,6 +86,8 @@ workers		4
 #http_keepalive_time	0
 #http_hsts_enable	31536000
 #http_request_limit	1000
+#http_body_disk_offload	0
+#http_body_disk_path	tmp_files
 
 # Websocket specific settings.
 #	websocket_maxframe	Specifies the maximum frame size we can receive

@@ -77,6 +77,7 @@ kore_auth_run(struct http_request *req, struct kore_auth *auth)
 
 	switch (r) {
 	case KORE_RESULT_OK:
+		req->flags |= HTTP_REQUEST_AUTHED;
 		kore_debug("kore_auth_run() for %s successful", req->path);
 		/* FALLTHROUGH */
 	case KORE_RESULT_RETRY:

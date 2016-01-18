@@ -33,6 +33,10 @@ extern "C" {
 #define HTTP_MAX_QUERY_ARGS	20
 #define HTTP_MAX_COOKIES	10
 #define HTTP_REQUEST_LIMIT	1000
+#define HTTP_BODY_DISK_PATH	"tmp_files"
+#define HTTP_BODY_DISK_OFFLOAD	0
+#define HTTP_BODY_PATH_MAX	256
+#define HTTP_BOUNDARY_MAX	80
 
 #define HTTP_ARG_TYPE_RAW	0
 #define HTTP_ARG_TYPE_BYTE	1
@@ -58,19 +62,13 @@ struct http_header {
 
 struct http_arg {
 	char			*name;
-	void			*value;
-	u_int32_t		len;
-
 	char			*s_value;
-	u_int32_t		s_len;
 
 	TAILQ_ENTRY(http_arg)	list;
 };
 
-#define COPY_ARG_TYPE(v, l, t)				\
+#define COPY_ARG_TYPE(v, t)				\
 	do {						\
-		if (l != NULL)				\
-			*l = sizeof(t);			\
 		*(t *)nout = v;				\
 	} while (0);
 
@@ -81,7 +79,7 @@ struct http_arg {
 		nval = (type)kore_strtonum64(q->s_value, sign, &err);	\
 		if (err != KORE_RESULT_OK)				\
 			return (KORE_RESULT_ERROR);			\
-		COPY_ARG_TYPE(nval, len, type);				\
+		COPY_ARG_TYPE(nval, type);				\
 	} while (0);
 
 #define COPY_ARG_INT(min, max, type)					\
@@ -91,23 +89,13 @@ struct http_arg {
 		nval = kore_strtonum(q->s_value, 10, min, max, &err);	\
 		if (err != KORE_RESULT_OK)				\
 			return (KORE_RESULT_ERROR);			\
-		COPY_ARG_TYPE(nval, len, type);				\
-	} while (0);
-
-#define CACHE_STRING()							\
-	do {								\
-		if (q->s_value == NULL) {				\
-			q->s_len = q->len + 1;				\
-			q->s_value = kore_malloc(q->s_len);		\
-			kore_strlcpy(q->s_value, q->value, q->s_len);	\
-		}							\
+		COPY_ARG_TYPE(nval, type);				\
 	} while (0);
 
 #define COPY_AS_INTTYPE_64(type, sign)					\
 	do {								\
 		if (nout == NULL)					\
 			return (KORE_RESULT_ERROR);			\
-		CACHE_STRING();						\
 		COPY_ARG_INT64(type, sign);				\
 	} while (0);
 
@@ -115,45 +103,44 @@ struct http_arg {
 	do {								\
 		if (nout == NULL)					\
 			return (KORE_RESULT_ERROR);			\
-		CACHE_STRING();						\
 		COPY_ARG_INT(min, max, type);				\
 	} while (0);
 
-#define http_argument_type(r, n, so, no, l, t)				\
-	http_argument_get(r, n, so, no, l, t)
+#define http_argument_type(r, n, so, no, t)				\
+	http_argument_get(r, n, so, no, t)
 
-#define http_argument_get_string(n, o, l)				\
-	http_argument_type(req, n, (void **)o, NULL, l, HTTP_ARG_TYPE_STRING)
+#define http_argument_get_string(r, n, o)				\
+	http_argument_type(r, n, (void **)o, NULL, HTTP_ARG_TYPE_STRING)
 
-#define http_argument_get_byte(n, o)					\
-	http_argument_type(req, n, NULL, o, NULL, HTTP_ARG_TYPE_BYTE)
+#define http_argument_get_byte(r, n, o)				\
+	http_argument_type(r, n, NULL, o, HTTP_ARG_TYPE_BYTE)
 
-#define http_argument_get_uint16(n, o)					\
-	http_argument_type(req, n, NULL, o, NULL, HTTP_ARG_TYPE_UINT16)
+#define http_argument_get_uint16(r, n, o)				\
+	http_argument_type(r, n, NULL, o, HTTP_ARG_TYPE_UINT16)
 
-#define http_argument_get_int16(n, o)					\
-	http_argument_type(req, n, NULL, o, NULL, HTTP_ARG_TYPE_INT16)
+#define http_argument_get_int16(r, n, o)				\
+	http_argument_type(r, n, NULL, o, HTTP_ARG_TYPE_INT16)
 
-#define http_argument_get_uint32(n, o)					\
-	http_argument_type(req, n, NULL, o, NULL, HTTP_ARG_TYPE_UINT32)
+#define http_argument_get_uint32(r, n, o)				\
+	http_argument_type(r, n, NULL, o, HTTP_ARG_TYPE_UINT32)
 
-#define http_argument_get_int32(n, o)					\
-	http_argument_type(req, n, NULL, o, NULL, HTTP_ARG_TYPE_INT32)
+#define http_argument_get_int32(r, n, o)				\
+	http_argument_type(r, n, NULL, o, HTTP_ARG_TYPE_INT32)
 
-#define http_argument_get_uint64(n, o)					\
-	http_argument_type(req, n, NULL, o, NULL, HTTP_ARG_TYPE_UINT64)
+#define http_argument_get_uint64(r, n, o)				\
+	http_argument_type(r, n, NULL, o, HTTP_ARG_TYPE_UINT64)
 
-#define http_argument_get_int64(n, o)					\
-	http_argument_type(req, n, NULL, o, NULL, HTTP_ARG_TYPE_INT64)
+#define http_argument_get_int64(r, n, o)				\
+	http_argument_type(r, n, NULL, o, HTTP_ARG_TYPE_INT64)
 
 
 struct http_file {
 	char			*name;
 	char			*filename;
-
-	u_int8_t		*data;
-	u_int32_t		len;
-
+	size_t			position;
+	size_t			offset;
+	size_t			length;
+	struct http_request	*req;
 	TAILQ_ENTRY(http_file)	list;
 };
 
@@ -163,20 +150,21 @@ struct http_file {
 #define HTTP_METHOD_DELETE	3
 #define HTTP_METHOD_HEAD	4
 
-#define HTTP_REQUEST_COMPLETE		0x01
-#define HTTP_REQUEST_DELETE		0x02
-#define HTTP_REQUEST_SLEEPING		0x04
-#define HTTP_REQUEST_PGSQL_QUEUE	0x10
-#define HTTP_REQUEST_EXPECT_BODY	0x20
-#define HTTP_REQUEST_RETAIN_EXTRA	0x40
-#define HTTP_REQUEST_NO_CONTENT_LENGTH	0x80
+#define HTTP_REQUEST_COMPLETE		0x0001
+#define HTTP_REQUEST_DELETE		0x0002
+#define HTTP_REQUEST_SLEEPING		0x0004
+#define HTTP_REQUEST_PGSQL_QUEUE	0x0010
+#define HTTP_REQUEST_EXPECT_BODY	0x0020
+#define HTTP_REQUEST_RETAIN_EXTRA	0x0040
+#define HTTP_REQUEST_NO_CONTENT_LENGTH	0x0080
+#define HTTP_REQUEST_AUTHED		0x0100
 
 struct kore_task;
 
 struct http_request {
 	u_int8_t			method;
-	u_int8_t			flags;
 	u_int8_t			fsm_state;
+	u_int16_t			flags;
 	u_int16_t			status;
 	u_int64_t			start;
 	u_int64_t			end;
@@ -186,10 +174,13 @@ struct http_request {
 	char				*agent;
 	struct connection		*owner;
 	struct kore_buf			*http_body;
-	u_int64_t			content_length;
+	int				http_body_fd;
+	char				*http_body_path;
+	size_t				http_body_length;
+	size_t				http_body_offset;
+	size_t				content_length;
 	void				*hdlr_extra;
 	char				*query_string;
-	u_int8_t			*multipart_body;
 	struct kore_module_handle	*hdlr;
 
 	LIST_HEAD(, kore_task)		tasks;
@@ -214,6 +205,10 @@ extern u_int64_t	http_body_max;
 extern u_int64_t	http_hsts_enable;
 extern u_int16_t	http_keepalive_time;
 extern u_int32_t	http_request_limit;
+extern u_int64_t	http_body_disk_offload;
+extern char		*http_body_disk_path;
+
+void		kore_accesslog(struct http_request *);
 
 void		http_init(void);
 void		http_process(void);
@@ -222,9 +217,8 @@ time_t		http_date_to_time(char *);
 void		http_request_free(struct http_request *);
 void		http_request_sleep(struct http_request *);
 void		http_request_wakeup(struct http_request *);
-char		*http_body_text(struct http_request *);
-void		http_process_request(struct http_request *, int);
-u_int8_t	*http_body_bytes(struct http_request *, u_int32_t *);
+void		http_process_request(struct http_request *);
+ssize_t		http_body_read(struct http_request *, void *, size_t);
 void		http_response(struct http_request *, int, void *, u_int32_t);
 void		http_response_stream(struct http_request *, int, void *,
 		    u_int64_t, int (*cb)(struct netbuf *), void *);
@@ -240,15 +234,15 @@ int		http_state_run(struct http_state *, u_int8_t,
 
 int		http_argument_urldecode(char *);
 int		http_header_recv(struct netbuf *);
-int		http_generic_404(struct http_request *);
-int		http_populate_arguments(struct http_request *);
-int		http_populate_multipart_form(struct http_request *, int *);
+void		http_populate_get(struct http_request *);
+void		http_populate_post(struct http_request *);
+void		http_populate_multipart_form(struct http_request *);
 int		http_argument_get(struct http_request *,
-		    const char *, void **, void *, u_int32_t *, int);
-int		http_file_lookup(struct http_request *, const char *, char **,
-		    u_int8_t **, u_int32_t *);
+		    const char *, void **, void *, int);
 
-void		kore_accesslog(struct http_request *);
+void			http_file_rewind(struct http_file *);
+ssize_t			http_file_read(struct http_file *, void *, size_t);
+struct http_file	*http_file_lookup(struct http_request *, const char *);
 
 enum http_status_code {
 	HTTP_STATUS_CONTINUE			= 100,

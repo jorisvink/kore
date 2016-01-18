@@ -19,6 +19,9 @@
 #include <ctype.h>
 #include <inttypes.h>
 
+#include <fcntl.h>
+#include <unistd.h>
+
 #include "kore.h"
 #include "http.h"
 
@@ -30,14 +33,21 @@
 #include "tasks.h"
 #endif
 
-static int		http_body_recv(struct netbuf *);
-static void		http_error_response(struct connection *, int);
-static void		http_argument_add(struct http_request *, const char *,
-			    void *, u_int32_t, int);
-static void		http_file_add(struct http_request *, const char *,
-			    const char *, u_int8_t *, u_int32_t);
-static void		http_response_normal(struct http_request *,
-			    struct connection *, int, void *, u_int32_t);
+static int	http_body_recv(struct netbuf *);
+static int	http_body_rewind(struct http_request *);
+static void	http_error_response(struct connection *, int);
+static void	http_argument_add(struct http_request *, const char *, char *);
+static void	http_response_normal(struct http_request *,
+		    struct connection *, int, void *, u_int32_t);
+static void	multipart_add_field(struct http_request *, struct kore_buf *,
+		    const char *, const char *, const int);
+static void	multipart_file_add(struct http_request *, struct kore_buf *,
+		    const char *, const char *, const char *, const int);
+static int	multipart_find_data(struct kore_buf *, struct kore_buf *,
+		    size_t *, struct http_request *, const void *, size_t);
+static int	multipart_parse_headers(struct http_request *,
+		    struct kore_buf *, struct kore_buf *,
+		    const char *, const int);
 
 static struct kore_buf			*header_buf;
 static char				http_version[32];
@@ -48,6 +58,7 @@ static struct kore_pool			http_request_pool;
 static struct kore_pool			http_header_pool;
 static struct kore_pool			http_host_pool;
 static struct kore_pool			http_path_pool;
+static struct kore_pool			http_body_path;
 
 int		http_request_count = 0;
 u_int32_t	http_request_limit = HTTP_REQUEST_LIMIT;
@@ -55,6 +66,8 @@ u_int64_t	http_hsts_enable = HTTP_HSTS_ENABLE;
 u_int16_t	http_header_max = HTTP_HEADER_MAX_LEN;
 u_int16_t	http_keepalive_time = HTTP_KEEPALIVE_TIME;
 u_int64_t	http_body_max = HTTP_BODY_MAX_LEN;
+u_int64_t	http_body_disk_offload = HTTP_BODY_DISK_OFFLOAD;
+char		*http_body_disk_path = HTTP_BODY_DISK_PATH;
 
 void
 http_init(void)
@@ -84,6 +97,8 @@ http_init(void)
 	    "http_host_pool", KORE_DOMAINNAME_LEN, prealloc);
 	kore_pool_init(&http_path_pool,
 	    "http_path_pool", HTTP_URI_LEN, prealloc);
+	kore_pool_init(&http_body_path,
+	    "http_body_path", HTTP_BODY_PATH_MAX, prealloc);
 }
 
 int
@@ -93,8 +108,9 @@ http_request_new(struct connection *c, const char *host,
 {
 	char				*p;
 	struct http_request		*req;
+	struct kore_module_handle	*hdlr;
 	int				m, flags;
-	size_t				hostlen, pathlen;
+	size_t				hostlen, pathlen, qsoff;
 
 	kore_debug("http_request_new(%p, %s, %s, %s, %s)", c, host,
 	    method, path, version);
@@ -113,6 +129,21 @@ http_request_new(struct connection *c, const char *host,
 		http_error_response(c, 505);
 		return (KORE_RESULT_ERROR);
 	}
+
+	if ((p = strchr(path, '?')) != NULL) {
+		*p = '\0';
+		qsoff = p - path;
+	} else {
+		qsoff = 0;
+	}
+
+	if ((hdlr = kore_module_handler_find(host, path)) == NULL) {
+		http_error_response(c, 404);
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (p != NULL)
+		*p = '?';
 
 	if (!strcasecmp(method, "get")) {
 		m = HTTP_METHOD_GET;
@@ -141,28 +172,35 @@ http_request_new(struct connection *c, const char *host,
 	req->owner = c;
 	req->status = 0;
 	req->method = m;
-	req->hdlr = NULL;
+	req->hdlr = hdlr;
 	req->agent = NULL;
 	req->flags = flags;
 	req->fsm_state = 0;
 	req->http_body = NULL;
+	req->http_body_fd = -1;
 	req->hdlr_extra = NULL;
 	req->query_string = NULL;
-	req->multipart_body = NULL;
+	req->http_body_length = 0;
+	req->http_body_offset = 0;
+	req->http_body_path = NULL;
 
 	if ((p = strrchr(host, ':')) != NULL)
 		*p = '\0';
 
 	req->host = kore_pool_get(&http_host_pool);
-	(void)memcpy(req->host, host, hostlen);
+	memcpy(req->host, host, hostlen);
 	req->host[hostlen] = '\0';
 
 	req->path = kore_pool_get(&http_path_pool);
-	(void)memcpy(req->path, path, pathlen);
+	memcpy(req->path, path, pathlen);
 	req->path[pathlen] = '\0';
 
-	if ((req->query_string = strchr(req->path, '?')) != NULL)
+	if (qsoff > 0) {
+		req->query_string = req->path + qsoff;
 		*(req->query_string)++ = '\0';
+	} else {
+		req->query_string = NULL;
+	}
 
 	TAILQ_INIT(&(req->resp_headers));
 	TAILQ_INIT(&(req->req_headers));
@@ -236,62 +274,48 @@ http_process(void)
 			continue;
 
 		count++;
-		http_process_request(req, 0);
+		http_process_request(req);
 	}
 }
 
 void
-http_process_request(struct http_request *req, int retry_only)
+http_process_request(struct http_request *req)
 {
-	struct kore_module_handle	*hdlr;
-	int				r, (*cb)(struct http_request *);
+	int		r, (*cb)(struct http_request *);
 
 	kore_debug("http_process_request: %p->%p (%s)",
 	    req->owner, req, req->path);
 
-	if (req->flags & HTTP_REQUEST_DELETE)
+	if (req->flags & HTTP_REQUEST_DELETE || req->hdlr == NULL)
 		return;
 
-	if (req->hdlr != NULL)
-		hdlr = req->hdlr;
-	else
-		hdlr = kore_module_handler_find(req->host, req->path);
-
 	req->start = kore_time_ms();
-	if (hdlr == NULL) {
-		r = http_generic_404(req);
-	} else {
-		if (req->hdlr != hdlr && hdlr->auth != NULL)
-			r = kore_auth_run(req, hdlr->auth);
-		else
-			r = KORE_RESULT_OK;
+	if (req->hdlr->auth != NULL && !(req->flags & HTTP_REQUEST_AUTHED))
+		r = kore_auth_run(req, req->hdlr->auth);
+	else
+		r = KORE_RESULT_OK;
 
-		switch (r) {
-		case KORE_RESULT_OK:
-			req->hdlr = hdlr;
-			cb = hdlr->addr;
-			worker->active_hdlr = hdlr;
-			r = cb(req);
-			worker->active_hdlr = NULL;
-			break;
-		case KORE_RESULT_RETRY:
-			break;
-		case KORE_RESULT_ERROR:
-			/*
-			 * Set r to KORE_RESULT_OK so we can properly
-			 * flush the result from kore_auth_run().
-			 */
-			r = KORE_RESULT_OK;
-			break;
-		default:
-			fatal("kore_auth() returned unknown %d", r);
-		}
+	switch (r) {
+	case KORE_RESULT_OK:
+		cb = req->hdlr->addr;
+		worker->active_hdlr = req->hdlr;
+		r = cb(req);
+		worker->active_hdlr = NULL;
+		break;
+	case KORE_RESULT_RETRY:
+		break;
+	case KORE_RESULT_ERROR:
+		/*
+		 * Set r to KORE_RESULT_OK so we can properly
+		 * flush the result from kore_auth_run().
+		 */
+		r = KORE_RESULT_OK;
+		break;
+	default:
+		fatal("kore_auth() returned unknown %d", r);
 	}
 	req->end = kore_time_ms();
 	req->total += req->end - req->start;
-
-	if (retry_only == 1 && r != KORE_RESULT_RETRY)
-		fatal("http_process_request: expected RETRY but got %d", r);
 
 	switch (r) {
 	case KORE_RESULT_OK:
@@ -308,7 +332,7 @@ http_process_request(struct http_request *req, int retry_only)
 		fatal("A page handler returned an unknown result: %d", r);
 	}
 
-	if (hdlr != NULL && hdlr->dom->accesslog != -1)
+	if (req->hdlr->dom->accesslog != -1)
 		kore_accesslog(req);
 
 	req->flags |= HTTP_REQUEST_DELETE;
@@ -403,12 +427,8 @@ http_request_free(struct http_request *req)
 
 		TAILQ_REMOVE(&(req->arguments), q, list);
 		kore_mem_free(q->name);
-
-		if (q->value != NULL)
-			kore_mem_free(q->value);
 		if (q->s_value != NULL)
 			kore_mem_free(q->s_value);
-
 		kore_mem_free(q);
 	}
 
@@ -423,8 +443,17 @@ http_request_free(struct http_request *req)
 
 	if (req->http_body != NULL)
 		kore_buf_free(req->http_body);
-	if (req->multipart_body != NULL)
-		kore_mem_free(req->multipart_body);
+
+	if (req->http_body_fd != -1)
+		(void)close(req->http_body_fd);
+
+	if (req->http_body_path != NULL) {
+		if (unlink(req->http_body_path) == -1) {
+			kore_log(LOG_NOTICE, "failed to unlink %s: %s",
+			    req->http_body_path, errno_s);
+		}
+		kore_pool_put(&http_body_path, req->http_body_path);
+	}
 
 	if (req->hdlr_extra != NULL &&
 	    !(req->flags & HTTP_REQUEST_RETAIN_EXTRA))
@@ -494,11 +523,12 @@ int
 http_header_recv(struct netbuf *nb)
 {
 	size_t			len;
+	ssize_t			ret;
 	struct http_header	*hdr;
 	struct http_request	*req;
 	u_int64_t		bytes_left;
 	u_int8_t		*end_headers;
-	int			h, i, v, skip;
+	int			h, i, v, skip, l;
 	char			*request[4], *host[3], *hbuf;
 	char			*p, *headers[HTTP_REQ_HEADER_MAX];
 	struct connection	*c = (struct connection *)nb->owner;
@@ -519,7 +549,6 @@ http_header_recv(struct netbuf *nb)
 
 	*end_headers = '\0';
 	end_headers += skip;
-	nb->flags |= NETBUF_FORCE_REMOVE;
 	len = end_headers - nb->buf;
 	hbuf = (char *)nb->buf;
 
@@ -626,9 +655,40 @@ http_header_recv(struct netbuf *nb)
 			return (KORE_RESULT_OK);
 		}
 
-		req->http_body = kore_buf_create(req->content_length);
-		kore_buf_append(req->http_body, end_headers,
-		    (nb->s_off - len));
+		req->http_body_length = req->content_length;
+
+		if (http_body_disk_offload > 0 &&
+		    req->content_length > http_body_disk_offload) {
+			req->http_body_path = kore_pool_get(&http_body_path);
+			l = snprintf(req->http_body_path, HTTP_BODY_PATH_MAX,
+			    "%s/http_body.XXXXXX", http_body_disk_path);
+			if (l == -1 || (size_t)l >= HTTP_BODY_PATH_MAX) {
+				req->flags |= HTTP_REQUEST_DELETE;
+				http_error_response(req->owner, 500);
+				return (KORE_RESULT_ERROR);
+			}
+
+			req->http_body = NULL;
+			req->http_body_fd = mkstemp(req->http_body_path);
+			if (req->http_body_fd == -1) {
+				req->flags |= HTTP_REQUEST_DELETE;
+				http_error_response(req->owner, 500);
+				return (KORE_RESULT_OK);
+			}
+
+			ret = write(req->http_body_fd,
+			    end_headers, (nb->s_off - len));
+			if (ret == -1 || (size_t)ret != (nb->s_off - len)) {
+				req->flags |= HTTP_REQUEST_DELETE;
+				http_error_response(req->owner, 500);
+				return (KORE_RESULT_OK);
+			}
+		} else {
+			req->http_body_fd = -1;
+			req->http_body = kore_buf_create(req->content_length);
+			kore_buf_append(req->http_body, end_headers,
+			    (nb->s_off - len));
+		}
 
 		bytes_left = req->content_length - (nb->s_off - len);
 		if (bytes_left > 0) {
@@ -642,6 +702,11 @@ http_header_recv(struct netbuf *nb)
 		} else if (bytes_left == 0) {
 			req->flags |= HTTP_REQUEST_COMPLETE;
 			req->flags &= ~HTTP_REQUEST_EXPECT_BODY;
+			if (!http_body_rewind(req)) {
+				req->flags |= HTTP_REQUEST_DELETE;
+				http_error_response(req->owner, 500);
+				return (KORE_RESULT_OK);
+			}
 		} else {
 			http_error_response(req->owner, 500);
 		}
@@ -651,92 +716,48 @@ http_header_recv(struct netbuf *nb)
 }
 
 int
-http_populate_arguments(struct http_request *req)
-{
-	u_int32_t		len;
-	int			i, v, c, count;
-	char			*query, *args[HTTP_MAX_QUERY_ARGS], *val[3];
-
-	if (req->method == HTTP_METHOD_POST) {
-		if (req->http_body == NULL)
-			return (0);
-		query = http_body_text(req);
-	} else {
-		if (req->query_string == NULL)
-			return (0);
-		query = kore_strdup(req->query_string);
-	}
-
-	count = 0;
-	v = kore_split_string(query, "&", args, HTTP_MAX_QUERY_ARGS);
-	for (i = 0; i < v; i++) {
-		c = kore_split_string(args[i], "=", val, 3);
-		if (c != 1 && c != 2) {
-			kore_debug("malformed query argument");
-			continue;
-		}
-
-		if (val[1] != NULL) {
-			len = strlen(val[1]);
-			http_argument_add(req, val[0], val[1],
-			    len, HTTP_ARG_TYPE_STRING);
-			count++;
-		}
-	}
-
-	kore_mem_free(query);
-	return (count);
-}
-
-int
 http_argument_get(struct http_request *req, const char *name,
-    void **out, void *nout, u_int32_t *len, int type)
+    void **out, void *nout, int type)
 {
 	struct http_arg		*q;
 
-	if (len != NULL)
-		*len = 0;
-
 	TAILQ_FOREACH(q, &(req->arguments), list) {
-		if (!strcmp(q->name, name)) {
-			switch (type) {
-			case HTTP_ARG_TYPE_RAW:
-				if (len != NULL)
-					*len = q->len;
-				*out = q->value;
-				return (KORE_RESULT_OK);
-			case HTTP_ARG_TYPE_BYTE:
-				COPY_ARG_TYPE(*(u_int8_t *)q->value,
-				    len, u_int8_t);
-				return (KORE_RESULT_OK);
-			case HTTP_ARG_TYPE_INT16:
-				COPY_AS_INTTYPE(SHRT_MIN, SHRT_MAX, int16_t);
-				return (KORE_RESULT_OK);
-			case HTTP_ARG_TYPE_UINT16:
-				COPY_AS_INTTYPE(0, USHRT_MAX, u_int16_t);
-				return (KORE_RESULT_OK);
-			case HTTP_ARG_TYPE_INT32:
-				COPY_AS_INTTYPE(INT_MIN, INT_MAX, int32_t);
-				return (KORE_RESULT_OK);
-			case HTTP_ARG_TYPE_UINT32:
-				COPY_AS_INTTYPE(0, UINT_MAX, u_int32_t);
-				return (KORE_RESULT_OK);
-			case HTTP_ARG_TYPE_INT64:
-				COPY_AS_INTTYPE_64(int64_t, 1);
-				return (KORE_RESULT_OK);
-			case HTTP_ARG_TYPE_UINT64:
-				COPY_AS_INTTYPE_64(u_int64_t, 0);
-				return (KORE_RESULT_OK);
-			case HTTP_ARG_TYPE_STRING:
-				CACHE_STRING();
-				*out = q->s_value;
-				if (len != NULL)
-					*len = q->s_len - 1;
-				return (KORE_RESULT_OK);
-			default:
-				return (KORE_RESULT_ERROR);
-			}
+		if (strcmp(q->name, name))
+			continue;
+
+		switch (type) {
+		case HTTP_ARG_TYPE_RAW:
+			*out = q->s_value;
+			return (KORE_RESULT_OK);
+		case HTTP_ARG_TYPE_BYTE:
+			COPY_ARG_TYPE(*(u_int8_t *)q->s_value, u_int8_t);
+			return (KORE_RESULT_OK);
+		case HTTP_ARG_TYPE_INT16:
+			COPY_AS_INTTYPE(SHRT_MIN, SHRT_MAX, int16_t);
+			return (KORE_RESULT_OK);
+		case HTTP_ARG_TYPE_UINT16:
+			COPY_AS_INTTYPE(0, USHRT_MAX, u_int16_t);
+			return (KORE_RESULT_OK);
+		case HTTP_ARG_TYPE_INT32:
+			COPY_AS_INTTYPE(INT_MIN, INT_MAX, int32_t);
+			return (KORE_RESULT_OK);
+		case HTTP_ARG_TYPE_UINT32:
+			COPY_AS_INTTYPE(0, UINT_MAX, u_int32_t);
+			return (KORE_RESULT_OK);
+		case HTTP_ARG_TYPE_INT64:
+			COPY_AS_INTTYPE_64(int64_t, 1);
+			return (KORE_RESULT_OK);
+		case HTTP_ARG_TYPE_UINT64:
+			COPY_AS_INTTYPE_64(u_int64_t, 0);
+			return (KORE_RESULT_OK);
+		case HTTP_ARG_TYPE_STRING:
+			*out = q->s_value;
+			return (KORE_RESULT_OK);
+		default:
+			break;
 		}
+
+		return (KORE_RESULT_ERROR);
 	}
 
 	return (KORE_RESULT_ERROR);
@@ -790,210 +811,237 @@ http_argument_urldecode(char *arg)
 	return (KORE_RESULT_OK);
 }
 
-int
-http_file_lookup(struct http_request *req, const char *name, char **fname,
-    u_int8_t **data, u_int32_t *len)
+struct http_file *
+http_file_lookup(struct http_request *req, const char *name)
 {
 	struct http_file	*f;
 
 	TAILQ_FOREACH(f, &(req->files), list) {
-		if (!strcmp(f->name, name)) {
-			*len = f->len;
-			*data = f->data;
-			*fname = f->filename;
-			return (KORE_RESULT_OK);
-		}
+		if (!strcmp(f->name, name))
+			return (f);
 	}
 
-	return (KORE_RESULT_ERROR);
+	return (NULL);
 }
 
-int
-http_populate_multipart_form(struct http_request *req, int *v)
+ssize_t
+http_file_read(struct http_file *file, void *buf, size_t len)
 {
-	int		h, i, c, l;
-	u_int32_t	blen, slen;
-	u_int8_t	*s, *end, *e, *end_headers, *data;
-	char		*d, *val, *type, *boundary, *fname;
-	char		*headers[5], *args[5], *opt[5], *name;
+	ssize_t		ret;
+	size_t		toread, off;
 
-	*v = 0;
+	if (file->length < file->offset)
+		return (-1);
+	if ((file->offset + len) < file->offset)
+		return (-1);
+	if ((file->position + file->offset) < file->position)
+		return (-1);
+
+	off = file->position + file->offset;
+	toread = MIN(len, (file->length - file->offset));
+	if (toread <= 0)
+		return (0);
+
+	if (file->req->http_body_fd != -1) {
+		if (lseek(file->req->http_body_fd, off, SEEK_SET) == -1) {
+			kore_log(LOG_ERR, "http_file_read: lseek(%s): %s",
+			    file->req->http_body_path, errno_s);
+			return (-1);
+		}
+
+		for (;;) {
+			ret = read(file->req->http_body_fd, buf, toread);
+			if (ret == -1) {
+				if (errno == EINTR)
+					continue;
+				kore_log(LOG_ERR, "failed to read %s: %s",
+				    file->req->http_body_path, errno_s);
+				return (-1);
+			}
+			if (ret == 0)
+				return (0);
+			break;
+		}
+	} else if (file->req->http_body != NULL) {
+		if (off > file->req->http_body->length)
+			return (0);
+		memcpy(buf, file->req->http_body->data + off, toread);
+		ret = toread;
+	} else {
+		kore_log(LOG_ERR, "http_file_read: called without body");
+		return (-1);
+	}
+
+	file->offset += (size_t)ret;
+	return (ret);
+}
+
+void
+http_file_rewind(struct http_file *file)
+{
+	file->offset = 0;
+}
+
+void
+http_populate_post(struct http_request *req)
+{
+	ssize_t			ret;
+	struct kore_buf		*buf;
+	char			data[BUFSIZ], *val[3], *string, *p;
 
 	if (req->method != HTTP_METHOD_POST)
-		return (KORE_RESULT_ERROR);
+		return;
+
+	buf = kore_buf_create(128);
+	for (;;) {
+		ret = http_body_read(req, data, sizeof(data));
+		if (ret == -1)
+			goto out;
+		if (ret == 0)
+			break;
+
+		if ((p = kore_mem_find(data, ret, "&", 1)) == NULL) {
+			kore_buf_append(buf, data, ret);
+			continue;
+		} else {
+			kore_buf_append(buf, data, p - data);
+			ret -= (p - data);
+		}
+
+		string = kore_buf_stringify(buf);
+		kore_split_string(string, "=", val, 3);
+		if (val[0] != NULL && val[1] != NULL)
+			http_argument_add(req, val[0], val[1]);
+
+		kore_buf_reset(buf);
+		if (ret > 1)
+			kore_buf_append(buf, p + 1, ret - 1);
+	}
+
+	if (buf->offset != 0) {
+		string = kore_buf_stringify(buf);
+		kore_split_string(string, "=", val, 3);
+		if (val[0] != NULL && val[1] != NULL)
+			http_argument_add(req, val[0], val[1]);
+	}
+
+out:
+	kore_buf_free(buf);
+}
+
+void
+http_populate_get(struct http_request *req)
+{
+	int		i, v;
+	char		*query, *args[HTTP_MAX_QUERY_ARGS], *val[3];
+
+	if (req->method != HTTP_METHOD_GET || req->query_string == NULL)
+		return;
+
+	query = kore_strdup(req->query_string);
+	v = kore_split_string(query, "&", args, HTTP_MAX_QUERY_ARGS);
+	for (i = 0; i < v; i++) {
+		kore_split_string(args[i], "=", val, 3);
+		if (val[0] != NULL && val[1] != NULL)
+			http_argument_add(req, val[0], val[1]);
+	}
+
+	kore_mem_free(query);
+}
+
+void
+http_populate_multipart_form(struct http_request *req)
+{
+	int			h, blen, count;
+	struct kore_buf		*in, *out;
+	char			*type, *val, *args[3];
+	char			boundary[HTTP_BOUNDARY_MAX];
+
+	if (req->method != HTTP_METHOD_POST)
+		return;
 
 	if (!http_request_header(req, "content-type", &type))
-		return (KORE_RESULT_ERROR);
+		return;
 
 	h = kore_split_string(type, ";", args, 3);
 	if (h != 2)
-		return (KORE_RESULT_ERROR);
+		return;
 
 	if (strcasecmp(args[0], "multipart/form-data"))
-		return (KORE_RESULT_ERROR);
+		return;
 
 	if ((val = strchr(args[1], '=')) == NULL)
-		return (KORE_RESULT_ERROR);
+		return;
 
 	val++;
-	slen = strlen(val);
-	boundary = kore_malloc(slen + 3);
-	if (!kore_snprintf(boundary, slen + 3, &l, "--%s", val)) {
-		kore_mem_free(boundary);
-		return (KORE_RESULT_ERROR);
+	blen = snprintf(boundary, sizeof(boundary), "--%s", val);
+	if (blen == -1 || (size_t)blen >= sizeof(boundary))
+		return;
+
+	in = kore_buf_create(128);
+	out = kore_buf_create(128);
+
+	if (!multipart_find_data(in, NULL, NULL, req, boundary, blen))
+		goto cleanup;
+
+	count = 0;
+
+	for (;;) {
+		if (!multipart_find_data(in, NULL, NULL, req, "\r\n", 2))
+			break;
+		if (in->offset < 4 && req->http_body_length == 0)
+			break;
+		if (!multipart_find_data(in, out, NULL, req, "\r\n\r\n", 4))
+			break;
+		if (!multipart_parse_headers(req, in, out, boundary, blen))
+			break;
+
+		kore_buf_reset(out);
 	}
 
-	slen = l;
+cleanup:
+	kore_buf_free(in);
+	kore_buf_free(out);
+}
 
-	req->multipart_body = http_body_bytes(req, &blen);
-	if (slen < 3 || blen < (slen * 2)) {
-		kore_mem_free(boundary);
-		return (KORE_RESULT_ERROR);
-	}
+ssize_t
+http_body_read(struct http_request *req, void *out, size_t len)
+{
+	ssize_t		ret;
+	size_t		toread;
 
-	end = req->multipart_body + blen - 2;
-	if (end < req->multipart_body || (end - 2) < req->multipart_body) {
-		kore_mem_free(boundary);
-		return (KORE_RESULT_ERROR);
-	}
+	toread = MIN(req->http_body_length, len);
+	if (toread <= 0)
+		return (0);
 
-	if (memcmp((end - slen - 2), boundary, slen) ||
-	    memcmp((end - 2), "--", 2)) {
-		kore_mem_free(boundary);
-		return (KORE_RESULT_ERROR);
-	}
-
-	s = req->multipart_body + slen + 2;
-	while (s < end) {
-		e = kore_mem_find(s, end - s, boundary, slen);
-		if (e == NULL) {
-			kore_mem_free(boundary);
-			return (KORE_RESULT_ERROR);
-		}
-
-		*(e - 2) = '\0';
-		end_headers = kore_mem_find(s, (e - 2) - s, "\r\n\r\n", 4);
-		if (end_headers == NULL) {
-			kore_mem_free(boundary);
-			return (KORE_RESULT_ERROR);
-		}
-
-		*end_headers = '\0';
-		data = end_headers + 4;
-
-		h = kore_split_string((char *)s, "\r\n", headers, 5);
-		for (i = 0; i < h; i++) {
-			c = kore_split_string(headers[i], ":", args, 5);
-			if (c != 2)
-				continue;
-
-			/* Ignore other headers for now. */
-			if (strcasecmp(args[0], "content-disposition"))
-				continue;
-
-			for (d = args[1]; isspace(*d); d++)
-				;
-
-			c = kore_split_string(d, ";", opt, 5);
-			if (c < 2)
-				continue;
-
-			if (strcasecmp(opt[0], "form-data"))
-				continue;
-
-			if ((val = strchr(opt[1], '=')) == NULL)
-				continue;
-			if (strlen(val) < 3)
-				continue;
-
-			val++;
-			kore_strip_chars(val, '"', &name);
-
-			if (opt[2] == NULL) {
-				*v = *v + 1;
-				http_argument_add(req, name,
-				    data, (e - 2) - data, HTTP_ARG_TYPE_STRING);
-				kore_mem_free(name);
-				continue;
-			}
-
-			for (d = opt[2]; isspace(*d); d++)
-				;
-
-			if (!strncasecmp(d, "filename=", 9)) {
-				if ((val = strchr(d, '=')) == NULL) {
-					kore_mem_free(name);
+	if (req->http_body_fd != -1) {
+		for (;;) {
+			ret = read(req->http_body_fd, out, toread);
+			if (ret == -1) {
+				if (errno == EINTR)
 					continue;
-				}
-
-				val++;
-				kore_strip_chars(val, '"', &fname);
-				if (strlen(fname) > 0) {
-					*v = *v + 1;
-					http_file_add(req, name, fname,
-					    data, (e - 2) - data);
-				}
-
-				kore_mem_free(fname);
-			} else {
-				kore_debug("got unknown: %s", opt[2]);
+				kore_log(LOG_ERR, "failed to read %s: %s",
+				    req->http_body_path, errno_s);
+				return (-1);
 			}
-
-			kore_mem_free(name);
+			if (ret == 0)
+				return (0);
+			break;
 		}
-
-		s = e + slen + 2;
+	} else if (req->http_body != NULL) {
+		memcpy(out,
+		    (req->http_body->data + req->http_body->offset), toread);
+		req->http_body->offset += toread;
+		ret = toread;
+	} else {
+		kore_log(LOG_ERR, "http_body_read: called without body");
+		return (-1);
 	}
 
-	kore_mem_free(boundary);
+	req->http_body_length -= (size_t)ret;
+	req->http_body_offset += (size_t)ret;
 
-	return (KORE_RESULT_OK);
-}
-
-int
-http_generic_404(struct http_request *req)
-{
-	kore_debug("http_generic_404(%s, %d, %s)",
-	    req->host, req->method, req->path);
-
-	http_response(req, 404, NULL, 0);
-
-	return (KORE_RESULT_OK);
-}
-
-char *
-http_body_text(struct http_request *req)
-{
-	u_int32_t	len;
-	u_int8_t	*data;
-	char		*text;
-
-	if (req->http_body == NULL)
-		return (NULL);
-
-	data = kore_buf_release(req->http_body, &len);
-	req->http_body = NULL;
-	len++;
-
-	text = kore_malloc(len);
-	kore_strlcpy(text, (char *)data, len);
-	kore_mem_free(data);
-
-	return (text);
-}
-
-u_int8_t *
-http_body_bytes(struct http_request *req, u_int32_t *len)
-{
-	u_int8_t	*data;
-
-	if (req->http_body == NULL)
-		return (NULL);
-
-	data = kore_buf_release(req->http_body, len);
-	req->http_body = NULL;
-
-	return (data);
+	return (ret);
 }
 
 int
@@ -1035,77 +1083,273 @@ http_state_run(struct http_state *states, u_int8_t elm,
 	return (KORE_RESULT_OK);
 }
 
+static int
+multipart_find_data(struct kore_buf *in, struct kore_buf *out,
+    size_t *olen, struct http_request *req, const void *needle, size_t len)
+{
+	ssize_t			ret;
+	size_t			left;
+	u_int8_t		*p, first, data[4096];
+
+	if (olen != NULL)
+		*olen = 0;
+
+	first = *(const u_int8_t *)needle;
+	for (;;) {
+		if (in->offset < len) {
+			ret = http_body_read(req, data, sizeof(data));
+			if (ret == -1)
+				return (KORE_RESULT_ERROR);
+			if (ret == 0)
+				return (KORE_RESULT_ERROR);
+
+			kore_buf_append(in, data, ret);
+			continue;
+		}
+
+		p = kore_mem_find(in->data, in->offset, &first, 1);
+		if (p == NULL) {
+			if (out != NULL)
+				kore_buf_append(out, in->data, in->offset);
+			if (olen != NULL)
+				*olen += in->offset;
+			kore_buf_reset(in);
+			continue;
+		}
+
+		left = in->offset - (p - in->data);
+		if (left < len) {
+			if (out != NULL)
+				kore_buf_append(out, in->data, (p - in->data));
+			if (olen != NULL)
+				*olen += (p - in->data);
+			memmove(in->data, p, left);
+			in->offset = left;
+			continue;
+		}
+
+		if (!memcmp(p, needle, len)) {
+			if (out != NULL)
+				kore_buf_append(out, in->data, p - in->data);
+			if (olen != NULL)
+				*olen += (p - in->data);
+
+			in->offset = left - len;
+			if (in->offset > 0)
+				memmove(in->data, p + len, in->offset);
+			return (KORE_RESULT_OK);
+		}
+
+		if (out != NULL)
+			kore_buf_append(out, in->data, (p - in->data) + 1);
+		if (olen != NULL)
+			*olen += (p - in->data) + 1;
+
+		in->offset = left - 1;
+		if (in->offset > 0)
+			memmove(in->data, p + 1, in->offset);
+	}
+
+	return (KORE_RESULT_ERROR);
+}
+
+static int
+multipart_parse_headers(struct http_request *req, struct kore_buf *in,
+    struct kore_buf *hbuf, const char *boundary, const int blen)
+{
+	int		h, c, i;
+	char		*headers[5], *args[5], *opt[5];
+	char		*d, *val, *name, *fname, *string;
+
+	string = kore_buf_stringify(hbuf);
+	h = kore_split_string(string, "\r\n", headers, 5);
+	for (i = 0; i < h; i++) {
+		c = kore_split_string(headers[i], ":", args, 5);
+		if (c != 2)
+			continue;
+
+		/* Ignore other headers for now. */
+		if (strcasecmp(args[0], "content-disposition"))
+			continue;
+
+		for (d = args[1]; isspace(*d); d++)
+			;
+
+		c = kore_split_string(d, ";", opt, 5);
+		if (c < 2)
+			continue;
+
+		if (strcasecmp(opt[0], "form-data"))
+			continue;
+
+		if ((val = strchr(opt[1], '=')) == NULL)
+			continue;
+		if (strlen(val) < 3)
+			continue;
+
+		val++;
+		kore_strip_chars(val, '"', &name);
+
+		if (opt[2] == NULL) {
+			multipart_add_field(req, in, name, boundary, blen);
+			kore_mem_free(name);
+			continue;
+		}
+
+		for (d = opt[2]; isspace(*d); d++)
+			;
+
+		if (!strncasecmp(d, "filename=", 9)) {
+			if ((val = strchr(d, '=')) == NULL) {
+				kore_mem_free(name);
+				continue;
+			}
+
+			val++;
+			kore_strip_chars(val, '"', &fname);
+			if (strlen(fname) > 0) {
+				multipart_file_add(req,
+				    in, name, fname, boundary, blen);
+			}
+			kore_mem_free(fname);
+		} else {
+			kore_debug("got unknown: %s", opt[2]);
+		}
+
+		kore_mem_free(name);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
 static void
-http_argument_add(struct http_request *req, const char *name,
-    void *value, u_int32_t len, int type)
+multipart_add_field(struct http_request *req, struct kore_buf *in,
+    const char *name, const char *boundary, const int blen)
+{
+	struct kore_buf		*data;
+	char			*string;
+
+	data = kore_buf_create(128);
+
+	if (!multipart_find_data(in, data, NULL, req, boundary, blen)) {
+		kore_buf_free(data);
+		return;
+	}
+
+	if (data->offset < 3) {
+		kore_buf_free(data);
+		return;
+	}
+
+	data->offset -= 2;
+	string = kore_buf_stringify(data);
+	http_argument_add(req, name, string);
+	kore_buf_free(data);
+}
+
+static void
+multipart_file_add(struct http_request *req, struct kore_buf *in,
+    const char *name, const char *fname, const char *boundary, const int blen)
+{
+	struct http_file	*f;
+	size_t			position, len;
+
+	position= req->http_body_offset - in->offset;
+	if (!multipart_find_data(in, NULL, &len, req, boundary, blen))
+		return;
+
+	if (len < 3)
+		return;
+	len -= 2;
+
+	f = kore_malloc(sizeof(struct http_file));
+	f->req = req;
+	f->length = len;
+	f->position = position;
+	f->name = kore_strdup(name);
+	f->filename = kore_strdup(fname);
+
+	TAILQ_INSERT_TAIL(&(req->files), f, list);
+}
+
+static void
+http_argument_add(struct http_request *req, const char *name, char *value)
 {
 	struct http_arg			*q;
 	struct kore_handler_params	*p;
 
-	if (len == 0 || value == NULL) {
-		kore_debug("http_argument_add: with NULL value");
-		return;
-	}
-
 	TAILQ_FOREACH(p, &(req->hdlr->params), list) {
 		if (p->method != req->method)
 			continue;
+		if (strcmp(p->name, name))
+			continue;
 
-		if (!strcmp(p->name, name)) {
-			if (type == HTTP_ARG_TYPE_STRING) {
-				http_argument_urldecode(value);
-				len = strlen(value);
-			}
+		http_argument_urldecode(value);
+		if (!kore_validator_check(req, p->validator, value))
+			break;
 
-			if (kore_validator_check(req, p->validator, value)) {
-				q = kore_malloc(sizeof(struct http_arg));
-				q->len = len;
-				q->s_value = NULL;
-				q->name = kore_strdup(name);
-				q->value = kore_malloc(len);
-				memcpy(q->value, value, len);
-				TAILQ_INSERT_TAIL(&(req->arguments), q, list);
-			}
-
-			return;
-		}
+		q = kore_malloc(sizeof(struct http_arg));
+		q->name = kore_strdup(name);
+		q->s_value = kore_strdup(value);
+		TAILQ_INSERT_TAIL(&(req->arguments), q, list);
+		break;
 	}
-}
-
-static void
-http_file_add(struct http_request *req, const char *name, const char *filename,
-    u_int8_t *data, u_int32_t len)
-{
-	struct http_file	*f;
-
-	f = kore_malloc(sizeof(struct http_file));
-	f->len = len;
-	f->data = data;
-	f->name = kore_strdup(name);
-	f->filename = kore_strdup(filename);
-
-	TAILQ_INSERT_TAIL(&(req->files), f, list);
 }
 
 static int
 http_body_recv(struct netbuf *nb)
 {
+	ssize_t			ret;
 	u_int64_t		bytes_left;
 	struct http_request	*req = (struct http_request *)nb->extra;
 
-	kore_buf_append(req->http_body, nb->buf, nb->s_off);
+	if (req->http_body_fd != -1) {
+		ret = write(req->http_body_fd, nb->buf, nb->s_off);
+		if (ret == -1 || (size_t)ret != nb->s_off)
+			fatal("failed to write");
+	} else if (req->http_body != NULL) {
+		kore_buf_append(req->http_body, nb->buf, nb->s_off);
+	} else {
+		req->flags |= HTTP_REQUEST_DELETE;
+		http_error_response(req->owner, 500);
+		return (KORE_RESULT_OK);
+	}
 
-	if (req->http_body->offset == req->content_length) {
+	req->content_length -= nb->s_off;
+
+	if (req->content_length == 0) {
 		nb->extra = NULL;
+		http_request_wakeup(req);
 		req->flags |= HTTP_REQUEST_COMPLETE;
 		req->flags &= ~HTTP_REQUEST_EXPECT_BODY;
-		http_request_wakeup(req);
+		req->content_length = req->http_body_length;
+		if (!http_body_rewind(req)) {
+			req->flags |= HTTP_REQUEST_DELETE;
+			http_error_response(req->owner, 500);
+			return (KORE_RESULT_OK);
+		}
 		net_recv_reset(nb->owner, http_header_max, http_header_recv);
 	} else {
-		bytes_left = req->content_length - req->http_body->offset;
+		bytes_left = req->content_length;
 		net_recv_reset(nb->owner,
 		    MIN(bytes_left, NETBUF_SEND_PAYLOAD_MAX),
 		    http_body_recv);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+http_body_rewind(struct http_request *req)
+{
+	if (req->http_body_fd != -1) {
+		if (lseek(req->http_body_fd, 0, SEEK_SET) == -1) {
+			kore_log(LOG_ERR, "lseek(%s) failed: %s",
+			    req->http_body_path, errno_s);
+			return (KORE_RESULT_ERROR);
+		}
+	} else {
+		kore_buf_reset(req->http_body);
 	}
 
 	return (KORE_RESULT_OK);

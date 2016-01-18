@@ -17,6 +17,12 @@
 #include <kore/kore.h>
 #include <kore/http.h>
 
+#include <openssl/sha.h>
+
+#include <fcntl.h>
+#include <stdlib.h>
+#include <unistd.h>
+
 #include "assets.h"
 
 int		example_load(int);
@@ -132,9 +138,9 @@ serve_b64test(struct http_request *req)
 int
 serve_file_upload(struct http_request *req)
 {
-	int			r;
 	u_int8_t		*d;
 	struct kore_buf		*b;
+	struct http_file	*f;
 	u_int32_t		len;
 	char			*name, buf[BUFSIZ];
 
@@ -142,16 +148,20 @@ serve_file_upload(struct http_request *req)
 	kore_buf_append(b, asset_upload_html, asset_len_upload_html);
 
 	if (req->method == HTTP_METHOD_POST) {
-		http_populate_multipart_form(req, &r);
-		if (http_argument_get_string("firstname", &name, &len)) {
-			kore_buf_replace_string(b, "$firstname$", name, len);
+		if (req->http_body_fd != -1)
+			kore_log(LOG_NOTICE, "file is on disk");
+
+		http_populate_multipart_form(req);
+		if (http_argument_get_string(req, "firstname", &name)) {
+			kore_buf_replace_string(b, "$firstname$",
+			    name, strlen(name));
 		} else {
 			kore_buf_replace_string(b, "$firstname$", NULL, 0);
 		}
 
-		if (http_file_lookup(req, "file", &name, &d, &len)) {
+		if ((f = http_file_lookup(req, "file")) != NULL) {
 			(void)snprintf(buf, sizeof(buf),
-			    "%s is %d bytes", name, len);
+			    "%s is %ld bytes", f->filename, f->length);
 			kore_buf_replace_string(b,
 			    "$upload$", buf, strlen(buf));
 		} else {
@@ -232,7 +242,10 @@ serve_params_test(struct http_request *req)
 	int			r, i;
 	char			*test, name[10];
 
-	http_populate_arguments(req);
+	if (req->method == HTTP_METHOD_GET)
+		http_populate_get(req);
+	else if (req->method == HTTP_METHOD_POST)
+		http_populate_post(req);
 
 	b = kore_buf_create(asset_len_params_html);
 	kore_buf_append(b, asset_params_html, asset_len_params_html);
@@ -240,14 +253,14 @@ serve_params_test(struct http_request *req)
 	/*
 	 * The GET parameters will be filtered out on POST.
 	 */
-	if (http_argument_get_string("arg1", &test, &len)) {
-		kore_buf_replace_string(b, "$arg1$", test, len);
+	if (http_argument_get_string(req, "arg1", &test)) {
+		kore_buf_replace_string(b, "$arg1$", test, strlen(test));
 	} else {
 		kore_buf_replace_string(b, "$arg1$", NULL, 0);
 	}
 
-	if (http_argument_get_string("arg2", &test, &len)) {
-		kore_buf_replace_string(b, "$arg2$", test, len);
+	if (http_argument_get_string(req, "arg2", &test)) {
+		kore_buf_replace_string(b, "$arg2$", test, strlen(test));
 	} else {
 		kore_buf_replace_string(b, "$arg2$", NULL, 0);
 	}
@@ -257,7 +270,7 @@ serve_params_test(struct http_request *req)
 		kore_buf_replace_string(b, "$test2$", NULL, 0);
 		kore_buf_replace_string(b, "$test3$", NULL, 0);
 
-		if (http_argument_get_uint16("id", &r))
+		if (http_argument_get_uint16(req, "id", &r))
 			kore_log(LOG_NOTICE, "id: %d", r);
 		else
 			kore_log(LOG_NOTICE, "No id set");
@@ -272,9 +285,9 @@ serve_params_test(struct http_request *req)
 
 	for (i = 1; i < 4; i++) {
 		(void)snprintf(name, sizeof(name), "test%d", i);
-		if (http_argument_get_string(name, &test, &len)) {
+		if (http_argument_get_string(req, name, &test)) {
 			(void)snprintf(name, sizeof(name), "$test%d$", i);
-			kore_buf_replace_string(b, name, test, len);
+			kore_buf_replace_string(b, name, test, strlen(test));
 		} else {
 			(void)snprintf(name, sizeof(name), "$test%d$", i);
 			kore_buf_replace_string(b, name, NULL, 0);

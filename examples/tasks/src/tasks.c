@@ -58,8 +58,8 @@ page_handler(struct http_request *req)
 	 */
 	if (req->hdlr_extra == NULL) {
 		/* Grab the user argument */
-		http_populate_arguments(req);
-		if (!http_argument_get_string("user", &user, &len)) {
+		http_populate_get(req);
+		if (!http_argument_get_string(req, "user", &user)) {
 			http_response(req, 500, "ERROR\n", 6);
 			return (KORE_RESULT_OK);
 		}
@@ -87,7 +87,7 @@ page_handler(struct http_request *req)
 		 * GET request to its channel.
 		 */
 		kore_task_run(&state->task);
-		kore_task_channel_write(&state->task, user, len);
+		kore_task_channel_write(&state->task, user, strlen(user));
 
 		/*
 		 * Tell Kore to retry us later.
@@ -142,7 +142,6 @@ page_handler(struct http_request *req)
 int
 post_back(struct http_request *req)
 {
-	u_int32_t	len;
 	char		*user;
 
 	if (req->method != HTTP_METHOD_POST) {
@@ -150,14 +149,14 @@ post_back(struct http_request *req)
 		return (KORE_RESULT_OK);
 	}
 
-	http_populate_arguments(req);
-	if (!http_argument_get_string("user", &user, &len)) {
+	http_populate_post(req);
+	if (!http_argument_get_string(req, "user", &user)) {
 		http_response(req, 500, NULL, 0);
 		return (KORE_RESULT_OK);
 	}
 
 	/* Simply echo the supplied user argument back. */
-	http_response(req, 200, user, len);
+	http_response(req, 200, user, strlen(user));
 
 	return (KORE_RESULT_OK);
 }
