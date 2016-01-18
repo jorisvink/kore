@@ -88,6 +88,16 @@ kore_buf_appendf(struct kore_buf *buf, const char *fmt, ...)
 	va_end(args);
 }
 
+char *
+kore_buf_stringify(struct kore_buf *buf)
+{
+	char		c;
+
+	c = '\0';
+	kore_buf_append(buf, &c, sizeof(c));
+	return ((char *)buf->data);
+}
+
 u_int8_t *
 kore_buf_release(struct kore_buf *buf, u_int32_t *len)
 {
