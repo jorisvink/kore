@@ -572,7 +572,7 @@ configure_http_body_disk_path(char **argv)
 	if (argv[1] == NULL)
 		return (KORE_RESULT_ERROR);
 
-	if (http_body_disk_path != HTTP_BODY_DISK_PATH)
+	if (strcmp(http_body_disk_path, HTTP_BODY_DISK_PATH))
 		kore_mem_free(http_body_disk_path);
 
 	http_body_disk_path = kore_strdup(argv[1]);
