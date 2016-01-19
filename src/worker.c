@@ -264,14 +264,6 @@ kore_worker_entry(struct kore_worker *kw)
 	kore_pid = kw->pid;
 
 	sig_recv = 0;
-	signal(SIGHUP, kore_signal);
-	signal(SIGQUIT, kore_signal);
-	signal(SIGPIPE, SIG_IGN);
-
-	if (foreground)
-		signal(SIGINT, kore_signal);
-	else
-		signal(SIGINT, SIG_IGN);
 
 	net_init();
 #if !defined(KORE_NO_HTTP)
