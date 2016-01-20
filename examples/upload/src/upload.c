@@ -68,6 +68,7 @@ page(struct http_request *req)
 	}
 
 	/* While we have data from http_file_read(), write it. */
+	/* Alternatively you could look at file->offset and file->length. */
 	ret = KORE_RESULT_ERROR;
 	for (;;) {
 		ret = http_file_read(file, buf, sizeof(buf));
@@ -106,7 +107,7 @@ cleanup:
 		kore_log(LOG_WARNING, "close(%s): %s", file->filename, errno_s);
 
 	if (ret == KORE_RESULT_ERROR) {
-		if (unlink("dump") == -1) {
+		if (unlink(file->filename) == -1) {
 			kore_log(LOG_WARNING, "unlink(%s): %s",
 			    file->filename, errno_s);
 		}
