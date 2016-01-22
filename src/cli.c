@@ -20,6 +20,7 @@
 #include <sys/queue.h>
 #include <sys/wait.h>
 #include <sys/mman.h>
+#include <sys/time.h>
 
 #include <openssl/pem.h>
 #include <openssl/x509v3.h>

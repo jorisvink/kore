@@ -18,6 +18,7 @@
 #include <sys/socket.h>
 #include <sys/resource.h>
 
+#include <stdio.h>
 #include <netdb.h>
 #include <signal.h>
 

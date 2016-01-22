@@ -17,6 +17,7 @@
 #include <sys/param.h>
 
 #include <limits.h>
+#include <string.h>
 
 #include "kore.h"
 #include "http.h"

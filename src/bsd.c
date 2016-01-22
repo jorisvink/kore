@@ -22,6 +22,9 @@
 #include <sys/cpuset.h>
 #endif
 
+#include <errno.h>
+#include <string.h>
+
 #include "kore.h"
 
 #if defined(KORE_USE_PGSQL)
