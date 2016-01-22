@@ -94,6 +94,20 @@ kore_platform_event_init(void)
 	}
 }
 
+void
+kore_platform_event_cleanup(void)
+{
+	if (kfd >= 0) {
+		close(kfd);
+		kfd = -1;
+	}
+
+	if (events != NULL) {
+		kore_mem_free(events);
+		events = NULL;
+	}
+}
+
 int
 kore_platform_event_wait(u_int64_t timer)
 {
