@@ -166,7 +166,8 @@ client_setup(struct connection *c)
 int
 backend_handle_connect(struct connection *c)
 {
-	int		ret;
+	int			ret;
+	struct connection	*src;
 
 	/* We will get a write notification when we can progress. */
 	if (!(c->flags & CONN_WRITE_POSSIBLE))
@@ -208,7 +209,12 @@ backend_handle_connect(struct connection *c)
 	kore_connection_start_idletimer(c);
 	kore_platform_event_all(c->fd, c);
 
-	return (KORE_RESULT_OK);
+	/* Allow events from source now. */
+	src = c->hdlr_extra;
+	kore_platform_event_all(src->fd, src);
+
+	/* Now lets start. */
+	return (c->handle(c));
 }
 
 /*
