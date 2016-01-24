@@ -59,6 +59,17 @@ workers		4
 #	http_header_max		Maximum size of HTTP headers (in bytes).
 #
 #	http_body_max		Maximum size of an HTTP body (in bytes).
+#				If set to 0 disallows requests with a body
+#				all together.
+#
+#	http_body_disk_offload	Number of bytes after which Kore will use
+#				a temporary file to hold the HTTP body
+#				instead of holding it in memory. If set to
+#				0 no disk offloading will be done. This is
+#				turned off by default.
+#
+#	http_body_disk_path	Path where Kore will store any temporary
+#				HTTP body files.
 #
 #	http_keepalive_time	Maximum seconds an HTTP connection can be
 #				kept alive by the browser.
@@ -71,10 +82,12 @@ workers		4
 #	http_request_limit	Limit the number of requests Kore processes
 #				in a single event loop.
 #http_header_max	4096
-#http_body_max		10240000
+#http_body_max		1024000
 #http_keepalive_time	0
 #http_hsts_enable	31536000
 #http_request_limit	1000
+#http_body_disk_offload	0
+#http_body_disk_path	tmp_files
 
 # Websocket specific settings.
 #	websocket_maxframe	Specifies the maximum frame size we can receive
@@ -109,8 +122,7 @@ validator	v_session	function	v_session_validate
 # Specify the TLS ciphers that will be used.
 #tls_cipher	ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA256:DHE-DSS-AES256-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:HIGH:!aNULL:!eNULL:!EXPORT:!DES:!3DES:!MD5:!PSK:!kRSA:!kDSA
 
-# If you wish to use EDH / ECDH specify a file containing
-# a generated DH key (See OpenSSL dhparam).
+# Required DH parameters for TLS.
 #tls_dhparam	dh2048.pem
 
 # Authentication configuration

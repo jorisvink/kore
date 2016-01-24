@@ -22,9 +22,7 @@ int		page(struct http_request *);
 int
 page(struct http_request *req)
 {
-	int			p;
 	u_int16_t		id;
-	u_int32_t		len;
 	char			*sid;
 	struct kore_buf		*buf;
 
@@ -40,17 +38,8 @@ page(struct http_request *req)
 	 * See conf/parameters.conf on how that is done, this is an
 	 * important step as without the params block you will never
 	 * get any parameters returned from Kore.
-	 *
-	 * http_populate_arguments() returns the number of arguments
-	 * that were successfully processed and are available.
 	 */
-	p = http_populate_arguments(req);
-
-	/* If we had no arguments available what so ever, return 400. */
-	if (p == 0) {
-		http_response(req, 400, NULL, 0);
-		return (KORE_RESULT_OK);
-	}
+	http_populate_get(req);
 
 	/*
 	 * Lets grab the "id" parameter if available. Kore can obtain
@@ -73,11 +62,11 @@ page(struct http_request *req)
 	buf = kore_buf_create(128);
 
 	/* Grab it as a string, we shouldn't free the result in sid. */
-	if (http_argument_get_string("id", &sid, &len))
-		kore_buf_appendf(buf, "id as a string: '%s' (%d)\n", sid, len);
+	if (http_argument_get_string(req, "id", &sid))
+		kore_buf_appendf(buf, "id as a string: '%s'\n", sid);
 
 	/* Grab it as an actual u_int16_t. */
-	if (http_argument_get_uint16("id", &id))
+	if (http_argument_get_uint16(req, "id", &id))
 		kore_buf_appendf(buf, "id as an u_int16_t: %d\n", id);
 
 	/* Now return the result to the client with a 200 status code. */

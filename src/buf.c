@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2015 Joris Vink <joris@coders.se>
+ * Copyright (c) 2013-2016 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -37,7 +37,10 @@ kore_buf_create(u_int32_t initial)
 void
 kore_buf_append(struct kore_buf *buf, const void *d, u_int32_t len)
 {
-	if ((buf->offset + len) >= buf->length) {
+	if ((buf->offset + len) < len)
+		fatal("overflow in kore_buf_append");
+
+	if ((buf->offset + len) > buf->length) {
 		buf->length += len + KORE_BUF_INCREMENT;
 		buf->data = kore_realloc(buf->data, buf->length);
 	}
@@ -88,6 +91,16 @@ kore_buf_appendf(struct kore_buf *buf, const char *fmt, ...)
 	va_start(args, fmt);
 	kore_buf_appendv(buf, fmt, args);
 	va_end(args);
+}
+
+char *
+kore_buf_stringify(struct kore_buf *buf)
+{
+	char		c;
+
+	c = '\0';
+	kore_buf_append(buf, &c, sizeof(c));
+	return ((char *)buf->data);
 }
 
 u_int8_t *
@@ -147,7 +160,7 @@ kore_buf_replace_string(struct kore_buf *b, char *src, void *dst, size_t len)
 }
 
 void
-kore_buf_reset(struct kore_buf *buf) 
+kore_buf_reset(struct kore_buf *buf)
 {
 	buf->offset = 0;
 }

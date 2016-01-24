@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2015 Joris Vink <joris@coders.se>
+ * Copyright (c) 2013-2016 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -15,6 +15,8 @@
  */
 
 #include <sys/types.h>
+#include <sys/stat.h>
+
 #include <sys/socket.h>
 #include <sys/resource.h>
 
@@ -23,6 +25,10 @@
 #include <signal.h>
 
 #include "kore.h"
+
+#if !defined(KORE_NO_HTTP)
+#include "http.h"
+#endif
 
 volatile sig_atomic_t			sig_recv;
 
@@ -162,6 +168,13 @@ main(int argc, char *argv[])
 
 #if !defined(KORE_NO_HTTP)
 	kore_accesslog_init();
+	if (http_body_disk_offload > 0) {
+		if (mkdir(http_body_disk_path, 0700) == -1 && errno != EEXIST) {
+			printf("can't create http_body_disk_path '%s': %s\n",
+			    http_body_disk_path, errno_s);
+			return (KORE_RESULT_ERROR);
+		}
+	}
 #endif
 
 	sig_recv = 0;

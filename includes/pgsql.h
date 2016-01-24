@@ -22,6 +22,9 @@
 #define KORE_PGSQL_FORMAT_TEXT		0
 #define KORE_PGSQL_FORMAT_BINARY	1
 
+#define KORE_PGSQL_SYNC			0x0001
+#define KORE_PGSQL_ASYNC		0x0002
+
 #if defined(__cplusplus)
 extern "C" {
 #endif
@@ -29,14 +32,23 @@ extern "C" {
 struct pgsql_conn {
 	u_int8_t			type;
 	u_int8_t			flags;
+	char				*name;
 
 	PGconn				*db;
 	struct pgsql_job		*job;
 	TAILQ_ENTRY(pgsql_conn)		list;
 };
 
+struct pgsql_db {
+	char			*name;
+	char			*conn_string;
+
+	LIST_ENTRY(pgsql_db)	rlist;
+};
+
 struct kore_pgsql {
 	u_int8_t		state;
+	int			flags;
 	char			*error;
 	PGresult		*result;
 	struct pgsql_conn	*conn;
@@ -45,17 +57,17 @@ struct kore_pgsql {
 };
 
 extern u_int16_t	pgsql_conn_max;
-extern char		*pgsql_conn_string;
 
 void	kore_pgsql_init(void);
+int	kore_pgsql_query_init(struct kore_pgsql *, struct http_request *,
+	    const char *, int);
 void	kore_pgsql_handle(void *, int);
 void	kore_pgsql_cleanup(struct kore_pgsql *);
 void	kore_pgsql_continue(struct http_request *, struct kore_pgsql *);
-int	kore_pgsql_query(struct kore_pgsql *, struct http_request *,
-	    const char *);
-int	kore_pgsql_query_params(struct kore_pgsql *, struct http_request *,
+int	kore_pgsql_query(struct kore_pgsql *, const char *);
+int	kore_pgsql_query_params(struct kore_pgsql *,
 	    const char *, int, u_int8_t, ...);
-
+int	kore_pgsql_register(const char *, const char *);
 int	kore_pgsql_ntuples(struct kore_pgsql *);
 void	kore_pgsql_logerror(struct kore_pgsql *);
 void	kore_pgsql_queue_remove(struct http_request *);

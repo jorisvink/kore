@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2015 Joris Vink <joris@coders.se>
+ * Copyright (c) 2013-2016 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -22,17 +22,24 @@
 #endif
 
 #include <sys/types.h>
+#include <sys/time.h>
 #include <sys/queue.h>
 
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#if !defined(KORE_NO_TLS)
 #include <openssl/err.h>
 #include <openssl/dh.h>
 #include <openssl/ssl.h>
+#endif
 
 #include <errno.h>
 #include <regex.h>
+#include <stdarg.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
 #include <syslog.h>
 #include <unistd.h>
 #include <stdarg.h>
@@ -67,11 +74,11 @@ extern int daemon(int, int);
 #define KORE_DEFAULT_CIPHER_LIST	"ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA256:DHE-DSS-AES256-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:HIGH:!aNULL:!eNULL:!EXPORT:!DES:!3DES:!MD5:!PSK:!kRSA:!kDSA"
 
 #if defined(KORE_DEBUG)
-#define kore_debug(fmt, ...)	\
+#define kore_debug(...)		\
 	if (kore_debug)		\
-		kore_debug_internal(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
+		kore_debug_internal(__FILE__, __LINE__, ##__VA_ARGS__)
 #else
-#define kore_debug(fmt, ...)
+#define kore_debug(...)
 #endif
 
 #define NETBUF_RECV			0
@@ -160,11 +167,13 @@ struct connection {
 	u_int8_t		state;
 	u_int8_t		proto;
 	void			*owner;
+#if !defined(KORE_NO_TLS)
+	X509			*cert;
 	SSL			*ssl;
+	int			tls_reneg;
+#endif
 	u_int8_t		flags;
 	void			*hdlr_extra;
-	X509			*cert;
-	int			tls_reneg;
 
 	int			(*handle)(struct connection *);
 	void			(*disconnect)(struct connection *);
@@ -284,12 +293,14 @@ struct kore_worker {
 
 struct kore_domain {
 	char					*domain;
-	char					*certfile;
-	char					*certkey;
+	int					accesslog;
+#if !defined(KORE_NO_TLS)
 	char					*cafile;
 	char					*crlfile;
-	int					accesslog;
+	char					*certfile;
+	char					*certkey;
 	SSL_CTX					*ssl_ctx;
+#endif
 	TAILQ_HEAD(, kore_module_handle)	handlers;
 	TAILQ_ENTRY(kore_domain)		list;
 };
@@ -312,8 +323,7 @@ struct kore_validator {
 };
 #endif
 
-#define KORE_BUF_INITIAL	128
-#define KORE_BUF_INCREMENT	KORE_BUF_INITIAL
+#define KORE_BUF_INCREMENT	4096
 
 struct kore_buf {
 	u_int8_t		*data;
@@ -386,7 +396,10 @@ extern char	*kore_pidfile;
 extern char	*config_file;
 extern char	*kore_tls_cipher_list;
 extern int	tls_version;
+
+#if !defined(KORE_NO_TLS)
 extern DH	*tls_dhparam;
+#endif
 
 extern u_int8_t			nlisteners;
 extern u_int16_t		cpu_count;
@@ -450,9 +463,11 @@ void		kore_timer_remove(struct kore_timer *);
 struct kore_timer	*kore_timer_add(void (*cb)(void *, u_int64_t),
 			    u_int64_t, void *, int);
 
-int		kore_tls_sni_cb(SSL *, int *, void *);
 int		kore_server_bind(const char *, const char *, const char *);
+#if !defined(KORE_NO_TLS)
+int		kore_tls_sni_cb(SSL *, int *, void *);
 void		kore_tls_info_callback(const SSL *, int, int);
+#endif
 
 void			kore_connection_init(void);
 void			kore_connection_cleanup(void);
@@ -581,8 +596,9 @@ void		kore_buf_free(struct kore_buf *);
 struct kore_buf	*kore_buf_create(u_int32_t);
 void		kore_buf_append(struct kore_buf *, const void *, u_int32_t);
 u_int8_t	*kore_buf_release(struct kore_buf *, u_int32_t *);
-void	kore_buf_reset(struct kore_buf *); 
+void		kore_buf_reset(struct kore_buf *);
 
+char	*kore_buf_stringify(struct kore_buf *);
 void	kore_buf_appendf(struct kore_buf *, const char *, ...);
 void	kore_buf_appendv(struct kore_buf *, const char *, va_list);
 void	kore_buf_appendb(struct kore_buf *, struct kore_buf *);

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2015 Joris Vink <joris@coders.se>
+ * Copyright (c) 2013-2016 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -67,6 +67,8 @@ static int		configure_http_body_max(char **);
 static int		configure_http_hsts_enable(char **);
 static int		configure_http_keepalive_time(char **);
 static int		configure_http_request_limit(char **);
+static int		configure_http_body_disk_offload(char **);
+static int		configure_http_body_disk_path(char **);
 static int		configure_validator(char **);
 static int		configure_params(char **);
 static int		configure_validate(char **);
@@ -124,6 +126,8 @@ static struct {
 	{ "http_hsts_enable",		configure_http_hsts_enable },
 	{ "http_keepalive_time",	configure_http_keepalive_time },
 	{ "http_request_limit",		configure_http_request_limit },
+	{ "http_body_disk_offload",	configure_http_body_disk_offload },
+	{ "http_body_disk_path",	configure_http_body_disk_path },
 	{ "validator",			configure_validator },
 	{ "params",			configure_params },
 	{ "validate",			configure_validate },
@@ -161,9 +165,6 @@ kore_parse_config(void)
 
 	if (!kore_module_loaded())
 		fatal("no site module was loaded");
-
-	if (LIST_EMPTY(&listeners))
-		fatal("no listeners defined");
 
 	if (skip_chroot != 1 && chroot_path == NULL) {
 		fatal("missing a chroot path");
@@ -541,12 +542,42 @@ configure_http_body_max(char **argv)
 		return (KORE_RESULT_ERROR);
 	}
 
-	http_body_max = kore_strtonum(argv[1], 10, 1, LONG_MAX, &err);
+	http_body_max = kore_strtonum(argv[1], 10, 0, LONG_MAX, &err);
 	if (err != KORE_RESULT_OK) {
 		printf("bad http_body_max value: %s\n", argv[1]);
 		return (KORE_RESULT_ERROR);
 	}
 
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_http_body_disk_offload(char **argv)
+{
+	int		err;
+
+	if (argv[1] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	http_body_disk_offload = kore_strtonum(argv[1], 10, 0, LONG_MAX, &err);
+	if (err != KORE_RESULT_OK) {
+		printf("bad http_body_disk_offload value: %s\n", argv[1]);
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_http_body_disk_path(char **argv)
+{
+	if (argv[1] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	if (strcmp(http_body_disk_path, HTTP_BODY_DISK_PATH))
+		kore_mem_free(http_body_disk_path);
+
+	http_body_disk_path = kore_strdup(argv[1]);
 	return (KORE_RESULT_OK);
 }
 

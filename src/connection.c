@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2015 Joris Vink <joris@coders.se>
+ * Copyright (c) 2013-2016 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -55,13 +55,15 @@ kore_connection_new(void *owner)
 
 	c = kore_pool_get(&connection_pool);
 
+#if !defined(KORE_NO_TLS)
 	c->ssl = NULL;
+	c->cert = NULL;
+	c->tls_reneg = 0;
+#endif
 	c->flags = 0;
 	c->rnb = NULL;
 	c->snb = NULL;
-	c->cert = NULL;
 	c->owner = owner;
-	c->tls_reneg = 0;
 	c->handle = NULL;
 	c->disconnect = NULL;
 	c->hdlr_extra = NULL;

@@ -1,0 +1,5 @@
+*.o
+.objs
+upload.so
+assets.h
+cert
