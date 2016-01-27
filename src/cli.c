@@ -232,7 +232,6 @@ static const char *dh2048_data =
 static const char *gitignore = "*.o\n.flavor\n.objs\n%s.so\nassets.h\ncert\n";
 
 static int			s_fd = -1;
-static int			verbose = 0;
 static char			*appl = NULL;
 static char			*rootdir = NULL;
 static char			*compiler = "gcc";
@@ -385,9 +384,6 @@ cli_build(int argc, char **argv)
 	char			*sofile, *config, *data;
 	char			*assets_path, *p, *obj_path, *cpath;
 	char			pwd[PATH_MAX], *src_path, *assets_header;
-
-	if (argc == 1 && !strcmp(argv[0], "-v"))
-		verbose = 1;
 
 	if (getcwd(pwd, sizeof(pwd)) == NULL)
 		cli_fatal("could not get cwd: %s", errno_s);
@@ -1233,8 +1229,7 @@ cli_build_cflags(struct buildopt *bopt)
 	}
 
 	string = kore_buf_stringify(bopt->cflags);
-	if (verbose)
-		printf("CFLAGS=%s\n", string);
+	printf("CFLAGS=%s\n", string);
 	cflags_count = kore_split_string(string, " ", cflags, CFLAGS_MAX);
 }
 
@@ -1263,8 +1258,7 @@ cli_build_ldflags(struct buildopt *bopt)
 	}
 
 	string = kore_buf_stringify(bopt->ldflags);
-	if (verbose)
-		printf("LDFLAGS=%s\n", string);
+	printf("LDFLAGS=%s\n", string);
 	ldflags_count = kore_split_string(string, " ", ldflags, LD_FLAGS_MAX);
 }
 
