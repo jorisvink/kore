@@ -94,6 +94,6 @@ Bugs, contributions and more
 If you run into any bugs, have suggestions or patches please
 contact me at joris@coders.se.
 
-If you feel like hanging out or just chatting there is an [IRC chatroom (#kore-dev@irc.freenode.org)](http://webchat.freenode.net?channels=kore-dev).
+If you feel like hanging out or just chatting there is an [IRC chatroom (#kore-dev@irc.freenode.org)](https://webchat.freenode.net?channels=kore-dev).
 
 More information can be found on https://kore.io/
