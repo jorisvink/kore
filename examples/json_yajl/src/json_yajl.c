@@ -89,7 +89,6 @@ page(struct http_request *req)
 
 	/* Release the JSON tree now. */
 	yajl_tree_free(node);
-	kore_mem_free(body);
 
 	/* Respond to the client. */
 	http_response(req, 200, buf->data, buf->offset);
