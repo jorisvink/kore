@@ -179,6 +179,7 @@ main(int argc, char *argv[])
 	sig_recv = 0;
 	signal(SIGHUP, kore_signal);
 	signal(SIGQUIT, kore_signal);
+	signal(SIGTERM, kore_signal);
 
 	if (foreground)
 		signal(SIGINT, kore_signal);
@@ -399,6 +400,7 @@ kore_server_start(void)
 				break;
 			case SIGINT:
 			case SIGQUIT:
+			case SIGTERM:
 				quit = 1;
 				kore_worker_dispatch_signal(sig_recv);
 				continue;

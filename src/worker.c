@@ -270,6 +270,7 @@ kore_worker_entry(struct kore_worker *kw)
 	sig_recv = 0;
 	signal(SIGHUP, kore_signal);
 	signal(SIGQUIT, kore_signal);
+	signal(SIGTERM, kore_signal);
 	signal(SIGPIPE, SIG_IGN);
 
 	if (foreground)
@@ -306,10 +307,18 @@ kore_worker_entry(struct kore_worker *kw)
 
 	for (;;) {
 		if (sig_recv != 0) {
-			if (sig_recv == SIGHUP)
+			switch (sig_recv) {
+			case SIGHUP:
 				kore_module_reload(1);
-			else if (sig_recv == SIGQUIT || sig_recv == SIGINT)
+				break;
+			case SIGQUIT:
+			case SIGINT:
+			case SIGTERM:
 				quit = 1;
+				break;
+			default:
+				break;
+			}
 
 			sig_recv = 0;
 		}
