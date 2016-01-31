@@ -46,6 +46,10 @@
 #define worker_debug(fmt, ...)
 #endif
 
+#if !defined(WAIT_ANY)
+#define WAIT_ANY		(-1)
+#endif
+
 #define KORE_SHM_KEY		15000
 #define WORKER_LOCK_TIMEOUT	500
 
