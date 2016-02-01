@@ -76,6 +76,7 @@ those by setting a shell environment variable before running **_make_**.
 * DEBUG=1 (enables use of -d for debug)
 * NOTLS=1 (compiles Kore without TLS)
 * NOHTTP=1 (compiles Kore without HTTP support)
+* NOOPT=1 (disable compiler optimizations)
 
 Example libraries
 -----------------
