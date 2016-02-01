@@ -37,6 +37,13 @@ net_init(void)
 }
 
 void
+net_cleanup(void)
+{
+	kore_debug("net_cleanup()");
+	kore_pool_cleanup(&nb_pool);
+}
+
+void
 net_send_queue(struct connection *c, const void *data, u_int32_t len)
 {
 	const u_int8_t		*d;
@@ -54,7 +61,7 @@ net_send_queue(struct connection *c, const void *data, u_int32_t len)
 			memcpy(nb->buf + nb->b_len, d, len);
 			nb->b_len += len;
 			return;
-		} else if (len > avail) {
+		} else {
 			memcpy(nb->buf + nb->b_len, d, avail);
 			nb->b_len += avail;
 

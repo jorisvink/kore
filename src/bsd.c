@@ -22,6 +22,9 @@
 #include <sys/cpuset.h>
 #endif
 
+#include <errno.h>
+#include <string.h>
+
 #include "kore.h"
 
 #if defined(KORE_USE_PGSQL)
@@ -88,6 +91,20 @@ kore_platform_event_init(void)
 			kore_platform_event_schedule(l->fd,
 			    EVFILT_READ, EV_ADD | EV_DISABLE, l);
 		}
+	}
+}
+
+void
+kore_platform_event_cleanup(void)
+{
+	if (kfd >= 0) {
+		close(kfd);
+		kfd = -1;
+	}
+
+	if (events != NULL) {
+		kore_mem_free(events);
+		events = NULL;
 	}
 }
 

@@ -20,6 +20,7 @@
 #include <sys/socket.h>
 #include <sys/resource.h>
 
+#include <stdio.h>
 #include <netdb.h>
 #include <signal.h>
 
@@ -417,6 +418,11 @@ kore_server_start(void)
 		kore_platform_event_wait(100);
 		kore_connection_prune(KORE_CONNECTION_PRUNE_DISCONNECT);
 	}
+
+	kore_platform_event_cleanup();
+	kore_connection_cleanup();
+        kore_domain_cleanup();
+	net_cleanup();
 }
 
 static void

@@ -211,6 +211,7 @@ extern char		*http_body_disk_path;
 void		kore_accesslog(struct http_request *);
 
 void		http_init(void);
+void		http_cleanup(void);
 void		http_process(void);
 const char	*http_status_text(int);
 time_t		http_date_to_time(char *);

@@ -19,6 +19,7 @@
 #include <openssl/sha.h>
 
 #include <limits.h>
+#include <string.h>
 
 #include "kore.h"
 #include "http.h"

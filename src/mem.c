@@ -50,7 +50,7 @@ kore_malloc(size_t len)
 
 	mlen = sizeof(u_int32_t) + len + sizeof(struct meminfo);
 	if ((ptr = calloc(1, mlen)) == NULL)
-		fatal("kore_malloc(%d): %d", len, errno);
+		fatal("kore_malloc(%zd): %d", len, errno);
 
 	plen = (u_int32_t *)ptr;
 	*plen = len;

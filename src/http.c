@@ -18,6 +18,8 @@
 
 #include <ctype.h>
 #include <inttypes.h>
+#include <stdio.h>
+#include <string.h>
 
 #include <fcntl.h>
 #include <unistd.h>
@@ -99,6 +101,21 @@ http_init(void)
 	    "http_path_pool", HTTP_URI_LEN, prealloc);
 	kore_pool_init(&http_body_path,
 	    "http_body_path", HTTP_BODY_PATH_MAX, prealloc);
+}
+
+void
+http_cleanup(void)
+{
+	if (header_buf != NULL) {
+		kore_buf_free(header_buf);
+		header_buf = NULL;
+	}
+
+	kore_pool_cleanup(&http_request_pool);
+	kore_pool_cleanup(&http_header_pool);
+	kore_pool_cleanup(&http_host_pool);
+	kore_pool_cleanup(&http_path_pool);
+	kore_pool_cleanup(&http_body_path);
 }
 
 int

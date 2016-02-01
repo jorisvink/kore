@@ -22,6 +22,7 @@
 #define POOL_ELEMENT_FREE		1
 
 static void		pool_region_create(struct kore_pool *, u_int32_t);
+static void		pool_region_destroy(struct kore_pool *);
 
 void
 kore_pool_init(struct kore_pool *pool, const char *name,
@@ -39,6 +40,27 @@ kore_pool_init(struct kore_pool *pool, const char *name,
 	LIST_INIT(&(pool->freelist));
 
 	pool_region_create(pool, elm);
+}
+
+void
+kore_pool_cleanup(struct kore_pool *pool)
+{
+	if (pool->inuse)
+		kore_debug("Pool %s: destroyed with %u allocs in use", 
+			pool->name ? pool->name : "<unknown>",
+			pool->inuse );
+
+	pool->elms = 0;
+	pool->inuse = 0;
+	pool->elen = 0;
+	pool->slen = 0;
+
+	if (pool->name != NULL) {
+		kore_mem_free(pool->name);
+		pool->name = NULL;
+	}
+
+	pool_region_destroy(pool);
 }
 
 void *
@@ -110,4 +132,24 @@ pool_region_create(struct kore_pool *pool, u_int32_t elms)
 	}
 
 	pool->elms += elms;
+}
+
+static void
+pool_region_destroy(struct kore_pool *pool)
+{
+	struct kore_pool_region	*reg;
+
+	kore_debug("pool_region_destroy(%p)", pool);
+
+	/* Take care iterating when modifying list contents */
+	while (!LIST_EMPTY(&pool->regions)) {
+		reg = LIST_FIRST(&pool->regions);
+		LIST_REMOVE(reg, list);
+		kore_mem_free(reg->start);
+		kore_mem_free(reg);
+	}
+
+	/* Freelist references into the regions memory allocations */
+	LIST_INIT(&pool->freelist);
+	pool->elms = 0;
 }

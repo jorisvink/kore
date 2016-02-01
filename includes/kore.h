@@ -42,6 +42,7 @@
 #include <string.h>
 #include <syslog.h>
 #include <unistd.h>
+#include <stdarg.h>
 
 #if defined(__cplusplus)
 extern "C" {
@@ -433,6 +434,7 @@ struct kore_worker	*kore_worker_data(u_int8_t);
 
 void		kore_platform_init(void);
 void		kore_platform_event_init(void);
+void		kore_platform_event_cleanup(void);
 void		kore_platform_proctitle(char *);
 void		kore_platform_disable_read(int);
 void		kore_platform_enable_accept(void);
@@ -468,6 +470,7 @@ void		kore_tls_info_callback(const SSL *, int, int);
 #endif
 
 void			kore_connection_init(void);
+void			kore_connection_cleanup(void);
 void			kore_connection_prune(int);
 struct connection	*kore_connection_new(void *);
 void			kore_connection_check_timeout(void);
@@ -496,6 +499,7 @@ void		*kore_pool_get(struct kore_pool *);
 void		kore_pool_put(struct kore_pool *, void *);
 void		kore_pool_init(struct kore_pool *, const char *,
 		    u_int32_t, u_int32_t);
+void		kore_pool_cleanup(struct kore_pool *);
 
 time_t		kore_date_to_time(char *);
 char		*kore_time_to_date(time_t);
@@ -531,7 +535,9 @@ int		kore_msg_register(u_int8_t,
 		    void (*cb)(struct kore_msg *, const void *));
 
 void		kore_domain_init(void);
+void		kore_domain_cleanup(void);
 int		kore_domain_new(char *);
+void		kore_domain_free(struct kore_domain *);
 void		kore_module_init(void);
 void		kore_module_reload(int);
 void		kore_module_onload(void);
@@ -543,6 +549,7 @@ void		kore_module_load(const char *, const char *);
 void		kore_domain_sslstart(struct kore_domain *);
 int		kore_module_handler_new(const char *, const char *,
 		    const char *, const char *, int);
+void		kore_module_handler_free(struct kore_module_handle *);
 
 struct kore_domain		*kore_domain_lookup(const char *);
 struct kore_module_handle	*kore_module_handler_find(const char *,
@@ -569,6 +576,7 @@ void		net_write32(u_int8_t *, u_int32_t);
 void		net_write64(u_int8_t *, u_int64_t);
 
 void		net_init(void);
+void		net_cleanup(void);
 int		net_send(struct connection *);
 int		net_send_flush(struct connection *);
 int		net_recv_flush(struct connection *);
