@@ -177,7 +177,7 @@ kore_parse_config(void)
 	}
 
 	if (skip_runas != 1 && runas_user == NULL) {
-		fatal("missing runas user");
+		fatal("missing runas user, use -r to skip it");
 	}
 
 	if (getuid() != 0 && skip_runas == 0) {
