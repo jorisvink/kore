@@ -45,11 +45,6 @@ kore_pool_init(struct kore_pool *pool, const char *name,
 void
 kore_pool_cleanup(struct kore_pool *pool)
 {
-	if (pool->inuse)
-		kore_debug("Pool %s: destroyed with %u allocs in use", 
-			pool->name ? pool->name : "<unknown>",
-			pool->inuse );
-
 	pool->elms = 0;
 	pool->inuse = 0;
 	pool->elen = 0;
@@ -137,7 +132,7 @@ pool_region_create(struct kore_pool *pool, u_int32_t elms)
 static void
 pool_region_destroy(struct kore_pool *pool)
 {
-	struct kore_pool_region	*reg;
+	struct kore_pool_region		*reg;
 
 	kore_debug("pool_region_destroy(%p)", pool);
 

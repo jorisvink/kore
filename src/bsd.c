@@ -97,7 +97,7 @@ kore_platform_event_init(void)
 void
 kore_platform_event_cleanup(void)
 {
-	if (kfd >= 0) {
+	if (kfd != -1) {
 		close(kfd);
 		kfd = -1;
 	}

@@ -201,28 +201,25 @@ kore_module_handler_free(struct kore_module_handle *hdlr)
 {
 	struct kore_handler_params *param;
 
-	if (hdlr != NULL) {
-		if (hdlr->func != NULL) {
-			kore_mem_free(hdlr->func);
-		}
-		if (hdlr->path != NULL) {
-			kore_mem_free(hdlr->path);
-		}
-		if (hdlr->dom != NULL) {
-			TAILQ_REMOVE(&(hdlr->dom->handlers), hdlr, list);
-		}
+	if (hdlr == NULL)
+		return;
+
+	if (hdlr->func != NULL)
+		kore_mem_free(hdlr->func);
+	if (hdlr->path != NULL)
+		kore_mem_free(hdlr->path);
+	if (hdlr->type == HANDLER_TYPE_DYNAMIC)
 		regfree(&(hdlr->rctx));
 
-		/* Drop all validators associated with this handler */
-		while ((param=TAILQ_FIRST(&(hdlr->params))) != NULL) {
-			TAILQ_REMOVE(&(hdlr->params), param, list);
-			if (param->name != NULL) {
-				kore_mem_free(param->name);
-			}
-			kore_mem_free(param);
-		}
-		kore_mem_free(hdlr);
+	/* Drop all validators associated with this handler */
+	while ((param = TAILQ_FIRST(&(hdlr->params))) != NULL) {
+		TAILQ_REMOVE(&(hdlr->params), param, list);
+		if (param->name != NULL)
+			kore_mem_free(param->name);
+		kore_mem_free(param);
 	}
+
+	kore_mem_free(hdlr);
 }
 
 struct kore_module_handle *

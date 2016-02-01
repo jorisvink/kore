@@ -47,7 +47,7 @@ kore_domain_cleanup(void)
 {
 	struct kore_domain *dom;
 
-	while ((dom=TAILQ_FIRST(&domains)) != NULL) {
+	while ((dom = TAILQ_FIRST(&domains)) != NULL) {
 		TAILQ_REMOVE(&domains, dom, list);
 		kore_domain_free(dom);
 	}
@@ -85,44 +85,41 @@ kore_domain_new(char *domain)
 void
 kore_domain_free(struct kore_domain *dom)
 {
+#if !defined(KORE_NO_HTTP)
 	struct kore_module_handle *hdlr;
+#endif
+	if (dom == NULL)
+		return;
 
-	if (dom != NULL) {
+	if (primary_dom == dom)
+		primary_dom = NULL;
 
-		if (primary_dom == dom) {
-			primary_dom = NULL;
-		}
-		TAILQ_REMOVE(&domains, dom, list);
+	TAILQ_REMOVE(&domains, dom, list);
 
-		if (dom->domain != NULL) {
-			kore_mem_free(dom->domain);
-		}
+	if (dom->domain != NULL)
+		kore_mem_free(dom->domain);
 
 #if !defined(KORE_NO_TLS)
-		if (dom->ssl_ctx != NULL) {
-			SSL_CTX_free(dom->ssl_ctx);
-		}
-		if (dom->cafile != NULL) {
-			kore_mem_free(dom->cafile);
-		}
-		if (dom->certkey != NULL) {
-			kore_mem_free(dom->certkey);
-		}
-		if (dom->certfile != NULL) {
-			kore_mem_free(dom->certfile);
-		}
-		if (dom->crlfile != NULL) {
-			kore_mem_free(dom->crlfile);
-		}
+	if (dom->ssl_ctx != NULL)
+		SSL_CTX_free(dom->ssl_ctx);
+	if (dom->cafile != NULL)
+		kore_mem_free(dom->cafile);
+	if (dom->certkey != NULL)
+		kore_mem_free(dom->certkey);
+	if (dom->certfile != NULL)
+		kore_mem_free(dom->certfile);
+	if (dom->crlfile != NULL)
+		kore_mem_free(dom->crlfile);
 #endif
 
-		/* Drop all handlers associated with this domain */
-		while ((hdlr=TAILQ_FIRST(&(dom->handlers))) != NULL) {
-			TAILQ_REMOVE(&(dom->handlers), hdlr, list);
-			kore_module_handler_free(hdlr);
-		}
-		kore_mem_free(dom);
+#if !defined(KORE_NO_HTTP)
+	/* Drop all handlers associated with this domain */
+	while ((hdlr = TAILQ_FIRST(&(dom->handlers))) != NULL) {
+		TAILQ_REMOVE(&(dom->handlers), hdlr, list);
+		kore_module_handler_free(hdlr);
 	}
+#endif
+	kore_mem_free(dom);
 }
 
 void
@@ -233,9 +230,7 @@ kore_domain_sslstart(struct kore_domain *dom)
 	SSL_CTX_set_tlsext_servername_callback(dom->ssl_ctx, kore_tls_sni_cb);
 
 	kore_mem_free(dom->certfile);
-	dom->certfile = NULL;
 	kore_mem_free(dom->certkey);
-	dom->certkey = NULL;
 #endif
 }
 
