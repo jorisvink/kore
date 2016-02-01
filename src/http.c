@@ -115,6 +115,7 @@ http_cleanup(void)
 	kore_pool_cleanup(&http_header_pool);
 	kore_pool_cleanup(&http_host_pool);
 	kore_pool_cleanup(&http_path_pool);
+	kore_pool_cleanup(&http_body_path);
 }
 
 int
