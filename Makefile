@@ -11,14 +11,20 @@ S_SRC=	src/kore.c src/buf.c src/cli.c src/config.c src/connection.c \
 	src/pool.c src/timer.c src/utils.c src/worker.c
 S_OBJS=	$(S_SRC:.c=.o)
 
-CFLAGS+=-Wall -Wstrict-prototypes -Wmissing-prototypes
+CFLAGS+=-Wall -Werror -Wstrict-prototypes -Wmissing-prototypes
 CFLAGS+=-Wmissing-declarations -Wshadow -Wpointer-arith -Wcast-qual
-CFLAGS+=-Wsign-compare -Iincludes -g
+CFLAGS+=-Wsign-compare -Iincludes -std=c99 -pedantic
 CFLAGS+=-DPREFIX='"$(PREFIX)"'
 LDFLAGS=-rdynamic -lssl -lcrypto
 
 ifneq ("$(DEBUG)", "")
-	CFLAGS+=-DKORE_DEBUG
+	CFLAGS+=-DKORE_DEBUG -g
+endif
+
+ifneq ("$(NOOPT)", "")
+	CFLAGS+=-O0
+else
+	CFLAGS+=-O2
 endif
 
 ifneq ("$(NOHTTP)", "")

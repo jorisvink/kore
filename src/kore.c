@@ -313,7 +313,7 @@ kore_server_bind(const char *ip, const char *port, const char *ccb)
 	}
 
 	if (ccb != NULL) {
-		l->connect = kore_module_getsym(ccb);
+		*(void **)&(l->connect) = kore_module_getsym(ccb);
 		if (l->connect == NULL) {
 			printf("no such callback: '%s'\n", ccb);
 			close(l->fd);

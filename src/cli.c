@@ -45,7 +45,7 @@
 #define PRI_TIME_T		"d"
 #endif
 
-#if defined(linux)
+#if defined(__linux__)
 #if defined(__x86_64__)
 #define PRI_TIME_T		PRIu64
 #else

@@ -51,7 +51,7 @@ kore_module_load(const char *path, const char *onload)
 
 	if (onload != NULL) {
 		module->onload = kore_strdup(onload);
-		module->ocb = dlsym(module->handle, onload);
+		*(void **)&(module->ocb) = dlsym(module->handle, onload);
 		if (module->ocb == NULL)
 			fatal("%s: onload '%s' not present", path, onload);
 	}
@@ -107,7 +107,8 @@ kore_module_reload(int cbs)
 			fatal("kore_module_reload(): %s", dlerror());
 
 		if (module->onload != NULL) {
-			module->ocb = dlsym(module->handle, module->onload);
+			*(void **)&(module->ocb) =
+			    dlsym(module->handle, module->onload);
 			if (module->ocb == NULL) {
 				fatal("%s: onload '%s' not present",
 				    module->path, module->onload);

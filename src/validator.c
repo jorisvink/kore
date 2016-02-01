@@ -42,7 +42,8 @@ kore_validator_add(const char *name, u_int8_t type, const char *arg)
 		}
 		break;
 	case KORE_VALIDATOR_TYPE_FUNCTION:
-		if ((val->func = kore_module_getsym(arg)) == NULL) {
+		*(void **)(&val->func) = kore_module_getsym(arg);
+		if (val->func == NULL) {
 			kore_mem_free(val);
 			kore_log(LOG_NOTICE,
 			    "validator %s has undefined callback %s",
@@ -112,7 +113,8 @@ kore_validator_reload(void)
 		if (val->type != KORE_VALIDATOR_TYPE_FUNCTION)
 			continue;
 
-		if ((val->func = kore_module_getsym(val->arg)) == NULL)
+		*(void **)&(val->func) = kore_module_getsym(val->arg);
+		if (val->func == NULL)
 			fatal("no function for validator %s found", val->name);
 	}
 }

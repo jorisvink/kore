@@ -297,7 +297,7 @@ http_process_request(struct http_request *req)
 
 	switch (r) {
 	case KORE_RESULT_OK:
-		cb = req->hdlr->addr;
+		*(void **)&(cb) = req->hdlr->addr;
 		worker->active_hdlr = req->hdlr;
 		r = cb(req);
 		worker->active_hdlr = NULL;
