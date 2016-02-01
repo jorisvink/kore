@@ -256,9 +256,6 @@ kore_parse_config_file(char *fpath)
 			continue;
 		}
 
-		printf("normalized: '%s'\n", p);
-		printf("normalized: '%s'\n", t);
-
 		for (i = 0; config_names[i].name != NULL; i++) {
 			if (!strcmp(config_names[i].name, p)) {
 				if (config_names[i].configure(t))
