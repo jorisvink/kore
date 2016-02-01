@@ -198,20 +198,10 @@ kore_parse_config_file(const char *fpath)
 	kore_debug("parsing configuration file '%s'", fpath);
 
 	lineno = 1;
-	while (fgets(buf, sizeof(buf), fp) != NULL) {
-		p = buf;
-		buf[strcspn(buf, "\n")] = '\0';
-
-		while (isspace(*p))
-			p++;
-		if (p[0] == '#' || p[0] == '\0') {
+	while ((p = kore_read_line(fp, buf, sizeof(buf))) != NULL) {
+		if (strlen(p) == 0) {
 			lineno++;
 			continue;
-		}
-
-		for (t = p; *t != '\0'; t++) {
-			if (*t == '\t')
-				*t = ' ';
 		}
 
 #if !defined(KORE_NO_HTTP)

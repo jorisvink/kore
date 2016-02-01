@@ -513,6 +513,33 @@ kore_text_trim(char *string, size_t len)
 	return (string);
 }
 
+char *
+kore_read_line(FILE *fp, char *in, size_t len)
+{
+	char	*p, *t;
+
+	if (fgets(in, len, fp) == NULL)
+		return (NULL);
+
+	p = in;
+	in[strcspn(in, "\n")] = '\0';
+
+	while (isspace(*p))
+		p++;
+
+	if (p[0] == '#' || p[0] == '\0') {
+		p[0] = '\0';
+		return (p);
+	}
+
+	for (t = p; *t != '\0'; t++) {
+		if (*t == '\t')
+			*t = ' ';
+	}
+
+	return (p);
+}
+
 void
 fatal(const char *fmt, ...)
 {

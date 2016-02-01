@@ -516,6 +516,7 @@ int		kore_base64_encode(u_int8_t *, u_int32_t, char **);
 int		kore_base64_decode(char *, u_int8_t **, u_int32_t *);
 void		*kore_mem_find(void *, size_t, void *, u_int32_t);
 char		*kore_text_trim(char *, size_t);
+char		*kore_read_line(FILE *, char *, size_t);
 
 #if !defined(KORE_NO_HTTP)
 void		kore_websocket_handshake(struct http_request *,
