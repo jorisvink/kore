@@ -6,16 +6,16 @@ before returning to the client.
 
 Build:
 ```
-	# env LDFLAGS="-I/path/to/libcurl -lcurl" kore build
+	$ kore build
 ```
 
 Run:
 ```
-	# kore run
+	$ kore run
 ```
 
 Test:
 ```
-	# curl -i -k https://127.0.0.1:8888/?user=astring
+	$ curl -i -k https://127.0.0.1:8888/?user=astring
 	The returned data must match what you supplied in user ([a-z] string)
 ```

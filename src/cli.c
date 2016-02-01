@@ -61,6 +61,15 @@
 #define LD_FLAGS_MAX		30
 #define CFLAGS_MAX		30
 
+struct buildopt {
+	char			*name;
+	struct kore_buf		*cflags;
+	struct kore_buf		*ldflags;
+	TAILQ_ENTRY(buildopt)	list;
+};
+
+TAILQ_HEAD(buildopt_list, buildopt);
+
 struct cmd {
 	const char		*name;
 	const char		*descr;
@@ -74,7 +83,6 @@ struct filegen {
 struct cfile {
 	struct stat		st;
 	int			build;
-	int			cpp;
 	char			*name;
 	char			*fpath;
 	char			*opath;
@@ -84,16 +92,18 @@ struct cfile {
 TAILQ_HEAD(cfile_list, cfile);
 
 static void		cli_fatal(const char *, ...) __attribute__((noreturn));
-
 static void		cli_file_close(int);
 static void		cli_run_kore(void *);
 static void		cli_generate_certs(void);
 static void		cli_link_library(void *);
 static void		cli_compile_cfile(void *);
+static char		*cli_trim(char *, size_t);
 static void		cli_mkdir(const char *, int);
 static int		cli_dir_exists(const char *);
 static int		cli_file_exists(const char *);
 static void		cli_cleanup_files(const char *);
+static void		cli_build_cflags(struct buildopt *);
+static void		cli_build_ldflags(struct buildopt *);
 static void		cli_file_writef(int, const char *, ...);
 static void		cli_file_open(const char *, int, int *);
 static void		cli_file_remove(char *, struct dirent *);
@@ -108,13 +118,24 @@ static int		cli_file_requires_build(struct stat *, const char *);
 static void		cli_find_files(const char *,
 			    void (*cb)(char *, struct dirent *));
 static void		cli_add_cfile(char *, char *, char *,
-			    struct stat *, int, int);
+			    struct stat *, int);
+
+static struct buildopt	*cli_buildopt_new(const char *);
+static struct buildopt	*cli_buildopt_find(const char *);
+static void		cli_buildopt_cleanup(void);
+static void		cli_buildopt_parse(const char *);
+static void		cli_buildopt_cflags(struct buildopt *, const char *);
+static void		cli_buildopt_ldflags(struct buildopt *, const char *);
+
+static void		cli_flavor_load(void);
+static void		cli_flavor_change(const char *);
 
 static void		cli_run(int, char **);
 static void		cli_help(int, char **);
 static void		cli_build(int, char **);
 static void		cli_clean(int, char **);
 static void		cli_create(int, char **);
+static void		cli_flavor(int, char **);
 
 static void		file_create_src(void);
 static void		file_create_config(void);
@@ -126,6 +147,7 @@ static struct cmd cmds[] = {
 	{ "build",	"build an application",			cli_build },
 	{ "clean",	"cleanup the build files",		cli_clean },
 	{ "create",	"create a new application skeleton",	cli_create },
+	{ "flavor",	"switch build flavor",			cli_flavor },
 	{ NULL,		NULL,					NULL }
 };
 
@@ -160,7 +182,7 @@ static const char *src_data =
 	"}\n";
 
 static const char *config_data =
-	"# Placeholder configuration\n"
+	"# %s configuration\n"
 	"\n"
 	"bind\t\t127.0.0.1 8888\n"
 	"load\t\t./%s.so\n"
@@ -176,6 +198,26 @@ static const char *config_data =
 	"\tstatic\t/\tpage\n"
 	"}\n";
 
+static const char *build_data =
+	"# %s build config\n"
+	"# You can switch flavors using: kore flavor [newflavor]\n"
+	"\n"
+	"# The cflags below are shared between flavors\n"
+	"cflags=-Wall -Wmissing-declarations -Wshadow\n"
+	"cflags=-Wstrict-prototypes -Wmissing-prototypes\n"
+	"cflags=-Wpointer-arith -Wcast-qual -Wsign-compare\n"
+	"\n"
+	"dev {\n"
+	"	# These cflags are added to the shared ones when\n"
+	"	# you build the \"dev\" flavor.\n"
+	"	cflags=-g\n"
+	"}\n"
+	"\n"
+	"#prod {\n"
+	"#	You can specify additional CFLAGS here which are only\n"
+	"#	included if you build with the \"prod\" flavor.\n"
+	"#}\n";
+
 #if !defined(KORE_NO_TLS)
 static const char *dh2048_data =
 	"-----BEGIN DH PARAMETERS-----\n"
@@ -188,15 +230,21 @@ static const char *dh2048_data =
 	"-----END DH PARAMETERS-----";
 #endif
 
-static const char *gitignore_data = "*.o\n.objs\n%s.so\nassets.h\ncert\n";
+static const char *gitignore = "*.o\n.flavor\n.objs\n%s.so\nassets.h\ncert\n";
 
 static int			s_fd = -1;
 static char			*appl = NULL;
 static char			*rootdir = NULL;
 static char			*compiler = "gcc";
 static struct cfile_list	source_files;
+static struct buildopt_list	build_options;
 static int			cfiles_count;
 static struct cmd		*command = NULL;
+static int			cflags_count = 0;
+static int			ldflags_count = 0;
+static char			*flavor = NULL;
+static char			*cflags[CFLAGS_MAX];
+static char			*ldflags[LD_FLAGS_MAX];
 
 void
 kore_cli_usage(int local)
@@ -229,6 +277,9 @@ kore_cli_main(int argc, char **argv)
 		kore_cli_usage(1);
 
 	(void)umask(S_IWGRP|S_IWOTH);
+
+	if ((flavor = strchr(argv[0], ':')) != NULL)
+		*(flavor)++ = '\0';
 
 	for (i = 0; cmds[i].name != NULL; i++) {
 		if (!strcmp(argv[0], cmds[i].name)) {
@@ -286,39 +337,92 @@ cli_create(int argc, char **argv)
 }
 
 static void
-cli_build(int argc, char **argv)
+cli_flavor(int argc, char **argv)
 {
-	struct cfile	*cf;
-	struct timeval	times[2];
-	int		requires_relink;
-	char		pwd[PATH_MAX], *src_path, *assets_header;
-	char		*assets_path, *p, *obj_path, *cpath, *config;
+	struct buildopt		*bopt;
+	char			pwd[MAXPATHLEN], *conf;
+
+	if (getcwd(pwd, sizeof(pwd)) == NULL)
+		cli_fatal("could not get cwd: %s", errno_s);
+
+	appl = basename(pwd);
+	(void)cli_vasprintf(&conf, "conf/%s.conf", appl);
+	if (!cli_dir_exists("conf") || !cli_file_exists(conf))
+		cli_fatal("%s doesn't appear to be a kore app", appl);
+	free(conf);
+
+	TAILQ_INIT(&build_options);
+	(void)cli_buildopt_new("_default");
+	cli_buildopt_parse("conf/build.conf");
 
 	if (argc == 0) {
-		if (getcwd(pwd, sizeof(pwd)) == NULL)
-			cli_fatal("could not get cwd: %s", errno_s);
-
-		rootdir = ".";
-		appl = basename(pwd);
+		cli_flavor_load();
+		TAILQ_FOREACH(bopt, &build_options, list) {
+			if (!strcmp(bopt->name, "_default"))
+				continue;
+			if (!strcmp(bopt->name, flavor)) {
+				printf("* %s\n", bopt->name);
+			} else {
+				printf("  %s\n", bopt->name);
+			}
+		}
 	} else {
-		appl = argv[0];
-		rootdir = appl;
+		cli_flavor_change(argv[0]);
+		printf("changed build flavor to: %s\n", argv[0]);
 	}
+
+	cli_buildopt_cleanup();
+}
+
+static void
+cli_build(int argc, char **argv)
+{
+	struct cfile		*cf;
+	struct buildopt		*bopt;
+	struct timeval		times[2];
+	char			*build_path;
+	int			requires_relink, l;
+	char			*sofile, *config, *data;
+	char			*assets_path, *p, *obj_path, *cpath;
+	char			pwd[PATH_MAX], *src_path, *assets_header;
+
+	if (getcwd(pwd, sizeof(pwd)) == NULL)
+		cli_fatal("could not get cwd: %s", errno_s);
+
+	rootdir = ".";
+	appl = basename(pwd);
 
 	if ((p = getenv("CC")) != NULL)
 		compiler = p;
 
 	cfiles_count = 0;
 	TAILQ_INIT(&source_files);
+	TAILQ_INIT(&build_options);
 
 	(void)cli_vasprintf(&src_path, "%s/src", rootdir);
 	(void)cli_vasprintf(&assets_path, "%s/assets", rootdir);
 	(void)cli_vasprintf(&config, "%s/conf/%s.conf", rootdir, appl);
 	(void)cli_vasprintf(&assets_header, "%s/src/assets.h", rootdir);
+	(void)cli_vasprintf(&build_path, "%s/conf/build.conf", rootdir);
+
 	if (!cli_dir_exists(src_path) || !cli_file_exists(config))
 		cli_fatal("%s doesn't appear to be a kore app", appl);
-
 	free(config);
+
+	cli_flavor_load();
+	bopt = cli_buildopt_new("_default");
+	if (!cli_file_exists(build_path)) {
+		l = cli_vasprintf(&data, build_data, appl);
+		cli_file_create("conf/build.conf", data, l);
+		free(data);
+	}
+
+	cli_buildopt_parse(build_path);
+	free(build_path);
+
+	printf("building %s (%s)\n", appl, flavor);
+	cli_build_cflags(bopt);
+	cli_build_ldflags(bopt);
 
 	(void)cli_vasprintf(&obj_path, "%s/.objs", rootdir);
 	if (!cli_dir_exists(obj_path))
@@ -343,10 +447,9 @@ cli_build(int argc, char **argv)
 
 	/* Build all source files. */
 	cli_find_files(src_path, cli_register_cfile);
-	
 	free(src_path);
-	requires_relink = 0;
 
+	requires_relink = 0;
 	TAILQ_FOREACH(cf, &source_files, list) {
 		if (cf->build == 0)
 			continue;
@@ -374,12 +477,18 @@ cli_build(int argc, char **argv)
 	}
 	free(cpath);
 
+	(void)cli_vasprintf(&sofile, "%s.so", appl);
+	if (!cli_file_exists(sofile))
+		requires_relink++;
+	free(sofile);
+
 	if (requires_relink) {
 		cli_spawn_proc(cli_link_library, NULL);
 		printf("%s built successfully!\n", appl);
 	} else {
-		printf("nothing to be done\n");
+		printf("nothing to be done!\n");
 	}
+	cli_buildopt_cleanup();
 }
 
 static void
@@ -433,10 +542,13 @@ file_create_config(void)
 	char		*name, *data;
 
 	(void)cli_vasprintf(&name, "conf/%s.conf", appl);
-	l = cli_vasprintf(&data, config_data, appl);
+	l = cli_vasprintf(&data, config_data, appl, appl);
 	cli_file_create(name, data, l);
-
 	free(name);
+	free(data);
+
+	l = cli_vasprintf(&data, build_data, appl);
+	cli_file_create("conf/build.conf", data, l);
 	free(data);
 }
 
@@ -446,7 +558,7 @@ file_create_gitignore(void)
 	int		l;
 	char		*data;
 
-	l = cli_vasprintf(&data, gitignore_data, appl);
+	l = cli_vasprintf(&data, gitignore, appl);
 	cli_file_create(".gitignore", data, l);
 	free(data);
 }
@@ -618,7 +730,7 @@ cli_build_asset(char *fpath, struct dirent *dp)
 		cli_write_asset(name, ext);
 		*ext = '_';
 		
-		cli_add_cfile(name, cpath, opath, &st, 0, 0);
+		cli_add_cfile(name, cpath, opath, &st, 0);
 		kore_mem_free(name);
 		return;
 	}
@@ -677,13 +789,13 @@ cli_build_asset(char *fpath, struct dirent *dp)
 	*--ext = '.';
 
 	/* Register the .c file now (cpath is free'd later). */
-	cli_add_cfile(name, cpath, opath, &st, 1, 0);
+	cli_add_cfile(name, cpath, opath, &st, 1);
 	kore_mem_free(name);
 }
 
 static void
 cli_add_cfile(char *name, char *fpath, char *opath, struct stat *st,
-    int build, int cpp)
+    int build)
 {
 	struct cfile		*cf;
 
@@ -692,7 +804,6 @@ cli_add_cfile(char *name, char *fpath, char *opath, struct stat *st,
 
 	cf->st = *st;
 	cf->build = build;
-	cf->cpp = cpp;
 	cf->fpath = fpath;
 	cf->opath = opath;
 	cf->name = kore_strdup(name);
@@ -705,27 +816,21 @@ cli_register_cfile(char *fpath, struct dirent *dp)
 {
 	struct stat		st;
 	char			*ext, *opath;
-	int			cpp;
 
 	if ((ext = strrchr(fpath, '.')) == NULL ||
 	    (strcmp(ext, ".c") && strcmp(ext, ".cpp")))
 		return;
-
-	if (!strcmp(ext, ".cpp"))
-		cpp = 1;
-	else
-		cpp = 0;
 
 	if (stat(fpath, &st) == -1)
 		cli_fatal("stat(%s): %s", fpath, errno_s);
 
 	(void)cli_vasprintf(&opath, "%s/.objs/%s.o", rootdir, dp->d_name);
 	if (!cli_file_requires_build(&st, opath)) {
-		cli_add_cfile(dp->d_name, fpath, opath, &st, 0, cpp);
+		cli_add_cfile(dp->d_name, fpath, opath, &st, 0);
 		return;
 	}
 
-	cli_add_cfile(dp->d_name, fpath, opath, &st, 1, cpp);
+	cli_add_cfile(dp->d_name, fpath, opath, &st, 1);
 }
 
 static void
@@ -877,75 +982,15 @@ cli_generate_certs(void)
 static void
 cli_compile_cfile(void *arg)
 {
-	int		idx, f, i;
+	int		idx, i;
 	struct cfile	*cf = arg;
-	char		*flags[CFLAGS_MAX], *p;
-	char		*args[32 + CFLAGS_MAX], *ipath[2], *cppstandard;
-#if defined(KORE_USE_PGSQL)
-	char		*ppath;
-#endif
-
-	(void)cli_vasprintf(&ipath[0], "-I%s/src", rootdir);
-	(void)cli_vasprintf(&ipath[1], "-I%s/src/includes", rootdir);
+	char		*args[32 + CFLAGS_MAX];
 
 	idx = 0;
 	args[idx++] = compiler;
-	args[idx++] = ipath[0];
-	args[idx++] = ipath[1];
-#if defined(PREFIX)
-	(void)cli_vasprintf(&args[idx++], "-I%s/include", PREFIX);
-#else
-	args[idx++] = "-I/usr/local/include";
-#endif
 
-#if defined(__MACH__)
-	/* Add default openssl include path from homebrew / ports under OSX. */
-	args[idx++] = "-I/opt/local/include";
-	args[idx++] = "-I/usr/local/opt/openssl/include";
-#endif
-
-	/* Add any user specified flags. */
-	if ((p = getenv("CFLAGS")) != NULL)
-		f = kore_split_string(p, " ", flags, CFLAGS_MAX);
-	else
-		f = 0;
-
-	for (i = 0; i < f; i++)
-		args[idx++] = flags[i];
-
-#if defined(KORE_USE_PGSQL)
-	(void)cli_vasprintf(&ppath, "-I%s", PGSQL_INCLUDE_PATH);
-	args[idx++] = ppath;
-#endif
-
-#if defined(KORE_NO_HTTP)
-	args[idx++] = "-DKORE_NO_HTTP";
-#endif
-#if defined(KORE_NO_TLS)
-	args[idx++] = "-DKORE_NO_TLS";
-#endif
-	args[idx++] = "-Wall";
-	args[idx++] = "-Wmissing-declarations";
-	args[idx++] = "-Wshadow";
-	args[idx++] = "-Wpointer-arith";
-	args[idx++] = "-Wcast-qual";
-	args[idx++] = "-Wsign-compare";
-	args[idx++] = "-fPIC";
-	args[idx++] = "-g";
-
-	if (cf->cpp) {
-		args[idx++] = "-Woverloaded-virtual";
-		args[idx++] = "-Wold-style-cast";
-		args[idx++] = "-Wnon-virtual-dtor";
-
-		if ((p = getenv("CXXSTD")) != NULL) {
-			(void)cli_vasprintf(&cppstandard, "-std=%s", p);
-			args[idx++] = cppstandard;
-		}
-	} else {
-		args[idx++] = "-Wstrict-prototypes";
-		args[idx++] = "-Wmissing-prototypes";
-	}
+	for (i = 0; i < cflags_count; i++)
+		args[idx++] = cflags[i];
 
 	args[idx++] = "-c";
 	args[idx++] = cf->fpath;
@@ -960,47 +1005,20 @@ static void
 cli_link_library(void *arg)
 {
 	struct cfile		*cf;
-	int			idx, f, i, has_cpp;
+	int			idx, i;
+	char			*libname;
 	char			*args[cfiles_count + 11 + LD_FLAGS_MAX];
-	char			*p, *libname, *flags[LD_FLAGS_MAX], *cpplib;
-
-	if ((p = getenv("LDFLAGS")) != NULL)
-		f = kore_split_string(p, " ", flags, LD_FLAGS_MAX);
-	else
-		f = 0;
 
 	(void)cli_vasprintf(&libname, "%s/%s.so", rootdir, appl);
 
 	idx = 0;
 	args[idx++] = compiler;
 
-#if defined(__MACH__)
-	args[idx++] = "-dynamiclib";
-	args[idx++] = "-undefined";
-	args[idx++] = "suppress";
-	args[idx++] = "-flat_namespace";
-#else
-	args[idx++] = "-shared";
-#endif
-
-	has_cpp = 0;
-	TAILQ_FOREACH(cf, &source_files, list) {
-		if (cf->cpp)
-			has_cpp = 1;
+	TAILQ_FOREACH(cf, &source_files, list)
 		args[idx++] = cf->opath;
-	}
 
-	if (has_cpp) {
-		if ((p = getenv("CXXLIB")) != NULL) {
-			(void)cli_vasprintf(&cpplib, "-l%s", p);
-			args[idx++] = cpplib;
-		} else {
-			args[idx++] = "-lstdc++";
-		}
-	}
-
-	for (i = 0; i < f; i++)
-		args[idx++] = flags[i];
+	for (i = 0; i < ldflags_count; i++)
+		args[idx++] = ldflags[i];
 
 	args[idx++] = "-o";
 	args[idx++] = libname;
@@ -1022,6 +1040,283 @@ cli_run_kore(void *arg)
 	args[3] = NULL;
 
 	execvp("kore", args);
+}
+
+static void
+cli_buildopt_parse(const char *path)
+{
+	FILE			*fp;
+	struct buildopt		*bopt;
+	char			buf[BUFSIZ], *p, *t, *s;
+
+	if ((fp = fopen(path, "r")) == NULL)
+		cli_fatal("cli_buildopt_parse: fopen(%s): %s", path, errno_s);
+
+	bopt = NULL;
+
+	while (fgets(buf, sizeof(buf), fp) != NULL) {
+		p = buf;
+		buf[strcspn(buf, "\n")] = '\0';
+
+		while (isspace(*p))
+			p++;
+		if (p[0] == '#' || p[0] == '\0')
+			continue;
+
+		for (t = p; *t != '\0'; t++) {
+			if (*t == '\t')
+				*t = ' ';
+		}
+
+		if (bopt != NULL && !strcmp(p, "}")) {
+			bopt = NULL;
+			continue;
+		}
+
+		if (bopt == NULL) {
+			if ((t = strchr(p, '=')) != NULL)
+				goto parse_option;
+			if ((t = strchr(p, ' ')) == NULL)
+				cli_fatal("unexpected '%s'", p);
+			*(t)++ = '\0';
+			if (strcmp(t, "{"))
+				cli_fatal("expected '{', got '%s'", t);
+			bopt = cli_buildopt_new(p);
+			continue;
+		}
+
+		if ((t = strchr(p, '=')) == NULL) {
+			printf("bad buildopt line: '%s'\n", p);
+			continue;
+		}
+
+parse_option:
+		*(t)++ = '\0';
+
+		cli_trim(p, strlen(p));
+		cli_trim(t, strlen(t));
+
+		while (isspace(*p))
+			p++;
+		s = p + strlen(p) - 1;
+		while (isspace(*s))
+			*(s)-- = '\0';
+
+		while (isspace(*t))
+			t++;
+		s = t + strlen(t) - 1;
+		while (isspace(*s))
+			*(s)-- = '\0';
+
+		if (!strcasecmp(p, "cflags")) {
+			cli_buildopt_cflags(bopt, t);
+		} else if (!strcasecmp(p, "ldflags")) {
+			cli_buildopt_ldflags(bopt, t);
+		} else {
+			printf("ignoring unknown option %s\n", p);
+		}
+	}
+}
+
+static struct buildopt *
+cli_buildopt_new(const char *name)
+{
+	struct buildopt		*bopt;
+
+	bopt = kore_malloc(sizeof(*bopt));
+	bopt->cflags = NULL;
+	bopt->ldflags = NULL;
+	bopt->name = kore_strdup(name);
+
+	TAILQ_INSERT_TAIL(&build_options, bopt, list);
+	return (bopt);
+}
+
+static struct buildopt *
+cli_buildopt_find(const char *name)
+{
+	struct buildopt		*bopt;
+
+	TAILQ_FOREACH(bopt, &build_options, list) {
+		if (!strcmp(bopt->name, name))
+			return (bopt);
+	}
+
+	return (NULL);
+}
+
+static void
+cli_buildopt_cleanup(void)
+{
+	struct buildopt		*bopt, *next;
+
+	for (bopt = TAILQ_FIRST(&build_options); bopt != NULL; bopt = next) {
+		next = TAILQ_NEXT(bopt, list);
+		TAILQ_REMOVE(&build_options, bopt, list);
+
+		if (bopt->cflags != NULL)
+			kore_buf_free(bopt->cflags);
+		if (bopt->ldflags != NULL)
+			kore_buf_free(bopt->ldflags);
+		kore_mem_free(bopt);
+	}
+}
+
+static void
+cli_buildopt_cflags(struct buildopt *bopt, const char *string)
+{
+	if (bopt == NULL) {
+		if ((bopt = cli_buildopt_find("_default")) == NULL)
+			cli_fatal("no _default build options");
+	}
+
+	if (bopt->cflags == NULL)
+		bopt->cflags = kore_buf_create(128);
+
+	kore_buf_appendf(bopt->cflags, "%s ", string);
+}
+
+static void
+cli_buildopt_ldflags(struct buildopt *bopt, const char *string)
+{
+	if (bopt == NULL) {
+		if ((bopt = cli_buildopt_find("_default")) == NULL)
+			cli_fatal("no _default build options");
+	}
+
+	if (bopt->ldflags == NULL)
+		bopt->ldflags = kore_buf_create(128);
+
+	kore_buf_appendf(bopt->ldflags, "%s ", string);
+}
+
+static void
+cli_build_cflags(struct buildopt *bopt)
+{
+	struct buildopt		*obopt;
+	char			*string;
+
+	if ((obopt = cli_buildopt_find(flavor)) == NULL)
+		cli_fatal("no such build flavor: %s", flavor);
+
+	if (bopt->cflags == NULL)
+		bopt->cflags = kore_buf_create(128);
+
+	kore_buf_appendf(bopt->cflags,
+	    "-fPIC -I%s/src -I%s/src/includes ", rootdir, rootdir);
+#if defined(PREFIX)
+	kore_buf_appendf(bopt->cflags, "-I%s/include ", PREFIX);
+#else
+	kore_buf_appendf(bopt->cflags, "-I/usr/local/include ");
+#endif
+#if defined(__MACH__)
+	/* Add default openssl include path from homebrew / ports under OSX. */
+	kore_buf_appendf(bopt->cflags, "-I/opt/local/include ");
+	kore_buf_appendf(bopt->cflags, "-I/usr/local/opt/openssl/include ");
+#endif
+#if defined(KORE_USE_PGSQL)
+	kore_buf_appendf(bopt->cflags, "-I%s ", PGSQL_INCLUDE_PATH);
+#endif
+#if defined(KORE_NO_HTTP)
+	kore_buf_appendf(bopt->cflags, "-DKORE_NO_HTTP ");
+#endif
+#if defined(KORE_NO_TLS)
+	kore_buf_appendf(bopt->cflags, "-DKORE_NO_TLS ");
+#endif
+
+	if (obopt != NULL && obopt->cflags != NULL) {
+		kore_buf_append(bopt->cflags, obopt->cflags->data,
+		    obopt->cflags->offset);
+	}
+
+	string = kore_buf_stringify(bopt->cflags);
+	printf("CFLAGS=%s\n", string);
+	cflags_count = kore_split_string(string, " ", cflags, CFLAGS_MAX);
+}
+
+static void
+cli_build_ldflags(struct buildopt *bopt)
+{
+	struct buildopt		*obopt;
+	char			*string;
+
+	if ((obopt = cli_buildopt_find(flavor)) == NULL)
+		cli_fatal("no such build flavor: %s", flavor);
+
+	if (bopt->ldflags == NULL)
+		bopt->ldflags = kore_buf_create(128);
+
+#if defined(__MACH__)
+	kore_buf_appendf(bopt->ldflags,
+	    "-dynamiclib -undefined suppress -flat_namespace ");
+#else
+	kore_buf_appendf(bopt->ldflags, "-shared ");
+#endif
+
+	if (obopt != NULL && obopt->ldflags != NULL) {
+		kore_buf_append(bopt->ldflags, obopt->ldflags->data,
+		    obopt->ldflags->offset);
+	}
+
+	string = kore_buf_stringify(bopt->ldflags);
+	printf("LDFLAGS=%s\n", string);
+	ldflags_count = kore_split_string(string, " ", ldflags, LD_FLAGS_MAX);
+}
+
+static void
+cli_flavor_load(void)
+{
+	FILE		*fp;
+	char		buf[BUFSIZ], pwd[MAXPATHLEN], *p, *conf;
+
+	if (getcwd(pwd, sizeof(pwd)) == NULL)
+		cli_fatal("could not get cwd: %s", errno_s);
+
+	appl = basename(pwd);
+	(void)cli_vasprintf(&conf, "conf/%s.conf", appl);
+
+	if (!cli_dir_exists("conf") || !cli_file_exists(conf))
+		cli_fatal("%s doesn't appear to be a kore app", appl);
+	free(conf);
+
+	if ((fp = fopen(".flavor", "r")) == NULL) {
+		flavor = kore_strdup("dev");
+		return;
+	}
+
+	if (fgets(buf, sizeof(buf), fp) == NULL)
+		cli_fatal("failed to read flavor from file");
+
+	if ((p = strchr(buf, '\n')) != NULL)
+		*p = '\0';
+
+	flavor = kore_strdup(buf);
+	(void)fclose(fp);
+}
+
+static void
+cli_flavor_change(const char *name)
+{
+	FILE			*fp;
+	int			ret;
+	struct buildopt		*bopt;
+
+	if ((bopt = cli_buildopt_find(name)) == NULL)
+		cli_fatal("no such flavor: %s", name);
+
+	if ((fp = fopen(".flavor.tmp", "w")) == NULL)
+		cli_fatal("failed to open temporary file to save flavor");
+
+	ret = fprintf(fp, "%s\n", name);
+	if (ret == -1 || (size_t)ret != (strlen(name) + 1))
+		cli_fatal("failed to write new build flavor");
+
+	(void)fclose(fp);
+
+	if (rename(".flavor.tmp", ".flavor") == -1)
+		cli_fatal("failed to replace build flavor");
+
+	cli_clean(0, NULL);
 }
 
 static void
@@ -1073,6 +1368,21 @@ cli_cleanup_files(const char *spath)
 
 	if (rmdir(spath) == -1 && errno != ENOENT)
 		printf("couldn't rmdir %s\n", spath);
+}
+
+static char *
+cli_trim(char *string, size_t len)
+{
+	char		*end;
+
+	end = string + strlen(string) - 1;
+	while (isspace(*string))
+		string++;
+
+	while (isspace(*end) && end > string)
+		*(end)-- = '\0';
+
+	return (string);
 }
 
 static void
