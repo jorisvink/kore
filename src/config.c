@@ -92,7 +92,7 @@ static int		configure_task_threads(char *);
 #endif
 
 static void		domain_sslstart(void);
-static void		kore_parse_config_file(char *);
+static void		kore_parse_config_file(const char *);
 
 static struct {
 	const char		*name;
@@ -186,7 +186,7 @@ kore_parse_config(void)
 }
 
 static void
-kore_parse_config_file(char *fpath)
+kore_parse_config_file(const char *fpath)
 {
 	FILE		*fp;
 	int		i, lineno;
