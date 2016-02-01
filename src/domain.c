@@ -231,6 +231,8 @@ kore_domain_sslstart(struct kore_domain *dom)
 
 	kore_mem_free(dom->certfile);
 	kore_mem_free(dom->certkey);
+	dom->certfile = NULL;
+	dom->certkey = NULL;
 #endif
 }
 
