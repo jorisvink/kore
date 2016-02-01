@@ -370,6 +370,7 @@ kore_worker_entry(struct kore_worker *kw)
 
 	kore_platform_event_cleanup();
 	kore_connection_cleanup();
+	kore_domain_cleanup();
 #if !defined(KORE_NO_HTTP)
 	http_cleanup();
 #endif

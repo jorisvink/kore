@@ -185,9 +185,7 @@ kore_module_handler_new(const char *path, const char *domain,
 	if (hdlr->type == HANDLER_TYPE_DYNAMIC) {
 		if (regcomp(&(hdlr->rctx), hdlr->path,
 		    REG_EXTENDED | REG_NOSUB)) {
-			kore_mem_free(hdlr->func);
-			kore_mem_free(hdlr->path);
-			kore_mem_free(hdlr);
+			kore_module_handler_free(hdlr);
 			kore_debug("regcomp() on %s failed", path);
 			return (KORE_RESULT_ERROR);
 		}
@@ -195,6 +193,35 @@ kore_module_handler_new(const char *path, const char *domain,
 
 	TAILQ_INSERT_TAIL(&(dom->handlers), hdlr, list);
 	return (KORE_RESULT_OK);
+}
+
+void
+kore_module_handler_free(struct kore_module_handle *hdlr)
+{
+	struct kore_handler_params *param;
+
+	if (hdlr != NULL) {
+		if (hdlr->func != NULL) {
+			kore_mem_free(hdlr->func);
+		}
+		if (hdlr->path != NULL) {
+			kore_mem_free(hdlr->path);
+		}
+		if (hdlr->dom != NULL) {
+			TAILQ_REMOVE(&(hdlr->dom->handlers), hdlr, list);
+		}
+		regfree(&(hdlr->rctx));
+
+		/* Drop all validators associated with this handler */
+		while ((param=TAILQ_FIRST(&(hdlr->params))) != NULL) {
+			TAILQ_REMOVE(&(hdlr->params), param, list);
+			if (param->name != NULL) {
+				kore_mem_free(param->name);
+			}
+			kore_mem_free(param);
+		}
+		kore_mem_free(hdlr);
+	}
 }
 
 struct kore_module_handle *
