@@ -36,57 +36,59 @@
 
 /* XXX - This is becoming a clusterfuck. Fix it. */
 
-static int		configure_include(char **);
-static int		configure_bind(char **);
-static int		configure_load(char **);
-static int		configure_domain(char **);
-static int		configure_chroot(char **);
-static int		configure_runas(char **);
-static int		configure_workers(char **);
-static int		configure_pidfile(char **);
-static int		configure_rlimit_nofiles(char **);
-static int		configure_max_connections(char **);
-static int		configure_accept_threshold(char **);
-static int		configure_set_affinity(char **);
-static int		configure_socket_backlog(char **);
+static int		configure_include(char *);
+static int		configure_bind(char *);
+static int		configure_load(char *);
+static int		configure_domain(char *);
+static int		configure_chroot(char *);
+static int		configure_runas(char *);
+static int		configure_workers(char *);
+static int		configure_pidfile(char *);
+static int		configure_rlimit_nofiles(char *);
+static int		configure_max_connections(char *);
+static int		configure_accept_threshold(char *);
+static int		configure_set_affinity(char *);
+static int		configure_socket_backlog(char *);
 
 #if !defined(KORE_NO_TLS)
-static int		configure_certfile(char **);
-static int		configure_certkey(char **);
-static int		configure_tls_version(char **);
-static int		configure_tls_cipher(char **);
-static int		configure_tls_dhparam(char **);
-static int		configure_client_certificates(char **);
+static int		configure_certfile(char *);
+static int		configure_certkey(char *);
+static int		configure_tls_version(char *);
+static int		configure_tls_cipher(char *);
+static int		configure_tls_dhparam(char *);
+static int		configure_client_certificates(char *);
 #endif
 
 #if !defined(KORE_NO_HTTP)
-static int		configure_handler(char **);
-static int		configure_accesslog(char **);
-static int		configure_http_header_max(char **);
-static int		configure_http_body_max(char **);
-static int		configure_http_hsts_enable(char **);
-static int		configure_http_keepalive_time(char **);
-static int		configure_http_request_limit(char **);
-static int		configure_http_body_disk_offload(char **);
-static int		configure_http_body_disk_path(char **);
-static int		configure_validator(char **);
-static int		configure_params(char **);
-static int		configure_validate(char **);
-static int		configure_authentication(char **);
-static int		configure_authentication_uri(char **);
-static int		configure_authentication_type(char **);
-static int		configure_authentication_value(char **);
-static int		configure_authentication_validator(char **);
-static int		configure_websocket_maxframe(char **);
-static int		configure_websocket_timeout(char **);
+static int		configure_handler(int, char *);
+static int		configure_static_handler(char *);
+static int		configure_dynamic_handler(char *);
+static int		configure_accesslog(char *);
+static int		configure_http_header_max(char *);
+static int		configure_http_body_max(char *);
+static int		configure_http_hsts_enable(char *);
+static int		configure_http_keepalive_time(char *);
+static int		configure_http_request_limit(char *);
+static int		configure_http_body_disk_offload(char *);
+static int		configure_http_body_disk_path(char *);
+static int		configure_validator(char *);
+static int		configure_params(char *);
+static int		configure_validate(char *);
+static int		configure_authentication(char *);
+static int		configure_authentication_uri(char *);
+static int		configure_authentication_type(char *);
+static int		configure_authentication_value(char *);
+static int		configure_authentication_validator(char *);
+static int		configure_websocket_maxframe(char *);
+static int		configure_websocket_timeout(char *);
 #endif
 
 #if defined(KORE_USE_PGSQL)
-static int		configure_pgsql_conn_max(char **);
+static int		configure_pgsql_conn_max(char *);
 #endif
 
 #if defined(KORE_USE_TASKS)
-static int		configure_task_threads(char **);
+static int		configure_task_threads(char *);
 #endif
 
 static void		domain_sslstart(void);
@@ -94,7 +96,7 @@ static void		kore_parse_config_file(char *);
 
 static struct {
 	const char		*name;
-	int			(*configure)(char **);
+	int			(*configure)(char *);
 } config_names[] = {
 	{ "include",			configure_include },
 	{ "bind",			configure_bind },
@@ -118,8 +120,8 @@ static struct {
 	{ "client_certificates",	configure_client_certificates },
 #endif
 #if !defined(KORE_NO_HTTP)
-	{ "static",			configure_handler },
-	{ "dynamic",			configure_handler },
+	{ "static",			configure_static_handler },
+	{ "dynamic",			configure_dynamic_handler },
 	{ "accesslog",			configure_accesslog },
 	{ "http_header_max",		configure_http_header_max },
 	{ "http_body_max",		configure_http_body_max },
@@ -188,7 +190,7 @@ kore_parse_config_file(char *fpath)
 {
 	FILE		*fp;
 	int		i, lineno;
-	char		buf[BUFSIZ], *p, *t, *argv[5];
+	char		buf[BUFSIZ], *p, *t;
 
 	if ((fp = fopen(fpath, "r")) == NULL)
 		fatal("configuration given cannot be opened: %s", fpath);
@@ -239,22 +241,35 @@ kore_parse_config_file(char *fpath)
 			continue;
 		}
 
-		kore_split_string(p, " ", argv, 5);
+		if ((t = strchr(p, ' ')) == NULL) {
+			printf("ignoring \"%s\" on line %d\n", p, lineno++);
+			continue;
+		}
+
+		*(t)++ = '\0';
+
+		p = kore_text_trim(p, strlen(p));
+		t = kore_text_trim(t, strlen(t));
+
+		if (strlen(p) == 0 || strlen(t) == 0) {
+			printf("ignoring \"%s\" on line %d\n", p, lineno++);
+			continue;
+		}
+
+		printf("normalized: '%s'\n", p);
+		printf("normalized: '%s'\n", t);
+
 		for (i = 0; config_names[i].name != NULL; i++) {
-			if (!strcmp(config_names[i].name, argv[0])) {
-				if (!config_names[i].configure(argv)) {
-					fatal("configuration error on line %d",
-					    lineno);
-				}
-				break;
+			if (!strcmp(config_names[i].name, p)) {
+				if (config_names[i].configure(t))
+					break;
+				fatal("configuration error on line %d", lineno);
+				/* NOTREACHED */
 			}
 		}
 
-		if (config_names[i].name == NULL) {
-			printf("unknown configuration option \"%s\" on line %d\n", p,
-			    lineno);
-		}
-
+		if (config_names[i].name == NULL)
+			printf("ignoring \"%s\" on line %d\n", p, lineno);
 		lineno++;
 	}
 
@@ -262,51 +277,49 @@ kore_parse_config_file(char *fpath)
 }
 
 static int
-configure_include(char **argv)
+configure_include(char *path)
 {
-	if (argv[1] == NULL) {
-		printf("No file given in include directive\n");
-		return (KORE_RESULT_ERROR);
-	}
-
-	kore_parse_config_file(argv[1]);
+	kore_parse_config_file(path);
 	return (KORE_RESULT_OK);
 }
 
 static int
-configure_bind(char **argv)
+configure_bind(char *options)
 {
-	if (argv[1] == NULL || argv[2] == NULL)
+	char		*argv[4];
+
+	kore_split_string(options, " ", argv, 4);
+	if (argv[0] == NULL || argv[1] == NULL)
 		return (KORE_RESULT_ERROR);
 
-	return (kore_server_bind(argv[1], argv[2], argv[3]));
+	return (kore_server_bind(argv[0], argv[1], argv[2]));
 }
 
 static int
-configure_load(char **argv)
+configure_load(char *options)
 {
-	if (argv[1] == NULL)
+	char		*argv[3];
+
+	kore_split_string(options, " ", argv, 3);
+	if (argv[0] == NULL)
 		return (KORE_RESULT_ERROR);
 
-	kore_module_load(argv[1], argv[2]);
+	kore_module_load(argv[0], argv[1]);
 	return (KORE_RESULT_OK);
 }
 
 #if !defined(KORE_NO_TLS)
 static int
-configure_tls_version(char **argv)
+configure_tls_version(char *version)
 {
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
-
-	if (!strcmp(argv[1], "1.2")) {
+	if (!strcmp(version, "1.2")) {
 		tls_version = KORE_TLS_VERSION_1_2;
-	} else if (!strcmp(argv[1], "1.0")) {
+	} else if (!strcmp(version, "1.0")) {
 		tls_version = KORE_TLS_VERSION_1_0;
-	} else if (!strcmp(argv[1], "both")) {
+	} else if (!strcmp(version, "both")) {
 		tls_version = KORE_TLS_VERSION_BOTH;
 	} else {
-		printf("unknown value for tls_version: %s\n", argv[1]);
+		printf("unknown value for tls_version: %s\n", version);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -314,35 +327,29 @@ configure_tls_version(char **argv)
 }
 
 static int
-configure_tls_cipher(char **argv)
+configure_tls_cipher(char *cipherlist)
 {
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
-
 	if (strcmp(kore_tls_cipher_list, KORE_DEFAULT_CIPHER_LIST)) {
-		kore_debug("duplicate tls_cipher directive specified");
+		printf("tls_cipher specified twice\n");
 		return (KORE_RESULT_ERROR);
 	}
 
-	kore_tls_cipher_list = kore_strdup(argv[1]);
+	kore_tls_cipher_list = kore_strdup(cipherlist);
 	return (KORE_RESULT_OK);
 }
 
 static int
-configure_tls_dhparam(char **argv)
+configure_tls_dhparam(char *path)
 {
 	BIO		*bio;
 
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
-
 	if (tls_dhparam != NULL) {
-		kore_debug("duplicate tls_dhparam directive specified");
+		printf("tls_dhparam specified twice\n");
 		return (KORE_RESULT_ERROR);
 	}
 
-	if ((bio = BIO_new_file(argv[1], "r")) == NULL) {
-		printf("%s did not exist\n", argv[1]);
+	if ((bio = BIO_new_file(path, "r")) == NULL) {
+		printf("%s did not exist\n", path);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -353,126 +360,136 @@ configure_tls_dhparam(char **argv)
 		printf("PEM_read_bio_DHparams(): %s\n", ssl_errno_s);
 		return (KORE_RESULT_ERROR);
 	}
+
 	return (KORE_RESULT_OK);
 }
 
 static int
-configure_client_certificates(char **argv)
+configure_client_certificates(char *options)
 {
+	char		*argv[3];
+
 	if (current_domain == NULL) {
-		printf("missing domain for require_client_cert\n");
+		printf("client_certificates not specified in domain context\n");
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (argv[1] == NULL) {
-		printf("missing argument for require_client_cert\n");
+	kore_split_string(options, " ", argv, 3);
+	if (argv[0] == NULL) {
+		printf("client_certificate is missing a parameter\n");
 		return (KORE_RESULT_ERROR);
 	}
 
 	if (current_domain->cafile != NULL) {
-		printf("require_client_cert already set for %s\n",
+		printf("client_certificate already set for %s\n",
 		    current_domain->domain);
 		return (KORE_RESULT_ERROR);
 	}
 
-	current_domain->cafile = kore_strdup(argv[1]);
-	if (argv[2] != NULL)
-		current_domain->crlfile = kore_strdup(argv[2]);
+	current_domain->cafile = kore_strdup(argv[0]);
+	if (argv[1] != NULL)
+		current_domain->crlfile = kore_strdup(argv[1]);
 
 	return (KORE_RESULT_OK);
 }
 
 static int
-configure_certfile(char **argv)
+configure_certfile(char *path)
 {
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
-
 	if (current_domain == NULL) {
-		printf("missing domain for certfile\n");
+		printf("certfile not specified in domain context\n");
 		return (KORE_RESULT_ERROR);
 	}
 
 	if (current_domain->certfile != NULL) {
-		kore_debug("domain already has a certfile set");
+		printf("certfile specified twice for %s\n",
+		    current_domain->domain);
 		return (KORE_RESULT_ERROR);
 	}
 
-	current_domain->certfile = kore_strdup(argv[1]);
+	current_domain->certfile = kore_strdup(path);
 	return (KORE_RESULT_OK);
 }
 
 static int
-configure_certkey(char **argv)
+configure_certkey(char *path)
 {
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
-
 	if (current_domain == NULL) {
-		printf("missing domain for certkey\n");
+		printf("certkey not specified in domain text\n");
 		return (KORE_RESULT_ERROR);
 	}
 
 	if (current_domain->certkey != NULL) {
-		kore_debug("domain already has a certkey set");
+		printf("certkey specified twice for %s\n",
+		    current_domain->domain);
 		return (KORE_RESULT_ERROR);
 	}
 
-	current_domain->certkey = kore_strdup(argv[1]);
+	current_domain->certkey = kore_strdup(path);
 	return (KORE_RESULT_OK);
 }
 
 #endif /* !KORE_NO_TLS */
 
 static int
-configure_domain(char **argv)
+configure_domain(char *options)
 {
-	if (argv[2] == NULL)
-		return (KORE_RESULT_ERROR);
+	char		*argv[3];
 
 	if (current_domain != NULL) {
-		printf("previous domain configuration not closed\n");
+		printf("nested domain contexts are not allowed\n");
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (strcmp(argv[2], "{")) {
-		printf("missing { for domain directive\n");
+	kore_split_string(options, " ", argv, 3);
+
+	if (strcmp(argv[1], "{")) {
+		printf("domain context not opened correctly\n");
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (!kore_domain_new(argv[1])) {
-		printf("could not create new domain %s\n", argv[1]);
+	if (!kore_domain_new(argv[0])) {
+		printf("could not create new domain %s\n", argv[0]);
 		return (KORE_RESULT_ERROR);
 	}
 
-	current_domain = kore_domain_lookup(argv[1]);
+	current_domain = kore_domain_lookup(argv[0]);
 	return (KORE_RESULT_OK);
 }
 
 #if !defined(KORE_NO_HTTP)
 static int
-configure_handler(char **argv)
+configure_static_handler(char *options)
 {
-	int		type;
+	return (configure_handler(HANDLER_TYPE_STATIC, options));
+}
+
+static int
+configure_dynamic_handler(char *options)
+{
+	return (configure_handler(HANDLER_TYPE_DYNAMIC, options));
+}
+
+static int
+configure_handler(int type, char *options)
+{
+	char		*argv[4];
 
 	if (current_domain == NULL) {
-		printf("missing domain for page handler\n");
+		printf("page handler not specified in domain context\n");
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (argv[1] == NULL || argv[2] == NULL)
-		return (KORE_RESULT_ERROR);
+	kore_split_string(options, " ", argv, 4);
 
-	if (!strcmp(argv[0], "static"))
-		type = HANDLER_TYPE_STATIC;
-	else if (!strcmp(argv[0], "dynamic"))
-		type = HANDLER_TYPE_DYNAMIC;
-	else
+	if (argv[0] == NULL || argv[1] == NULL) {
+		printf("missing parameters for page handler\n");
 		return (KORE_RESULT_ERROR);
+	}
 
-	if (!kore_module_handler_new(argv[1],
-	    current_domain->domain, argv[2], argv[3], type)) {
-		kore_debug("cannot create handler for %s", argv[1]);
+	if (!kore_module_handler_new(argv[0],
+	    current_domain->domain, argv[1], argv[2], type)) {
+		printf("cannot create handler for %s\n", argv[0]);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -480,27 +497,24 @@ configure_handler(char **argv)
 }
 
 static int
-configure_accesslog(char **argv)
+configure_accesslog(char *path)
 {
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
-
 	if (current_domain == NULL) {
-		kore_debug("missing domain for accesslog");
+		kore_debug("accesslog not specified in domain context\n");
 		return (KORE_RESULT_ERROR);
 	}
 
 	if (current_domain->accesslog != -1) {
-		kore_debug("domain %s already has an open accesslog",
+		printf("domain %s already has an open accesslog\n",
 		    current_domain->domain);
 		return (KORE_RESULT_ERROR);
 	}
 
-	current_domain->accesslog = open(argv[1],
+	current_domain->accesslog = open(path,
 	    O_CREAT | O_APPEND | O_WRONLY,
 	    S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 	if (current_domain->accesslog == -1) {
-		kore_debug("open(%s): %s", argv[1], errno_s);
+		printf("accesslog open(%s): %s\n", path, errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -508,21 +522,13 @@ configure_accesslog(char **argv)
 }
 
 static int
-configure_http_header_max(char **argv)
+configure_http_header_max(char *option)
 {
 	int		err;
 
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
-
-	if (http_header_max != HTTP_HEADER_MAX_LEN) {
-		kore_debug("http_header_max already set");
-		return (KORE_RESULT_ERROR);
-	}
-
-	http_header_max = kore_strtonum(argv[1], 10, 1, 65535, &err);
+	http_header_max = kore_strtonum(option, 10, 1, 65535, &err);
 	if (err != KORE_RESULT_OK) {
-		printf("bad http_header_max value: %s\n", argv[1]);
+		printf("bad http_header_max value: %s\n", option);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -530,21 +536,13 @@ configure_http_header_max(char **argv)
 }
 
 static int
-configure_http_body_max(char **argv)
+configure_http_body_max(char *option)
 {
 	int		err;
 
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
-
-	if (http_body_max != HTTP_BODY_MAX_LEN) {
-		kore_debug("http_body_max already set");
-		return (KORE_RESULT_ERROR);
-	}
-
-	http_body_max = kore_strtonum(argv[1], 10, 0, LONG_MAX, &err);
+	http_body_max = kore_strtonum(option, 10, 0, LONG_MAX, &err);
 	if (err != KORE_RESULT_OK) {
-		printf("bad http_body_max value: %s\n", argv[1]);
+		printf("bad http_body_max value: %s\n", option);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -552,16 +550,13 @@ configure_http_body_max(char **argv)
 }
 
 static int
-configure_http_body_disk_offload(char **argv)
+configure_http_body_disk_offload(char *option)
 {
 	int		err;
 
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
-
-	http_body_disk_offload = kore_strtonum(argv[1], 10, 0, LONG_MAX, &err);
+	http_body_disk_offload = kore_strtonum(option, 10, 0, LONG_MAX, &err);
 	if (err != KORE_RESULT_OK) {
-		printf("bad http_body_disk_offload value: %s\n", argv[1]);
+		printf("bad http_body_disk_offload value: %s\n", option);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -569,34 +564,23 @@ configure_http_body_disk_offload(char **argv)
 }
 
 static int
-configure_http_body_disk_path(char **argv)
+configure_http_body_disk_path(char *path)
 {
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
-
 	if (strcmp(http_body_disk_path, HTTP_BODY_DISK_PATH))
 		kore_mem_free(http_body_disk_path);
 
-	http_body_disk_path = kore_strdup(argv[1]);
+	http_body_disk_path = kore_strdup(path);
 	return (KORE_RESULT_OK);
 }
 
 static int
-configure_http_hsts_enable(char **argv)
+configure_http_hsts_enable(char *option)
 {
 	int		err;
 
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
-
-	if (http_hsts_enable != HTTP_HSTS_ENABLE) {
-		kore_debug("http_hsts_enable already set");
-		return (KORE_RESULT_ERROR);
-	}
-
-	http_hsts_enable = kore_strtonum(argv[1], 10, 0, LONG_MAX, &err);
+	http_hsts_enable = kore_strtonum(option, 10, 0, LONG_MAX, &err);
 	if (err != KORE_RESULT_OK) {
-		printf("bad http_hsts_enable value: %s\n", argv[1]);
+		printf("bad http_hsts_enable value: %s\n", option);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -604,21 +588,13 @@ configure_http_hsts_enable(char **argv)
 }
 
 static int
-configure_http_keepalive_time(char **argv)
+configure_http_keepalive_time(char *option)
 {
 	int		err;
 
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
-
-	if (http_keepalive_time != HTTP_KEEPALIVE_TIME) {
-		kore_debug("http_keepalive_time already set");
-		return (KORE_RESULT_ERROR);
-	}
-
-	http_keepalive_time = kore_strtonum(argv[1], 10, 0, USHRT_MAX, &err);
+	http_keepalive_time = kore_strtonum(option, 10, 0, USHRT_MAX, &err);
 	if (err != KORE_RESULT_OK) {
-		printf("bad http_keepalive_time value: %s\n", argv[1]);
+		printf("bad http_keepalive_time value: %s\n", option);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -626,16 +602,13 @@ configure_http_keepalive_time(char **argv)
 }
 
 static int
-configure_http_request_limit(char **argv)
+configure_http_request_limit(char *option)
 {
 	int		err;
 
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
-
-	http_request_limit = kore_strtonum(argv[1], 10, 0, UINT_MAX, &err);
+	http_request_limit = kore_strtonum(option, 10, 0, UINT_MAX, &err);
 	if (err != KORE_RESULT_OK) {
-		printf("bad http_request_limit value: %s\n", argv[1]);
+		printf("bad http_request_limit value: %s\n", option);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -643,24 +616,37 @@ configure_http_request_limit(char **argv)
 }
 
 static int
-configure_validator(char **argv)
+configure_validator(char *name)
 {
 	u_int8_t	type;
+	char		*tname, *value;
 
-	if (argv[3] == NULL)
-		return (KORE_RESULT_ERROR);
-
-	if (!strcmp(argv[2], "regex")) {
-		type = KORE_VALIDATOR_TYPE_REGEX;
-	} else if (!strcmp(argv[2], "function")) {
-		type = KORE_VALIDATOR_TYPE_FUNCTION;
-	} else {
-		printf("bad type for validator %s\n", argv[1]);
+	if ((tname = strchr(name, ' ')) == NULL) {
+		printf("missing validator name\n");
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (!kore_validator_add(argv[1], type, argv[3])) {
-		printf("bad validator specified: %s\n", argv[1]);
+	*(tname)++ = '\0';
+	tname = kore_text_trim(tname, strlen(tname));
+	if ((value = strchr(tname, ' ')) == NULL) {
+		printf("missing validator value\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	*(value)++ = '\0';
+	value = kore_text_trim(value, strlen(value));
+
+	if (!strcmp(tname, "regex")) {
+		type = KORE_VALIDATOR_TYPE_REGEX;
+	} else if (!strcmp(tname, "function")) {
+		type = KORE_VALIDATOR_TYPE_FUNCTION;
+	} else {
+		printf("bad type for validator %s\n", tname);
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (!kore_validator_add(name, type, value)) {
+		printf("bad validator specified: %s\n", tname);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -668,12 +654,13 @@ configure_validator(char **argv)
 }
 
 static int
-configure_params(char **argv)
+configure_params(char *options)
 {
 	struct kore_module_handle	*hdlr;
+	char				*argv[3];
 
 	if (current_domain == NULL) {
-		printf("params keyword used in wrong context\n");
+		printf("params not used in domain context\n");
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -682,22 +669,23 @@ configure_params(char **argv)
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (argv[2] == NULL)
+	kore_split_string(options, " ", argv, 3);
+	if (argv[1] == NULL)
 		return (KORE_RESULT_ERROR);
 
-	if (!strcasecmp(argv[1], "post")) {
+	if (!strcasecmp(argv[0], "post")) {
 		current_method = HTTP_METHOD_POST;
-	} else if (!strcasecmp(argv[1], "get")) {
+	} else if (!strcasecmp(argv[0], "get")) {
 		current_method = HTTP_METHOD_GET;
-	} else if (!strcasecmp(argv[1], "put")) {
+	} else if (!strcasecmp(argv[0], "put")) {
 		current_method = HTTP_METHOD_PUT;
-	} else if (!strcasecmp(argv[1], "delete")) {
+	} else if (!strcasecmp(argv[0], "delete")) {
 		current_method = HTTP_METHOD_DELETE;
-	} else if (!strcasecmp(argv[1], "head")) {
+	} else if (!strcasecmp(argv[0], "head")) {
 		current_method = HTTP_METHOD_HEAD;
 	} else {
 		printf("unknown method: %s in params block for %s\n",
-		    argv[1], argv[2]);
+		    argv[0], argv[1]);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -706,92 +694,91 @@ configure_params(char **argv)
 	 * in case of a dynamic page.
 	 */
 	TAILQ_FOREACH(hdlr, &(current_domain->handlers), list) {
-		if (!strcmp(hdlr->path, argv[2])) {
+		if (!strcmp(hdlr->path, argv[1])) {
 			current_handler = hdlr;
 			return (KORE_RESULT_OK);
 		}
 	}
 
-	printf("params for unknown page handler: %s\n", argv[2]);
+	printf("params for unknown page handler: %s\n", argv[1]);
 	return (KORE_RESULT_ERROR);
 }
 
 static int
-configure_validate(char **argv)
+configure_validate(char *options)
 {
 	struct kore_handler_params	*p;
 	struct kore_validator		*val;
+	char				*argv[3];
 
 	if (current_handler == NULL) {
-		printf("validate keyword used in wrong context\n");
+		printf("validate not used in domain context\n");
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (argv[2] == NULL)
+	kore_split_string(options, " ", argv, 3);
+	if (argv[1] == NULL)
 		return (KORE_RESULT_ERROR);
 
-	if ((val = kore_validator_lookup(argv[2])) == NULL) {
-		printf("unknown validator %s for %s\n", argv[2], argv[1]);
+	if ((val = kore_validator_lookup(argv[1])) == NULL) {
+		printf("unknown validator %s for %s\n", argv[1], argv[0]);
 		return (KORE_RESULT_ERROR);
 	}
 
 	p = kore_malloc(sizeof(*p));
 	p->validator = val;
 	p->method = current_method;
-	p->name = kore_strdup(argv[1]);
+	p->name = kore_strdup(argv[0]);
 
 	TAILQ_INSERT_TAIL(&(current_handler->params), p, list);
-
 	return (KORE_RESULT_OK);
 }
 
 static int
-configure_authentication(char **argv)
+configure_authentication(char *options)
 {
-	if (argv[2] == NULL) {
-		printf("Missing name for authentication block\n");
-		return (KORE_RESULT_ERROR);
-	}
+	char		*argv[3];
 
 	if (current_auth != NULL) {
-		printf("Previous authentication block not closed\n");
+		printf("previous authentication block not closed\n");
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (strcmp(argv[2], "{")) {
+	kore_split_string(options, " ", argv, 3);
+	if (argv[1] == NULL) {
+		printf("missing name for authentication block\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (strcmp(argv[1], "{")) {
 		printf("missing { for authentication block\n");
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (!kore_auth_new(argv[1]))
+	if (!kore_auth_new(argv[0]))
 		return (KORE_RESULT_ERROR);
 
-	current_auth = kore_auth_lookup(argv[1]);
+	current_auth = kore_auth_lookup(argv[0]);
 
 	return (KORE_RESULT_OK);
 }
 
 static int
-configure_authentication_type(char **argv)
+configure_authentication_type(char *option)
 {
 	if (current_auth == NULL) {
-		printf("authentication_type outside authentication block\n");
+		printf("authentication_type outside authentication context\n");
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (argv[1] == NULL) {
-		printf("missing parameter for authentication_type\n");
-		return (KORE_RESULT_ERROR);
-	}
-
-	if (!strcmp(argv[1], "cookie")) {
+	if (!strcmp(option, "cookie")) {
 		current_auth->type = KORE_AUTH_TYPE_COOKIE;
-	} else if (!strcmp(argv[1], "header")) {
+	} else if (!strcmp(option, "header")) {
 		current_auth->type = KORE_AUTH_TYPE_HEADER;
-	} else if (!strcmp(argv[1], "request")) {
+	} else if (!strcmp(option, "request")) {
 		current_auth->type = KORE_AUTH_TYPE_REQUEST;
 	} else {
-		printf("unknown authentication type '%s'\n", argv[1]);
+		printf("unknown authentication type '%s'\n", option);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -799,29 +786,22 @@ configure_authentication_type(char **argv)
 }
 
 static int
-configure_authentication_value(char **argv)
+configure_authentication_value(char *option)
 {
 	if (current_auth == NULL) {
-		printf("authentication_value outside authentication block\n");
+		printf("authentication_value outside authentication context\n");
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (argv[1] == NULL) {
-		printf("missing parameter for authentication_value\n");
-		return (KORE_RESULT_ERROR);
-	}
+	if (current_auth->value != NULL)
+		kore_mem_free(current_auth->value);
+	current_auth->value = kore_strdup(option);
 
-	if (current_auth->value != NULL) {
-		printf("duplicate authentication_value found\n");
-		return (KORE_RESULT_ERROR);
-	}
-
-	current_auth->value = kore_strdup(argv[1]);
 	return (KORE_RESULT_OK);
 }
 
 static int
-configure_authentication_validator(char **argv)
+configure_authentication_validator(char *validator)
 {
 	struct kore_validator		*val;
 
@@ -830,18 +810,8 @@ configure_authentication_validator(char **argv)
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (argv[1] == NULL) {
-		printf("missing parameter for authentication_validator\n");
-		return (KORE_RESULT_ERROR);
-	}
-
-	if (current_auth->validator != NULL) {
-		printf("duplicate authentication_validator found\n");
-		return (KORE_RESULT_ERROR);
-	}
-
-	if ((val = kore_validator_lookup(argv[1])) == NULL) {
-		printf("authentication validator '%s' not found\n", argv[1]);
+	if ((val = kore_validator_lookup(validator)) == NULL) {
+		printf("authentication validator '%s' not found\n", validator);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -851,41 +821,28 @@ configure_authentication_validator(char **argv)
 }
 
 static int
-configure_authentication_uri(char **argv)
+configure_authentication_uri(char *uri)
 {
 	if (current_auth == NULL) {
-		printf("authentication_uri outside authentication block\n");
+		printf("authentication_uri outside authentication context\n");
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (argv[1] == NULL) {
-		printf("missing parameter for authentication_uri\n");
-		return (KORE_RESULT_ERROR);
-	}
-
-	if (current_auth->redirect != NULL) {
-		printf("duplicate authentication_uri found\n");
-		return (KORE_RESULT_ERROR);
-	}
-
-	current_auth->redirect = kore_strdup(argv[1]);
+	if (current_auth->redirect != NULL)
+		kore_mem_free(current_auth->redirect);
+	current_auth->redirect = kore_strdup(uri);
 
 	return (KORE_RESULT_OK);
 }
 
 static int
-configure_websocket_maxframe(char **argv)
+configure_websocket_maxframe(char *option)
 {
 	int	err;
 
-	if (argv[1] == NULL) {
-		printf("missing parameter for kore_websocket_maxframe\n");
-		return (KORE_RESULT_ERROR);
-	}
-
-	kore_websocket_maxframe = kore_strtonum64(argv[1], 1, &err);
+	kore_websocket_maxframe = kore_strtonum64(option, 1, &err);
 	if (err != KORE_RESULT_OK) {
-		printf("bad kore_websocket_maxframe value\n");
+		printf("bad kore_websocket_maxframe value: %s\n", option);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -893,18 +850,13 @@ configure_websocket_maxframe(char **argv)
 }
 
 static int
-configure_websocket_timeout(char **argv)
+configure_websocket_timeout(char *option)
 {
 	int	err;
 
-	if (argv[1] == NULL) {
-		printf("missing parameter for kore_websocket_timeout\n");
-		return (KORE_RESULT_ERROR);
-	}
-
-	kore_websocket_timeout = kore_strtonum64(argv[1], 1, &err);
+	kore_websocket_timeout = kore_strtonum64(option, 1, &err);
 	if (err != KORE_RESULT_OK) {
-		printf("bad kore_websocket_timeout value\n");
+		printf("bad kore_websocket_timeout value: %s\n", option);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -916,51 +868,33 @@ configure_websocket_timeout(char **argv)
 #endif /* !KORE_NO_HTTP */
 
 static int
-configure_chroot(char **argv)
+configure_chroot(char *path)
 {
-	if (chroot_path != NULL) {
-		kore_debug("duplicate chroot path specified");
-		return (KORE_RESULT_ERROR);
-	}
+	if (chroot_path != NULL)
+		kore_mem_free(chroot_path),
+	chroot_path = kore_strdup(path);
 
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
-
-	chroot_path = kore_strdup(argv[1]);
 	return (KORE_RESULT_OK);
 }
 
 static int
-configure_runas(char **argv)
+configure_runas(char *user)
 {
-	if (runas_user != NULL) {
-		kore_debug("duplicate runas user specified");
-		return (KORE_RESULT_ERROR);
-	}
+	if (runas_user != NULL)
+		kore_mem_free(runas_user);
+	runas_user = kore_strdup(user);
 
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
-
-	runas_user = kore_strdup(argv[1]);
 	return (KORE_RESULT_OK);
 }
 
 static int
-configure_workers(char **argv)
+configure_workers(char *option)
 {
 	int		err;
 
-	if (worker_count != 0) {
-		kore_debug("duplicate worker directive specified");
-		return (KORE_RESULT_ERROR);
-	}
-
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
-
-	worker_count = kore_strtonum(argv[1], 10, 1, 255, &err);
+	worker_count = kore_strtonum(option, 10, 1, 255, &err);
 	if (err != KORE_RESULT_OK) {
-		printf("%s is not a correct worker number\n", argv[1]);
+		printf("%s is not a valid worker number\n", option);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -968,31 +902,23 @@ configure_workers(char **argv)
 }
 
 static int
-configure_pidfile(char **argv)
+configure_pidfile(char *path)
 {
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
+	if (strcmp(kore_pidfile, KORE_PIDFILE_DEFAULT))
+		kore_mem_free(kore_pidfile);
+	kore_pidfile = kore_strdup(path);
 
-	if (strcmp(kore_pidfile, KORE_PIDFILE_DEFAULT)) {
-		kore_debug("duplicate pidfile directive specified");
-		return (KORE_RESULT_ERROR);
-	}
-
-	kore_pidfile = kore_strdup(argv[1]);
 	return (KORE_RESULT_OK);
 }
 
 static int
-configure_max_connections(char **argv)
+configure_max_connections(char *option)
 {
 	int		err;
 
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
-
-	worker_max_connections = kore_strtonum(argv[1], 10, 1, UINT_MAX, &err);
+	worker_max_connections = kore_strtonum(option, 10, 1, UINT_MAX, &err);
 	if (err != KORE_RESULT_OK) {
-		printf("bad value for worker_max_connections: %s\n", argv[1]);
+		printf("bad value for worker_max_connections: %s\n", option);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -1000,16 +926,13 @@ configure_max_connections(char **argv)
 }
 
 static int
-configure_rlimit_nofiles(char **argv)
+configure_rlimit_nofiles(char *option)
 {
 	int		err;
 
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
-
-	worker_rlimit_nofiles = kore_strtonum(argv[1], 10, 1, UINT_MAX, &err);
+	worker_rlimit_nofiles = kore_strtonum(option, 10, 1, UINT_MAX, &err);
 	if (err != KORE_RESULT_OK) {
-		printf("bad value for worker_rlimit_nofiles: %s\n", argv[1]);
+		printf("bad value for worker_rlimit_nofiles: %s\n", option);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -1017,16 +940,13 @@ configure_rlimit_nofiles(char **argv)
 }
 
 static int
-configure_accept_threshold(char **argv)
+configure_accept_threshold(char *option)
 {
 	int		err;
 
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
-
-	worker_accept_threshold = kore_strtonum(argv[1], 0, 1, UINT_MAX, &err);
+	worker_accept_threshold = kore_strtonum(option, 0, 1, UINT_MAX, &err);
 	if (err != KORE_RESULT_OK) {
-		printf("bad value for worker_accept_threshold: %s\n", argv[1]);
+		printf("bad value for worker_accept_threshold: %s\n", option);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -1034,16 +954,13 @@ configure_accept_threshold(char **argv)
 }
 
 static int
-configure_set_affinity(char **argv)
+configure_set_affinity(char *option)
 {
 	int		err;
 
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
-
-	worker_set_affinity = kore_strtonum(argv[1], 10, 0, 1, &err);
+	worker_set_affinity = kore_strtonum(option, 10, 0, 1, &err);
 	if (err != KORE_RESULT_OK) {
-		printf("bad value for worker_set_affinity: %s\n", argv[1]);
+		printf("bad value for worker_set_affinity: %s\n", option);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -1051,16 +968,13 @@ configure_set_affinity(char **argv)
 }
 
 static int
-configure_socket_backlog(char **argv)
+configure_socket_backlog(char *option)
 {
 	int		err;
 
-	if (argv[1] == NULL)
-		return (KORE_RESULT_ERROR);
-
-	kore_socket_backlog = kore_strtonum(argv[1], 10, 0, UINT_MAX, &err);
+	kore_socket_backlog = kore_strtonum(option, 10, 0, UINT_MAX, &err);
 	if (err != KORE_RESULT_OK) {
-		printf("bad socket_backlog value: %s\n", argv[1]);
+		printf("bad socket_backlog value: %s\n", option);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -1076,18 +990,13 @@ domain_sslstart(void)
 
 #if defined(KORE_USE_PGSQL)
 static int
-configure_pgsql_conn_max(char **argv)
+configure_pgsql_conn_max(char *option)
 {
 	int		err;
 
-	if (argv[1] == NULL) {
-		printf("missing parameter for pgsql_conn_max\n");
-		return (KORE_RESULT_ERROR);
-	}
-
-	pgsql_conn_max = kore_strtonum(argv[1], 10, 0, USHRT_MAX, &err);
+	pgsql_conn_max = kore_strtonum(option, 10, 0, USHRT_MAX, &err);
 	if (err != KORE_RESULT_OK) {
-		printf("bad value for pgsql_conn_max: %s\n", argv[1]);
+		printf("bad value for pgsql_conn_max: %s\n", option);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -1097,18 +1006,13 @@ configure_pgsql_conn_max(char **argv)
 
 #if defined(KORE_USE_TASKS)
 static int
-configure_task_threads(char **argv)
+configure_task_threads(char *option)
 {
 	int		err;
 
-	if (argv[1] == NULL) {
-		printf("missing parameter for task_threads\n");
-		return (KORE_RESULT_ERROR);
-	}
-
-	kore_task_threads = kore_strtonum(argv[1], 10, 0, UCHAR_MAX, &err);
+	kore_task_threads = kore_strtonum(option, 10, 0, UCHAR_MAX, &err);
 	if (err != KORE_RESULT_OK) {
-		printf("bad value for task_threads: %s\n", argv[1]);
+		printf("bad value for task_threads: %s\n", option);
 		return (KORE_RESULT_ERROR);
 	}
 

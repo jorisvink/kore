@@ -16,6 +16,7 @@
 
 #include <sys/time.h>
 
+#include <ctype.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
@@ -495,6 +496,21 @@ kore_mem_find(void *src, size_t slen, void *needle, u_int32_t len)
 	}
 
 	return (NULL);
+}
+
+char *
+kore_text_trim(char *string, size_t len)
+{
+	char		*end;
+
+	end = string + strlen(string) - 1;
+	while (isspace(*string))
+		string++;
+
+	while (isspace(*end) && end > string)
+		*(end)-- = '\0';
+
+	return (string);
 }
 
 void

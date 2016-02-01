@@ -97,7 +97,6 @@ static void		cli_run_kore(void *);
 static void		cli_generate_certs(void);
 static void		cli_link_library(void *);
 static void		cli_compile_cfile(void *);
-static char		*cli_trim(char *, size_t);
 static void		cli_mkdir(const char *, int);
 static int		cli_dir_exists(const char *);
 static int		cli_file_exists(const char *);
@@ -1047,7 +1046,7 @@ cli_buildopt_parse(const char *path)
 {
 	FILE			*fp;
 	struct buildopt		*bopt;
-	char			buf[BUFSIZ], *p, *t, *s;
+	char			buf[BUFSIZ], *p, *t;
 
 	if ((fp = fopen(path, "r")) == NULL)
 		cli_fatal("cli_buildopt_parse: fopen(%s): %s", path, errno_s);
@@ -1093,20 +1092,8 @@ cli_buildopt_parse(const char *path)
 parse_option:
 		*(t)++ = '\0';
 
-		cli_trim(p, strlen(p));
-		cli_trim(t, strlen(t));
-
-		while (isspace(*p))
-			p++;
-		s = p + strlen(p) - 1;
-		while (isspace(*s))
-			*(s)-- = '\0';
-
-		while (isspace(*t))
-			t++;
-		s = t + strlen(t) - 1;
-		while (isspace(*s))
-			*(s)-- = '\0';
+		p = kore_text_trim(p, strlen(p));
+		t = kore_text_trim(t, strlen(t));
 
 		if (!strcasecmp(p, "cflags")) {
 			cli_buildopt_cflags(bopt, t);
@@ -1368,21 +1355,6 @@ cli_cleanup_files(const char *spath)
 
 	if (rmdir(spath) == -1 && errno != ENOENT)
 		printf("couldn't rmdir %s\n", spath);
-}
-
-static char *
-cli_trim(char *string, size_t len)
-{
-	char		*end;
-
-	end = string + strlen(string) - 1;
-	while (isspace(*string))
-		string++;
-
-	while (isspace(*end) && end > string)
-		*(end)-- = '\0';
-
-	return (string);
 }
 
 static void
