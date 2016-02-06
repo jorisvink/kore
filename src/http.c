@@ -903,47 +903,41 @@ void
 http_populate_post(struct http_request *req)
 {
 	ssize_t			ret;
-	struct kore_buf		*buf;
-	char			data[BUFSIZ], *val[3], *string, *p;
+	int			i, v;
+	struct kore_buf		*body;
+	char			data[BUFSIZ];
+	char			*args[HTTP_MAX_QUERY_ARGS], *val[3], *string;
 
 	if (req->method != HTTP_METHOD_POST)
 		return;
 
-	buf = kore_buf_create(128);
-	for (;;) {
-		ret = http_body_read(req, data, sizeof(data));
-		if (ret == -1)
-			goto out;
-		if (ret == 0)
-			break;
-
-		if ((p = kore_mem_find(data, ret, "&", 1)) == NULL) {
-			kore_buf_append(buf, data, ret);
-			continue;
-		} else {
-			kore_buf_append(buf, data, p - data);
-			ret -= (p - data);
+	if (req->http_body != NULL) {
+		body = NULL;
+		req->http_body->offset = req->content_length;
+		string = kore_buf_stringify(req->http_body);
+	} else {
+		body = kore_buf_create(128);
+		for (;;) {
+			ret = http_body_read(req, data, sizeof(data));
+			if (ret == -1)
+				goto out;
+			if (ret == 0)
+				break;
+			kore_buf_append(body, data, ret);
 		}
-
-		string = kore_buf_stringify(buf);
-		kore_split_string(string, "=", val, 3);
-		if (val[0] != NULL && val[1] != NULL)
-			http_argument_add(req, val[0], val[1]);
-
-		kore_buf_reset(buf);
-		if (ret > 1)
-			kore_buf_append(buf, p + 1, ret - 1);
+		string = kore_buf_stringify(body);
 	}
 
-	if (buf->offset != 0) {
-		string = kore_buf_stringify(buf);
-		kore_split_string(string, "=", val, 3);
+	v = kore_split_string(string, "&", args, HTTP_MAX_QUERY_ARGS);
+	for (i = 0; i < v; i++) {
+		kore_split_string(args[i], "=", val, 3);
 		if (val[0] != NULL && val[1] != NULL)
 			http_argument_add(req, val[0], val[1]);
 	}
 
 out:
-	kore_buf_free(buf);
+	if (body != NULL)
+		kore_buf_free(body);
 }
 
 void
