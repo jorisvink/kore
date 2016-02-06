@@ -858,7 +858,7 @@ static int
 configure_chroot(char *path)
 {
 	if (chroot_path != NULL)
-		kore_mem_free(chroot_path),
+		kore_mem_free(chroot_path);
 	chroot_path = kore_strdup(path);
 
 	return (KORE_RESULT_OK);
