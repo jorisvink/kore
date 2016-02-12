@@ -109,7 +109,7 @@ kore_worker_init(void)
 	kore_debug("kore_worker_init(): starting %d workers", worker_count);
 
 	if (worker_count > cpu_count) {
-		kore_debug("kore_worker_init(): more workers then cpu's");
+		kore_debug("kore_worker_init(): more workers than cpu's");
 	}
 
 	cpu = 0;
