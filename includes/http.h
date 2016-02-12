@@ -70,7 +70,7 @@ struct http_arg {
 #define COPY_ARG_TYPE(v, t)				\
 	do {						\
 		*(t *)nout = v;				\
-	} while (0);
+	} while (0)
 
 #define COPY_ARG_INT64(type, sign)					\
 	do {								\
@@ -80,7 +80,7 @@ struct http_arg {
 		if (err != KORE_RESULT_OK)				\
 			return (KORE_RESULT_ERROR);			\
 		COPY_ARG_TYPE(nval, type);				\
-	} while (0);
+	} while (0)
 
 #define COPY_ARG_INT(min, max, type)					\
 	do {								\
@@ -90,21 +90,21 @@ struct http_arg {
 		if (err != KORE_RESULT_OK)				\
 			return (KORE_RESULT_ERROR);			\
 		COPY_ARG_TYPE(nval, type);				\
-	} while (0);
+	} while (0)
 
 #define COPY_AS_INTTYPE_64(type, sign)					\
 	do {								\
 		if (nout == NULL)					\
 			return (KORE_RESULT_ERROR);			\
 		COPY_ARG_INT64(type, sign);				\
-	} while (0);
+	} while (0)
 
 #define COPY_AS_INTTYPE(min, max, type)					\
 	do {								\
 		if (nout == NULL)					\
 			return (KORE_RESULT_ERROR);			\
 		COPY_ARG_INT(min, max, type);				\
-	} while (0);
+	} while (0)
 
 #define http_argument_type(r, n, so, no, t)				\
 	http_argument_get(r, n, so, no, t)
