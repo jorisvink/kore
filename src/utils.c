@@ -506,7 +506,7 @@ kore_text_trim(char *string, size_t len)
 	if (len == 0)
 		return (string);
 
-	end = string + len - 1;
+	end = string + len;
 	while (isspace(*string))
 		string++;
 
