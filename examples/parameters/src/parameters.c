@@ -48,9 +48,6 @@ page(struct http_request *req)
 	 * In this scenario, lets grab it both as an actual string and
 	 * as an u_int16_t (unsigned short).
 	 *
-	 * If you grab it as a string, you can immediately ask for
-	 * the correct length as well, excluding the NUL terminator.
-	 *
 	 * When trying to obtain a parameter as something else then
 	 * a string, Kore will automatically check if the value fits
 	 * in said data type.
