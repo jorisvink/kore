@@ -223,7 +223,7 @@ kore_split_string(char *input, char *delim, char **out, size_t ele)
 }
 
 void
-kore_strip_chars(char *in, char strip, char **out)
+kore_strip_chars(char *in, const char strip, char **out)
 {
 	u_int32_t	len;
 	char		*s, *p;
