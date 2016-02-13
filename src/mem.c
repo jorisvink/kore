@@ -92,7 +92,7 @@ kore_calloc(size_t memb, size_t len)
 	if (memb == 0 || len == 0)
 		fatal("kore_calloc(): zero size");
 	if (SIZE_MAX / memb < len)
-		fatal("kore_calloc: memb * len > SIZE_MAX");
+		fatal("kore_calloc(): memb * len > SIZE_MAX");
 
 	return (kore_malloc(memb * len));
 }
