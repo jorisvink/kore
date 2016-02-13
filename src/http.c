@@ -1314,14 +1314,17 @@ http_body_recv(struct netbuf *nb)
 
 	if (req->http_body_fd != -1) {
 		ret = write(req->http_body_fd, nb->buf, nb->s_off);
-		if (ret == -1 || (size_t)ret != nb->s_off)
-			fatal("failed to write");
+		if (ret == -1 || (size_t)ret != nb->s_off) {
+			req->flags |= HTTP_REQUEST_DELETE;
+			http_error_response(req->owner, 500);
+			return (KORE_RESULT_ERROR);
+		}
 	} else if (req->http_body != NULL) {
 		kore_buf_append(req->http_body, nb->buf, nb->s_off);
 	} else {
 		req->flags |= HTTP_REQUEST_DELETE;
 		http_error_response(req->owner, 500);
-		return (KORE_RESULT_OK);
+		return (KORE_RESULT_ERROR);
 	}
 
 	req->content_length -= nb->s_off;
@@ -1335,7 +1338,7 @@ http_body_recv(struct netbuf *nb)
 		if (!http_body_rewind(req)) {
 			req->flags |= HTTP_REQUEST_DELETE;
 			http_error_response(req->owner, 500);
-			return (KORE_RESULT_OK);
+			return (KORE_RESULT_ERROR);
 		}
 		net_recv_reset(nb->owner, http_header_max, http_header_recv);
 	} else {
