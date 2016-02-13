@@ -19,6 +19,7 @@ LDFLAGS=-rdynamic -lssl -lcrypto
 
 ifneq ("$(DEBUG)", "")
 	CFLAGS+=-DKORE_DEBUG -g
+	NOOPT=1
 endif
 
 ifneq ("$(NOOPT)", "")
