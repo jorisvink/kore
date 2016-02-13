@@ -209,6 +209,9 @@ kore_split_string(char *input, char *delim, char **out, size_t ele)
 	int		count;
 	char		**ap;
 
+	if (ele == 0)
+		fatal("kore_split_string: ele == 0");
+
 	count = 0;
 	for (ap = out; ap < &out[ele - 1] &&
 	    (*ap = strsep(&input, delim)) != NULL;) {
