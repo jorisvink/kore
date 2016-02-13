@@ -76,7 +76,7 @@ extern int daemon(int, int);
 #if defined(KORE_DEBUG)
 #define kore_debug(...)		\
 	if (kore_debug)		\
-		kore_debug_internal(__FILE__, __LINE__, ##__VA_ARGS__)
+		kore_debug_internal(__FILE__, __LINE__, __VA_ARGS__)
 #else
 #define kore_debug(...)
 #endif
