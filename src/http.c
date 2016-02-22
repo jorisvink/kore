@@ -716,6 +716,7 @@ http_header_recv(struct netbuf *nb)
 			    http_body_recv);
 			c->rnb->extra = req;
 			http_request_sleep(req);
+			req->content_length = bytes_left;
 		} else if (bytes_left == 0) {
 			req->flags |= HTTP_REQUEST_COMPLETE;
 			req->flags &= ~HTTP_REQUEST_EXPECT_BODY;
