@@ -673,7 +673,6 @@ http_header_recv(struct netbuf *nb)
 		}
 
 		req->http_body_length = req->content_length;
-
 		if (http_body_disk_offload > 0 &&
 		    req->content_length > http_body_disk_offload) {
 			req->http_body_path = kore_pool_get(&http_body_path);
@@ -702,23 +701,31 @@ http_header_recv(struct netbuf *nb)
 			}
 		} else {
 			req->http_body_fd = -1;
-			req->http_body = kore_buf_create(req->content_length);
-			kore_buf_append(req->http_body, end_headers,
-			    (nb->s_off - len));
 		}
-
 		bytes_left = req->content_length - (nb->s_off - len);
 		if (bytes_left > 0) {
 			kore_debug("%ld/%ld (%ld - %ld) more bytes for body",
 			    bytes_left, req->content_length, nb->s_off, len);
-			net_recv_reset(c,
-			    MIN(bytes_left, NETBUF_SEND_PAYLOAD_MAX),
-			    http_body_recv);
-			c->rnb->extra = req;
-			http_request_sleep(req);
+                        if(req->http_body_fd != -1){
+				net_recv_reset(c,
+			    	MIN(bytes_left, NETBUF_SEND_PAYLOAD_MAX),
+			    	http_body_recv);
+			} else { 
+                                net_recv_cut(c,(end_headers - nb->buf), (nb->s_off - len), 
+                                req->content_length, http_body_recv);
+                                
+  		                c->rnb->flags &= ~NETBUF_CALL_CB_ALWAYS;
+			}
+                        c->rnb->extra = req;
+			http_request_sleep(req);              
 		} else if (bytes_left == 0) {
 			req->flags |= HTTP_REQUEST_COMPLETE;
 			req->flags &= ~HTTP_REQUEST_EXPECT_BODY;
+                        if(req->http_body_fd == -1){
+                        	req->http_body = kore_buf_create(req->content_length);
+                        	kore_buf_append(req->http_body, end_headers,
+                        	(nb->s_off - len));
+                        }   
 			if (!http_body_rewind(req)) {
 				req->flags |= HTTP_REQUEST_DELETE;
 				http_error_response(req->owner, 500);
@@ -1319,15 +1326,18 @@ http_body_recv(struct netbuf *nb)
 			http_error_response(req->owner, 500);
 			return (KORE_RESULT_ERROR);
 		}
-	} else if (req->http_body != NULL) {
-		kore_buf_append(req->http_body, nb->buf, nb->s_off);
+                req->content_length -= nb->s_off;
+	} else if (req->content_length == nb->s_off) {
+                req->content_length = 0;
+                /*release recv buf to kore buf*/
+                req->http_body = net_buf_release_to_kore_buf(req->owner);
+                nb->flags |= NETBUF_CALL_CB_ALWAYS;
+                
 	} else {
 		req->flags |= HTTP_REQUEST_DELETE;
 		http_error_response(req->owner, 500);
 		return (KORE_RESULT_ERROR);
 	}
-
-	req->content_length -= nb->s_off;
 
 	if (req->content_length == 0) {
 		nb->extra = NULL;

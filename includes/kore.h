@@ -588,6 +588,9 @@ int		net_write(struct connection *, int, int *);
 int		net_write_ssl(struct connection *, int, int *);
 void		net_recv_reset(struct connection *, u_int32_t,
 		    int (*cb)(struct netbuf *));
+void            net_recv_cut(struct connection *c, u_int32_t offset,
+                u_int32_t cut_len, u_int32_t len, int (*cb)(struct netbuf *));
+struct kore_buf * net_buf_release_to_kore_buf(struct connection *c);
 void		net_remove_netbuf(struct netbuf_head *, struct netbuf *);
 void		net_recv_queue(struct connection *, u_int32_t, int,
 		    int (*cb)(struct netbuf *));
