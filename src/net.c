@@ -139,28 +139,29 @@ net_recv_reset(struct connection *c, u_int32_t len, int (*cb)(struct netbuf *))
 void 
 net_recv_cut(struct connection *c, u_int32_t offset, u_int32_t cut_len, u_int32_t len,int (*cb)(struct netbuf *))
 {
-    memcpy(c->rnb->buf, c->rnb->buf+offset, cut_len);
-    c->rnb->s_off = cut_len;
-    c->rnb->b_len = len;
-    c->rnb->cb = cb;
-    if (c->rnb->b_len <= c->rnb->m_len)
-         return;
-    c->rnb->buf = kore_realloc(c->rnb->buf, c->rnb->b_len);
+	memcpy(c->rnb->buf, c->rnb->buf+offset, cut_len);
+	c->rnb->s_off = cut_len;
+	c->rnb->b_len = len;
+	c->rnb->cb = cb;
+	if (c->rnb->b_len <= c->rnb->m_len)
+		return;
+
+	c->rnb->buf = kore_realloc(c->rnb->buf, c->rnb->b_len);
 }
 
 struct kore_buf *
 net_buf_release_to_kore_buf(struct connection *c)
 {
-        struct kore_buf		*buf;
+	struct kore_buf		*buf;
 	
-        buf = kore_malloc(sizeof(*buf));
+	buf = kore_malloc(sizeof(*buf));
 	buf->data = c->rnb->buf ;
 	buf->length = c->rnb->m_len;
 	buf->offset = c->rnb->s_off;
 
-        c->rnb->s_off = 0;
-        c->rnb->buf = kore_malloc(c->rnb->m_len);
-        return (buf);
+	c->rnb->s_off = 0;
+	c->rnb->buf = kore_malloc(c->rnb->m_len);
+	return (buf);
 }
 
 void

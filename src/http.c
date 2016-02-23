@@ -708,23 +708,22 @@ http_header_recv(struct netbuf *nb)
 			    bytes_left, req->content_length, nb->s_off, len);
                         if(req->http_body_fd != -1){
 				net_recv_reset(c,
-			    	MIN(bytes_left, NETBUF_SEND_PAYLOAD_MAX),
-			    	http_body_recv);
+				MIN(bytes_left, NETBUF_SEND_PAYLOAD_MAX),
+				http_body_recv);
 			} else { 
-                                net_recv_cut(c,(end_headers - nb->buf), (nb->s_off - len), 
-                                req->content_length, http_body_recv);
-                                
-  		                c->rnb->flags &= ~NETBUF_CALL_CB_ALWAYS;
+				net_recv_cut(c,(end_headers - nb->buf), (nb->s_off - len), 
+				req->content_length, http_body_recv);
+				c->rnb->flags &= ~NETBUF_CALL_CB_ALWAYS;
 			}
-                        c->rnb->extra = req;
+			c->rnb->extra = req;
 			http_request_sleep(req);              
 		} else if (bytes_left == 0) {
 			req->flags |= HTTP_REQUEST_COMPLETE;
 			req->flags &= ~HTTP_REQUEST_EXPECT_BODY;
                         if(req->http_body_fd == -1){
-                        	req->http_body = kore_buf_create(req->content_length);
-                        	kore_buf_append(req->http_body, end_headers,
-                        	(nb->s_off - len));
+				req->http_body = kore_buf_create(req->content_length);
+				kore_buf_append(req->http_body, end_headers,
+				(nb->s_off - len));
                         }   
 			if (!http_body_rewind(req)) {
 				req->flags |= HTTP_REQUEST_DELETE;
@@ -1326,12 +1325,12 @@ http_body_recv(struct netbuf *nb)
 			http_error_response(req->owner, 500);
 			return (KORE_RESULT_ERROR);
 		}
-                req->content_length -= nb->s_off;
+		req->content_length -= nb->s_off;
 	} else if (req->content_length == nb->s_off) {
-                req->content_length = 0;
-                /*release recv buf to kore buf*/
-                req->http_body = net_buf_release_to_kore_buf(req->owner);
-                nb->flags |= NETBUF_CALL_CB_ALWAYS;
+		req->content_length = 0;
+		/*release recv buf to kore buf*/
+		req->http_body = net_buf_release_to_kore_buf(req->owner);
+		nb->flags |= NETBUF_CALL_CB_ALWAYS;
                 
 	} else {
 		req->flags |= HTTP_REQUEST_DELETE;
