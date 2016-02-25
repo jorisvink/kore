@@ -254,8 +254,11 @@ kore_domain_closelogs(void)
 {
 	struct kore_domain	*dom;
 
-	TAILQ_FOREACH(dom, &domains, list)
-		close(dom->accesslog);
+	TAILQ_FOREACH(dom, &domains, list) {
+		if (dom->accesslog != -1) {
+			(void)close(dom->accesslog);
+		}
+	}
 }
 
 void
