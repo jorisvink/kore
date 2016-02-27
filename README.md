@@ -40,6 +40,10 @@ Latest release
 --------------
 * [2015-05-21] version 1.2.3 - https://kore.io/release/kore-1.2.3-release.tgz
 
+Upcoming release
+----------------
+* Kore 2.0.0 will be released 1st of May 2016.
+
 Old releases
 ------------
 * [2015-04-09] version 1.2.2 - https://kore.io/release/kore-1.2.2-release.tgz
