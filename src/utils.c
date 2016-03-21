@@ -491,7 +491,7 @@ kore_mem_find(void *src, size_t slen, void *needle, u_int32_t len)
 		if (*p != *(u_int8_t *)needle)
 			continue;
 
-		if ((end - p) < len)
+		if ((u_int32_t)(end - p) < len)
 			return (NULL);
 
 		if (!memcmp(p, needle, len))
