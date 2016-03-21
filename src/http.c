@@ -1595,7 +1595,8 @@ http_status_text(int status)
 const char *
 http_method_text(int method)
 {
-	char        *r;
+	char		*r;
+
 	switch(method) {
 	case HTTP_METHOD_GET:
 		r = "GET";
