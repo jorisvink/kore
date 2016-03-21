@@ -214,6 +214,7 @@ void		http_init(void);
 void		http_cleanup(void);
 void		http_process(void);
 const char	*http_status_text(int);
+const char	*http_method_text(int);
 time_t		http_date_to_time(char *);
 void		http_request_free(struct http_request *);
 void		http_request_sleep(struct http_request *);

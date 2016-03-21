@@ -1591,3 +1591,31 @@ http_status_text(int status)
 
 	return (r);
 }
+
+const char *
+http_method_text(int method)
+{
+	char        *r;
+	switch(method) {
+	case HTTP_METHOD_GET:
+		r = "GET";
+		break;
+	case HTTP_METHOD_POST:
+		r = "POST";
+		break;
+	case HTTP_METHOD_PUT:
+		r = "PUT";
+		break;
+	case HTTP_METHOD_DELETE:
+		r = "DELETE";
+		break;
+	case HTTP_METHOD_HEAD:
+		r = "HEAD";
+		break;
+	default:
+		r = "";
+		break;
+	}
+
+	return (r);
+}
