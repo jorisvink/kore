@@ -484,18 +484,17 @@ kore_base64_decode(char *in, u_int8_t **out, u_int32_t *olen)
 void *
 kore_mem_find(void *src, size_t slen, void *needle, u_int32_t len)
 {
-	u_int8_t	*p, *end;
+  size_t  pos;
 
-	end = (u_int8_t *)src + slen;
-	for (p = src; p < end; p++) {
-		if (*p != *(u_int8_t *)needle)
+  for(pos = 0; pos < slen; pos++) {
+		if ( *((u_int8_t *)src + pos) != *(u_int8_t *)needle)
 			continue;
 
-		if ((u_int32_t)(end - p) < len)
+		if ((slen - pos) < len)
 			return (NULL);
 
-		if (!memcmp(p, needle, len))
-			return (p);
+		if (!memcmp((u_int8_t *)src + pos, needle, len))
+			return ((u_int8_t *)src + pos);
 	}
 
 	return (NULL);
