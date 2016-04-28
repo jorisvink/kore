@@ -202,7 +202,7 @@ kore_worker_dispatch_signal(int sig)
 void
 kore_worker_entry(struct kore_worker *kw)
 {
-	size_t			fd;
+	rlim_t			fd;
 	struct rlimit		rl;
 	char			buf[16];
 	int			quit, had_lock, r;
