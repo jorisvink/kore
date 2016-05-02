@@ -42,7 +42,7 @@ Latest release
 
 Upcoming release
 ----------------
-* Kore 2.0.0 will be released 1st of May 2016.
+* Kore 2.0.0 will be released 1st of August 2016.
 
 Old releases
 ------------
