@@ -486,7 +486,7 @@ kore_mem_find(void *src, size_t slen, void *needle, size_t len)
 {
 	size_t		pos;
 
-	for(pos = 0; pos < slen; pos++) {
+	for (pos = 0; pos < slen; pos++) {
 		if ( *((u_int8_t *)src + pos) != *(u_int8_t *)needle)
 			continue;
 
