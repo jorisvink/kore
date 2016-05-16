@@ -78,7 +78,7 @@ kore_buf_appendv(struct kore_buf *buf, const char *fmt, va_list args)
 		b = sb;
 	}
 
-	kore_buf_append(buf, (u_int8_t *)b, l);
+	kore_buf_append(buf, b, l);
 	if (b != sb)
 		free(b);
 }
