@@ -208,6 +208,9 @@ kore_pgsql_query_params(struct kore_pgsql *pgsql,
 	ret = KORE_RESULT_OK;
 
 cleanup:
+	if (count > 0)
+		va_end(args);
+
 	kore_mem_free(values);
 	kore_mem_free(lengths);
 	kore_mem_free(formats);
