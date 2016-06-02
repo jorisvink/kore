@@ -603,7 +603,7 @@ void		kore_buf_append(struct kore_buf *, const void *, u_int32_t);
 u_int8_t	*kore_buf_release(struct kore_buf *, u_int32_t *);
 void		kore_buf_reset(struct kore_buf *);
 
-char	*kore_buf_stringify(struct kore_buf *);
+char	*kore_buf_stringify(struct kore_buf *, size_t *);
 void	kore_buf_appendf(struct kore_buf *, const char *, ...);
 void	kore_buf_appendv(struct kore_buf *, const char *, va_list);
 void	kore_buf_appendb(struct kore_buf *, struct kore_buf *);
