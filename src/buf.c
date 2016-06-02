@@ -94,12 +94,16 @@ kore_buf_appendf(struct kore_buf *buf, const char *fmt, ...)
 }
 
 char *
-kore_buf_stringify(struct kore_buf *buf)
+kore_buf_stringify(struct kore_buf *buf, size_t *len)
 {
 	char		c;
 
+	if (len != NULL)
+		*len = buf->offset;
+
 	c = '\0';
 	kore_buf_append(buf, &c, sizeof(c));
+
 	return ((char *)buf->data);
 }
 

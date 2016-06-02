@@ -1206,7 +1206,7 @@ cli_build_cflags(struct buildopt *bopt)
 		    obopt->cflags->offset);
 	}
 
-	string = kore_buf_stringify(bopt->cflags);
+	string = kore_buf_stringify(bopt->cflags, NULL);
 	printf("CFLAGS=%s\n", string);
 	cflags_count = kore_split_string(string, " ", cflags, CFLAGS_MAX);
 }
@@ -1235,7 +1235,7 @@ cli_build_ldflags(struct buildopt *bopt)
 		    obopt->ldflags->offset);
 	}
 
-	string = kore_buf_stringify(bopt->ldflags);
+	string = kore_buf_stringify(bopt->ldflags, NULL);
 	printf("LDFLAGS=%s\n", string);
 	ldflags_count = kore_split_string(string, " ", ldflags, LD_FLAGS_MAX);
 }

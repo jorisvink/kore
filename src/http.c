@@ -915,7 +915,7 @@ http_populate_post(struct http_request *req)
 	if (req->http_body != NULL) {
 		body = NULL;
 		req->http_body->offset = req->content_length;
-		string = kore_buf_stringify(req->http_body);
+		string = kore_buf_stringify(req->http_body, NULL);
 	} else {
 		body = kore_buf_create(128);
 		for (;;) {
@@ -926,7 +926,7 @@ http_populate_post(struct http_request *req)
 				break;
 			kore_buf_append(body, data, ret);
 		}
-		string = kore_buf_stringify(body);
+		string = kore_buf_stringify(body, NULL);
 	}
 
 	v = kore_split_string(string, "&", args, HTTP_MAX_QUERY_ARGS);
@@ -1171,7 +1171,7 @@ multipart_parse_headers(struct http_request *req, struct kore_buf *in,
 	char		*headers[5], *args[5], *opt[5];
 	char		*d, *val, *name, *fname, *string;
 
-	string = kore_buf_stringify(hbuf);
+	string = kore_buf_stringify(hbuf, NULL);
 	h = kore_split_string(string, "\r\n", headers, 5);
 	for (i = 0; i < h; i++) {
 		c = kore_split_string(headers[i], ":", args, 5);
@@ -1252,7 +1252,7 @@ multipart_add_field(struct http_request *req, struct kore_buf *in,
 	}
 
 	data->offset -= 2;
-	string = kore_buf_stringify(data);
+	string = kore_buf_stringify(data, NULL);
 	http_argument_add(req, name, string);
 	kore_buf_free(data);
 }
