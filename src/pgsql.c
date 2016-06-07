@@ -150,11 +150,10 @@ kore_pgsql_query(struct kore_pgsql *pgsql, const char *query)
 }
 
 int
-kore_pgsql_query_params(struct kore_pgsql *pgsql,
-    const char *query, int result, u_int8_t count, ...)
+kore_pgsql_v_query_params(struct kore_pgsql *pgsql,
+    const char *query, int result, u_int8_t count, va_list args)
 {
 	u_int8_t	i;
-	va_list		args;
 	char		**values;
 	int		*lengths, *formats, ret;
 
@@ -164,8 +163,6 @@ kore_pgsql_query_params(struct kore_pgsql *pgsql,
 	}
 
 	if (count > 0) {
-		va_start(args, count);
-
 		lengths = kore_calloc(count, sizeof(int));
 		formats = kore_calloc(count, sizeof(int));
 		values = kore_calloc(count, sizeof(char *));
@@ -208,12 +205,27 @@ kore_pgsql_query_params(struct kore_pgsql *pgsql,
 	ret = KORE_RESULT_OK;
 
 cleanup:
-	if (count > 0)
-		va_end(args);
-
 	kore_mem_free(values);
 	kore_mem_free(lengths);
 	kore_mem_free(formats);
+
+	return (ret);
+}
+
+int
+kore_pgsql_query_params(struct kore_pgsql *pgsql,
+    const char *query, int result, u_int8_t count, ...)
+{
+	int		ret;
+	va_list		args;
+
+	if (count > 0)
+		va_start(args, count);
+
+	ret = kore_pgsql_v_query_params(pgsql, query, result, count, args);
+
+	if (count > 0)
+		va_end(args);
 
 	return (ret);
 }
