@@ -67,6 +67,8 @@ void	kore_pgsql_continue(struct http_request *, struct kore_pgsql *);
 int	kore_pgsql_query(struct kore_pgsql *, const char *);
 int	kore_pgsql_query_params(struct kore_pgsql *,
 	    const char *, int, u_int8_t, ...);
+int	kore_pgsql_v_query_params(struct kore_pgsql *,
+	    const char *, int, u_int8_t, va_list);
 int	kore_pgsql_register(const char *, const char *);
 int	kore_pgsql_ntuples(struct kore_pgsql *);
 void	kore_pgsql_logerror(struct kore_pgsql *);
