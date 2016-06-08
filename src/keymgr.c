@@ -16,7 +16,7 @@
 
 #include <sys/param.h>
 
-#include <openssl/rsa.h>
+#include <openssl/evp.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,7 +27,7 @@
 
 #if !defined(KORE_NO_TLS)
 struct key {
-	RSA			*rsa;
+	EVP_PKEY		*pkey;
 	struct kore_domain	*dom;
 	TAILQ_ENTRY(key)	list;
 };
@@ -38,6 +38,11 @@ static int			initialized = 0;
 
 static void	keymgr_load_privatekey(struct kore_domain *);
 static void	keymgr_msg_recv(struct kore_msg *, const void *);
+
+static void	keymgr_rsa_encrypt(struct kore_msg *, const void *,
+		    struct key *);
+static void	keymgr_ecdsa_sign(struct kore_msg *, const void *,
+		    struct key *);
 
 void
 kore_keymgr_run(void)
@@ -101,7 +106,7 @@ kore_keymgr_cleanup(void)
 		next = TAILQ_NEXT(key, list);
 		TAILQ_REMOVE(&keys, key, list);
 
-		RSA_free(key->rsa);
+		EVP_PKEY_free(key->pkey);
 		kore_mem_free(key);
 	}
 }
@@ -121,8 +126,8 @@ keymgr_load_privatekey(struct kore_domain *dom)
 	key = kore_malloc(sizeof(*key));
 	key->dom = dom;
 
-	if ((key->rsa = PEM_read_RSAPrivateKey(fp, NULL, NULL, NULL)) == NULL)
-		fatal("PEM_read_RSAPrivateKey: %s", ssl_errno_s);
+	if ((key->pkey = PEM_read_PrivateKey(fp, NULL, NULL, NULL)) == NULL)
+		fatal("PEM_read_PrivateKey: %s", ssl_errno_s);
 
 	(void)fclose(fp);
 	kore_mem_free(dom->certkey);
@@ -134,37 +139,81 @@ keymgr_load_privatekey(struct kore_domain *dom)
 static void
 keymgr_msg_recv(struct kore_msg *msg, const void *data)
 {
-	int				ret;
 	const struct kore_keyreq	*req;
 	struct key			*key;
-	size_t				keylen;
-	u_int8_t			buf[1024];
 
 	if (msg->length < sizeof(*req))
 		return;
 
-	key = NULL;
 	req = (const struct kore_keyreq *)data;
-
 	if (msg->length != (sizeof(*req) + req->data_len))
 		return;
 
+	key = NULL;
 	TAILQ_FOREACH(key, &keys, list) {
-		if (strncmp(key->dom->domain, req->domain, req->domain_len))
-			continue;
+		if (!strncmp(key->dom->domain, req->domain, req->domain_len))
+			break;
+	}
 
-		keylen = RSA_size(key->rsa);
-		if (req->data_len > keylen || keylen > sizeof(buf))
-			return;
+	if (key == NULL)
+		return;
 
-		ret = RSA_private_encrypt(req->data_len, req->data,
-		    buf, key->rsa, req->padding);
-		if (ret != RSA_size(key->rsa))
-			return;
-
-		kore_msg_send(msg->src, KORE_MSG_KEYMGR_RESP, buf, ret);
+	switch (EVP_PKEY_id(key->pkey)) {
+	case EVP_PKEY_RSA:
+		keymgr_rsa_encrypt(msg, data, key);
+		break;
+	case EVP_PKEY_EC:
+		keymgr_ecdsa_sign(msg, data, key);
+		break;
+	default:
 		break;
 	}
+}
+
+static void
+keymgr_rsa_encrypt(struct kore_msg *msg, const void *data, struct key *key)
+{
+	int				ret;
+	const struct kore_keyreq	*req;
+	size_t				keylen;
+	u_int8_t			buf[1024];
+
+	req = (const struct kore_keyreq *)data;
+
+	keylen = RSA_size(key->pkey->pkey.rsa);
+	if (req->data_len > keylen || keylen > sizeof(buf))
+		return;
+
+	ret = RSA_private_encrypt(req->data_len, req->data,
+	    buf, key->pkey->pkey.rsa, req->padding);
+	if (ret != RSA_size(key->pkey->pkey.rsa))
+		return;
+
+	kore_msg_send(msg->src, KORE_MSG_KEYMGR_RESP, buf, ret);
+}
+
+static void
+keymgr_ecdsa_sign(struct kore_msg *msg, const void *data, struct key *key)
+{
+	size_t				len;
+	const struct kore_keyreq	*req;
+	unsigned int			siglen;
+	u_int8_t			sig[1024];
+
+	req = (const struct kore_keyreq *)data;
+
+	len = ECDSA_size(key->pkey->pkey.ec);
+	if (req->data_len > len || len > sizeof(sig))
+		return;
+
+	if (ECDSA_sign(key->pkey->save_type, req->data, req->data_len,
+	    sig, &siglen, key->pkey->pkey.ec) == 0)
+		return;
+
+	if (siglen > sizeof(sig))
+		return;
+
+	kore_msg_send(msg->src, KORE_MSG_KEYMGR_RESP, sig, siglen);
 }
 
 #endif

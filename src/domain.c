@@ -20,7 +20,8 @@
 #include <openssl/x509.h>
 #include <openssl/bio.h>
 #include <openssl/evp.h>
-
+#include <openssl/ec.h>
+#include <openssl/ecdsa.h>
 #include <poll.h>
 #endif
 
@@ -46,15 +47,49 @@ static void	domain_load_crl(struct kore_domain *);
 #if !defined(KORE_NO_TLS)
 static int	domain_x509_verify(int, X509_STORE_CTX *);
 
-static void	keymgr_msg_response(struct kore_msg *, const void *);
 static void	keymgr_init(void);
+static void	keymgr_await_data(void);
+static void	keymgr_msg_response(struct kore_msg *, const void *);
+
 static int	keymgr_rsa_init(RSA *);
 static int	keymgr_rsa_finish(RSA *);
 static int	keymgr_rsa_privenc(int, const unsigned char *,
 		    unsigned char *, RSA *, int);
 
+static ECDSA_SIG	*keymgr_ecdsa_sign(const unsigned char *, int,
+			    const BIGNUM *, const BIGNUM *, EC_KEY *);
+
+#if !defined(OpenBSD)
+/*
+ * Run own ecdsa_method data structure as OpenSSL has this in ecs_locl.h
+ * and does not export this on systems.
+ *
+ * XXX - OpenSSL is merging ECDSA functionality into EC in 1.1.0.
+ */
+struct ecdsa_method {
+	const char	*name;
+	ECDSA_SIG	*(*ecdsa_do_sign)(const unsigned char *,
+			    int, const BIGNUM *, const BIGNUM *, EC_KEY *);
+	int		(*ecdsa_sign_setup)(EC_KEY *, BN_CTX *, BIGNUM **,
+			    BIGNUM **);
+	int		(*ecdsa_do_verify)(const unsigned char *, int,
+			    const ECDSA_SIG *, EC_KEY *);
+	int		flags;
+	char		*app_data;
+};
+#endif
+
+static ECDSA_METHOD	keymgr_ecdsa = {
+	"kore ECDSA keymgr method",
+	keymgr_ecdsa_sign,
+	NULL,
+	NULL,
+	0,
+	NULL
+};
+
 static RSA_METHOD	keymgr_rsa = {
-	"kore RSA keymgr engine",
+	"kore RSA keymgr method",
 	NULL,
 	NULL,
 	keymgr_rsa_privenc,
@@ -167,6 +202,7 @@ kore_domain_sslstart(struct kore_domain *dom)
 	X509			*x509;
 	EVP_PKEY		*pkey;
 	STACK_OF(X509_NAME)	*certs;
+	EC_KEY			*eckey;
 	X509_STORE		*store;
 	const SSL_METHOD	*method;
 #if !defined(OPENSSL_NO_EC)
@@ -210,11 +246,22 @@ kore_domain_sslstart(struct kore_domain *dom)
 	if ((pkey = X509_get_pubkey(x509)) == NULL)
 		fatal("certificate has no public key");
 
-	if ((rsa = EVP_PKEY_get1_RSA(pkey)) == NULL)
-		fatal("no RSA public key present");
-
-	RSA_set_app_data(rsa, dom);
-	RSA_set_method(rsa, &keymgr_rsa);
+	switch (EVP_PKEY_id(pkey)) {
+	case EVP_PKEY_RSA:
+		if ((rsa = EVP_PKEY_get1_RSA(pkey)) == NULL)
+			fatal("no RSA public key present");
+		RSA_set_app_data(rsa, dom);
+		RSA_set_method(rsa, &keymgr_rsa);
+		break;
+	case EVP_PKEY_EC:
+		if ((eckey = EVP_PKEY_get1_EC_KEY(pkey)) == NULL)
+			fatal("no EC public key present");
+		ECDSA_set_ex_data(eckey, 0, dom);
+		ECDSA_set_method(eckey, &keymgr_ecdsa);
+		break;
+	default:
+		fatal("unknown public key in certificate");
+	}
 
 	if (!SSL_CTX_use_PrivateKey(dom->ssl_ctx, pkey))
 		fatal("SSL_CTX_use_PrivateKey(): %s", ssl_errno_s);
@@ -228,12 +275,11 @@ kore_domain_sslstart(struct kore_domain *dom)
 	SSL_CTX_set_tmp_dh(dom->ssl_ctx, tls_dhparam);
 	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_SINGLE_DH_USE);
 
-#if !defined(OPENSSL_NO_EC)
-	if ((ecdh = EC_KEY_new_by_curve_name(NID_secp384r1)) != NULL) {
-		SSL_CTX_set_tmp_ecdh(dom->ssl_ctx, ecdh);
-		EC_KEY_free(ecdh);
-	}
-#endif
+	if ((ecdh = EC_KEY_new_by_curve_name(NID_secp384r1)) == NULL)
+		fatal("EC_KEY_new_by_curve_name: %s", ssl_errno_s);
+
+	SSL_CTX_set_tmp_ecdh(dom->ssl_ctx, ecdh);
+	EC_KEY_free(ecdh);
 
 	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_COMPRESSION);
 
@@ -407,11 +453,8 @@ keymgr_rsa_privenc(int flen, const unsigned char *from, unsigned char *to,
 	size_t			len;
 	struct kore_keyreq	*req;
 	struct kore_domain	*dom;
-	struct pollfd		pfd[1];
-	u_int64_t		start, cur;
 
 	len = sizeof(*req) + flen;
-
 	if (len > sizeof(keymgr_buf))
 		fatal("keymgr_buf too small");
 
@@ -431,6 +474,82 @@ keymgr_rsa_privenc(int flen, const unsigned char *from, unsigned char *to,
 	memcpy(req->domain, dom->domain, req->domain_len);
 
 	kore_msg_send(KORE_WORKER_KEYMGR, KORE_MSG_KEYMGR_REQ, keymgr_buf, len);
+	keymgr_await_data();
+
+	ret = -1;
+	if (keymgr_response) {
+		if (keymgr_buflen < INT_MAX &&
+		    (int)keymgr_buflen == RSA_size(rsa)) {
+			ret = RSA_size(rsa);
+			memcpy(to, keymgr_buf, RSA_size(rsa));
+		}
+	}
+
+	keymgr_buflen = 0;
+	keymgr_response = 0;
+	kore_platform_event_all(worker->msg[1]->fd, worker->msg[1]);
+
+	return (ret);
+}
+
+static int
+keymgr_rsa_finish(RSA *rsa)
+{
+	return (1);
+}
+
+static ECDSA_SIG *
+keymgr_ecdsa_sign(const unsigned char *dgst, int dgst_len,
+    const BIGNUM *in_kinv, const BIGNUM *in_r, EC_KEY *eckey)
+{
+	size_t				len;
+	ECDSA_SIG			*sig;
+	const u_int8_t			*ptr;
+	struct kore_domain		*dom;
+	struct kore_keyreq		*req;
+
+	if (in_kinv != NULL || in_r != NULL)
+		return (NULL);
+
+	len = sizeof(*req) + dgst_len;
+	if (len > sizeof(keymgr_buf))
+		fatal("keymgr_buf too small");
+
+	if ((dom = ECDSA_get_ex_data(eckey, 0)) == NULL)
+		fatal("EC_KEY has no domain");
+
+	memset(keymgr_buf, 0, sizeof(keymgr_buf));
+
+	req = (struct kore_keyreq *)keymgr_buf;
+	req->data_len = dgst_len;
+	req->domain_len = strlen(dom->domain);
+
+	memcpy(&req->data[0], dgst, req->data_len);
+	memcpy(req->domain, dom->domain, req->domain_len);
+
+	kore_msg_send(KORE_WORKER_KEYMGR, KORE_MSG_KEYMGR_REQ, keymgr_buf, len);
+	keymgr_await_data();
+
+	if (keymgr_response) {
+		ptr = keymgr_buf;
+		sig = d2i_ECDSA_SIG(NULL, &ptr, keymgr_buflen);
+	} else {
+		sig = NULL;
+	}
+
+	keymgr_buflen = 0;
+	keymgr_response = 0;
+	kore_platform_event_all(worker->msg[1]->fd, worker->msg[1]);
+
+	return (sig);
+}
+
+static void
+keymgr_await_data(void)
+{
+	int			ret;
+	struct pollfd		pfd[1];
+	u_int64_t		start, cur;
 
 	/*
 	 * We need to wait until the keymgr responds to us, so keep doing
@@ -482,22 +601,6 @@ keymgr_rsa_privenc(int flen, const unsigned char *from, unsigned char *to,
 		if (keymgr_response)
 			break;
 	}
-
-	ret = -1;
-
-	if (keymgr_response) {
-		if (keymgr_buflen < INT_MAX &&
-		    (int)keymgr_buflen == RSA_size(rsa)) {
-			ret = RSA_size(rsa);
-			memcpy(to, keymgr_buf, RSA_size(rsa));
-		}
-	}
-
-	keymgr_buflen = 0;
-	keymgr_response = 0;
-	kore_platform_event_all(worker->msg[1]->fd, worker->msg[1]);
-
-	return (ret);
 }
 
 static void
@@ -510,12 +613,6 @@ keymgr_msg_response(struct kore_msg *msg, const void *data)
 		return;
 
 	memcpy(keymgr_buf, data, keymgr_buflen);
-}
-
-static int
-keymgr_rsa_finish(RSA *rsa)
-{
-	return (1);
 }
 
 static int
