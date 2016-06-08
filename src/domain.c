@@ -16,6 +16,14 @@
 
 #include <sys/param.h>
 
+#if !defined(KORE_NO_TLS)
+#include <openssl/x509.h>
+#include <openssl/bio.h>
+#include <openssl/evp.h>
+
+#include <poll.h>
+#endif
+
 #include <fnmatch.h>
 
 #include "kore.h"
@@ -26,6 +34,9 @@ struct kore_domain_h		domains;
 struct kore_domain		*primary_dom = NULL;
 
 #if !defined(KORE_NO_TLS)
+static u_int8_t			keymgr_buf[2048];
+static size_t			keymgr_buflen = 0;
+static int			keymgr_response = 0;
 DH				*tls_dhparam = NULL;
 int				tls_version = KORE_TLS_VERSION_1_2;
 #endif
@@ -34,6 +45,31 @@ static void	domain_load_crl(struct kore_domain *);
 
 #if !defined(KORE_NO_TLS)
 static int	domain_x509_verify(int, X509_STORE_CTX *);
+
+static void	keymgr_msg_response(struct kore_msg *, const void *);
+static void	keymgr_init(void);
+static int	keymgr_rsa_init(RSA *);
+static int	keymgr_rsa_finish(RSA *);
+static int	keymgr_rsa_privenc(int, const unsigned char *,
+		    unsigned char *, RSA *, int);
+
+static RSA_METHOD	keymgr_rsa = {
+	"kore RSA keymgr engine",
+	NULL,
+	NULL,
+	keymgr_rsa_privenc,
+	NULL,
+	NULL,
+	NULL,
+	keymgr_rsa_init,
+	keymgr_rsa_finish,
+	RSA_METHOD_FLAG_NO_CHECK,
+	NULL,
+	NULL,
+	NULL,
+	NULL
+};
+
 #endif
 
 void
@@ -126,6 +162,10 @@ void
 kore_domain_sslstart(struct kore_domain *dom)
 {
 #if !defined(KORE_NO_TLS)
+	BIO			*in;
+	RSA			*rsa;
+	X509			*x509;
+	EVP_PKEY		*pkey;
 	STACK_OF(X509_NAME)	*certs;
 	X509_STORE		*store;
 	const SSL_METHOD	*method;
@@ -158,11 +198,26 @@ kore_domain_sslstart(struct kore_domain *dom)
 		    dom->certfile, ssl_errno_s);
 	}
 
-	if (!SSL_CTX_use_PrivateKey_file(dom->ssl_ctx, dom->certkey,
-	    SSL_FILETYPE_PEM)) {
-		fatal("SSL_CTX_use_PrivateKey_file(%s): %s",
-		    dom->certkey, ssl_errno_s);
-	}
+	if ((in = BIO_new(BIO_s_file_internal())) == NULL)
+		fatal("BIO_new: %s", ssl_errno_s);
+	if (BIO_read_filename(in, dom->certfile) <= 0)
+		fatal("BIO_read_filename: %s", ssl_errno_s);
+	if ((x509 = PEM_read_bio_X509(in, NULL, NULL, NULL)) == NULL)
+		fatal("PEM_read_bio_X509: %s", ssl_errno_s);
+
+	BIO_free(in);
+
+	if ((pkey = X509_get_pubkey(x509)) == NULL)
+		fatal("certificate has no public key");
+
+	if ((rsa = EVP_PKEY_get1_RSA(pkey)) == NULL)
+		fatal("no RSA public key present");
+
+	RSA_set_app_data(rsa, dom);
+	RSA_set_method(rsa, &keymgr_rsa);
+
+	if (!SSL_CTX_use_PrivateKey(dom->ssl_ctx, pkey))
+		fatal("SSL_CTX_use_PrivateKey(): %s", ssl_errno_s);
 
 	if (!SSL_CTX_check_private_key(dom->ssl_ctx))
 		fatal("Public/Private key for %s do not match", dom->domain);
@@ -230,10 +285,18 @@ kore_domain_sslstart(struct kore_domain *dom)
 	SSL_CTX_set_tlsext_servername_callback(dom->ssl_ctx, kore_tls_sni_cb);
 
 	kore_mem_free(dom->certfile);
-	kore_mem_free(dom->certkey);
 	dom->certfile = NULL;
-	dom->certkey = NULL;
 #endif
+}
+
+void
+kore_domain_callback(void (*cb)(struct kore_domain *))
+{
+	struct kore_domain	*dom;
+
+	TAILQ_FOREACH(dom, &domains, list) {
+		cb(dom);
+	}
 }
 
 struct kore_domain *
@@ -270,6 +333,15 @@ kore_domain_load_crl(void)
 		domain_load_crl(dom);
 }
 
+void
+kore_domain_keymgr_init(void)
+{
+#if !defined(KORE_NO_TLS)
+	keymgr_init();
+	kore_msg_register(KORE_MSG_KEYMGR_RESP, keymgr_msg_response);
+#endif
+}
+
 static void
 domain_load_crl(struct kore_domain *dom)
 {
@@ -303,6 +375,149 @@ domain_load_crl(struct kore_domain *dom)
 }
 
 #if !defined(KORE_NO_TLS)
+static void
+keymgr_init(void)
+{
+	const RSA_METHOD	*meth;
+
+	if ((meth = RSA_get_default_method()) == NULL)
+		fatal("failed to obtain RSA method");
+
+	keymgr_rsa.rsa_pub_enc = meth->rsa_pub_enc;
+	keymgr_rsa.rsa_pub_dec = meth->rsa_pub_dec;
+	keymgr_rsa.bn_mod_exp = meth->bn_mod_exp;
+}
+
+static int
+keymgr_rsa_init(RSA *rsa)
+{
+	if (rsa != NULL) {
+		rsa->flags |= RSA_FLAG_EXT_PKEY | RSA_METHOD_FLAG_NO_CHECK;
+		return (1);
+	}
+
+	return (0);
+}
+
+static int
+keymgr_rsa_privenc(int flen, const unsigned char *from, unsigned char *to,
+    RSA *rsa, int padding)
+{
+	int			ret;
+	size_t			len;
+	struct kore_keyreq	*req;
+	struct kore_domain	*dom;
+	struct pollfd		pfd[1];
+	u_int64_t		start, cur;
+
+	len = sizeof(*req) + flen;
+
+	if (len > sizeof(keymgr_buf))
+		fatal("keymgr_buf too small");
+
+	if ((dom = RSA_get_app_data(rsa)) == NULL)
+		fatal("RSA key has no domain attached");
+	if (strlen(dom->domain) >= KORE_DOMAINNAME_LEN - 1)
+		fatal("domain name too long");
+
+	memset(keymgr_buf, 0, sizeof(keymgr_buf));
+
+	req = (struct kore_keyreq *)keymgr_buf;
+	req->data_len = flen;
+	req->padding = padding;
+	req->domain_len = strlen(dom->domain);
+
+	memcpy(&req->data[0], from, req->data_len);
+	memcpy(req->domain, dom->domain, req->domain_len);
+
+	kore_msg_send(KORE_WORKER_KEYMGR, KORE_MSG_KEYMGR_REQ, keymgr_buf, len);
+
+	/*
+	 * We need to wait until the keymgr responds to us, so keep doing
+	 * net_recv_flush() until our callback for KORE_MSG_KEYMGR_RESP
+	 * tells us that we have obtained the response.
+	 *
+	 * This means other internal messages can still be delivered by
+	 * this worker process to the appropriate callbacks but we do not
+	 * drop out until we've either received an answer from the keymgr
+	 * or until the timeout has been reached.
+	 *
+	 * It will however block any other I/O and request handling on
+	 * this worker until either of the above criteria is met.
+	 */
+	start = kore_time_ms();
+	kore_platform_disable_read(worker->msg[1]->fd);
+
+	keymgr_response = 0;
+	memset(keymgr_buf, 0, sizeof(keymgr_buf));
+
+	for (;;) {
+		pfd[0].fd = worker->msg[1]->fd;
+		pfd[0].events = POLLIN;
+		pfd[0].revents = 0;
+
+		ret = poll(pfd, 1, 100);
+		if (ret == -1) {
+			if (errno == EINTR)
+				continue;
+			fatal("poll: %s", errno_s);
+		}
+
+		cur = kore_time_ms();
+		if ((cur - start) > 1000)
+			break;
+
+		if (ret == 0)
+			continue;
+
+		if (pfd[0].revents & (POLLERR | POLLHUP))
+			break;
+		if (!(pfd[0].revents & POLLIN))
+			break;
+
+		worker->msg[1]->flags |= CONN_READ_POSSIBLE;
+		if (!net_recv_flush(worker->msg[1]))
+			break;
+
+		if (keymgr_response)
+			break;
+	}
+
+	ret = -1;
+
+	if (keymgr_response) {
+		if (keymgr_buflen < INT_MAX &&
+		    (int)keymgr_buflen == RSA_size(rsa)) {
+			ret = RSA_size(rsa);
+			memcpy(to, keymgr_buf, RSA_size(rsa));
+		}
+	}
+
+	keymgr_buflen = 0;
+	keymgr_response = 0;
+	kore_platform_event_all(worker->msg[1]->fd, worker->msg[1]);
+
+	return (ret);
+}
+
+static void
+keymgr_msg_response(struct kore_msg *msg, const void *data)
+{
+	keymgr_response = 1;
+	keymgr_buflen = msg->length;
+
+	if (keymgr_buflen > sizeof(keymgr_buf))
+		return;
+
+	memcpy(keymgr_buf, data, keymgr_buflen);
+}
+
+static int
+keymgr_rsa_finish(RSA *rsa)
+{
+	return (1);
+}
+
 static int
 domain_x509_verify(int ok, X509_STORE_CTX *ctx)
 {
