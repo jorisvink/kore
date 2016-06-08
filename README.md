@@ -18,7 +18,7 @@ Features
 * Only HTTPS connections allowed
 * Multiple modules can be loaded at once
 * Built-in asynchronous PostgreSQL support
-* private keys isolated in separate process
+* Private keys isolated in separate process
 * Default sane TLS ciphersuites (PFS in all major browsers)
 * Load your web application as a precompiled dynamic library
 * Modules can be reloaded on-the-fly, even while serving content
