@@ -71,17 +71,22 @@ void
 kore_log(int prio, const char *fmt, ...)
 {
 	va_list		args;
-	char		buf[2048];
+	char		buf[2048], tmp[32];
 
 	va_start(args, fmt);
 	(void)vsnprintf(buf, sizeof(buf), fmt, args);
 	va_end(args);
 
 	if (worker != NULL) {
+		(void)snprintf(tmp, sizeof(tmp), "wrk %d", worker->id);
+#if !defined(KORE_NO_TLS)
+		if (worker->id == KORE_WORKER_KEYMGR)
+			kore_strlcpy(tmp, "keymgr", sizeof(tmp));
+#endif
 		if (foreground)
-			printf("[wrk %d]: %s\n", worker->id, buf);
+			printf("[%s]: %s\n", tmp, buf);
 		else
-			syslog(prio, "[wrk %d]: %s", worker->id, buf);
+			syslog(prio, "[%s]: %s", tmp, buf);
 	} else {
 		if (foreground)
 			printf("[parent]: %s\n", buf);
@@ -557,6 +562,11 @@ fatal(const char *fmt, ...)
 
 	if (!foreground)
 		kore_log(LOG_ERR, "%s", buf);
+
+#if !defined(KORE_NO_TLS)
+	if (worker != NULL && worker->id == KORE_WORKER_KEYMGR)
+		kore_keymgr_cleanup();
+#endif
 
 	printf("kore: %s\n", buf);
 	exit(1);

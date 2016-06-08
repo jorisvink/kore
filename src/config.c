@@ -435,6 +435,11 @@ configure_domain(char *options)
 		return (KORE_RESULT_ERROR);
 	}
 
+	if (strlen(argv[0]) >= KORE_DOMAINNAME_LEN - 1) {
+		printf("domain name '%s' too long\n", argv[0]);
+		return (KORE_RESULT_ERROR);
+	}
+
 	if (!kore_domain_new(argv[0])) {
 		printf("could not create new domain %s\n", argv[0]);
 		return (KORE_RESULT_ERROR);

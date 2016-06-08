@@ -89,6 +89,11 @@ kore_worker_init(void)
 	if (worker_count == 0)
 		worker_count = 1;
 
+#if !defined(KORE_NO_TLS)
+	/* account for the key manager. */
+	worker_count += 1;
+#endif
+
 	len = sizeof(*accept_lock) +
 	    (sizeof(struct kore_worker) * worker_count);
 
@@ -200,16 +205,11 @@ kore_worker_dispatch_signal(int sig)
 }
 
 void
-kore_worker_entry(struct kore_worker *kw)
+kore_worker_privdrop(void)
 {
 	rlim_t			fd;
 	struct rlimit		rl;
-	char			buf[16];
-	int			quit, had_lock, r;
-	u_int64_t		now, idle_check, next_lock, netwait;
 	struct passwd		*pw = NULL;
-
-	worker = kw;
 
 	/* Must happen before chroot. */
 	if (skip_runas == 0) {
@@ -258,8 +258,22 @@ kore_worker_entry(struct kore_worker *kw)
 #endif
 			fatal("cannot drop privileges");
 	}
+}
+
+void
+kore_worker_entry(struct kore_worker *kw)
+{
+	char			buf[16];
+	int			quit, had_lock, r;
+	u_int64_t		now, idle_check, next_lock, netwait;
+
+	worker = kw;
 
 	(void)snprintf(buf, sizeof(buf), "kore [wrk %d]", kw->id);
+#if !defined(KORE_NO_TLS)
+	if (kw->id == KORE_WORKER_KEYMGR)
+		(void)snprintf(buf, sizeof(buf), "kore [keymgr]");
+#endif
 	kore_platform_proctitle(buf);
 
 	if (worker_set_affinity == 1)
@@ -278,6 +292,15 @@ kore_worker_entry(struct kore_worker *kw)
 	else
 		signal(SIGINT, SIG_IGN);
 
+#if !defined(KORE_NO_TLS)
+	if (kw->id == KORE_WORKER_KEYMGR) {
+		kore_keymgr_run();
+		exit(0);
+	}
+#endif
+
+	kore_worker_privdrop();
+
 	net_init();
 #if !defined(KORE_NO_HTTP)
 	http_init();
@@ -286,6 +309,7 @@ kore_worker_entry(struct kore_worker *kw)
 	kore_timer_init();
 	kore_connection_init();
 	kore_domain_load_crl();
+	kore_domain_keymgr_init();
 
 	quit = 0;
 	had_lock = 0;
@@ -359,22 +383,19 @@ kore_worker_entry(struct kore_worker *kw)
 
 		kore_connection_prune(KORE_CONNECTION_PRUNE_DISCONNECT);
 
-#if !defined(KORE_NO_HTTP)
-		if (quit && http_request_count == 0)
-			break;
-#else
 		if (quit)
 			break;
-#endif
 	}
 
 	kore_platform_event_cleanup();
 	kore_connection_cleanup();
 	kore_domain_cleanup();
+	kore_module_cleanup();
 #if !defined(KORE_NO_HTTP)
 	http_cleanup();
 #endif
 	net_cleanup();
+
 	kore_debug("worker %d shutting down", kw->id);
 	exit(0);
 }
@@ -420,6 +441,18 @@ kore_worker_wait(int final)
 			    kw->id, kw->pid,
 			    (kw->active_hdlr != NULL) ? kw->active_hdlr->func :
 			    "none");
+
+#if !defined(KORE_NO_TLS)
+			if (id == KORE_WORKER_KEYMGR) {
+				kore_log(LOG_CRIT, "keymgr gone, stopping");
+				kw->pid = 0;
+				if (raise(SIGTERM) != 0) {
+					kore_log(LOG_WARNING,
+					    "failed to raise SIGTERM signal");
+				}
+				break;
+			}
+#endif
 
 			if (kw->pid == accept_lock->current)
 				worker_unlock();

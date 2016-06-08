@@ -98,8 +98,7 @@ version(void)
 int
 main(int argc, char *argv[])
 {
-	struct listener		*l;
-	int			ch, flags;
+	int		ch, flags;
 
 	flags = 0;
 
@@ -195,10 +194,9 @@ main(int argc, char *argv[])
 	if (!foreground)
 		unlink(kore_pidfile);
 
-	LIST_FOREACH(l, &listeners, list)
-		close(l->fd);
-
+	kore_listener_cleanup();
 	kore_log(LOG_NOTICE, "goodbye");
+
 	return (0);
 }
 
@@ -337,6 +335,19 @@ kore_server_bind(const char *ip, const char *port, const char *ccb)
 	}
 
 	return (KORE_RESULT_OK);
+}
+
+void
+kore_listener_cleanup(void)
+{
+	struct listener		*l;
+
+	while (!LIST_EMPTY(&listeners)) {
+		l = LIST_FIRST(&listeners);
+		LIST_REMOVE(l, list);
+		close(l->fd);
+		kore_mem_free(l);
+	}
 }
 
 void

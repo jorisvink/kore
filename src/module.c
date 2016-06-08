@@ -29,6 +29,21 @@ kore_module_init(void)
 }
 
 void
+kore_module_cleanup(void)
+{
+	struct kore_module	*module, *next;
+
+	for (module = TAILQ_FIRST(&modules); module != NULL; module = next) {
+		next = TAILQ_NEXT(module, list);
+		TAILQ_REMOVE(&modules, module, list);
+
+		kore_mem_free(module->path);
+		(void)dlclose(module->handle);
+		kore_mem_free(module);
+	}
+}
+
+void
 kore_module_load(const char *path, const char *onload)
 {
 	struct stat		st;

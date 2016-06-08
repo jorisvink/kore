@@ -69,7 +69,7 @@ extern int daemon(int, int);
 #define errno_s			strerror(errno)
 #define ssl_errno_s		ERR_error_string(ERR_get_error(), NULL)
 
-#define KORE_DOMAINNAME_LEN		254
+#define KORE_DOMAINNAME_LEN		255
 #define KORE_PIDFILE_DEFAULT		"kore.pid"
 #define KORE_DEFAULT_CIPHER_LIST	"ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA256:DHE-DSS-AES256-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:HIGH:!aNULL:!eNULL:!EXPORT:!DES:!3DES:!MD5:!PSK:!kRSA:!kDSA"
 
@@ -370,9 +370,13 @@ struct kore_timer {
 	TAILQ_ENTRY(kore_timer)	list;
 };
 
+#define KORE_WORKER_KEYMGR	0
+
 /* Reserved message ids, registered on workers. */
 #define KORE_MSG_ACCESSLOG	1
 #define KORE_MSG_WEBSOCKET	2
+#define KORE_MSG_KEYMGR_REQ	3
+#define KORE_MSG_KEYMGR_RESP	4
 
 /* Predefined message targets. */
 #define KORE_MSG_PARENT		1000
@@ -384,6 +388,16 @@ struct kore_msg {
 	u_int16_t	dst;
 	u_int32_t	length;
 };
+
+#if !defined(KORE_NO_TLS)
+struct kore_keyreq {
+	int		padding;
+	char		domain[KORE_DOMAINNAME_LEN];
+	u_int8_t	domain_len;
+	u_int16_t	data_len;
+	u_int8_t	data[];
+};
+#endif
 
 extern pid_t	kore_pid;
 extern int	foreground;
@@ -426,6 +440,7 @@ void		kore_signal(int);
 void		kore_worker_wait(int);
 void		kore_worker_init(void);
 void		kore_worker_shutdown(void);
+void		kore_worker_privdrop(void);
 void		kore_worker_dispatch_signal(int);
 void		kore_worker_spawn(u_int16_t, u_int16_t);
 void		kore_worker_entry(struct kore_worker *);
@@ -463,6 +478,7 @@ void		kore_timer_remove(struct kore_timer *);
 struct kore_timer	*kore_timer_add(void (*cb)(void *, u_int64_t),
 			    u_int64_t, void *, int);
 
+void		kore_listener_cleanup(void);
 int		kore_server_bind(const char *, const char *, const char *);
 #if !defined(KORE_NO_TLS)
 int		kore_tls_sni_cb(SSL *, int *, void *);
@@ -541,14 +557,17 @@ void		kore_domain_cleanup(void);
 int		kore_domain_new(char *);
 void		kore_domain_free(struct kore_domain *);
 void		kore_module_init(void);
+void		kore_module_cleanup(void);
 void		kore_module_reload(int);
 void		kore_module_onload(void);
 int		kore_module_loaded(void);
 void		kore_domain_closelogs(void);
 void		*kore_module_getsym(const char *);
 void		kore_domain_load_crl(void);
+void		kore_domain_keymgr_init(void);
 void		kore_module_load(const char *, const char *);
 void		kore_domain_sslstart(struct kore_domain *);
+void		kore_domain_callback(void (*cb)(struct kore_domain *));
 int		kore_module_handler_new(const char *, const char *,
 		    const char *, const char *, int);
 void		kore_module_handler_free(struct kore_module_handle *);
@@ -608,6 +627,9 @@ void	kore_buf_appendf(struct kore_buf *, const char *, ...);
 void	kore_buf_appendv(struct kore_buf *, const char *, va_list);
 void	kore_buf_appendb(struct kore_buf *, struct kore_buf *);
 void	kore_buf_replace_string(struct kore_buf *, char *, void *, size_t);
+
+void	kore_keymgr_run(void);
+void	kore_keymgr_cleanup(void);
 
 #if defined(__cplusplus)
 }
