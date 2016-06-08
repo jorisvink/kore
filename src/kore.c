@@ -202,7 +202,7 @@ main(int argc, char *argv[])
 
 #if !defined(KORE_NO_TLS)
 int
-kore_tls_sni_cb(SSL *ssl, int *ad, void *arg)
+kore_tls_sni_cb(SSL *ssl, int *al, void *arg)
 {
 	struct kore_domain	*dom;
 	const char		*sname;
@@ -224,7 +224,8 @@ kore_tls_sni_cb(SSL *ssl, int *ad, void *arg)
 		return (SSL_TLSEXT_ERR_OK);
 	}
 
-	return (SSL_TLSEXT_ERR_NOACK);
+	*al = SSL_AD_HANDSHAKE_FAILURE;
+	return (SSL_TLSEXT_ERR_ALERT_FATAL);
 }
 
 void
