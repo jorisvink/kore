@@ -751,7 +751,7 @@ cli_build_asset(char *fpath, struct dirent *dp)
 
 	/* Start generating the file. */
 	cli_file_writef(out, "/* Auto generated */\n");
-	cli_file_writef(out, "#include <sys/param.h>\n\n");
+	cli_file_writef(out, "#include <sys/types.h>\n\n");
 
 	/* Write the file data as a byte array. */
 	cli_file_writef(out, "u_int8_t asset_%s_%s[] = {\n", name, ext);
