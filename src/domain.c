@@ -59,7 +59,7 @@ static int	keymgr_rsa_privenc(int, const unsigned char *,
 static ECDSA_SIG	*keymgr_ecdsa_sign(const unsigned char *, int,
 			    const BIGNUM *, const BIGNUM *, EC_KEY *);
 
-#if !defined(OpenBSD)
+#if !defined(LIBRESSL_VERSION_TEXT)
 /*
  * Run own ecdsa_method data structure as OpenSSL has this in ecs_locl.h
  * and does not export this on systems.
@@ -313,7 +313,7 @@ kore_domain_sslstart(struct kore_domain *dom)
 	 * Note that OpenBSD has since heartbleed removed freelists
 	 * from its OpenSSL in base so we don't need to care about it.
 	 */
-#if !defined(OpenBSD) || (OpenBSD < 201405)
+#if !defined(LIBRESSL_VERSION_TEXT)
 	dom->ssl_ctx->freelist_max_len = 0;
 #endif
 	SSL_CTX_set_mode(dom->ssl_ctx, SSL_MODE_ENABLE_PARTIAL_WRITE);
