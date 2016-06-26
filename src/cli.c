@@ -60,10 +60,16 @@
 
 #define LD_FLAGS_MAX		30
 #define CFLAGS_MAX		30
+#define CXXFLAGS_MAX		30
+
+#define BUILD_NOBUILD		0
+#define BUILD_C		1
+#define BUILD_CXX		2
 
 struct buildopt {
 	char			*name;
 	struct kore_buf		*cflags;
+	struct kore_buf		*cxxflags;
 	struct kore_buf		*ldflags;
 	TAILQ_ENTRY(buildopt)	list;
 };
@@ -96,12 +102,13 @@ static void		cli_file_close(int);
 static void		cli_run_kore(void *);
 static void		cli_generate_certs(void);
 static void		cli_link_library(void *);
-static void		cli_compile_cfile(void *);
+static void		cli_compile_source_file(void *);
 static void		cli_mkdir(const char *, int);
 static int		cli_dir_exists(const char *);
 static int		cli_file_exists(const char *);
 static void		cli_cleanup_files(const char *);
 static void		cli_build_cflags(struct buildopt *);
+static void		cli_build_cxxflags(struct buildopt *);
 static void		cli_build_ldflags(struct buildopt *);
 static void		cli_file_writef(int, const char *, ...);
 static void		cli_file_open(const char *, int, int *);
@@ -116,7 +123,7 @@ static void		cli_file_create(const char *, const char *, size_t);
 static int		cli_file_requires_build(struct stat *, const char *);
 static void		cli_find_files(const char *,
 			    void (*cb)(char *, struct dirent *));
-static void		cli_add_cfile(char *, char *, char *,
+static void		cli_add_source_file(char *, char *, char *,
 			    struct stat *, int);
 
 static struct buildopt	*cli_buildopt_new(const char *);
@@ -124,6 +131,7 @@ static struct buildopt	*cli_buildopt_find(const char *);
 static void		cli_buildopt_cleanup(void);
 static void		cli_buildopt_parse(const char *);
 static void		cli_buildopt_cflags(struct buildopt *, const char *);
+static void		cli_buildopt_cxxflags(struct buildopt *, const char *);
 static void		cli_buildopt_ldflags(struct buildopt *, const char *);
 
 static void		cli_flavor_load(void);
@@ -201,19 +209,23 @@ static const char *build_data =
 	"# %s build config\n"
 	"# You can switch flavors using: kore flavor [newflavor]\n"
 	"\n"
-	"# The cflags below are shared between flavors\n"
+	"# The flags below are shared between flavors\n"
 	"cflags=-Wall -Wmissing-declarations -Wshadow\n"
 	"cflags=-Wstrict-prototypes -Wmissing-prototypes\n"
 	"cflags=-Wpointer-arith -Wcast-qual -Wsign-compare\n"
 	"\n"
+	"cxxflags=-Wall -Wmissing-declarations -Wshadow\n"
+	"cxxflags=-Wpointer-arith -Wcast-qual -Wsign-compare\n"
+	"\n"
 	"dev {\n"
-	"	# These cflags are added to the shared ones when\n"
+	"	# These flags are added to the shared ones when\n"
 	"	# you build the \"dev\" flavor.\n"
 	"	cflags=-g\n"
+	"	cxxflags=-g\n"
 	"}\n"
 	"\n"
 	"#prod {\n"
-	"#	You can specify additional CFLAGS here which are only\n"
+	"#	You can specify additional flags here which are only\n"
 	"#	included if you build with the \"prod\" flavor.\n"
 	"#}\n";
 
@@ -234,15 +246,19 @@ static const char *gitignore = "*.o\n.flavor\n.objs\n%s.so\nassets.h\ncert\n";
 static int			s_fd = -1;
 static char			*appl = NULL;
 static char			*rootdir = NULL;
-static char			*compiler = "gcc";
+static char			*compiler_c = "gcc";
+static char			*compiler_cpp = "g++";
+static char			*compiler_ld = "gcc";
 static struct cfile_list	source_files;
 static struct buildopt_list	build_options;
 static int			cfiles_count;
 static struct cmd		*command = NULL;
 static int			cflags_count = 0;
+static int			cxxflags_count = 0;
 static int			ldflags_count = 0;
 static char			*flavor = NULL;
 static char			*cflags[CFLAGS_MAX];
+static char			*cxxflags[CXXFLAGS_MAX];
 static char			*ldflags[LD_FLAGS_MAX];
 
 void
@@ -392,7 +408,10 @@ cli_build(int argc, char **argv)
 	appl = basename(pwd);
 
 	if ((p = getenv("CC")) != NULL)
-		compiler = p;
+		compiler_c = p;
+
+	if ((p = getenv("CXX")) != NULL)
+		compiler_cpp = p;
 
 	cfiles_count = 0;
 	TAILQ_INIT(&source_files);
@@ -421,6 +440,7 @@ cli_build(int argc, char **argv)
 
 	printf("building %s (%s)\n", appl, flavor);
 	cli_build_cflags(bopt);
+	cli_build_cxxflags(bopt);
 	cli_build_ldflags(bopt);
 
 	(void)cli_vasprintf(&obj_path, "%s/.objs", rootdir);
@@ -450,11 +470,11 @@ cli_build(int argc, char **argv)
 
 	requires_relink = 0;
 	TAILQ_FOREACH(cf, &source_files, list) {
-		if (cf->build == 0)
+		if (cf->build == BUILD_NOBUILD)
 			continue;
 
 		printf("compiling %s\n", cf->name);
-		cli_spawn_proc(cli_compile_cfile, cf);
+		cli_spawn_proc(cli_compile_source_file, cf);
 
 		times[0].tv_usec = 0;
 		times[0].tv_sec = cf->st.st_mtime;
@@ -462,6 +482,10 @@ cli_build(int argc, char **argv)
 
 		if (utimes(cf->opath, times) == -1)
 			printf("utime(%s): %s\n", cf->opath, errno_s);
+
+		if (cf->build == BUILD_CXX) {
+			compiler_ld = compiler_cpp;
+		}
 
 		requires_relink++;
 	}
@@ -728,8 +752,8 @@ cli_build_asset(char *fpath, struct dirent *dp)
 		*(ext)++ = '\0';
 		cli_write_asset(name, ext);
 		*ext = '_';
-		
-		cli_add_cfile(name, cpath, opath, &st, 0);
+
+		cli_add_source_file(name, cpath, opath, &st, BUILD_NOBUILD);
 		kore_mem_free(name);
 		return;
 	}
@@ -788,12 +812,12 @@ cli_build_asset(char *fpath, struct dirent *dp)
 	*--ext = '.';
 
 	/* Register the .c file now (cpath is free'd later). */
-	cli_add_cfile(name, cpath, opath, &st, 1);
+	cli_add_source_file(name, cpath, opath, &st, BUILD_C);
 	kore_mem_free(name);
 }
 
 static void
-cli_add_cfile(char *name, char *fpath, char *opath, struct stat *st,
+cli_add_source_file(char *name, char *fpath, char *opath, struct stat *st,
     int build)
 {
 	struct cfile		*cf;
@@ -815,6 +839,7 @@ cli_register_cfile(char *fpath, struct dirent *dp)
 {
 	struct stat		st;
 	char			*ext, *opath;
+	int			build;
 
 	if ((ext = strrchr(fpath, '.')) == NULL ||
 	    (strcmp(ext, ".c") && strcmp(ext, ".cpp")))
@@ -825,11 +850,14 @@ cli_register_cfile(char *fpath, struct dirent *dp)
 
 	(void)cli_vasprintf(&opath, "%s/.objs/%s.o", rootdir, dp->d_name);
 	if (!cli_file_requires_build(&st, opath)) {
-		cli_add_cfile(dp->d_name, fpath, opath, &st, 0);
-		return;
+		build = BUILD_NOBUILD;
+	} else if (!strcmp(ext, ".cpp")) {
+		build = BUILD_CXX;
+	} else {
+		build = BUILD_C;
 	}
 
-	cli_add_cfile(dp->d_name, fpath, opath, &st, 1);
+	cli_add_source_file(dp->d_name, fpath, opath, &st, build);
 }
 
 static void
@@ -979,17 +1007,36 @@ cli_generate_certs(void)
 }
 
 static void
-cli_compile_cfile(void *arg)
+cli_compile_source_file(void *arg)
 {
 	int		idx, i;
 	struct cfile	*cf = arg;
 	char		*args[32 + CFLAGS_MAX];
+	char		*compiler;
+	char		**flags;
+	int		flags_count;
+
+	switch (cf->build) {
+		case BUILD_C:
+			compiler = compiler_c;
+			flags = cflags;
+			flags_count = cflags_count;
+			break;
+		case BUILD_CXX:
+			compiler = compiler_cpp;
+			flags = cxxflags;
+			flags_count = cxxflags_count;
+			break;
+		default:
+			cli_fatal("cli_compile_file: unexpected file type: %d", cf->build);
+			break;
+	}
 
 	idx = 0;
 	args[idx++] = compiler;
 
-	for (i = 0; i < cflags_count; i++)
-		args[idx++] = cflags[i];
+	for (i = 0; i < flags_count; i++)
+		args[idx++] = flags[i];
 
 	args[idx++] = "-c";
 	args[idx++] = cf->fpath;
@@ -1011,7 +1058,7 @@ cli_link_library(void *arg)
 	(void)cli_vasprintf(&libname, "%s/%s.so", rootdir, appl);
 
 	idx = 0;
-	args[idx++] = compiler;
+	args[idx++] = compiler_ld;
 
 	TAILQ_FOREACH(cf, &source_files, list)
 		args[idx++] = cf->opath;
@@ -1023,7 +1070,7 @@ cli_link_library(void *arg)
 	args[idx++] = libname;
 	args[idx] = NULL;
 
-	execvp(compiler, args);
+	execvp(compiler_ld, args);
 }
 
 static void
@@ -1087,6 +1134,8 @@ parse_option:
 
 		if (!strcasecmp(p, "cflags")) {
 			cli_buildopt_cflags(bopt, t);
+		} else if (!strcasecmp(p, "cxxflags")) {
+			cli_buildopt_cxxflags(bopt, t);
 		} else if (!strcasecmp(p, "ldflags")) {
 			cli_buildopt_ldflags(bopt, t);
 		} else {
@@ -1102,6 +1151,7 @@ cli_buildopt_new(const char *name)
 
 	bopt = kore_malloc(sizeof(*bopt));
 	bopt->cflags = NULL;
+	bopt->cxxflags = NULL;
 	bopt->ldflags = NULL;
 	bopt->name = kore_strdup(name);
 
@@ -1133,6 +1183,8 @@ cli_buildopt_cleanup(void)
 
 		if (bopt->cflags != NULL)
 			kore_buf_free(bopt->cflags);
+		if (bopt->cxxflags != NULL)
+			kore_buf_free(bopt->cxxflags);
 		if (bopt->ldflags != NULL)
 			kore_buf_free(bopt->ldflags);
 		kore_mem_free(bopt);
@@ -1154,6 +1206,20 @@ cli_buildopt_cflags(struct buildopt *bopt, const char *string)
 }
 
 static void
+cli_buildopt_cxxflags(struct buildopt *bopt, const char *string)
+{
+	if (bopt == NULL) {
+		if ((bopt = cli_buildopt_find("_default")) == NULL)
+			cli_fatal("no _default build options");
+	}
+
+	if (bopt->cxxflags == NULL)
+		bopt->cxxflags = kore_buf_create(128);
+
+	kore_buf_appendf(bopt->cxxflags, "%s ", string);
+}
+
+static void
 cli_buildopt_ldflags(struct buildopt *bopt, const char *string)
 {
 	if (bopt == NULL) {
@@ -1168,6 +1234,32 @@ cli_buildopt_ldflags(struct buildopt *bopt, const char *string)
 }
 
 static void
+cli_build_flags_common(struct kore_buf* buf)
+{
+	kore_buf_appendf(buf,
+	    "-fPIC -I%s/src -I%s/src/includes ", rootdir, rootdir);
+#if defined(PREFIX)
+	kore_buf_appendf(buf, "-I%s/include ", PREFIX);
+#else
+	kore_buf_appendf(buf, "-I/usr/local/include ");
+#endif
+#if defined(__MACH__)
+	/* Add default openssl include path from homebrew / ports under OSX. */
+	kore_buf_appendf(buf, "-I/opt/local/include ");
+	kore_buf_appendf(buf, "-I/usr/local/opt/openssl/include ");
+#endif
+#if defined(KORE_USE_PGSQL)
+	kore_buf_appendf(buf, "-I%s ", PGSQL_INCLUDE_PATH);
+#endif
+#if defined(KORE_NO_HTTP)
+	kore_buf_appendf(buf, "-DKORE_NO_HTTP ");
+#endif
+#if defined(KORE_NO_TLS)
+	kore_buf_appendf(buf, "-DKORE_NO_TLS ");
+#endif
+}
+
+static void
 cli_build_cflags(struct buildopt *bopt)
 {
 	struct buildopt		*obopt;
@@ -1179,27 +1271,7 @@ cli_build_cflags(struct buildopt *bopt)
 	if (bopt->cflags == NULL)
 		bopt->cflags = kore_buf_create(128);
 
-	kore_buf_appendf(bopt->cflags,
-	    "-fPIC -I%s/src -I%s/src/includes ", rootdir, rootdir);
-#if defined(PREFIX)
-	kore_buf_appendf(bopt->cflags, "-I%s/include ", PREFIX);
-#else
-	kore_buf_appendf(bopt->cflags, "-I/usr/local/include ");
-#endif
-#if defined(__MACH__)
-	/* Add default openssl include path from homebrew / ports under OSX. */
-	kore_buf_appendf(bopt->cflags, "-I/opt/local/include ");
-	kore_buf_appendf(bopt->cflags, "-I/usr/local/opt/openssl/include ");
-#endif
-#if defined(KORE_USE_PGSQL)
-	kore_buf_appendf(bopt->cflags, "-I%s ", PGSQL_INCLUDE_PATH);
-#endif
-#if defined(KORE_NO_HTTP)
-	kore_buf_appendf(bopt->cflags, "-DKORE_NO_HTTP ");
-#endif
-#if defined(KORE_NO_TLS)
-	kore_buf_appendf(bopt->cflags, "-DKORE_NO_TLS ");
-#endif
+	cli_build_flags_common(bopt->cflags);
 
 	if (obopt != NULL && obopt->cflags != NULL) {
 		kore_buf_append(bopt->cflags, obopt->cflags->data,
@@ -1209,6 +1281,30 @@ cli_build_cflags(struct buildopt *bopt)
 	string = kore_buf_stringify(bopt->cflags, NULL);
 	printf("CFLAGS=%s\n", string);
 	cflags_count = kore_split_string(string, " ", cflags, CFLAGS_MAX);
+}
+
+static void
+cli_build_cxxflags(struct buildopt *bopt)
+{
+	struct buildopt		*obopt;
+	char			*string;
+
+	if ((obopt = cli_buildopt_find(flavor)) == NULL)
+		cli_fatal("no such build flavor: %s", flavor);
+
+	if (bopt->cxxflags == NULL)
+		bopt->cxxflags = kore_buf_create(128);
+
+	cli_build_flags_common(bopt->cxxflags);
+
+	if (obopt != NULL && obopt->cxxflags != NULL) {
+		kore_buf_append(bopt->cxxflags, obopt->cxxflags->data,
+		    obopt->cxxflags->offset);
+	}
+
+	string = kore_buf_stringify(bopt->cxxflags, NULL);
+	printf("CXXFLAGS=%s\n", string);
+	cxxflags_count = kore_split_string(string, " ", cxxflags, CXXFLAGS_MAX);
 }
 
 static void
