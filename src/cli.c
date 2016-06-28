@@ -118,7 +118,7 @@ static void		cli_file_write(int, const void *, size_t);
 static int		cli_vasprintf(char **, const char *, ...);
 static void		cli_spawn_proc(void (*cb)(void *), void *);
 static void		cli_write_asset(const char *, const char *);
-static void		cli_register_cfile(char *, struct dirent *);
+static void		cli_register_source_file(char *, struct dirent *);
 static void		cli_file_create(const char *, const char *, size_t);
 static int		cli_file_requires_build(struct stat *, const char *);
 static void		cli_find_files(const char *,
@@ -251,7 +251,8 @@ static char			*compiler_cpp = "g++";
 static char			*compiler_ld = "gcc";
 static struct cfile_list	source_files;
 static struct buildopt_list	build_options;
-static int			cfiles_count;
+static int			source_files_count;
+static int			cxx_files_count;
 static struct cmd		*command = NULL;
 static int			cflags_count = 0;
 static int			cxxflags_count = 0;
@@ -413,7 +414,8 @@ cli_build(int argc, char **argv)
 	if ((p = getenv("CXX")) != NULL)
 		compiler_cpp = p;
 
-	cfiles_count = 0;
+	source_files_count = 0;
+	cxx_files_count = 0;
 	TAILQ_INIT(&source_files);
 	TAILQ_INIT(&build_options);
 
@@ -437,6 +439,10 @@ cli_build(int argc, char **argv)
 
 	cli_buildopt_parse(build_path);
 	free(build_path);
+
+	/* Build all source files. */
+	cli_find_files(src_path, cli_register_source_file);
+	free(src_path);
 
 	printf("building %s (%s)\n", appl, flavor);
 	cli_build_cflags(bopt);
@@ -463,10 +469,6 @@ cli_build(int argc, char **argv)
 	}
 
 	free(assets_path);
-
-	/* Build all source files. */
-	cli_find_files(src_path, cli_register_cfile);
-	free(src_path);
 
 	requires_relink = 0;
 	TAILQ_FOREACH(cf, &source_files, list) {
@@ -822,7 +824,7 @@ cli_add_source_file(char *name, char *fpath, char *opath, struct stat *st,
 {
 	struct cfile		*cf;
 
-	cfiles_count++;
+	source_files_count++;
 	cf = kore_malloc(sizeof(*cf));
 
 	cf->st = *st;
@@ -835,7 +837,7 @@ cli_add_source_file(char *name, char *fpath, char *opath, struct stat *st,
 }
 
 static void
-cli_register_cfile(char *fpath, struct dirent *dp)
+cli_register_source_file(char *fpath, struct dirent *dp)
 {
 	struct stat		st;
 	char			*ext, *opath;
@@ -853,6 +855,7 @@ cli_register_cfile(char *fpath, struct dirent *dp)
 		build = BUILD_NOBUILD;
 	} else if (!strcmp(ext, ".cpp")) {
 		build = BUILD_CXX;
+		cxx_files_count++;
 	} else {
 		build = BUILD_C;
 	}
@@ -1053,7 +1056,7 @@ cli_link_library(void *arg)
 	struct cfile		*cf;
 	int			idx, i;
 	char			*libname;
-	char			*args[cfiles_count + 11 + LD_FLAGS_MAX];
+	char			*args[source_files_count + 11 + LD_FLAGS_MAX];
 
 	(void)cli_vasprintf(&libname, "%s/%s.so", rootdir, appl);
 
@@ -1303,7 +1306,8 @@ cli_build_cxxflags(struct buildopt *bopt)
 	}
 
 	string = kore_buf_stringify(bopt->cxxflags, NULL);
-	printf("CXXFLAGS=%s\n", string);
+	if (cxx_files_count > 0)
+		printf("CXXFLAGS=%s\n", string);
 	cxxflags_count = kore_split_string(string, " ", cxxflags, CXXFLAGS_MAX);
 }
 
