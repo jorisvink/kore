@@ -22,7 +22,7 @@
 
 #include "kore.h"
 
-#if !defined(KORE_NO_SHA256)
+#if defined(KORE_INTEGRITY_SHA256)
 #include <openssl/sha.h>
 #endif
 
@@ -80,7 +80,7 @@ kore_module_load(const char *path, const char *onload)
 	TAILQ_INSERT_TAIL(&modules, module, list);
 }
 
-#if !defined(KORE_NO_SHA256)
+#if defined(KORE_INTEGRITY_SHA256)
 void
 kore_module_checksum(const char *path, const char *checksum)
 {

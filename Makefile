@@ -57,6 +57,11 @@ ifneq ("$(TASKS)", "")
 	CFLAGS+=-DKORE_USE_TASKS
 endif
 
+ifneq ("$(INTEGRITY)", "")
+LDFLAGS+=-lcrypto
+CFLAGS+=-DKORE_INTEGRITY_SHA256
+endif
+
 OSNAME=$(shell uname -s | sed -e 's/[-_].*//g' | tr A-Z a-z)
 ifeq ("$(OSNAME)", "darwin")
 	CFLAGS+=-I/opt/local/include/ -I/usr/local/opt/openssl/include

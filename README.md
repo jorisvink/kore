@@ -57,7 +57,8 @@ Building Kore
 
 Requirements
 * openssl (latest is always the safest bet, right?)
-  (note: this requirement drops away when building with NOTLS=1 NOHTTP=1)
+  (note: this requirement drops away when building with NOTLS=1 NOHTTP=1
+   but its again required when building with INTEGRITY=1)
 
 Requirements for background tasks (optional)
 * pthreads
@@ -82,6 +83,7 @@ those by setting a shell environment variable before running **_make_**.
 * NOTLS=1 (compiles Kore without TLS)
 * NOHTTP=1 (compiles Kore without HTTP support)
 * NOOPT=1 (disable compiler optimizations)
+* INTEGRITY=1 (compiles sha256 hashing of modules for integrity check)
 
 Example libraries
 -----------------

@@ -39,7 +39,11 @@
 static int		configure_include(char *);
 static int		configure_bind(char *);
 static int		configure_load(char *);
+
+#if defined(KORE_INTEGRITY_SHA256)
 static int		configure_checksum(char *);
+#endif
+
 static int		configure_domain(char *);
 static int		configure_chroot(char *);
 static int		configure_runas(char *);
@@ -102,7 +106,9 @@ static struct {
 	{ "include",			configure_include },
 	{ "bind",			configure_bind },
 	{ "load",			configure_load },
+#if defined(KORE_INTEGRITY_SHA256)
 	{ "checksum",		configure_checksum },
+#endif
 	{ "domain",			configure_domain },
 	{ "chroot",			configure_chroot },
 	{ "runas",			configure_runas },
@@ -297,7 +303,7 @@ configure_load(char *options)
 	return (KORE_RESULT_OK);
 }
 
-#if !defined(KORE_NO_SHA256)
+#if defined(KORE_INTEGRITY_SHA256)
 static int
 configure_checksum(char *options)
 {
