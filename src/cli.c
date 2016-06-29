@@ -60,10 +60,10 @@
 
 #define LD_FLAGS_MAX		30
 #define CFLAGS_MAX		30
-#define CXXFLAGS_MAX		30
+#define CXXFLAGS_MAX		CFLAGS_MAX
 
 #define BUILD_NOBUILD		0
-#define BUILD_C		1
+#define BUILD_C			1
 #define BUILD_CXX		2
 
 struct buildopt {
@@ -1020,19 +1020,20 @@ cli_compile_source_file(void *arg)
 	int		flags_count;
 
 	switch (cf->build) {
-		case BUILD_C:
-			compiler = compiler_c;
-			flags = cflags;
-			flags_count = cflags_count;
-			break;
-		case BUILD_CXX:
-			compiler = compiler_cpp;
-			flags = cxxflags;
-			flags_count = cxxflags_count;
-			break;
-		default:
-			cli_fatal("cli_compile_file: unexpected file type: %d", cf->build);
-			break;
+	case BUILD_C:
+		compiler = compiler_c;
+		flags = cflags;
+		flags_count = cflags_count;
+		break;
+	case BUILD_CXX:
+		compiler = compiler_cpp;
+		flags = cxxflags;
+		flags_count = cxxflags_count;
+		break;
+	default:
+		cli_fatal("cli_compile_file: unexpected file type: %d",
+		    cf->build);
+		break;
 	}
 
 	idx = 0;
