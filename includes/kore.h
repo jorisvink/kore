@@ -566,6 +566,7 @@ void		*kore_module_getsym(const char *);
 void		kore_domain_load_crl(void);
 void		kore_domain_keymgr_init(void);
 void		kore_module_load(const char *, const char *);
+void		kore_module_checksum(const char *, const char *);
 void		kore_domain_sslstart(struct kore_domain *);
 void		kore_domain_callback(void (*cb)(struct kore_domain *));
 int		kore_module_handler_new(const char *, const char *,

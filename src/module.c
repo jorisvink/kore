@@ -15,10 +15,16 @@
  */
 
 #include <sys/stat.h>
+#include <sys/types.h>
+#include <fcntl.h>
 
 #include <dlfcn.h>
 
 #include "kore.h"
+
+#if defined(KORE_INTEGRITY_SHA256)
+#include <openssl/sha.h>
+#endif
 
 static TAILQ_HEAD(, kore_module)	modules;
 
@@ -73,6 +79,119 @@ kore_module_load(const char *path, const char *onload)
 
 	TAILQ_INSERT_TAIL(&modules, module, list);
 }
+
+#if defined(KORE_INTEGRITY_SHA256)
+void
+kore_module_checksum(const char *path, const char *checksum)
+{
+	struct kore_module	*module;
+	struct kore_module	*remmod = NULL;
+	struct kore_module	*nxtmod = NULL;
+
+	int fd;
+	unsigned int len;
+	unsigned int tot=0;
+	int c;
+	const unsigned int chunk = 1024; // 1K
+	unsigned char buf[1024 +1];
+	unsigned char hash[SHA256_DIGEST_LENGTH];
+	char output[65];
+	SHA256_CTX sha256;
+
+	if(!checksum) {
+		kore_log(LOG_ERR,"invalid checksum configured: %s", checksum);
+		return;
+	}
+
+	kore_debug("kore_module_checksum(%s, %s)", path, checksum);
+
+	if(!SHA256_Init(&sha256)) {
+		kore_log(LOG_ERR,"SHA256_Init returns error");
+		return;
+	}
+
+	for(module = TAILQ_FIRST(&modules); module != NULL; module = nxtmod) {
+		nxtmod = TAILQ_NEXT(module, list);
+		if(remmod) {
+			TAILQ_REMOVE(&modules, remmod, list);
+			remmod = NULL;
+		}
+		if(strcmp(module->path, path))
+			continue;
+
+		// check sha256
+		fd = open(path, O_RDONLY);
+		if(fd<0) {
+			kore_log(LOG_ERR,"open error for checksum: %s",path);
+			kore_log(LOG_ERR,"%s",strerror(errno));
+			remmod = module;
+			continue;
+		}
+		do {
+			// read chunk of data in binary file
+			len = read(fd, buf, chunk);
+			if(len<1) {
+				kore_log(LOG_ERR,"read error on file: %s",path);
+				kore_log(LOG_ERR,"%s",strerror(errno));
+				remmod = module;
+				break;
+			}
+			// stop if NULL read
+			if(!len)
+				break;
+			tot+=len;
+
+			// stop if EOF reached
+			if(len<chunk) {
+				if(!SHA256_Update(&sha256,buf,len)) {
+					kore_log(LOG_ERR,"SHA256_Update returns error");
+					remmod = module;
+					break;
+				}
+				break;
+			}
+
+			// compute sha256 of chunk
+			if(!SHA256_Update(&sha256,buf,len)) {
+				kore_log(LOG_ERR,"SHA256_Update returns error");
+				remmod = module;
+				break;
+			}
+
+		} while(len>0);
+		close(fd);
+
+		if(!SHA256_Final(hash, &sha256)) {
+			kore_log(LOG_ERR,"SHA256_Final returns error");
+			remmod = module;
+			break;
+		}
+
+		for(c = 0; c < SHA256_DIGEST_LENGTH; c++) {
+			if(snprintf(output + (c * 2), 65, "%02x", hash[c]) >= 65 ) {
+				kore_log(LOG_ERR,"hash computation returns a string that is too big");
+				remmod = module;
+				break;
+			}
+		}
+
+		output[64] = 0;
+
+		if(strncmp(output,checksum, 65) ) {
+			kore_log(LOG_ERR,"checksum match failed: %s",path);
+			kore_log(LOG_ERR,"%s:\t%s",path,output);
+			kore_log(LOG_ERR,"conf:\t\t%s",checksum);
+			remmod = module;
+			continue;
+		}
+	}
+
+	if(remmod) {
+		TAILQ_REMOVE(&modules, remmod, list);
+		remmod = NULL;
+	}
+}
+#endif
 
 void
 kore_module_onload(void)
