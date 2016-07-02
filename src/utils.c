@@ -100,16 +100,17 @@ kore_strlcpy(char *dst, const char *src, size_t len)
 {
 	char		*d = dst;
 	const char	*s = src;
-	const char	*end = dst + len - 1;
 
-	while ((*d = *s) != '\0') {
-		if (d == end) {
-			*d = '\0';
-			break;
+	if(len == 0){
+	/*if length not specified iterate looking for '\0'*/
+		while ((*d = *s) != '\0') {
+			d++;
+			s++;
 		}
-
-		d++;
-		s++;
+	}else{
+	/*if everything is as expected then go for memcpy*/
+		memcpy(d, s, len-1);
+        	*(d+len - 1) = '\0';
 	}
 }
 
