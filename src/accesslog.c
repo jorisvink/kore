@@ -101,7 +101,7 @@ kore_accesslog_write(const void *data, u_int32_t len)
 
 	if (inet_ntop(logpacket.addrtype, &(logpacket.addr),
 	    addr, sizeof(addr)) == NULL)
-		kore_strlcpy(addr, "unknown", sizeof(addr));
+		(void)kore_strlcpy(addr, "unknown", sizeof(addr));
 
 	time(&now);
 	tbuf = kore_time_to_date(now);
@@ -150,14 +150,21 @@ kore_accesslog(struct http_request *req)
 	logpacket.worker_id = worker->id;
 	logpacket.worker_cpu = worker->cpu;
 	logpacket.time_req = req->total;
-	kore_strlcpy(logpacket.host, req->host, sizeof(logpacket.host));
-	kore_strlcpy(logpacket.path, req->path, sizeof(logpacket.path));
+
+	if (kore_strlcpy(logpacket.host,
+	    req->host, sizeof(logpacket.host)) >= sizeof(logpacket.host))
+		kore_log(LOG_NOTICE, "kore_accesslog: host truncated");
+
+	if (kore_strlcpy(logpacket.path,
+	    req->path, sizeof(logpacket.path)) >= sizeof(logpacket.path))
+		kore_log(LOG_NOTICE, "kore_accesslog: path truncated");
 
 	if (req->agent != NULL) {
-		kore_strlcpy(logpacket.agent,
-		    req->agent, sizeof(logpacket.agent));
+		if (kore_strlcpy(logpacket.agent, req->agent,
+		    sizeof(logpacket.agent)) >= sizeof(logpacket.agent))
+			kore_log(LOG_NOTICE, "kore_accesslog: agent truncated");
 	} else {
-		kore_strlcpy(logpacket.agent, "unknown",
+		(void)kore_strlcpy(logpacket.agent, "unknown",
 		    sizeof(logpacket.agent));
 	}
 

@@ -122,7 +122,7 @@ kore_strdup(const char *str)
 
 	len = strlen(str) + 1;
 	nstr = kore_malloc(len);
-	kore_strlcpy(nstr, str, len);
+	(void)kore_strlcpy(nstr, str, len);
 
 	return (nstr);
 }

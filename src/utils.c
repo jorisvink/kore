@@ -81,7 +81,7 @@ kore_log(int prio, const char *fmt, ...)
 		(void)snprintf(tmp, sizeof(tmp), "wrk %d", worker->id);
 #if !defined(KORE_NO_TLS)
 		if (worker->id == KORE_WORKER_KEYMGR)
-			kore_strlcpy(tmp, "keymgr", sizeof(tmp));
+			(void)kore_strlcpy(tmp, "keymgr", sizeof(tmp));
 #endif
 		if (foreground)
 			printf("[%s]: %s\n", tmp, buf);
@@ -95,12 +95,15 @@ kore_log(int prio, const char *fmt, ...)
 	}
 }
 
-void
-kore_strlcpy(char *dst, const char *src, size_t len)
+size_t
+kore_strlcpy(char *dst, const char *src, const size_t len)
 {
 	char		*d = dst;
 	const char	*s = src;
 	const char	*end = dst + len - 1;
+
+	if (len == 0)
+		fatal("kore_strlcpy: len == 0");
 
 	while ((*d = *s) != '\0') {
 		if (d == end) {
@@ -111,6 +114,11 @@ kore_strlcpy(char *dst, const char *src, size_t len)
 		d++;
 		s++;
 	}
+
+	while (*s != '\0')
+		s++;
+
+	return (s - src);
 }
 
 int
@@ -416,7 +424,7 @@ kore_base64_encode(u_int8_t *data, u_int32_t len, char **out)
 
 	pdata = kore_buf_release(res, &plen);
 	*out = kore_malloc(plen + 1);
-	kore_strlcpy(*out, (char *)pdata, plen + 1);
+	(void)kore_strlcpy(*out, (char *)pdata, plen + 1);
 	kore_mem_free(pdata);
 
 	return (KORE_RESULT_OK);
