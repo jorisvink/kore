@@ -1,0 +1,7 @@
+*.o
+.objs
+jsonrpc.so
+assets.h
+cert
+.*.swp
+.*.swo

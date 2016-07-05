@@ -33,6 +33,12 @@ ifneq ("$(NOHTTP)", "")
 else
 	S_SRC+= src/auth.c src/accesslog.c src/http.c \
 		src/validator.c src/websocket.c
+	ifneq ("$(JSONRPC)", "")
+		S_SRC+=src/jsonrpc.c
+		LDFLAGS+=-lyajl
+		CFLAGS+=-DKORE_USE_JSONRPC
+	endif
+
 endif
 
 ifneq ("$(NOTLS)", "")
