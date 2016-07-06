@@ -63,8 +63,15 @@ kore_debug_internal(char *file, int line, const char *fmt, ...)
 void
 kore_log_init(void)
 {
+#if defined(KORE_SINGLE_BINARY)
+	extern const char	*__progname;
+	const char		*name = __progname;
+#else
+	const char		*name = "kore";
+#endif
+
 	if (!foreground)
-		openlog("kore", LOG_NDELAY | LOG_PID, LOG_DAEMON);
+		openlog(name, LOG_NDELAY | LOG_PID, LOG_DAEMON);
 }
 
 void
