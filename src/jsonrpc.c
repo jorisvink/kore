@@ -236,9 +236,6 @@ write_id(yajl_gen gen, yajl_val id)
 {
 	int	status;
 
-	if (id == NULL)
-		return (yajl_gen_status_ok);
-
 	if (YAJL_GEN_KO(status = YAJL_GEN_CONST_STRING(gen, "id")))
 		return (status);
 
@@ -248,7 +245,7 @@ write_id(yajl_gen gen, yajl_val id)
 	if (YAJL_IS_NUMBER(id)) {
 		if (YAJL_IS_INTEGER(id))
 			return yajl_gen_integer(gen, YAJL_GET_INTEGER(id));
-		return (-2);
+		return yajl_gen_null(gen);
 	}
 
 	if (YAJL_IS_STRING(id)) {
@@ -258,7 +255,7 @@ write_id(yajl_gen gen, yajl_val id)
 			strlen(id_str));
 	}
 
-	return (-1);
+	return yajl_gen_null(gen);
 }
 
 static int
@@ -393,9 +390,12 @@ int
 jsonrpc_error(struct jsonrpc_request *req, int code, const char *msg)
 {
 	char			*msg_fallback;
-	const unsigned char	*body;
-	size_t			body_len;
+	const unsigned char	*body = NULL;
+	size_t			body_len = 0;
 	int			status;
+
+	if (req->id == NULL)
+		goto succeeded;
 
 	if ((req->gen = yajl_gen_alloc(NULL)) == NULL) {
 		kore_log(LOG_ERR, "jsonrpc_error: Failed to allocate yajl gen");
@@ -427,8 +427,10 @@ jsonrpc_error(struct jsonrpc_request *req, int code, const char *msg)
 		kore_log(LOG_ERR, "jsonrpc_error: Body length overflow");
 		goto failed;
 	}
+succeeded:
 	http_response(req->http, 200, body, body_len);
-	yajl_gen_clear(req->gen);
+	if (req->gen != NULL)
+		yajl_gen_clear(req->gen);
 	free_request(req);
 	return (KORE_RESULT_OK);
 failed:
@@ -441,8 +443,11 @@ int
 jsonrpc_result(struct jsonrpc_request *req,
     int (*write_result)(struct jsonrpc_request *, void *), void *ctx)
 {
-	const unsigned char	*body;
-	size_t			body_len;
+	const unsigned char	*body = NULL;
+	size_t			body_len = 0;
+
+	if (req->id == NULL)
+		goto succeeded;
 
 	if ((req->gen = yajl_gen_alloc(NULL)) == NULL) {
 		kore_log(LOG_ERR, "jsonrpc_result: Failed to allocate yajl gen");
@@ -469,8 +474,10 @@ jsonrpc_result(struct jsonrpc_request *req,
 		kore_log(LOG_ERR, "jsonrpc_result: Body length overflow");
 		goto failed;
 	}
+succeeded:
 	http_response(req->http, 200, body, body_len);
-	yajl_gen_clear(req->gen);
+	if (req->gen != NULL)
+		yajl_gen_clear(req->gen);
 	free_request(req);
 	return (KORE_RESULT_OK);
 failed:
