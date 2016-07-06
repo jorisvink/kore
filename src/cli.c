@@ -68,6 +68,9 @@
 
 struct buildopt {
 	char			*name;
+	char			*kore_source;
+	char			*kore_flavor;
+	int			single_binary;
 	struct kore_buf		*cflags;
 	struct kore_buf		*cxxflags;
 	struct kore_buf		*ldflags;
@@ -99,9 +102,10 @@ TAILQ_HEAD(cfile_list, cfile);
 
 static void		cli_fatal(const char *, ...) __attribute__((noreturn));
 static void		cli_file_close(int);
-static void		cli_run_kore(void *);
+static void		cli_run_kore(void);
 static void		cli_generate_certs(void);
 static void		cli_link_library(void *);
+static void		cli_compile_kore(void *);
 static void		cli_compile_source_file(void *);
 static void		cli_mkdir(const char *, int);
 static int		cli_dir_exists(const char *);
@@ -118,6 +122,7 @@ static void		cli_file_write(int, const void *, size_t);
 static int		cli_vasprintf(char **, const char *, ...);
 static void		cli_spawn_proc(void (*cb)(void *), void *);
 static void		cli_write_asset(const char *, const char *);
+static void		cli_register_kore_file(char *, struct dirent *);
 static void		cli_register_source_file(char *, struct dirent *);
 static void		cli_file_create(const char *, const char *, size_t);
 static int		cli_file_requires_build(struct stat *, const char *);
@@ -126,6 +131,7 @@ static void		cli_find_files(const char *,
 static void		cli_add_source_file(char *, char *, char *,
 			    struct stat *, int);
 
+static struct buildopt	*cli_buildopt_default(void);
 static struct buildopt	*cli_buildopt_new(const char *);
 static struct buildopt	*cli_buildopt_find(const char *);
 static void		cli_buildopt_cleanup(void);
@@ -133,6 +139,12 @@ static void		cli_buildopt_parse(const char *);
 static void		cli_buildopt_cflags(struct buildopt *, const char *);
 static void		cli_buildopt_cxxflags(struct buildopt *, const char *);
 static void		cli_buildopt_ldflags(struct buildopt *, const char *);
+static void		cli_buildopt_single_binary(struct buildopt *,
+			    const char *);
+static void		cli_buildopt_kore_source(struct buildopt *,
+			    const char *);
+static void		cli_buildopt_kore_flavor(struct buildopt *,
+			    const char *);
 
 static void		cli_flavor_load(void);
 static void		cli_flavor_change(const char *);
@@ -209,6 +221,14 @@ static const char *build_data =
 	"# %s build config\n"
 	"# You can switch flavors using: kore flavor [newflavor]\n"
 	"\n"
+	"# Set to yes if you wish to produce a single binary instead\n"
+	"# of a dynamic library. If you set this to yes you must also\n"
+	"# set kore_source together with kore_flavor and update ldflags\n"
+	"# to include the appropriate libraries you will be linking with.\n"
+	"#single_binary=no\n"
+	"#kore_source=/home/joris/src/kore\n"
+	"#kore_flavor=\n"
+	"\n"
 	"# The flags below are shared between flavors\n"
 	"cflags=-Wall -Wmissing-declarations -Wshadow\n"
 	"cflags=-Wstrict-prototypes -Wmissing-prototypes\n"
@@ -245,6 +265,7 @@ static const char *gitignore = "*.o\n.flavor\n.objs\n%s.so\nassets.h\ncert\n";
 
 static int			s_fd = -1;
 static char			*appl = NULL;
+static int			run_after = 0;
 static char			*rootdir = NULL;
 static char			*compiler_c = "gcc";
 static char			*compiler_cpp = "g++";
@@ -393,6 +414,7 @@ cli_flavor(int argc, char **argv)
 static void
 cli_build(int argc, char **argv)
 {
+	struct dirent		dp;
 	struct cfile		*cf;
 	struct buildopt		*bopt;
 	struct timeval		times[2];
@@ -427,7 +449,6 @@ cli_build(int argc, char **argv)
 
 	if (!cli_dir_exists(src_path) || !cli_file_exists(config))
 		cli_fatal("%s doesn't appear to be a kore app", appl);
-	free(config);
 
 	cli_flavor_load();
 	bopt = cli_buildopt_new("_default");
@@ -437,38 +458,62 @@ cli_build(int argc, char **argv)
 		free(data);
 	}
 
-	cli_buildopt_parse(build_path);
-	free(build_path);
-
-	/* Build all source files. */
 	cli_find_files(src_path, cli_register_source_file);
 	free(src_path);
 
-	printf("building %s (%s)\n", appl, flavor);
-	cli_build_cflags(bopt);
-	cli_build_cxxflags(bopt);
-	cli_build_ldflags(bopt);
+	cli_buildopt_parse(build_path);
+	free(build_path);
 
 	(void)cli_vasprintf(&obj_path, "%s/.objs", rootdir);
 	if (!cli_dir_exists(obj_path))
 		cli_mkdir(obj_path, 0755);
 	free(obj_path);
 
+	if (bopt->single_binary) {
+		if (bopt->kore_source == NULL)
+			cli_fatal("single_binary set but not kore_source");
+
+		printf("building kore (%s)\n", bopt->kore_source);
+		cli_spawn_proc(cli_compile_kore, bopt);
+
+		(void)cli_vasprintf(&src_path, "%s/src", bopt->kore_source);
+		cli_find_files(src_path, cli_register_kore_file);
+		free(src_path);
+	}
+
+	printf("building %s (%s)\n", appl, flavor);
+
+	cli_build_cflags(bopt);
+	cli_build_cxxflags(bopt);
+	cli_build_ldflags(bopt);
+
 	(void)unlink(assets_header);
 
 	/* Generate the assets. */
-	if (cli_dir_exists(assets_path)) {
-		cli_file_open(assets_header,
-		    O_CREAT | O_TRUNC | O_WRONLY, &s_fd);
+	cli_file_open(assets_header, O_CREAT | O_TRUNC | O_WRONLY, &s_fd);
+	cli_file_writef(s_fd, "#ifndef __H_KORE_ASSETS_H\n");
+	cli_file_writef(s_fd, "#define __H_KORE_ASSETS_H\n");
 
-		cli_file_writef(s_fd, "#ifndef __H_KORE_ASSETS_H\n");
-		cli_file_writef(s_fd, "#define __H_KORE_ASSETS_H\n");
+	if (cli_dir_exists(assets_path))
 		cli_find_files(assets_path, cli_build_asset);
-		cli_file_writef(s_fd, "\n#endif\n");
-		cli_file_close(s_fd);
+
+	if (bopt->single_binary) {
+		memset(&dp, 0, sizeof(dp));
+		dp.d_type = DT_REG;
+		printf("adding config %s\n", config);
+		(void)snprintf(dp.d_name,
+		    sizeof(dp.d_name), "builtin_kore.conf");
+		cli_build_asset(config, &dp);
 	}
 
+	cli_file_writef(s_fd, "\n#endif\n");
+	cli_file_close(s_fd);
+
 	free(assets_path);
+	free(config);
+
+	if (cxx_files_count > 0)
+		compiler_ld = compiler_cpp;
 
 	requires_relink = 0;
 	TAILQ_FOREACH(cf, &source_files, list) {
@@ -485,10 +530,6 @@ cli_build(int argc, char **argv)
 		if (utimes(cf->opath, times) == -1)
 			printf("utime(%s): %s\n", cf->opath, errno_s);
 
-		if (cf->build == BUILD_CXX) {
-			compiler_ld = compiler_cpp;
-		}
-
 		requires_relink++;
 	}
 
@@ -502,18 +543,26 @@ cli_build(int argc, char **argv)
 	}
 	free(cpath);
 
-	(void)cli_vasprintf(&sofile, "%s.so", appl);
+	if (bopt->single_binary) {
+		requires_relink++;
+		(void)cli_vasprintf(&sofile, "%s", appl);
+	} else {
+		(void)cli_vasprintf(&sofile, "%s.so", appl);
+	}
+
 	if (!cli_file_exists(sofile))
 		requires_relink++;
 	free(sofile);
 
 	if (requires_relink) {
-		cli_spawn_proc(cli_link_library, NULL);
+		cli_spawn_proc(cli_link_library, bopt);
 		printf("%s built successfully!\n", appl);
 	} else {
 		printf("nothing to be done!\n");
 	}
-	cli_buildopt_cleanup();
+
+	if (run_after == 0)
+		cli_buildopt_cleanup();
 }
 
 static void
@@ -538,6 +587,7 @@ cli_clean(int argc, char **argv)
 static void
 cli_run(int argc, char **argv)
 {
+	run_after = 1;
 	cli_build(argc, argv);
 
 	if (chdir(rootdir) == -1)
@@ -547,7 +597,7 @@ cli_run(int argc, char **argv)
 	 * We are exec()'ing kore again, while we could technically set
 	 * the right cli options manually and just continue running.
 	 */
-	cli_run_kore(NULL);
+	cli_run_kore();
 }
 
 static void
@@ -850,17 +900,46 @@ cli_register_source_file(char *fpath, struct dirent *dp)
 	if (stat(fpath, &st) == -1)
 		cli_fatal("stat(%s): %s", fpath, errno_s);
 
+	if (!strcmp(ext, ".cpp"))
+		cxx_files_count++;
+
 	(void)cli_vasprintf(&opath, "%s/.objs/%s.o", rootdir, dp->d_name);
 	if (!cli_file_requires_build(&st, opath)) {
 		build = BUILD_NOBUILD;
 	} else if (!strcmp(ext, ".cpp")) {
 		build = BUILD_CXX;
-		cxx_files_count++;
 	} else {
 		build = BUILD_C;
 	}
 
 	cli_add_source_file(dp->d_name, fpath, opath, &st, build);
+}
+
+static void
+cli_register_kore_file(char *fpath, struct dirent *dp)
+{
+	struct stat		st, ost;
+	char			*opath, *ext, *fname;
+
+	if ((ext = strrchr(fpath, '.')) == NULL || strcmp(ext, ".c"))
+		return;
+
+	if (stat(fpath, &st) == -1)
+		cli_fatal("stat(%s): %s", fpath, errno_s);
+
+	*ext = '\0';
+	if ((fname = basename(fpath)) == NULL)
+		cli_fatal("basename failed");
+
+	(void)cli_vasprintf(&opath, "%s/.objs/%s.o", rootdir, fname);
+
+	/* Silently ignore non existing object files for kore source files. */
+	if (stat(opath, &ost) == -1) {
+		free(opath);
+		return;
+	}
+
+	cli_add_source_file(dp->d_name, fpath, opath, &st, BUILD_NOBUILD);
 }
 
 static void
@@ -1049,17 +1128,24 @@ cli_compile_source_file(void *arg)
 	args[idx] = NULL;
 
 	execvp(compiler, args);
+	cli_fatal("failed to start '%s': %s", compiler, errno_s);
 }
 
 static void
 cli_link_library(void *arg)
 {
 	struct cfile		*cf;
+	struct buildopt		*bopt;
 	int			idx, i;
-	char			*libname;
+	char			*output;
 	char			*args[source_files_count + 11 + LD_FLAGS_MAX];
 
-	(void)cli_vasprintf(&libname, "%s/%s.so", rootdir, appl);
+	bopt = arg;
+
+	if (bopt->single_binary)
+		(void)cli_vasprintf(&output, "%s/%s", rootdir, appl);
+	else
+		(void)cli_vasprintf(&output, "%s/%s.so", rootdir, appl);
 
 	idx = 0;
 	args[idx++] = compiler_ld;
@@ -1070,26 +1156,95 @@ cli_link_library(void *arg)
 	for (i = 0; i < ldflags_count; i++)
 		args[idx++] = ldflags[i];
 
+	if (bopt->single_binary) {
+		args[idx++] = "-rdynamic";
+#if defined(__linux__)
+		args[idx++] = "-ldl";
+#endif
+	}
+
 	args[idx++] = "-o";
-	args[idx++] = libname;
+	args[idx++] = output;
 	args[idx] = NULL;
 
 	execvp(compiler_ld, args);
+	cli_fatal("failed to start '%s': %s", compiler_ld, errno_s);
 }
 
 static void
-cli_run_kore(void *arg)
+cli_compile_kore(void *arg)
 {
-	char		*args[4], *cpath;
+	struct buildopt		*bopt = arg;
+	int			idx, i, fcnt;
+	char			*obj, *args[16], pwd[MAXPATHLEN], *flavors[7];
 
-	(void)cli_vasprintf(&cpath, "conf/%s.conf", appl);
+	if (getcwd(pwd, sizeof(pwd)) == NULL)
+		cli_fatal("could not get cwd: %s", errno_s);
 
-	args[0] = "kore";
-	args[1] = "-fnrc";
-	args[2] = cpath;
-	args[3] = NULL;
+	(void)cli_vasprintf(&obj, "OBJDIR=%s/.objs", pwd);
 
-	execvp("kore", args);
+	if (putenv(obj) != 0)
+		cli_fatal("cannot set OBJDIR for building kore");
+
+	if (putenv("CFLAGS=-DKORE_SINGLE_BINARY") != 0)
+		cli_fatal("cannot set CFLAGS for building kore");
+
+	fcnt = kore_split_string(bopt->kore_flavor, " ", flavors, 7);
+
+#if defined(OpenBSD) || defined(__FreeBSD_version) || \
+    defined(NetBSD) || defined(__DragonFly_version)
+	args[0] = "gmake";
+#else
+	args[0] = "make";
+#endif
+
+	args[1] = "-s";
+	args[2] = "-C";
+	args[3] = bopt->kore_source;
+	args[4] = "objects";
+
+	idx = 5;
+	for (i = 0; i < fcnt; i++) {
+		printf("using flavor %s\n", flavors[i]);
+		args[idx++] = flavors[i];
+	}
+
+	args[idx] = NULL;
+
+	execvp(args[0], args);
+	cli_fatal("failed to start '%s': %s", args[0], errno_s);
+}
+
+static void
+cli_run_kore(void)
+{
+	struct buildopt		*bopt;
+	char			*args[4], *cpath, *cmd, *flags;
+
+	bopt = cli_buildopt_default();
+
+	if (bopt->single_binary) {
+		cpath = NULL;
+		flags = "-fnr";
+		(void)cli_vasprintf(&cmd, "./%s", appl);
+	} else {
+		cmd = "kore";
+		flags = "-fnrc";
+		(void)cli_vasprintf(&cpath, "conf/%s.conf", appl);
+	}
+
+	args[0] = cmd;
+	args[1] = flags;
+
+	if (cpath != NULL) {
+		args[2] = cpath;
+		args[3] = NULL;
+	} else {
+		args[2] = NULL;
+	}
+
+	execvp(args[0], args);
+	cli_fatal("failed to start '%s': %s", args[0], errno_s);
 }
 
 static void
@@ -1142,8 +1297,14 @@ parse_option:
 			cli_buildopt_cxxflags(bopt, t);
 		} else if (!strcasecmp(p, "ldflags")) {
 			cli_buildopt_ldflags(bopt, t);
+		} else if (!strcasecmp(p, "single_binary")) {
+			cli_buildopt_single_binary(bopt, t);
+		} else if (!strcasecmp(p, "kore_source")) {
+			cli_buildopt_kore_source(bopt, t);
+		} else if (!strcasecmp(p, "kore_flavor")) {
+			cli_buildopt_kore_flavor(bopt, t);
 		} else {
-			printf("ignoring unknown option %s\n", p);
+			printf("ignoring unknown option '%s'\n", p);
 		}
 	}
 }
@@ -1157,6 +1318,9 @@ cli_buildopt_new(const char *name)
 	bopt->cflags = NULL;
 	bopt->cxxflags = NULL;
 	bopt->ldflags = NULL;
+	bopt->single_binary = 0;
+	bopt->kore_source = NULL;
+	bopt->kore_flavor = NULL;
 	bopt->name = kore_strdup(name);
 
 	TAILQ_INSERT_TAIL(&build_options, bopt, list);
@@ -1176,6 +1340,17 @@ cli_buildopt_find(const char *name)
 	return (NULL);
 }
 
+static struct buildopt *
+cli_buildopt_default(void)
+{
+	struct buildopt		*bopt;
+
+	if ((bopt = cli_buildopt_find("_default")) == NULL)
+		fatal("no _default buildopt options");
+
+	return (bopt);
+}
+
 static void
 cli_buildopt_cleanup(void)
 {
@@ -1191,6 +1366,10 @@ cli_buildopt_cleanup(void)
 			kore_buf_free(bopt->cxxflags);
 		if (bopt->ldflags != NULL)
 			kore_buf_free(bopt->ldflags);
+		if (bopt->kore_source != NULL)
+			kore_mem_free(bopt->kore_source);
+		if (bopt->kore_flavor != NULL)
+			kore_mem_free(bopt->kore_flavor);
 		kore_mem_free(bopt);
 	}
 }
@@ -1198,10 +1377,8 @@ cli_buildopt_cleanup(void)
 static void
 cli_buildopt_cflags(struct buildopt *bopt, const char *string)
 {
-	if (bopt == NULL) {
-		if ((bopt = cli_buildopt_find("_default")) == NULL)
-			cli_fatal("no _default build options");
-	}
+	if (bopt == NULL)
+		bopt = cli_buildopt_default();
 
 	if (bopt->cflags == NULL)
 		bopt->cflags = kore_buf_create(128);
@@ -1212,10 +1389,8 @@ cli_buildopt_cflags(struct buildopt *bopt, const char *string)
 static void
 cli_buildopt_cxxflags(struct buildopt *bopt, const char *string)
 {
-	if (bopt == NULL) {
-		if ((bopt = cli_buildopt_find("_default")) == NULL)
-			cli_fatal("no _default build options");
-	}
+	if (bopt == NULL)
+		bopt = cli_buildopt_default();
 
 	if (bopt->cxxflags == NULL)
 		bopt->cxxflags = kore_buf_create(128);
@@ -1226,15 +1401,55 @@ cli_buildopt_cxxflags(struct buildopt *bopt, const char *string)
 static void
 cli_buildopt_ldflags(struct buildopt *bopt, const char *string)
 {
-	if (bopt == NULL) {
-		if ((bopt = cli_buildopt_find("_default")) == NULL)
-			cli_fatal("no _default build options");
-	}
+	if (bopt == NULL)
+		bopt = cli_buildopt_default();
 
 	if (bopt->ldflags == NULL)
 		bopt->ldflags = kore_buf_create(128);
 
 	kore_buf_appendf(bopt->ldflags, "%s ", string);
+}
+
+static void
+cli_buildopt_single_binary(struct buildopt *bopt, const char *string)
+{
+	if (bopt == NULL)
+		bopt = cli_buildopt_default();
+	else
+		cli_fatal("single_binary only supported in global context");
+
+	if (!strcmp(string, "yes"))
+		bopt->single_binary = 1;
+	else
+		bopt->single_binary = 0;
+}
+
+static void
+cli_buildopt_kore_source(struct buildopt *bopt, const char *string)
+{
+	if (bopt == NULL)
+		bopt = cli_buildopt_default();
+	else
+		cli_fatal("kore_source only supported in global context");
+
+	if (bopt->kore_source != NULL)
+		kore_mem_free(bopt->kore_source);
+
+	bopt->kore_source = kore_strdup(string);
+}
+
+static void
+cli_buildopt_kore_flavor(struct buildopt *bopt, const char *string)
+{
+	if (bopt == NULL)
+		bopt = cli_buildopt_default();
+	else
+		cli_fatal("kore_flavor only supported in global context");
+
+	if (bopt->kore_flavor != NULL)
+		kore_mem_free(bopt->kore_flavor);
+
+	bopt->kore_flavor = kore_strdup(string);
 }
 
 static void
@@ -1282,6 +1497,9 @@ cli_build_cflags(struct buildopt *bopt)
 		    obopt->cflags->offset);
 	}
 
+	if (bopt->single_binary)
+		kore_buf_appendf(bopt->cflags, "-DKORE_SINGLE_BINARY");
+
 	string = kore_buf_stringify(bopt->cflags, NULL);
 	printf("CFLAGS=%s\n", string);
 	cflags_count = kore_split_string(string, " ", cflags, CFLAGS_MAX);
@@ -1324,12 +1542,14 @@ cli_build_ldflags(struct buildopt *bopt)
 	if (bopt->ldflags == NULL)
 		bopt->ldflags = kore_buf_create(128);
 
+	if (bopt->single_binary == 0) {
 #if defined(__MACH__)
-	kore_buf_appendf(bopt->ldflags,
-	    "-dynamiclib -undefined suppress -flat_namespace ");
+		kore_buf_appendf(bopt->ldflags,
+		    "-dynamiclib -undefined suppress -flat_namespace ");
 #else
-	kore_buf_appendf(bopt->ldflags, "-shared ");
+		kore_buf_appendf(bopt->ldflags, "-shared ");
 #endif
+	}
 
 	if (obopt != NULL && obopt->ldflags != NULL) {
 		kore_buf_append(bopt->ldflags, obopt->ldflags->data,
@@ -1351,6 +1571,9 @@ cli_flavor_load(void)
 		cli_fatal("could not get cwd: %s", errno_s);
 
 	appl = basename(pwd);
+	if (appl == NULL)
+		cli_fatal("basename: %s", errno_s);
+	appl = kore_strdup(appl);
 	(void)cli_vasprintf(&conf, "conf/%s.conf", appl);
 
 	if (!cli_dir_exists("conf") || !cli_file_exists(conf))

@@ -14,6 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <sys/param.h>
 #include <sys/stat.h>
 
 #include <stdio.h>
@@ -36,9 +37,16 @@
 
 /* XXX - This is becoming a clusterfuck. Fix it. */
 
+#if !defined(KORE_SINGLE_BINARY)
+static int		configure_load(char *);
+#else
+static FILE		*config_file_write(void);
+extern u_int8_t		asset_builtin_kore_conf[];
+extern u_int32_t	asset_len_builtin_kore_conf;
+#endif
+
 static int		configure_include(char *);
 static int		configure_bind(char *);
-static int		configure_load(char *);
 static int		configure_domain(char *);
 static int		configure_chroot(char *);
 static int		configure_runas(char *);
@@ -100,7 +108,9 @@ static struct {
 } config_names[] = {
 	{ "include",			configure_include },
 	{ "bind",			configure_bind },
+#if !defined(KORE_SINGLE_BINARY)
 	{ "load",			configure_load },
+#endif
 	{ "domain",			configure_domain },
 	{ "chroot",			configure_chroot },
 	{ "runas",			configure_runas },
@@ -150,7 +160,9 @@ static struct {
 	{ NULL,				NULL },
 };
 
+#if !defined(KORE_SINGLE_BINARY)
 char					*config_file = NULL;
+#endif
 
 #if !defined(KORE_NO_HTTP)
 static u_int8_t				current_method = 0;
@@ -158,15 +170,20 @@ static struct kore_auth			*current_auth = NULL;
 static struct kore_module_handle	*current_handler = NULL;
 #endif
 
+extern const char			*__progname;
 static struct kore_domain		*current_domain = NULL;
 
 void
 kore_parse_config(void)
 {
+#if !defined(KORE_SINGLE_BINARY)
 	kore_parse_config_file(config_file);
+#else
+	kore_parse_config_file(NULL);
+#endif
 
 	if (!kore_module_loaded())
-		fatal("no site module was loaded");
+		fatal("no application module was loaded");
 
 	if (skip_chroot != 1 && chroot_path == NULL) {
 		fatal("missing a chroot path");
@@ -192,8 +209,12 @@ kore_parse_config_file(const char *fpath)
 	int		i, lineno;
 	char		buf[BUFSIZ], *p, *t;
 
+#if !defined(KORE_SINGLE_BINARY)
 	if ((fp = fopen(fpath, "r")) == NULL)
 		fatal("configuration given cannot be opened: %s", fpath);
+#else
+	fp = config_file_write();
+#endif
 
 	kore_debug("parsing configuration file '%s'", fpath);
 
@@ -282,6 +303,7 @@ configure_bind(char *options)
 	return (kore_server_bind(argv[0], argv[1], argv[2]));
 }
 
+#if !defined(KORE_SINGLE_BINARY)
 static int
 configure_load(char *options)
 {
@@ -294,6 +316,46 @@ configure_load(char *options)
 	kore_module_load(argv[0], argv[1]);
 	return (KORE_RESULT_OK);
 }
+#else
+static FILE *
+config_file_write(void)
+{
+	FILE		*fp;
+	ssize_t		ret;
+	int		fd, len;
+	char		fpath[MAXPATHLEN];
+
+	len = snprintf(fpath, sizeof(fpath), "/tmp/%s.XXXXXX", __progname);
+	if (len == -1 || (size_t)len >= sizeof(fpath))
+		fatal("failed to create temporary path");
+
+	if ((fd = mkstemp(fpath)) == -1)
+		fatal("mkstemp(%s): %s", fpath, errno_s);
+
+	(void)unlink(fpath);
+
+	for (;;) {
+		ret = write(fd, asset_builtin_kore_conf,
+		    asset_len_builtin_kore_conf);
+		if (ret == -1) {
+			if (errno == EINTR)
+				continue;
+			fatal("failed to write temporary config: %s", errno_s);
+		}
+
+		if ((size_t)ret != asset_len_builtin_kore_conf)
+			fatal("failed to write temporary config");
+		break;
+	}
+
+	if ((fp = fdopen(fd, "w+")) == NULL)
+		fatal("fdopen(): %s", errno_s);
+
+	rewind(fp);
+
+	return (fp);
+}
+#endif
 
 #if !defined(KORE_NO_TLS)
 static int

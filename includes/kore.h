@@ -399,6 +399,10 @@ struct kore_keyreq {
 };
 #endif
 
+#if !defined(KORE_SINGLE_BINARY)
+extern char	*config_file;
+#endif
+
 extern pid_t	kore_pid;
 extern int	foreground;
 extern int	kore_debug;
@@ -407,7 +411,6 @@ extern char	*chroot_path;
 extern int	skip_runas;
 extern char	*runas_user;
 extern char	*kore_pidfile;
-extern char	*config_file;
 extern char	*kore_tls_cipher_list;
 extern int	tls_version;
 
@@ -630,6 +633,10 @@ void	kore_buf_replace_string(struct kore_buf *, char *, void *, size_t);
 
 void	kore_keymgr_run(void);
 void	kore_keymgr_cleanup(void);
+
+#if defined(KORE_SINGLE_BINARY)
+void	kore_main(void);
+#endif
 
 #if defined(__cplusplus)
 }

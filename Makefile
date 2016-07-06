@@ -2,6 +2,7 @@
 
 CC?=gcc
 PREFIX?=/usr/local
+OBJDIR?=obj
 KORE=kore
 INSTALL_DIR=$(PREFIX)/bin
 INCLUDE_DIR=$(PREFIX)/include/kore
@@ -9,7 +10,6 @@ INCLUDE_DIR=$(PREFIX)/include/kore
 S_SRC=	src/kore.c src/buf.c src/cli.c src/config.c src/connection.c \
 	src/domain.c src/mem.c src/msg.c src/module.c src/net.c \
 	src/pool.c src/timer.c src/utils.c src/worker.c src/keymgr.c
-S_OBJS=	$(S_SRC:.c=.o)
 
 CFLAGS+=-Wall -Werror -Wstrict-prototypes -Wmissing-prototypes
 CFLAGS+=-Wmissing-declarations -Wshadow -Wpointer-arith -Wcast-qual
@@ -70,10 +70,17 @@ else
 	S_SRC+=src/bsd.c
 endif
 
-$(KORE): $(S_OBJS)
+S_OBJS=	$(S_SRC:src/%.c=$(OBJDIR)/%.o)
+
+$(KORE): $(OBJDIR) $(S_OBJS)
 	$(CC) $(S_OBJS) $(LDFLAGS) -o $(KORE)
 
+objects: $(OBJDIR) $(S_OBJS)
+
 all: $(KORE)
+
+$(OBJDIR):
+	@mkdir -p $(OBJDIR)
 
 install:
 	mkdir -p $(INCLUDE_DIR)
@@ -85,11 +92,11 @@ uninstall:
 	rm -f $(INSTALL_DIR)/$(KORE)
 	rm -rf $(INCLUDE_DIR)
 
-.c.o:
+$(OBJDIR)/%.o: src/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
 	find . -type f -name \*.o -exec rm {} \;
-	rm -f $(KORE)
+	rm -rf $(KORE) $(OBJDIR)
 
 .PHONY: all clean

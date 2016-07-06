@@ -521,8 +521,8 @@ kore_text_trim(char *string, size_t len)
 	if (len == 0)
 		return (string);
 
-	end = string + len;
-	while (isspace(*string))
+	end = (string + len) - 1;
+	while (isspace(*string) && string < end)
 		string++;
 
 	while (isspace(*end) && end > string)
@@ -561,8 +561,9 @@ kore_read_line(FILE *fp, char *in, size_t len)
 void
 fatal(const char *fmt, ...)
 {
-	va_list		args;
-	char		buf[2048];
+	va_list			args;
+	char			buf[2048];
+	extern const char	*__progname;
 
 	va_start(args, fmt);
 	(void)vsnprintf(buf, sizeof(buf), fmt, args);
@@ -576,6 +577,6 @@ fatal(const char *fmt, ...)
 		kore_keymgr_cleanup();
 #endif
 
-	printf("kore: %s\n", buf);
+	printf("%s: %s\n", __progname, buf);
 	exit(1);
 }

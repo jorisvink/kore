@@ -46,19 +46,27 @@ kore_module_cleanup(void)
 void
 kore_module_load(const char *path, const char *onload)
 {
+#if !defined(KORE_SINGLE_BINARY)
 	struct stat		st;
+#endif
 	struct kore_module	*module;
 
 	kore_debug("kore_module_load(%s, %s)", path, onload);
 
+	module = kore_malloc(sizeof(struct kore_module));
+	module->onload = NULL;
+	module->ocb = NULL;
+
+#if !defined(KORE_SINGLE_BINARY)
 	if (stat(path, &st) == -1)
 		fatal("stat(%s): %s", path, errno_s);
 
-	module = kore_malloc(sizeof(struct kore_module));
 	module->path = kore_strdup(path);
 	module->mtime = st.st_mtime;
-	module->onload = NULL;
-	module->ocb = NULL;
+#else
+	module->path = NULL;
+	module->mtime = 0;
+#endif
 
 	module->handle = dlopen(module->path, RTLD_NOW | RTLD_GLOBAL);
 	if (module->handle == NULL)
@@ -77,6 +85,7 @@ kore_module_load(const char *path, const char *onload)
 void
 kore_module_onload(void)
 {
+#if !defined(KORE_SINGLE_BINARY)
 	struct kore_module	*module;
 
 	TAILQ_FOREACH(module, &modules, list) {
@@ -85,11 +94,13 @@ kore_module_onload(void)
 
 		(void)module->ocb(KORE_MODULE_LOAD);
 	}
+#endif
 }
 
 void
 kore_module_reload(int cbs)
 {
+#if !defined(KORE_SINGLE_BINARY)
 	struct stat			st;
 	struct kore_domain		*dom;
 	struct kore_module_handle	*hdlr;
@@ -147,6 +158,7 @@ kore_module_reload(int cbs)
 
 #if !defined(KORE_NO_HTTP)
 	kore_validator_reload();
+#endif
 #endif
 }
 

@@ -333,7 +333,9 @@ kore_worker_entry(struct kore_worker *kw)
 		if (sig_recv != 0) {
 			switch (sig_recv) {
 			case SIGHUP:
+#if !defined(KORE_SINGLE_BINARY)
 				kore_module_reload(1);
+#endif
 				break;
 			case SIGQUIT:
 			case SIGINT:

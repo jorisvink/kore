@@ -47,6 +47,8 @@ u_int32_t		kore_socket_backlog = 5000;
 char			*kore_pidfile = KORE_PIDFILE_DEFAULT;
 char			*kore_tls_cipher_list = KORE_DEFAULT_CIPHER_LIST;
 
+extern char		*__progname;
+
 static void	usage(void);
 static void	version(void);
 static void	kore_server_start(void);
@@ -56,24 +58,37 @@ static void	kore_server_sslstart(void);
 static void
 usage(void)
 {
+#if !defined(KORE_SINGLE_BINARY)
 	fprintf(stderr, "Usage: kore [options | command]\n");
+#else
+	fprintf(stderr, "Usage: %s [options]\n", __progname);
+#endif
 	fprintf(stderr, "\n");
 	fprintf(stderr, "Available options:\n");
-	fprintf(stderr, "\t-c\tspecify the configuration file to use\n");
-	fprintf(stderr, "\t-d\trun with debug on (if compiled in)\n");
-	fprintf(stderr, "\t-f\tstart kore in foreground mode\n");
+#if !defined(KORE_SINGLE_BINARY)
+	fprintf(stderr, "\t-c\tconfiguration to use\n");
+#endif
+#if defined(KORE_DEBUG)
+	fprintf(stderr, "\t-d\trun with debug on)\n");
+#endif
+	fprintf(stderr, "\t-f\tstart in foreground\n");
 	fprintf(stderr, "\t-h\tthis help text\n");
 	fprintf(stderr, "\t-n\tdo not chroot\n");
-	fprintf(stderr, "\t-r\tdo not drop privs\n");
-	fprintf(stderr, "\t-v\tdisplay kore's version information\n");
+	fprintf(stderr, "\t-r\tdo not drop privileges\n");
+	fprintf(stderr, "\t-v\tdisplay kore build information\n");
 
+#if !defined(KORE_SINGLE_BINARY)
 	kore_cli_usage(0);
+#else
+	fprintf(stderr, "\nbuilt with https://kore.io\n");
+	exit(1);
+#endif
 }
 
 static void
 version(void)
 {
-	printf("kore %d.%d.%d-%s ", KORE_VERSION_MAJOR, KORE_VERSION_MINOR,
+	printf("%d.%d.%d-%s ", KORE_VERSION_MAJOR, KORE_VERSION_MINOR,
 	    KORE_VERSION_PATCH, KORE_VERSION_STATE);
 #if defined(KORE_NO_TLS)
 	printf("no-tls ");
@@ -90,6 +105,9 @@ version(void)
 #if defined(KORE_DEBUG)
 	printf("debug ");
 #endif
+#if defined(KORE_SINGLE_BINARY)
+	printf("single ");
+#endif
 	printf("\n");
 
 	exit(0);
@@ -99,22 +117,29 @@ int
 main(int argc, char *argv[])
 {
 	int		ch, flags;
+#if defined(KORE_SINGLE_BINARY)
+	void		(*kmain)(void);
+#endif
 
 	flags = 0;
 
+#if !defined(KORE_SINGLE_BINARY)
 	while ((ch = getopt(argc, argv, "c:dfhnrv")) != -1) {
+#else
+	while ((ch = getopt(argc, argv, "dfhnrv")) != -1) {
+#endif
 		flags++;
 		switch (ch) {
+#if !defined(KORE_SINGLE_BINARY)
 		case 'c':
 			config_file = optarg;
 			break;
-		case 'd':
-#if defined(KORE_DEBUG)
-			kore_debug = 1;
-#else
-			printf("kore not compiled with debug support\n");
 #endif
+#if defined(KORE_DEBUG)
+		case 'd':
+			kore_debug = 1;
 			break;
+#endif
 		case 'f':
 			foreground = 1;
 			break;
@@ -140,11 +165,13 @@ main(int argc, char *argv[])
 
 	kore_mem_init();
 
+#if !defined(KORE_SINGLE_BINARY)
 	if (argc > 0) {
 		if (flags)
 			fatal("You cannot specify kore flags and a command");
 		return (kore_cli_main(argc, argv));
 	}
+#endif
 
 	kore_pid = getpid();
 	nlisteners = 0;
@@ -159,8 +186,15 @@ main(int argc, char *argv[])
 	kore_module_init();
 	kore_server_sslstart();
 
+#if !defined(KORE_SINGLE_BINARY)
 	if (config_file == NULL)
 		usage();
+#else
+	kore_module_load(NULL, NULL);
+	*(void **)&(kmain) = kore_module_getsym("kore_main");
+	if (kmain != NULL)
+		kmain();
+#endif
 
 	kore_parse_config();
 	kore_platform_init();
@@ -380,7 +414,7 @@ kore_server_start(void)
 	if (!foreground)
 		kore_write_kore_pid();
 
-	kore_log(LOG_NOTICE, "kore is starting up");
+	kore_log(LOG_NOTICE, "%s is starting up", __progname);
 #if defined(KORE_USE_PGSQL)
 	kore_log(LOG_NOTICE, "pgsql built-in enabled");
 #endif
@@ -407,8 +441,10 @@ kore_server_start(void)
 		if (sig_recv != 0) {
 			switch (sig_recv) {
 			case SIGHUP:
+#if !defined(KORE_SINGLE_BINARY)
 				kore_worker_dispatch_signal(sig_recv);
 				kore_module_reload(0);
+#endif
 				break;
 			case SIGINT:
 			case SIGQUIT:
