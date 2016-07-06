@@ -60,7 +60,7 @@ page(struct http_request *req)
 	}
 
 	/* Grab our body data as a NUL-terminated string. */
-	body = kore_buf_stringify(buf);
+	body = kore_buf_stringify(buf, NULL);
 
 	/* Parse the body via yajl now. */
 	node = yajl_tree_parse(body, eb, sizeof(eb));
