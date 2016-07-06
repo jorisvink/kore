@@ -3,6 +3,9 @@
 CC?=gcc
 PREFIX?=/usr/local
 KORE=kore
+KORE_TEST=kore-test
+TESTS=kore-test
+LIBNAME=libkore
 INSTALL_DIR=$(PREFIX)/bin
 INCLUDE_DIR=$(PREFIX)/include/kore
 
@@ -10,6 +13,10 @@ S_SRC=	src/kore.c src/buf.c src/cli.c src/config.c src/connection.c \
 	src/domain.c src/mem.c src/msg.c src/module.c src/net.c \
 	src/pool.c src/timer.c src/utils.c src/worker.c src/keymgr.c
 S_OBJS=	$(S_SRC:.c=.o)
+LIB_OBJS=	$(S_SRC:.c=.o)
+
+TEST_SRC=	tests/test.c tests/test-buf.c tests/test-utils.c tests/unit.c
+TEST_OBJS=	$(TEST_SRC:.c=.o)
 
 CFLAGS+=-Wall -Werror -Wstrict-prototypes -Wmissing-prototypes
 CFLAGS+=-Wmissing-declarations -Wshadow -Wpointer-arith -Wcast-qual
@@ -70,8 +77,22 @@ else
 	S_SRC+=src/bsd.c
 endif
 
+STLIBSUFFIX=a
+STLIBNAME=$(LIBNAME).$(STLIBSUFFIX)
+STLIB_MAKE_CMD=ar rcs $(STLIBNAME)
+
+$(STLIBNAME): $(LIB_OBJS)
+	$(STLIB_MAKE_CMD) $(LIB_OBJS)
+
+TEST_LIBNAME=$(LIBNAME)-test.$(STLIBSUFFIX)
+TEST_LIB_MAKE_CMD=ar rcs $(TEST_LIBNAME)
+
+$(TEST_LIBNAME): $(TEST_OBJS) $(STLIBNAME)
+	$(TEST_LIB_MAKE_CMD) $(TEST_OBJS)
+	mv $(TEST_LIBNAME) tests/
+
 $(KORE): $(S_OBJS)
-	$(CC) $(S_OBJS) $(LDFLAGS) -o $(KORE)
+	$(CC) $(S_OBJS) -o $(KORE) $(LDFLAGS)
 
 all: $(KORE)
 
@@ -91,5 +112,20 @@ uninstall:
 clean:
 	find . -type f -name \*.o -exec rm {} \;
 	rm -f $(KORE)
+	rm -f $(STLIBNAME)
+	find tests/ -type f -name \*.o -exec rm {} \;
+	rm -f tests/$(TEST_LIBNAME)
+	rm -f tests/$(TESTS)
+	rm -f $(KORE_TEST)
+
+$(KORE_TEST): CFLAGS += -DKORE_TEST -DKORE_PEDANTIC_MALLOC
+$(KORE_TEST): $(TEST_LIBNAME)
+	$(CC) $(CFLAGS) -o $@ tests/$< $(STLIBNAME) $(LDFLAGS)
+	./$(KORE_TEST)
+
+check: $(KORE_TEST)
+
+valgrind:
+	valgrind --leak-check=full ./$(KORE_TEST)
 
 .PHONY: all clean

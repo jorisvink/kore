@@ -47,12 +47,15 @@ u_int32_t		kore_socket_backlog = 5000;
 char			*kore_pidfile = KORE_PIDFILE_DEFAULT;
 char			*kore_tls_cipher_list = KORE_DEFAULT_CIPHER_LIST;
 
+#if !defined(KORE_TEST)
 static void	usage(void);
 static void	version(void);
 static void	kore_server_start(void);
-static void	kore_write_kore_pid(void);
 static void	kore_server_sslstart(void);
+static void	kore_write_kore_pid(void);
+#endif
 
+#if !defined(KORE_TEST)
 static void
 usage(void)
 {
@@ -69,7 +72,9 @@ usage(void)
 
 	kore_cli_usage(0);
 }
+#endif
 
+#if !defined(KORE_TEST)
 static void
 version(void)
 {
@@ -94,7 +99,9 @@ version(void)
 
 	exit(0);
 }
+#endif
 
+#if !defined(KORE_TEST)
 int
 main(int argc, char *argv[])
 {
@@ -199,6 +206,7 @@ main(int argc, char *argv[])
 
 	return (0);
 }
+#endif
 
 #if !defined(KORE_NO_TLS)
 int
@@ -356,6 +364,7 @@ kore_signal(int sig)
 	sig_recv = sig;
 }
 
+#if !defined(KORE_TEST)
 static void
 kore_server_sslstart(void)
 {
@@ -366,7 +375,9 @@ kore_server_sslstart(void)
 	SSL_load_error_strings();
 #endif
 }
+#endif
 
+#if !defined(KORE_TEST)
 static void
 kore_server_start(void)
 {
@@ -435,7 +446,9 @@ kore_server_start(void)
 	kore_domain_cleanup();
 	net_cleanup();
 }
+#endif
 
+#if !defined(KORE_TEST)
 static void
 kore_write_kore_pid(void)
 {
@@ -449,3 +462,4 @@ kore_write_kore_pid(void)
 		fclose(fp);
 	}
 }
+#endif
