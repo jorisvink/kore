@@ -117,9 +117,6 @@ int
 main(int argc, char *argv[])
 {
 	int		ch, flags;
-#if defined(KORE_SINGLE_BINARY)
-	void		(*kmain)(void);
-#endif
 
 	flags = 0;
 
@@ -191,9 +188,6 @@ main(int argc, char *argv[])
 		usage();
 #else
 	kore_module_load(NULL, NULL);
-	*(void **)&(kmain) = kore_module_getsym("kore_main");
-	if (kmain != NULL)
-		kmain();
 #endif
 
 	kore_parse_config();

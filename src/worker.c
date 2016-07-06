@@ -266,6 +266,9 @@ kore_worker_entry(struct kore_worker *kw)
 	char			buf[16];
 	int			quit, had_lock, r;
 	u_int64_t		now, idle_check, next_lock, netwait;
+#if defined(KORE_SINGLE_BINARY)
+	void			(*onload)(void);
+#endif
 
 	worker = kw;
 
@@ -327,7 +330,14 @@ kore_worker_entry(struct kore_worker *kw)
 #endif
 
 	kore_log(LOG_NOTICE, "worker %d started (cpu#%d)", kw->id, kw->cpu);
+
+#if defined(KORE_SINGLE_BINARY)
+	*(void **)&(onload) = kore_module_getsym("kore_onload");
+	if (onload != NULL)
+		onload();
+#else
 	kore_module_onload();
+#endif
 
 	for (;;) {
 		if (sig_recv != 0) {
