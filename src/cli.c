@@ -209,7 +209,7 @@ static const char *config_data =
 	"tls_dhparam\tdh2048.pem\n"
 #endif
 	"\n"
-	"domain 127.0.0.1 {\n"
+	"domain * {\n"
 #if !defined(KORE_NO_TLS)
 	"\tcertfile\tcert/server.crt\n"
 	"\tcertkey\t\tcert/server.key\n"
