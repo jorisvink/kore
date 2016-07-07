@@ -105,17 +105,17 @@ printrep() {
 	grepstr "$result" '"error"[ \t\n]*:[ \t\n]*{[ \t\n]*"code"'
 	grepstr "$result" '"id"[ \t\n]*:[ \t\n]*1'
 }
-@test "result responses give back the string request" {
-	query='{"jsonrpc":"2.0","method":"echo","params":"foobar","id":"tau"}'
+@test "result responses give back the string request id" {
+	query='{"jsonrpc":"2.0","method":"echo","params":["foobar"],"id":"tau"}'
 	result=`query "$query"`
 	printrep "$query" "$result"
-	grepstr "$result" '"result"[ \t\n]*:[ \t\n]*"foobar"'
+	grepstr "$result" '"result"[ \t\n]*:[ \t\n]*[[ \t\n]*"foobar"[ \t\n]*]'
 	grepstr "$result" '"id"[ \t\n]*:[ \t\n]*"tau"'
 }
 @test "result responses give back the integer request id" {
-	query='{"jsonrpc":"2.0","method":"echo","params":"foobar","id":6}'
+	query='{"jsonrpc":"2.0","method":"echo","params":["foobar"],"id":6}'
 	result=`query "$query"`
 	printrep "$query" "$result"
-	grepstr "$result" '"result"[ \t\n]*:[ \t\n]*"foobar"'
+	grepstr "$result" '"result"[ \t\n]*:[ \t\n]*[[ \t\n]*"foobar"[ \t\n]*]'
 	grepstr "$result" '"id"[ \t\n]*:[ \t\n]*6'
 }

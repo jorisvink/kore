@@ -210,8 +210,14 @@ parse_json_body(struct jsonrpc_request *req)
 		return (JSONRPC_PARSE_ERROR);
 	}
 
-	/* Retrieve params. */
+	/* Check params. */
 	req->params = yajl_tree_get(req->json, params_path, yajl_t_any);
+	if (!(req->params == NULL || YAJL_IS_ARRAY(req->params)
+	    || YAJL_IS_OBJECT(req->params))) {
+		jsonrpc_log(req, LOG_ERR,
+		    "JSON-RPC params MUST be Object or Array");
+		return (JSONRPC_PARSE_ERROR);
+	}
 
 	return (0);
 }

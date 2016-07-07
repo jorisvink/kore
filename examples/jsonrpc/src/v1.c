@@ -9,11 +9,32 @@
 int	v1(struct http_request *);
 
 static int
-write_json_string(struct jsonrpc_request *req, void *ctx)
+write_string(struct jsonrpc_request *req, void *ctx)
 {
-	char *str = (char *)ctx;
-	
-	return yajl_gen_string(req->gen, (unsigned char *)str, strlen(str));
+	const unsigned char *str = (unsigned char *)ctx;
+
+	return yajl_gen_string(req->gen, str, strlen((const char *)str));
+}
+
+static int
+write_string_array_params(struct jsonrpc_request *req, void *ctx)
+{
+	int status = 0;
+
+	if (!YAJL_GEN_KO(status = yajl_gen_array_open(req->gen))) {
+		for (size_t i = 0; i < req->params->u.array.len; i++) {
+			yajl_val yajl_str = req->params->u.array.values[i];
+			char	 *str = YAJL_GET_STRING(yajl_str);
+
+			if (YAJL_GEN_KO(status = yajl_gen_string(req->gen,
+			    (unsigned char *)str, strlen(str))))
+				break;
+		}
+		if (status == 0)
+			status = yajl_gen_array_close(req->gen);
+	}
+
+	return status;
 }
 
 int
@@ -34,14 +55,23 @@ v1(struct http_request *http_req)
 	if ((ret = jsonrpc_request_read(http_req, 1000 * 64, &req)) != 0)
 		return jsonrpc_error(&req, ret, NULL);
 	
-	/* Echo command takes and gives back a single string. */
+	/* Echo command takes and gives back params. */
 	if (strcmp(req.method, "echo") == 0) {
-		char *msg = YAJL_GET_STRING(req.params);
-		if (msg == NULL) {
+		if (!YAJL_IS_ARRAY(req.params)) {
+			jsonrpc_log(&req, -2, "Echo only accepts array params");
 			return jsonrpc_error(&req,
 			    JSONRPC_INVALID_PARAMS, NULL);
 		}
-		return jsonrpc_result(&req, write_json_string, msg);
+		for (size_t i = 0; i < req.params->u.array.len; i++) {
+			yajl_val v = req.params->u.array.values[i];
+			if (!YAJL_IS_STRING(v)) {
+				jsonrpc_log(&req, -3,
+				    "Echo only accepts strings");
+				return jsonrpc_error(&req,
+				    JSONRPC_INVALID_PARAMS, NULL);
+			}
+		}
+		return jsonrpc_result(&req, write_string_array_params, NULL);
 	}
 	
 	/* Date command displays date and time according to parameters. */
@@ -66,8 +96,7 @@ v1(struct http_request *http_req)
 			return jsonrpc_error(&req, -4,
 			    "Failed to get printable date time");
 		
-		return jsonrpc_result(&req, write_json_string,
-		    timestamp);
+		return jsonrpc_result(&req, write_string, timestamp);
 	}
 	
 	return jsonrpc_error(&req, JSONRPC_METHOD_NOT_FOUND, NULL);

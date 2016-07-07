@@ -53,7 +53,7 @@ struct jsonrpc_request
 	yajl_gen_number((CTX), (unsigned char *)(STR), sizeof (STR) - 1)
 
 #define YAJL_GEN_KO(OPERATION)	\
-	(OPERATION) != yajl_gen_status_ok
+	((OPERATION) != yajl_gen_status_ok)
 
 enum jsonrpc_error_code
 {
