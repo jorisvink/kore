@@ -635,7 +635,7 @@ void	kore_keymgr_run(void);
 void	kore_keymgr_cleanup(void);
 
 #if defined(KORE_SINGLE_BINARY)
-void	kore_main(void);
+void	kore_onload(void);
 #endif
 
 #if defined(__cplusplus)
