@@ -22,7 +22,7 @@
 #include "kore.h"
 
 struct kore_buf *
-kore_buf_create(u_int32_t initial)
+kore_buf_create(size_t initial)
 {
 	struct kore_buf		*buf;
 
@@ -35,7 +35,7 @@ kore_buf_create(u_int32_t initial)
 }
 
 void
-kore_buf_append(struct kore_buf *buf, const void *d, u_int32_t len)
+kore_buf_append(struct kore_buf *buf, const void *d, size_t len)
 {
 	if ((buf->offset + len) < len)
 		fatal("overflow in kore_buf_append");
@@ -53,7 +53,7 @@ void
 kore_buf_appendb(struct kore_buf *buf, struct kore_buf *src)
 {
 	u_int8_t	*d;
-	u_int32_t	len;
+	size_t		len;
 
 	d = kore_buf_release(src, &len);
 	kore_buf_append(buf, d, len);
@@ -108,7 +108,7 @@ kore_buf_stringify(struct kore_buf *buf, size_t *len)
 }
 
 u_int8_t *
-kore_buf_release(struct kore_buf *buf, u_int32_t *len)
+kore_buf_release(struct kore_buf *buf, size_t *len)
 {
 	u_int8_t	*p;
 
@@ -129,9 +129,8 @@ kore_buf_free(struct kore_buf *buf)
 void
 kore_buf_replace_string(struct kore_buf *b, char *src, void *dst, size_t len)
 {
-	u_int32_t	blen, off, off2;
-	size_t		nlen, klen;
 	char		*key, *end, *tmp, *p;
+	size_t		blen, off, off2, nlen, klen;
 
 	off = 0;
 	klen = strlen(src);

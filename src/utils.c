@@ -377,18 +377,21 @@ kore_time_ms(void)
 }
 
 int
-kore_base64_encode(u_int8_t *data, u_int32_t len, char **out)
+kore_base64_encode(u_int8_t *data, size_t len, char **out)
 {
+	u_int32_t		b;
 	struct kore_buf		*res;
+	size_t			plen, idx;
 	u_int8_t		n, *pdata;
 	int			i, padding;
-	u_int32_t		idx, b, plen;
 
 	if ((len % 3) != 0) {
 		padding = 3 - (len % 3);
 		plen = len + padding;
-		pdata = kore_malloc(plen);
+		if (plen < len)
+			fatal("plen wrapped");
 
+		pdata = kore_malloc(plen);
 		memcpy(pdata, data, len);
 		memset(pdata + len, 0, padding);
 	} else {
@@ -430,6 +433,9 @@ kore_base64_encode(u_int8_t *data, u_int32_t len, char **out)
 		kore_mem_free(pdata);
 
 	pdata = kore_buf_release(res, &plen);
+	if ((plen + 1) < plen)
+		fatal("plen wrapped");
+
 	*out = kore_malloc(plen + 1);
 	(void)kore_strlcpy(*out, (char *)pdata, plen + 1);
 	kore_mem_free(pdata);
@@ -438,7 +444,7 @@ kore_base64_encode(u_int8_t *data, u_int32_t len, char **out)
 }
 
 int
-kore_base64_decode(char *in, u_int8_t **out, u_int32_t *olen)
+kore_base64_decode(char *in, u_int8_t **out, size_t *olen)
 {
 	int			i, c;
 	struct kore_buf		*res;

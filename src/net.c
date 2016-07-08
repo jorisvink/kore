@@ -44,13 +44,13 @@ net_cleanup(void)
 }
 
 void
-net_send_queue(struct connection *c, const void *data, u_int32_t len)
+net_send_queue(struct connection *c, const void *data, size_t len)
 {
 	const u_int8_t		*d;
 	struct netbuf		*nb;
-	u_int32_t		avail;
+	size_t			avail;
 
-	kore_debug("net_send_queue(%p, %p, %d)", c, data, len);
+	kore_debug("net_send_queue(%p, %p, %zu)", c, data, len);
 
 	d = data;
 	nb = TAILQ_LAST(&(c->send_queue), netbuf_head);
@@ -93,12 +93,12 @@ net_send_queue(struct connection *c, const void *data, u_int32_t len)
 }
 
 void
-net_send_stream(struct connection *c, void *data, u_int32_t len,
+net_send_stream(struct connection *c, void *data, size_t len,
     int (*cb)(struct netbuf *), struct netbuf **out)
 {
 	struct netbuf		*nb;
 
-	kore_debug("net_send_stream(%p, %p, %d)", c, data, len);
+	kore_debug("net_send_stream(%p, %p, %zu)", c, data, len);
 
 	nb = kore_pool_get(&nb_pool);
 	nb->cb = cb;
@@ -116,9 +116,9 @@ net_send_stream(struct connection *c, void *data, u_int32_t len,
 }
 
 void
-net_recv_reset(struct connection *c, u_int32_t len, int (*cb)(struct netbuf *))
+net_recv_reset(struct connection *c, size_t len, int (*cb)(struct netbuf *))
 {
-	kore_debug("net_recv_reset(): %p %d", c, len);
+	kore_debug("net_recv_reset(): %p %zu", c, len);
 
 	if (c->rnb->type != NETBUF_RECV)
 		fatal("net_recv_reset(): wrong netbuf type");
@@ -137,10 +137,10 @@ net_recv_reset(struct connection *c, u_int32_t len, int (*cb)(struct netbuf *))
 }
 
 void
-net_recv_queue(struct connection *c, u_int32_t len, int flags,
+net_recv_queue(struct connection *c, size_t len, int flags,
     int (*cb)(struct netbuf *))
 {
-	kore_debug("net_recv_queue(): %p %d %d", c, len, flags);
+	kore_debug("net_recv_queue(): %p %zu %d", c, len, flags);
 
 	if (c->rnb != NULL)
 		fatal("net_recv_queue(): called incorrectly for %p", c);
@@ -158,7 +158,7 @@ net_recv_queue(struct connection *c, u_int32_t len, int flags,
 }
 
 void
-net_recv_expand(struct connection *c, u_int32_t len, int (*cb)(struct netbuf *))
+net_recv_expand(struct connection *c, size_t len, int (*cb)(struct netbuf *))
 {
 	kore_debug("net_recv_expand(): %p %d", c, len);
 

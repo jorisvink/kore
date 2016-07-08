@@ -11,8 +11,9 @@ page(struct http_request *req)
 	int32_t			s32;
 	int64_t			s64;
 	u_int64_t		u64;
+	u_int32_t		u32;
+	size_t			len;
 	struct kore_buf		*buf;
-	u_int32_t		u32, len;
 	u_int8_t		c, *data;
 
 	http_populate_get(req);

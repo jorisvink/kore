@@ -118,7 +118,7 @@ int
 serve_b64test(struct http_request *req)
 {
 	int			i;
-	u_int32_t		len;
+	size_t			len;
 	struct kore_buf		*res;
 	u_int8_t		*data;
 
@@ -141,7 +141,7 @@ serve_file_upload(struct http_request *req)
 	u_int8_t		*d;
 	struct kore_buf		*b;
 	struct http_file	*f;
-	u_int32_t		len;
+	size_t			len;
 	char			*name, buf[BUFSIZ];
 
 	b = kore_buf_create(asset_len_upload_html);
@@ -185,7 +185,7 @@ void
 test_base64(u_int8_t *src, u_int32_t slen, struct kore_buf *res)
 {
 	char		*in;
-	u_int32_t	len;
+	size_t		len;
 	u_int8_t	*out;
 
 	kore_buf_appendf(res, "test '%s'\n", src);
@@ -238,7 +238,7 @@ serve_params_test(struct http_request *req)
 {
 	struct kore_buf		*b;
 	u_int8_t		*d;
-	u_int32_t		len;
+	size_t			len;
 	int			r, i;
 	char			*test, name[10];
 

@@ -40,7 +40,7 @@ static int	http_body_rewind(struct http_request *);
 static void	http_error_response(struct connection *, int);
 static void	http_argument_add(struct http_request *, const char *, char *);
 static void	http_response_normal(struct http_request *,
-		    struct connection *, int, void *, u_int32_t);
+		    struct connection *, int, const void *, size_t);
 static void	multipart_add_field(struct http_request *, struct kore_buf *,
 		    const char *, const char *, const int);
 static void	multipart_file_add(struct http_request *, struct kore_buf *,
@@ -481,9 +481,9 @@ http_request_free(struct http_request *req)
 }
 
 void
-http_response(struct http_request *req, int status, void *d, u_int32_t l)
+http_response(struct http_request *req, int status, const void *d, size_t l)
 {
-	kore_debug("http_response(%p, %d, %p, %d)", req, status, d, l);
+	kore_debug("http_response(%p, %d, %p, %zu)", req, status, d, l);
 
 	req->status = status;
 
@@ -500,7 +500,7 @@ http_response(struct http_request *req, int status, void *d, u_int32_t l)
 
 void
 http_response_stream(struct http_request *req, int status, void *base,
-    u_int64_t len, int (*cb)(struct netbuf *), void *arg)
+    size_t len, int (*cb)(struct netbuf *), void *arg)
 {
 	struct netbuf		*nb;
 
@@ -1385,7 +1385,7 @@ http_error_response(struct connection *c, int status)
 
 static void
 http_response_normal(struct http_request *req, struct connection *c,
-    int status, void *d, u_int32_t len)
+    int status, const void *d, size_t len)
 {
 	struct http_header	*hdr;
 	char			*conn;
@@ -1439,12 +1439,12 @@ http_response_normal(struct http_request *req, struct connection *c,
 		if (status != 204 && status >= 200 &&
 		    !(req->flags & HTTP_REQUEST_NO_CONTENT_LENGTH)) {
 			kore_buf_appendf(header_buf,
-			    "content-length: %d\r\n", len);
+			    "content-length: %zu\r\n", len);
 		}
 	} else {
 		if (status != 204 && status >= 200) {
 			kore_buf_appendf(header_buf,
-			    "content-length: %d\r\n", len);
+			    "content-length: %zu\r\n", len);
 		}
 	}
 

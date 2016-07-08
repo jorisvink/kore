@@ -161,7 +161,7 @@ ktunnel_pipe_data(struct netbuf *nb)
 	struct connection	*src = nb->owner;
 	struct connection	*dst = src->hdlr_extra;
 
-	printf("received %d bytes on pipe %p (-> %p)\n", nb->s_off, src, dst);
+	printf("received %zu bytes on pipe %p (-> %p)\n", nb->s_off, src, dst);
 
 	net_send_queue(dst, nb->buf, nb->s_off);
 	net_send_flush(dst);

@@ -221,9 +221,9 @@ void		http_request_sleep(struct http_request *);
 void		http_request_wakeup(struct http_request *);
 void		http_process_request(struct http_request *);
 ssize_t		http_body_read(struct http_request *, void *, size_t);
-void		http_response(struct http_request *, int, void *, u_int32_t);
+void		http_response(struct http_request *, int, const void *, size_t);
 void		http_response_stream(struct http_request *, int, void *,
-		    u_int64_t, int (*cb)(struct netbuf *), void *);
+		    size_t, int (*cb)(struct netbuf *), void *);
 int		http_request_header(struct http_request *,
 		    const char *, char **);
 void		http_response_header(struct http_request *,

@@ -106,9 +106,9 @@ struct http_request;
 
 struct netbuf {
 	u_int8_t		*buf;
-	u_int32_t		s_off;
-	u_int32_t		b_len;
-	u_int32_t		m_len;
+	size_t			s_off;
+	size_t			b_len;
+	size_t			m_len;
 	u_int8_t		type;
 	u_int8_t		flags;
 
@@ -327,8 +327,8 @@ struct kore_validator {
 
 struct kore_buf {
 	u_int8_t		*data;
-	u_int64_t		length;
-	u_int64_t		offset;
+	size_t			length;
+	size_t			offset;
 };
 
 struct kore_pool_region {
@@ -531,8 +531,8 @@ int		kore_split_string(char *, char *, char **, size_t);
 void		kore_strip_chars(char *, const char, char **);
 int		kore_snprintf(char *, size_t, int *, const char *, ...);
 long long	kore_strtonum(const char *, int, long long, long long, int *);
-int		kore_base64_encode(u_int8_t *, u_int32_t, char **);
-int		kore_base64_decode(char *, u_int8_t **, u_int32_t *);
+int		kore_base64_encode(u_int8_t *, size_t, char **);
+int		kore_base64_decode(char *, u_int8_t **, size_t *);
 void		*kore_mem_find(void *, size_t, void *, size_t);
 char		*kore_text_trim(char *, size_t);
 char		*kore_read_line(FILE *, char *, size_t);
@@ -608,21 +608,21 @@ int		net_read(struct connection *, int *);
 int		net_read_ssl(struct connection *, int *);
 int		net_write(struct connection *, int, int *);
 int		net_write_ssl(struct connection *, int, int *);
-void		net_recv_reset(struct connection *, u_int32_t,
+void		net_recv_reset(struct connection *, size_t,
 		    int (*cb)(struct netbuf *));
 void		net_remove_netbuf(struct netbuf_head *, struct netbuf *);
-void		net_recv_queue(struct connection *, u_int32_t, int,
+void		net_recv_queue(struct connection *, size_t, int,
 		    int (*cb)(struct netbuf *));
-void		net_recv_expand(struct connection *c, u_int32_t,
+void		net_recv_expand(struct connection *c, size_t,
 		    int (*cb)(struct netbuf *));
-void		net_send_queue(struct connection *, const void *, u_int32_t);
+void		net_send_queue(struct connection *, const void *, size_t);
 void		net_send_stream(struct connection *, void *,
-		    u_int32_t, int (*cb)(struct netbuf *), struct netbuf **);
+		    size_t, int (*cb)(struct netbuf *), struct netbuf **);
 
 void		kore_buf_free(struct kore_buf *);
-struct kore_buf	*kore_buf_create(u_int32_t);
-void		kore_buf_append(struct kore_buf *, const void *, u_int32_t);
-u_int8_t	*kore_buf_release(struct kore_buf *, u_int32_t *);
+struct kore_buf	*kore_buf_create(size_t);
+void		kore_buf_append(struct kore_buf *, const void *, size_t);
+u_int8_t	*kore_buf_release(struct kore_buf *, size_t *);
 void		kore_buf_reset(struct kore_buf *);
 
 char	*kore_buf_stringify(struct kore_buf *, size_t *);
