@@ -14,6 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <limits.h>
 #include <stdbool.h>
 
 #include <yajl/yajl_tree.h>
@@ -101,8 +102,7 @@ jsonrpc_log(struct jsonrpc_request *req, int lvl, const char *fmt, ...)
 }
 
 static int
-read_json_body(struct http_request *http_req, ssize_t body_max_len,
-    struct jsonrpc_request *req)
+read_json_body(struct http_request *http_req, struct jsonrpc_request *req)
 {
 	char		*body_string;
 	u_int32_t	body_start = req->buf.offset;
@@ -129,11 +129,6 @@ read_json_body(struct http_request *http_req, ssize_t body_max_len,
 		}
 		body_len += chunk_len;
 
-		if (body_len > body_max_len) {
-			jsonrpc_log(req, LOG_ERR,
-			    "Request overreached configured body size limit");
-			return (JSONRPC_LIMIT_REACHED);
-		}
 		kore_buf_append(&req->buf, chunk_buffer, chunk_len);
 	}
 
@@ -223,15 +218,14 @@ parse_json_body(struct jsonrpc_request *req)
 }
 
 int
-jsonrpc_request_read(struct http_request *http_req, ssize_t max_body_len,
-    struct jsonrpc_request *req)
+jsonrpc_request_read(struct http_request *http_req, struct jsonrpc_request *req)
 {
 	int	ret;
 
 	init_request(req);
 	req->http = http_req;
 
-	if ((ret = read_json_body(http_req, max_body_len, req)) != 0)
+	if ((ret = read_json_body(http_req, req)) != 0)
 		return (ret);
 
 	return parse_json_body(req);

@@ -74,8 +74,7 @@ enum jsonrpc_error_code
 };
 
 void	jsonrpc_log(struct jsonrpc_request *, int, const char *, ...);
-int	jsonrpc_request_read(struct http_request *, ssize_t,
-	    struct jsonrpc_request *);
+int	jsonrpc_request_read(struct http_request *, struct jsonrpc_request *);
 int	jsonrpc_error(struct jsonrpc_request *, int, const char *);
 int	jsonrpc_result(struct jsonrpc_request *,
 	    int (*)(struct jsonrpc_request *, void *), void *);

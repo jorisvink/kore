@@ -52,7 +52,7 @@ v1(struct http_request *http_req)
 	}
 	
 	/* Read JSON-RPC request. */
-	if ((ret = jsonrpc_request_read(http_req, 1000 * 64, &req)) != 0)
+	if ((ret = jsonrpc_request_read(http_req, &req)) != 0)
 		return jsonrpc_error(&req, ret, NULL);
 	
 	/* Echo command takes and gives back params. */
