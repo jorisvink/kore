@@ -70,8 +70,8 @@ init_request(struct jsonrpc_request *req)
         req->flags = 0;
 }
 
-static void
-free_request(struct jsonrpc_request *req)
+void
+jsonrpc_destroy_request(struct jsonrpc_request *req)
 {
 	if (req->gen != NULL) {
 		yajl_gen_free(req->gen);
@@ -218,7 +218,7 @@ parse_json_body(struct jsonrpc_request *req)
 }
 
 int
-jsonrpc_request_read(struct http_request *http_req, struct jsonrpc_request *req)
+jsonrpc_read_request(struct http_request *http_req, struct jsonrpc_request *req)
 {
 	int	ret;
 
@@ -431,11 +431,9 @@ succeeded:
 	http_response(req->http, 200, body, body_len);
 	if (req->gen != NULL)
 		yajl_gen_clear(req->gen);
-	free_request(req);
 	return (KORE_RESULT_OK);
 failed:
 	http_response(req->http, 500, NULL, 0);
-	free_request(req);
 	return (KORE_RESULT_OK);
 }
 
@@ -478,10 +476,8 @@ succeeded:
 	http_response(req->http, 200, body, body_len);
 	if (req->gen != NULL)
 		yajl_gen_clear(req->gen);
-	free_request(req);
 	return (KORE_RESULT_OK);
 failed:
 	http_response(req->http, 500, NULL, 0);
-	free_request(req);
 	return (KORE_RESULT_OK);
 }

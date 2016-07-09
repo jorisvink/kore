@@ -37,6 +37,14 @@ write_string_array_params(struct jsonrpc_request *req, void *ctx)
 	return status;
 }
 
+static int
+error(struct jsonrpc_request *req, int code, const char *name)
+{
+	jsonrpc_error(req, code, name);
+	jsonrpc_destroy_request(req);
+	return (KORE_RESULT_OK);
+}
+
 int
 v1(struct http_request *http_req)
 {
@@ -52,26 +60,27 @@ v1(struct http_request *http_req)
 	}
 	
 	/* Read JSON-RPC request. */
-	if ((ret = jsonrpc_request_read(http_req, &req)) != 0)
-		return jsonrpc_error(&req, ret, NULL);
+	if ((ret = jsonrpc_read_request(http_req, &req)) != 0)
+		return error(&req, ret, NULL);
 	
 	/* Echo command takes and gives back params. */
 	if (strcmp(req.method, "echo") == 0) {
 		if (!YAJL_IS_ARRAY(req.params)) {
-			jsonrpc_log(&req, -2, "Echo only accepts array params");
-			return jsonrpc_error(&req,
-			    JSONRPC_INVALID_PARAMS, NULL);
+			jsonrpc_log(&req, LOG_ERR,
+			    "Echo only accepts array params");
+			return error(&req, JSONRPC_INVALID_PARAMS, NULL);
 		}
 		for (size_t i = 0; i < req.params->u.array.len; i++) {
 			yajl_val v = req.params->u.array.values[i];
 			if (!YAJL_IS_STRING(v)) {
 				jsonrpc_log(&req, -3,
 				    "Echo only accepts strings");
-				return jsonrpc_error(&req,
-				    JSONRPC_INVALID_PARAMS, NULL);
+				return error(&req, JSONRPC_INVALID_PARAMS, NULL);
 			}
 		}
-		return jsonrpc_result(&req, write_string_array_params, NULL);
+		jsonrpc_result(&req, write_string_array_params, NULL);
+		jsonrpc_destroy_request(&req);
+		return (KORE_RESULT_OK);
 	}
 	
 	/* Date command displays date and time according to parameters. */
@@ -82,22 +91,22 @@ v1(struct http_request *http_req)
 		char		*args[2] = {NULL, NULL};
 		
 		if ((time_value = time(NULL)) == -1)
-			return jsonrpc_error(&req, -2,
-			    "Failed to get date time");
+			return error(&req, -2, "Failed to get date time");
 		
 		//gmtime_r(time_value, &time_info);
 		if (localtime_r(&time_value, &time_info) == NULL)
-			return jsonrpc_error(&req, -3,
-			    "Failed to get date time info");
+			return error(&req, -3, "Failed to get date time info");
 		
 		memset(timestamp, 0, sizeof(timestamp));
 		if (strftime_l(timestamp, sizeof(timestamp) - 1, "%c",
 		    &time_info, LC_GLOBAL_LOCALE) == 0)
-			return jsonrpc_error(&req, -4,
+			return error(&req, -4,
 			    "Failed to get printable date time");
 		
-		return jsonrpc_result(&req, write_string, timestamp);
+		jsonrpc_result(&req, write_string, timestamp);
+		jsonrpc_destroy_request(&req);
+		return (KORE_RESULT_OK);
 	}
 	
-	return jsonrpc_error(&req, JSONRPC_METHOD_NOT_FOUND, NULL);
+	return error(&req, JSONRPC_METHOD_NOT_FOUND, NULL);
 }
