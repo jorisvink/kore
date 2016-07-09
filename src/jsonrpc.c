@@ -88,9 +88,9 @@ jsonrpc_destroy_request(struct jsonrpc_request *req)
 void
 jsonrpc_log(struct jsonrpc_request *req, int lvl, const char *fmt, ...)
 {
-	va_list		ap;
-	char		*msg;
-	u_int32_t	start = req->buf.offset;
+	va_list	ap;
+	char	*msg;
+	size_t	start = req->buf.offset;
 
 	va_start(ap, fmt);
 	kore_buf_appendv(&req->buf, fmt, ap);
@@ -105,7 +105,6 @@ static int
 read_json_body(struct http_request *http_req, struct jsonrpc_request *req)
 {
 	char		*body_string;
-	u_int32_t	body_start = req->buf.offset;
 	ssize_t		body_len = 0, chunk_len;
 	u_int8_t	chunk_buffer[BUFSIZ];
 	char		error_buffer[1024];
@@ -133,7 +132,7 @@ read_json_body(struct http_request *http_req, struct jsonrpc_request *req)
 	}
 
 	/* Grab our body data as a NUL-terminated string. */
-	body_string = kore_buf_stringify(&req->buf, NULL) + body_start;
+	body_string = kore_buf_stringify(&req->buf, NULL);
 
 	/* Parse the body via yajl now. */
 	*error_buffer = 0;
@@ -409,7 +408,7 @@ jsonrpc_error(struct jsonrpc_request *req, int code, const char *msg)
 		msg = known_msg(code);
 
 	if (msg == NULL) {
-		u_int32_t	start = req->buf.offset;
+		size_t	start = req->buf.offset;
 		kore_buf_appendf(&req->buf, "%d", code);
 		msg_fallback = kore_buf_stringify(&req->buf, NULL) + start;
 	}
@@ -423,10 +422,6 @@ jsonrpc_error(struct jsonrpc_request *req, int code, const char *msg)
 
 	http_response_header(req->http, "content-type", "application/json");
 	yajl_gen_get_buf(req->gen, &body, &body_len);
-	if (body_len > UINT32_MAX) {
-		kore_log(LOG_ERR, "jsonrpc_error: Body length overflow");
-		goto failed;
-	}
 succeeded:
 	http_response(req->http, 200, body, body_len);
 	if (req->gen != NULL)
@@ -468,10 +463,6 @@ jsonrpc_result(struct jsonrpc_request *req,
 	
 	http_response_header(req->http, "content-type", "application/json");
 	yajl_gen_get_buf(req->gen, &body, &body_len);
-	if (body_len > UINT32_MAX) {
-		kore_log(LOG_ERR, "jsonrpc_result: Body length overflow");
-		goto failed;
-	}
 succeeded:
 	http_response(req->http, 200, body, body_len);
 	if (req->gen != NULL)
