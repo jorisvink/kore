@@ -107,7 +107,7 @@ kore_keymgr_cleanup(void)
 		TAILQ_REMOVE(&keys, key, list);
 
 		EVP_PKEY_free(key->pkey);
-		kore_mem_free(key);
+		kore_free(key);
 	}
 }
 
@@ -130,7 +130,7 @@ keymgr_load_privatekey(struct kore_domain *dom)
 		fatal("PEM_read_PrivateKey: %s", ssl_errno_s);
 
 	(void)fclose(fp);
-	kore_mem_free(dom->certkey);
+	kore_free(dom->certkey);
 	dom->certkey = NULL;
 
 	TAILQ_INSERT_TAIL(&keys, key, list);

@@ -56,7 +56,7 @@ void
 kore_timer_remove(struct kore_timer *timer)
 {
 	TAILQ_REMOVE(&kore_timers, timer, list);
-	kore_mem_free(timer);
+	kore_free(timer);
 }
 
 u_int64_t
@@ -77,7 +77,7 @@ kore_timer_run(u_int64_t now)
 		timer->cb(timer->arg, now);
 
 		if (timer->flags & KORE_TIMER_ONESHOT) {
-			kore_mem_free(timer);
+			kore_free(timer);
 		} else {
 			timer->nextrun = now + timer->interval;
 			TAILQ_FOREACH(t, &kore_timers, list) {

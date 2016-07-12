@@ -186,8 +186,8 @@ video_open(struct http_request *req, struct video **out)
 
 			close(v->fd);
 			TAILQ_REMOVE(&videos, v, list);
-			kore_mem_free(v->path);
-			kore_mem_free(v);
+			kore_free(v->path);
+			kore_free(v);
 
 			http_response(req, 500, NULL, 0);
 			return (KORE_RESULT_ERROR);
@@ -201,8 +201,8 @@ video_open(struct http_request *req, struct video **out)
 	v->path = kore_strdup(fpath);
 
 	if ((v->fd = open(fpath, O_RDONLY)) == -1) {
-		kore_mem_free(v->path);
-		kore_mem_free(v);
+		kore_free(v->path);
+		kore_free(v);
 
 		if (errno == ENOENT)
 			http_response(req, 404, NULL, 0);
@@ -214,8 +214,8 @@ video_open(struct http_request *req, struct video **out)
 
 	if (fstat(v->fd, &st) == -1) {
 		close(v->fd);
-		kore_mem_free(v->path);
-		kore_mem_free(v);
+		kore_free(v->path);
+		kore_free(v);
 
 		http_response(req, 500, NULL, 0);
 		return (KORE_RESULT_ERROR);
@@ -224,8 +224,8 @@ video_open(struct http_request *req, struct video **out)
 	v->size = st.st_size;
 	if (!video_mmap(req, v)) {
 		close(v->fd);
-		kore_mem_free(v->path);
-		kore_mem_free(v);
+		kore_free(v->path);
+		kore_free(v);
 
 		http_response(req, 500, NULL, 0);
 		return (KORE_RESULT_ERROR);

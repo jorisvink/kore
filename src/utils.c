@@ -341,7 +341,7 @@ kore_date_to_time(char *http_date)
 	}
 
 out:
-	kore_mem_free(sdup);
+	kore_free(sdup);
 	return (t);
 }
 
@@ -430,7 +430,7 @@ kore_base64_encode(u_int8_t *data, size_t len, char **out)
 		kore_buf_append(res, (u_int8_t *)"=", 1);
 
 	if (pdata != data)
-		kore_mem_free(pdata);
+		kore_free(pdata);
 
 	pdata = kore_buf_release(res, &plen);
 	if ((plen + 1) < plen)
@@ -438,7 +438,7 @@ kore_base64_encode(u_int8_t *data, size_t len, char **out)
 
 	*out = kore_malloc(plen + 1);
 	(void)kore_strlcpy(*out, (char *)pdata, plen + 1);
-	kore_mem_free(pdata);
+	kore_free(pdata);
 
 	return (KORE_RESULT_OK);
 }

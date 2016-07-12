@@ -35,7 +35,7 @@ kore_validator_add(const char *name, u_int8_t type, const char *arg)
 	switch (val->type) {
 	case KORE_VALIDATOR_TYPE_REGEX:
 		if (regcomp(&(val->rctx), arg, REG_EXTENDED | REG_NOSUB)) {
-			kore_mem_free(val);
+			kore_free(val);
 			kore_log(LOG_NOTICE,
 			    "validator %s has bad regex %s", name, arg);
 			return (KORE_RESULT_ERROR);
@@ -44,7 +44,7 @@ kore_validator_add(const char *name, u_int8_t type, const char *arg)
 	case KORE_VALIDATOR_TYPE_FUNCTION:
 		*(void **)(&val->func) = kore_module_getsym(arg);
 		if (val->func == NULL) {
-			kore_mem_free(val);
+			kore_free(val);
 			kore_log(LOG_NOTICE,
 			    "validator %s has undefined callback %s",
 			    name, arg);
@@ -52,7 +52,7 @@ kore_validator_add(const char *name, u_int8_t type, const char *arg)
 		}
 		break;
 	default:
-		kore_mem_free(val);
+		kore_free(val);
 		return (KORE_RESULT_ERROR);
 	}
 

@@ -127,18 +127,18 @@ kore_auth_cookie(struct http_request *req, struct kore_auth *auth)
 	}
 
 	if (i == v) {
-		kore_mem_free(cookie);
+		kore_free(cookie);
 		return (KORE_RESULT_ERROR);
 	}
 
 	c = cookies[i];
 	if ((value = strchr(c, '=')) == NULL) {
-		kore_mem_free(cookie);
+		kore_free(cookie);
 		return (KORE_RESULT_ERROR);
 	}
 
 	i = kore_validator_check(req, auth->validator, ++value);
-	kore_mem_free(cookie);
+	kore_free(cookie);
 
 	return (i);
 }

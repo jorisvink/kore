@@ -425,8 +425,8 @@ http_request_free(struct http_request *req)
 		next = TAILQ_NEXT(hdr, list);
 
 		TAILQ_REMOVE(&(req->resp_headers), hdr, list);
-		kore_mem_free(hdr->header);
-		kore_mem_free(hdr->value);
+		kore_free(hdr->header);
+		kore_free(hdr->value);
 		kore_pool_put(&http_header_pool, hdr);
 	}
 
@@ -434,8 +434,8 @@ http_request_free(struct http_request *req)
 		next = TAILQ_NEXT(hdr, list);
 
 		TAILQ_REMOVE(&(req->req_headers), hdr, list);
-		kore_mem_free(hdr->header);
-		kore_mem_free(hdr->value);
+		kore_free(hdr->header);
+		kore_free(hdr->value);
 		kore_pool_put(&http_header_pool, hdr);
 	}
 
@@ -443,19 +443,19 @@ http_request_free(struct http_request *req)
 		qnext = TAILQ_NEXT(q, list);
 
 		TAILQ_REMOVE(&(req->arguments), q, list);
-		kore_mem_free(q->name);
+		kore_free(q->name);
 		if (q->s_value != NULL)
-			kore_mem_free(q->s_value);
-		kore_mem_free(q);
+			kore_free(q->s_value);
+		kore_free(q);
 	}
 
 	for (f = TAILQ_FIRST(&(req->files)); f != NULL; f = fnext) {
 		fnext = TAILQ_NEXT(f, list);
 		TAILQ_REMOVE(&(req->files), f, list);
 
-		kore_mem_free(f->filename);
-		kore_mem_free(f->name);
-		kore_mem_free(f);
+		kore_free(f->filename);
+		kore_free(f->name);
+		kore_free(f);
 	}
 
 	if (req->http_body != NULL)
@@ -474,7 +474,7 @@ http_request_free(struct http_request *req)
 
 	if (req->hdlr_extra != NULL &&
 	    !(req->flags & HTTP_REQUEST_RETAIN_EXTRA))
-		kore_mem_free(req->hdlr_extra);
+		kore_free(req->hdlr_extra);
 
 	kore_pool_put(&http_request_pool, req);
 	http_request_count--;
@@ -958,7 +958,7 @@ http_populate_get(struct http_request *req)
 			http_argument_add(req, val[0], val[1]);
 	}
 
-	kore_mem_free(query);
+	kore_free(query);
 }
 
 void
@@ -1202,7 +1202,7 @@ multipart_parse_headers(struct http_request *req, struct kore_buf *in,
 
 		if (opt[2] == NULL) {
 			multipart_add_field(req, in, name, boundary, blen);
-			kore_mem_free(name);
+			kore_free(name);
 			continue;
 		}
 
@@ -1211,7 +1211,7 @@ multipart_parse_headers(struct http_request *req, struct kore_buf *in,
 
 		if (!strncasecmp(d, "filename=", 9)) {
 			if ((val = strchr(d, '=')) == NULL) {
-				kore_mem_free(name);
+				kore_free(name);
 				continue;
 			}
 
@@ -1221,12 +1221,12 @@ multipart_parse_headers(struct http_request *req, struct kore_buf *in,
 				multipart_file_add(req,
 				    in, name, fname, boundary, blen);
 			}
-			kore_mem_free(fname);
+			kore_free(fname);
 		} else {
 			kore_debug("got unknown: %s", opt[2]);
 		}
 
-		kore_mem_free(name);
+		kore_free(name);
 	}
 
 	return (KORE_RESULT_OK);

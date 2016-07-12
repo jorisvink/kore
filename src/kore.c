@@ -295,7 +295,7 @@ kore_server_bind(const char *ip, const char *port, const char *ccb)
 		fatal("getaddrinfo(): unknown address family %d", l->addrtype);
 
 	if ((l->fd = socket(results->ai_family, SOCK_STREAM, 0)) == -1) {
-		kore_mem_free(l);
+		kore_free(l);
 		freeaddrinfo(results);
 		kore_debug("socket(): %s", errno_s);
 		printf("failed to create socket: %s\n", errno_s);
@@ -303,7 +303,7 @@ kore_server_bind(const char *ip, const char *port, const char *ccb)
 	}
 
 	if (!kore_connection_nonblock(l->fd, 1)) {
-		kore_mem_free(l);
+		kore_free(l);
 		freeaddrinfo(results);
 		printf("failed to make socket non blocking: %s\n", errno_s);
 		return (KORE_RESULT_ERROR);
@@ -313,7 +313,7 @@ kore_server_bind(const char *ip, const char *port, const char *ccb)
 	if (setsockopt(l->fd, SOL_SOCKET,
 	    SO_REUSEADDR, (const char *)&on, sizeof(on)) == -1) {
 		close(l->fd);
-		kore_mem_free(l);
+		kore_free(l);
 		freeaddrinfo(results);
 		kore_debug("setsockopt(): %s", errno_s);
 		printf("failed to set SO_REUSEADDR: %s\n", errno_s);
@@ -322,7 +322,7 @@ kore_server_bind(const char *ip, const char *port, const char *ccb)
 
 	if (bind(l->fd, results->ai_addr, results->ai_addrlen) == -1) {
 		close(l->fd);
-		kore_mem_free(l);
+		kore_free(l);
 		freeaddrinfo(results);
 		kore_debug("bind(): %s", errno_s);
 		printf("failed to bind to %s port %s: %s\n", ip, port, errno_s);
@@ -333,7 +333,7 @@ kore_server_bind(const char *ip, const char *port, const char *ccb)
 
 	if (listen(l->fd, kore_socket_backlog) == -1) {
 		close(l->fd);
-		kore_mem_free(l);
+		kore_free(l);
 		kore_debug("listen(): %s", errno_s);
 		printf("failed to listen on socket: %s\n", errno_s);
 		return (KORE_RESULT_ERROR);
@@ -344,7 +344,7 @@ kore_server_bind(const char *ip, const char *port, const char *ccb)
 		if (l->connect == NULL) {
 			printf("no such callback: '%s'\n", ccb);
 			close(l->fd);
-			kore_mem_free(l);
+			kore_free(l);
 			return (KORE_RESULT_ERROR);
 		}
 	} else {
@@ -374,7 +374,7 @@ kore_listener_cleanup(void)
 		l = LIST_FIRST(&listeners);
 		LIST_REMOVE(l, list);
 		close(l->fd);
-		kore_mem_free(l);
+		kore_free(l);
 	}
 }
 

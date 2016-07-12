@@ -181,7 +181,7 @@ ktunnel_pipe_disconnect(struct connection *c)
 	printf("ktunnel_pipe_disconnect(%p)->%p\n", c, cpipe);
 
 	if (cpipe != NULL) {
-		/* Prevent Kore from calling kore_mem_free() on hdlr_extra. */
+		/* Prevent Kore from calling kore_free() on hdlr_extra. */
 		c->hdlr_extra = NULL;
 		kore_connection_disconnect(cpipe);
 	}

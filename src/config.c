@@ -621,7 +621,7 @@ static int
 configure_http_body_disk_path(char *path)
 {
 	if (strcmp(http_body_disk_path, HTTP_BODY_DISK_PATH))
-		kore_mem_free(http_body_disk_path);
+		kore_free(http_body_disk_path);
 
 	http_body_disk_path = kore_strdup(path);
 	return (KORE_RESULT_OK);
@@ -848,7 +848,7 @@ configure_authentication_value(char *option)
 	}
 
 	if (current_auth->value != NULL)
-		kore_mem_free(current_auth->value);
+		kore_free(current_auth->value);
 	current_auth->value = kore_strdup(option);
 
 	return (KORE_RESULT_OK);
@@ -883,7 +883,7 @@ configure_authentication_uri(char *uri)
 	}
 
 	if (current_auth->redirect != NULL)
-		kore_mem_free(current_auth->redirect);
+		kore_free(current_auth->redirect);
 	current_auth->redirect = kore_strdup(uri);
 
 	return (KORE_RESULT_OK);
@@ -925,7 +925,7 @@ static int
 configure_chroot(char *path)
 {
 	if (chroot_path != NULL)
-		kore_mem_free(chroot_path);
+		kore_free(chroot_path);
 	chroot_path = kore_strdup(path);
 
 	return (KORE_RESULT_OK);
@@ -935,7 +935,7 @@ static int
 configure_runas(char *user)
 {
 	if (runas_user != NULL)
-		kore_mem_free(runas_user);
+		kore_free(runas_user);
 	runas_user = kore_strdup(user);
 
 	return (KORE_RESULT_OK);
@@ -959,7 +959,7 @@ static int
 configure_pidfile(char *path)
 {
 	if (strcmp(kore_pidfile, KORE_PIDFILE_DEFAULT))
-		kore_mem_free(kore_pidfile);
+		kore_free(kore_pidfile);
 	kore_pidfile = kore_strdup(path);
 
 	return (KORE_RESULT_OK);

@@ -328,7 +328,7 @@ kore_connection_remove(struct connection *c)
 	close(c->fd);
 
 	if (c->hdlr_extra != NULL)
-		kore_mem_free(c->hdlr_extra);
+		kore_free(c->hdlr_extra);
 
 #if !defined(KORE_NO_HTTP)
 	for (req = TAILQ_FIRST(&(c->http_requests)); req != NULL; req = rnext) {
@@ -343,7 +343,7 @@ kore_connection_remove(struct connection *c)
 		next = TAILQ_NEXT(nb, list);
 		TAILQ_REMOVE(&(c->send_queue), nb, list);
 		if (!(nb->flags & NETBUF_IS_STREAM)) {
-			kore_mem_free(nb->buf);
+			kore_free(nb->buf);
 		} else if (nb->cb != NULL) {
 			(void)nb->cb(nb);
 		}
@@ -351,7 +351,7 @@ kore_connection_remove(struct connection *c)
 	}
 
 	if (c->rnb != NULL) {
-		kore_mem_free(c->rnb->buf);
+		kore_free(c->rnb->buf);
 		kore_pool_put(&nb_pool, c->rnb);
 	}
 

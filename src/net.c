@@ -131,7 +131,7 @@ net_recv_reset(struct connection *c, size_t len, int (*cb)(struct netbuf *))
 	    c->rnb->m_len < (NETBUF_SEND_PAYLOAD_MAX / 2))
 		return;
 
-	kore_mem_free(c->rnb->buf);
+	kore_free(c->rnb->buf);
 	c->rnb->m_len = len;
 	c->rnb->buf = kore_malloc(c->rnb->m_len);
 }
@@ -266,7 +266,7 @@ net_remove_netbuf(struct netbuf_head *list, struct netbuf *nb)
 	}
 
 	if (!(nb->flags & NETBUF_IS_STREAM)) {
-		kore_mem_free(nb->buf);
+		kore_free(nb->buf);
 	} else if (nb->cb != NULL) {
 		(void)nb->cb(nb);
 	}

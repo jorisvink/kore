@@ -37,9 +37,9 @@ kore_module_cleanup(void)
 		next = TAILQ_NEXT(module, list);
 		TAILQ_REMOVE(&modules, module, list);
 
-		kore_mem_free(module->path);
+		kore_free(module->path);
 		(void)dlclose(module->handle);
-		kore_mem_free(module);
+		kore_free(module);
 	}
 }
 
@@ -232,9 +232,9 @@ kore_module_handler_free(struct kore_module_handle *hdlr)
 		return;
 
 	if (hdlr->func != NULL)
-		kore_mem_free(hdlr->func);
+		kore_free(hdlr->func);
 	if (hdlr->path != NULL)
-		kore_mem_free(hdlr->path);
+		kore_free(hdlr->path);
 	if (hdlr->type == HANDLER_TYPE_DYNAMIC)
 		regfree(&(hdlr->rctx));
 
@@ -242,11 +242,11 @@ kore_module_handler_free(struct kore_module_handle *hdlr)
 	while ((param = TAILQ_FIRST(&(hdlr->params))) != NULL) {
 		TAILQ_REMOVE(&(hdlr->params), param, list);
 		if (param->name != NULL)
-			kore_mem_free(param->name);
-		kore_mem_free(param);
+			kore_free(param->name);
+		kore_free(param);
 	}
 
-	kore_mem_free(hdlr);
+	kore_free(hdlr);
 }
 
 struct kore_module_handle *

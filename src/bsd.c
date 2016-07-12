@@ -103,7 +103,7 @@ kore_platform_event_cleanup(void)
 	}
 
 	if (events != NULL) {
-		kore_mem_free(events);
+		kore_free(events);
 		events = NULL;
 	}
 }

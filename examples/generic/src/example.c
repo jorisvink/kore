@@ -130,7 +130,7 @@ serve_b64test(struct http_request *req)
 
 	http_response_header(req, "content-type", "text/plain");
 	http_response(req, 200, data, len);
-	kore_mem_free(data);
+	kore_free(data);
 
 	return (KORE_RESULT_OK);
 }
@@ -176,7 +176,7 @@ serve_file_upload(struct http_request *req)
 
 	http_response_header(req, "content-type", "text/html");
 	http_response(req, 200, d, len);
-	kore_mem_free(d);
+	kore_free(d);
 
 	return (KORE_RESULT_OK);
 }
@@ -201,10 +201,10 @@ test_base64(u_int8_t *src, u_int32_t slen, struct kore_buf *res)
 			kore_buf_appendf(res, "decoded: ");
 			kore_buf_append(res, out, len);
 			kore_buf_appendf(res, "\n");
-			kore_mem_free(out);
+			kore_free(out);
 		}
 
-		kore_mem_free(in);
+		kore_free(in);
 	}
 
 	kore_buf_appendf(res, "\n");
@@ -278,7 +278,7 @@ serve_params_test(struct http_request *req)
 		http_response_header(req, "content-type", "text/html");
 		d = kore_buf_release(b, &len);
 		http_response(req, 200, d, len);
-		kore_mem_free(d);
+		kore_free(d);
 
 		return (KORE_RESULT_OK);
 	}
@@ -297,7 +297,7 @@ serve_params_test(struct http_request *req)
 	http_response_header(req, "content-type", "text/html");
 	d = kore_buf_release(b, &len);
 	http_response(req, 200, d, len);
-	kore_mem_free(d);
+	kore_free(d);
 
 	return (KORE_RESULT_OK);
 }

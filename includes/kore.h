@@ -332,7 +332,8 @@ struct kore_buf {
 };
 
 struct kore_pool_region {
-	void			*start;
+	void				*start;
+	size_t				length;
 	LIST_ENTRY(kore_pool_region)	list;
 };
 
@@ -511,7 +512,7 @@ void		*kore_malloc(size_t);
 void		kore_parse_config(void);
 void		*kore_calloc(size_t, size_t);
 void		*kore_realloc(void *, size_t);
-void		kore_mem_free(void *);
+void		kore_free(void *);
 void		kore_mem_init(void);
 
 void		*kore_pool_get(struct kore_pool *);

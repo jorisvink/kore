@@ -91,7 +91,7 @@ kore_websocket_handshake(struct http_request *req, struct kore_wscbs *wscbs)
 	http_response_header(req, "upgrade", "websocket");
 	http_response_header(req, "connection", "upgrade");
 	http_response_header(req, "sec-websocket-accept", base64);
-	kore_mem_free(base64);
+	kore_free(base64);
 
 	kore_debug("%p: new websocket connection", req->owner);
 

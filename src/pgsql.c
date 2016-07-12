@@ -205,9 +205,9 @@ kore_pgsql_v_query_params(struct kore_pgsql *pgsql,
 	ret = KORE_RESULT_OK;
 
 cleanup:
-	kore_mem_free(values);
-	kore_mem_free(lengths);
-	kore_mem_free(formats);
+	kore_free(values);
+	kore_free(lengths);
+	kore_free(formats);
 
 	return (ret);
 }
@@ -285,7 +285,7 @@ kore_pgsql_continue(struct http_request *req, struct kore_pgsql *pgsql)
 	    req->owner, req, pgsql->state);
 
 	if (pgsql->error) {
-		kore_mem_free(pgsql->error);
+		kore_free(pgsql->error);
 		pgsql->error = NULL;
 	}
 
@@ -320,7 +320,7 @@ kore_pgsql_cleanup(struct kore_pgsql *pgsql)
 		PQclear(pgsql->result);
 
 	if (pgsql->error != NULL)
-		kore_mem_free(pgsql->error);
+		kore_free(pgsql->error);
 
 	if (pgsql->conn != NULL)
 		pgsql_conn_release(pgsql);
@@ -417,7 +417,7 @@ static void
 pgsql_set_error(struct kore_pgsql *pgsql, const char *msg)
 {
 	if (pgsql->error != NULL)
-		kore_mem_free(pgsql->error);
+		kore_free(pgsql->error);
 
 	pgsql->error = kore_strdup(msg);
 	pgsql->state = KORE_PGSQL_STATE_ERROR;
@@ -555,8 +555,8 @@ pgsql_conn_cleanup(struct pgsql_conn *conn)
 		PQfinish(conn->db);
 
 	pgsql_conn_count--;
-	kore_mem_free(conn->name);
-	kore_mem_free(conn);
+	kore_free(conn->name);
+	kore_free(conn);
 }
 
 static void

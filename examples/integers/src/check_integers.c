@@ -42,7 +42,7 @@ page(struct http_request *req)
 
 	data = kore_buf_release(buf, &len);
 	http_response(req, 200, data, len);
-	kore_mem_free(data);
+	kore_free(data);
 
 	return (KORE_RESULT_OK);
 }

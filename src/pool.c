@@ -14,7 +14,10 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <sys/mman.h>
 #include <sys/queue.h>
+
+#include <stdint.h>
 
 #include "kore.h"
 
@@ -30,10 +33,12 @@ kore_pool_init(struct kore_pool *pool, const char *name,
 {
 	kore_debug("kore_pool_init(%p, %s, %d, %d)", pool, name, len, elm);
 
+	if ((pool->name = strdup(name)) == NULL)
+		fatal("kore_pool_init: strdup %s", errno_s);
+
 	pool->elms = 0;
 	pool->inuse = 0;
 	pool->elen = len;
-	pool->name = kore_strdup(name);
 	pool->slen = pool->elen + sizeof(struct kore_pool_entry);
 
 	LIST_INIT(&(pool->regions));
@@ -51,7 +56,7 @@ kore_pool_cleanup(struct kore_pool *pool)
 	pool->slen = 0;
 
 	if (pool->name != NULL) {
-		kore_mem_free(pool->name);
+		free(pool->name);
 		pool->name = NULL;
 	}
 
@@ -111,10 +116,20 @@ pool_region_create(struct kore_pool *pool, u_int32_t elms)
 
 	kore_debug("pool_region_create(%p, %d)", pool, elms);
 
-	reg = kore_malloc(sizeof(struct kore_pool_region));
+	if ((reg = calloc(1, sizeof(struct kore_pool_region))) == NULL)
+		fatal("pool_region_create: calloc: %s", errno_s);
+
 	LIST_INSERT_HEAD(&(pool->regions), reg, list);
 
-	reg->start = kore_malloc(elms * pool->slen);
+	if (SIZE_MAX / elms < pool->slen)
+		fatal("pool_region_create: overflow");
+
+	reg->length = elms * pool->slen;
+	reg->start = mmap(NULL, reg->length, PROT_READ | PROT_WRITE,
+	    MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+	if (reg->start == NULL)
+		fatal("mmap: %s", errno_s);
+
 	p = (u_int8_t *)reg->start;
 
 	for (i = 0; i < elms; i++) {
@@ -140,8 +155,8 @@ pool_region_destroy(struct kore_pool *pool)
 	while (!LIST_EMPTY(&pool->regions)) {
 		reg = LIST_FIRST(&pool->regions);
 		LIST_REMOVE(reg, list);
-		kore_mem_free(reg->start);
-		kore_mem_free(reg);
+		(void)munmap(reg->start, reg->length);
+		free(reg);
 	}
 
 	/* Freelist references into the regions memory allocations */

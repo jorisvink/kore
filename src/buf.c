@@ -57,7 +57,7 @@ kore_buf_appendb(struct kore_buf *buf, struct kore_buf *src)
 
 	d = kore_buf_release(src, &len);
 	kore_buf_append(buf, d, len);
-	kore_mem_free(d);
+	kore_free(d);
 }
 
 void
@@ -114,7 +114,7 @@ kore_buf_release(struct kore_buf *buf, size_t *len)
 
 	p = buf->data;
 	*len = buf->offset;
-	kore_mem_free(buf);
+	kore_free(buf);
 
 	return (p);
 }
@@ -122,8 +122,8 @@ kore_buf_release(struct kore_buf *buf, size_t *len)
 void
 kore_buf_free(struct kore_buf *buf)
 {
-	kore_mem_free(buf->data);
-	kore_mem_free(buf);
+	kore_free(buf->data);
+	kore_free(buf);
 }
 
 void
@@ -153,7 +153,7 @@ kore_buf_replace_string(struct kore_buf *b, char *src, void *dst, size_t len)
 			memcpy((tmp + off), dst, len);
 		memcpy((tmp + off + len), end, off2);
 
-		kore_mem_free(b->data);
+		kore_free(b->data);
 		b->data = (u_int8_t *)tmp;
 		b->offset = off + len + off2;
 		b->length = nlen;

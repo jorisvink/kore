@@ -159,7 +159,7 @@ sse_disconnect(struct connection *c)
 
 	/* Kill our timer and free/remove the state. */
 	kore_timer_remove(state->timer);
-	kore_mem_free(state);
+	kore_free(state);
 
 	/* Prevent us to be called again. */
 	c->hdlr_extra = NULL;

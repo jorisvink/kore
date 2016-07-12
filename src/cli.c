@@ -806,7 +806,7 @@ cli_build_asset(char *fpath, struct dirent *dp)
 		*ext = '_';
 
 		cli_add_source_file(name, cpath, opath, &st, BUILD_NOBUILD);
-		kore_mem_free(name);
+		kore_free(name);
 		return;
 	}
 
@@ -865,7 +865,7 @@ cli_build_asset(char *fpath, struct dirent *dp)
 
 	/* Register the .c file now (cpath is free'd later). */
 	cli_add_source_file(name, cpath, opath, &st, BUILD_C);
-	kore_mem_free(name);
+	kore_free(name);
 }
 
 static void
@@ -1367,10 +1367,10 @@ cli_buildopt_cleanup(void)
 		if (bopt->ldflags != NULL)
 			kore_buf_free(bopt->ldflags);
 		if (bopt->kore_source != NULL)
-			kore_mem_free(bopt->kore_source);
+			kore_free(bopt->kore_source);
 		if (bopt->kore_flavor != NULL)
-			kore_mem_free(bopt->kore_flavor);
-		kore_mem_free(bopt);
+			kore_free(bopt->kore_flavor);
+		kore_free(bopt);
 	}
 }
 
@@ -1433,7 +1433,7 @@ cli_buildopt_kore_source(struct buildopt *bopt, const char *string)
 		cli_fatal("kore_source only supported in global context");
 
 	if (bopt->kore_source != NULL)
-		kore_mem_free(bopt->kore_source);
+		kore_free(bopt->kore_source);
 
 	bopt->kore_source = kore_strdup(string);
 }
@@ -1447,7 +1447,7 @@ cli_buildopt_kore_flavor(struct buildopt *bopt, const char *string)
 		cli_fatal("kore_flavor only supported in global context");
 
 	if (bopt->kore_flavor != NULL)
-		kore_mem_free(bopt->kore_flavor);
+		kore_free(bopt->kore_flavor);
 
 	bopt->kore_flavor = kore_strdup(string);
 }

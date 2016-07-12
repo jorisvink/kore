@@ -168,19 +168,19 @@ kore_domain_free(struct kore_domain *dom)
 	TAILQ_REMOVE(&domains, dom, list);
 
 	if (dom->domain != NULL)
-		kore_mem_free(dom->domain);
+		kore_free(dom->domain);
 
 #if !defined(KORE_NO_TLS)
 	if (dom->ssl_ctx != NULL)
 		SSL_CTX_free(dom->ssl_ctx);
 	if (dom->cafile != NULL)
-		kore_mem_free(dom->cafile);
+		kore_free(dom->cafile);
 	if (dom->certkey != NULL)
-		kore_mem_free(dom->certkey);
+		kore_free(dom->certkey);
 	if (dom->certfile != NULL)
-		kore_mem_free(dom->certfile);
+		kore_free(dom->certfile);
 	if (dom->crlfile != NULL)
-		kore_mem_free(dom->crlfile);
+		kore_free(dom->crlfile);
 #endif
 
 #if !defined(KORE_NO_HTTP)
@@ -190,7 +190,7 @@ kore_domain_free(struct kore_domain *dom)
 		kore_module_handler_free(hdlr);
 	}
 #endif
-	kore_mem_free(dom);
+	kore_free(dom);
 }
 
 void
@@ -330,7 +330,7 @@ kore_domain_sslstart(struct kore_domain *dom)
 	SSL_CTX_set_info_callback(dom->ssl_ctx, kore_tls_info_callback);
 	SSL_CTX_set_tlsext_servername_callback(dom->ssl_ctx, kore_tls_sni_cb);
 
-	kore_mem_free(dom->certfile);
+	kore_free(dom->certfile);
 	dom->certfile = NULL;
 #endif
 }

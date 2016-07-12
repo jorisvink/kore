@@ -218,7 +218,7 @@ run_curl(struct kore_task *t)
 	 */
 	data = kore_buf_release(b, &len);
 	kore_task_channel_write(t, data, len);
-	kore_mem_free(data);
+	kore_free(data);
 
 	return (KORE_RESULT_OK);
 }
