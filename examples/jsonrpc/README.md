@@ -18,7 +18,7 @@ Run:
 Test:
 ```
 	$ curl -i -k \
-	    -d '{"jsonrpc":"2.0","method":"echo","params":"Hello world"}' \
+	    -d '{"id":1,"jsonrpc":"2.0","method":"echo","params":["Hello world"]}' \
 	    https://127.0.0.1:8888/v1
 ```
 The result should echo back the string at `params`: Hello world.
@@ -31,6 +31,20 @@ Will run a small test suite.
 
 
 The yajl repo is available @ https://github.com/lloyd/yajl
+
+
+JSONRPC Request Lifetime
+------------------------
+
+Currently, one HTTP request will (in most cases) provoke one and only one
+response. Batch mode is not supported yet, neither is websocket.
+
+As such `jsonrpc\_error` and `jsonrpc\_result` do clean the request after call.
+
+If however you want to abort the processed request, like by returning
+`KORE\_RESULT\_ERROR`, after it having been read, you need to clean it by
+calling `jsonrpc\_destroy\_request`. Other than that you shouldn't think about
+this function.
 
 
 Message Handling Log

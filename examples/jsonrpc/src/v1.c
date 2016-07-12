@@ -37,14 +37,6 @@ write_string_array_params(struct jsonrpc_request *req, void *ctx)
 	return status;
 }
 
-static int
-error(struct jsonrpc_request *req, int code, const char *name)
-{
-	jsonrpc_error(req, code, name);
-	jsonrpc_destroy_request(req);
-	return (KORE_RESULT_OK);
-}
-
 int
 v1(struct http_request *http_req)
 {
@@ -61,26 +53,25 @@ v1(struct http_request *http_req)
 	
 	/* Read JSON-RPC request. */
 	if ((ret = jsonrpc_read_request(http_req, &req)) != 0)
-		return error(&req, ret, NULL);
+		return jsonrpc_error(&req, ret, NULL);
 	
 	/* Echo command takes and gives back params. */
 	if (strcmp(req.method, "echo") == 0) {
 		if (!YAJL_IS_ARRAY(req.params)) {
 			jsonrpc_log(&req, LOG_ERR,
-			    "Echo only accepts array params");
-			return error(&req, JSONRPC_INVALID_PARAMS, NULL);
+			    "Echo only accepts positional params");
+			return jsonrpc_error(&req, JSONRPC_INVALID_PARAMS, NULL);
 		}
 		for (size_t i = 0; i < req.params->u.array.len; i++) {
 			yajl_val v = req.params->u.array.values[i];
 			if (!YAJL_IS_STRING(v)) {
 				jsonrpc_log(&req, -3,
 				    "Echo only accepts strings");
-				return error(&req, JSONRPC_INVALID_PARAMS, NULL);
+				return jsonrpc_error(&req,
+				    JSONRPC_INVALID_PARAMS, NULL);
 			}
 		}
-		jsonrpc_result(&req, write_string_array_params, NULL);
-		jsonrpc_destroy_request(&req);
-		return (KORE_RESULT_OK);
+		return jsonrpc_result(&req, write_string_array_params, NULL);
 	}
 	
 	/* Date command displays date and time according to parameters. */
@@ -88,25 +79,38 @@ v1(struct http_request *http_req)
 		time_t		time_value;
 		struct tm	time_info;
 		char		timestamp[33];
-		char		*args[2] = {NULL, NULL};
+		struct tm	*(*gettm)(const time_t *, struct tm *) =
+				    localtime_r;
 		
+		if (YAJL_IS_OBJECT(req.params)) {
+			const char	*path[] = {"local", NULL};
+			yajl_val	bf;
+
+			bf = yajl_tree_get(req.params, path, yajl_t_false);
+			if (bf != NULL)
+				gettm = gmtime_r;
+		} else if (req.params != NULL) {
+			jsonrpc_log(&req, LOG_ERR,
+			    "Date only accepts named params");
+			return jsonrpc_error(&req, JSONRPC_INVALID_PARAMS, NULL);
+		}
+
 		if ((time_value = time(NULL)) == -1)
-			return error(&req, -2, "Failed to get date time");
+			return jsonrpc_error(&req, -2,
+			    "Failed to get date time");
 		
-		//gmtime_r(time_value, &time_info);
-		if (localtime_r(&time_value, &time_info) == NULL)
-			return error(&req, -3, "Failed to get date time info");
+		if (gettm(&time_value, &time_info) == NULL)
+			return jsonrpc_error(&req, -3,
+			    "Failed to get date time info");
 		
 		memset(timestamp, 0, sizeof(timestamp));
 		if (strftime_l(timestamp, sizeof(timestamp) - 1, "%c",
 		    &time_info, LC_GLOBAL_LOCALE) == 0)
-			return error(&req, -4,
+			return jsonrpc_error(&req, -4,
 			    "Failed to get printable date time");
 		
-		jsonrpc_result(&req, write_string, timestamp);
-		jsonrpc_destroy_request(&req);
-		return (KORE_RESULT_OK);
+		return jsonrpc_result(&req, write_string, timestamp);
 	}
 	
-	return error(&req, JSONRPC_METHOD_NOT_FOUND, NULL);
+	return jsonrpc_error(&req, JSONRPC_METHOD_NOT_FOUND, NULL);
 }

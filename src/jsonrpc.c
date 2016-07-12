@@ -426,9 +426,11 @@ succeeded:
 	http_response(req->http, 200, body, body_len);
 	if (req->gen != NULL)
 		yajl_gen_clear(req->gen);
+	jsonrpc_destroy_request(req);
 	return (KORE_RESULT_OK);
 failed:
 	http_response(req->http, 500, NULL, 0);
+	jsonrpc_destroy_request(req);
 	return (KORE_RESULT_OK);
 }
 
@@ -467,8 +469,10 @@ succeeded:
 	http_response(req->http, 200, body, body_len);
 	if (req->gen != NULL)
 		yajl_gen_clear(req->gen);
+	jsonrpc_destroy_request(req);
 	return (KORE_RESULT_OK);
 failed:
 	http_response(req->http, 500, NULL, 0);
+	jsonrpc_destroy_request(req);
 	return (KORE_RESULT_OK);
 }
