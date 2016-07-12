@@ -344,10 +344,10 @@ struct kore_pool_entry {
 };
 
 struct kore_pool {
-	u_int32_t		elen;
-	u_int32_t		slen;
-	u_int32_t		elms;
-	u_int32_t		inuse;
+	size_t			elen;
+	size_t			slen;
+	size_t			elms;
+	size_t			inuse;
 	char			*name;
 
 	LIST_HEAD(, kore_pool_region)	regions;
@@ -518,7 +518,7 @@ void		kore_mem_init(void);
 void		*kore_pool_get(struct kore_pool *);
 void		kore_pool_put(struct kore_pool *, void *);
 void		kore_pool_init(struct kore_pool *, const char *,
-		    u_int32_t, u_int32_t);
+		    size_t, size_t);
 void		kore_pool_cleanup(struct kore_pool *);
 
 time_t		kore_date_to_time(char *);

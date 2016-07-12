@@ -24,14 +24,14 @@
 #define POOL_ELEMENT_BUSY		0
 #define POOL_ELEMENT_FREE		1
 
-static void		pool_region_create(struct kore_pool *, u_int32_t);
+static void		pool_region_create(struct kore_pool *, size_t);
 static void		pool_region_destroy(struct kore_pool *);
 
 void
 kore_pool_init(struct kore_pool *pool, const char *name,
-    u_int32_t len, u_int32_t elm)
+    size_t len, size_t elm)
 {
-	kore_debug("kore_pool_init(%p, %s, %d, %d)", pool, name, len, elm);
+	kore_debug("kore_pool_init(%p, %s, %zu, %zu)", pool, name, len, elm);
 
 	if ((pool->name = strdup(name)) == NULL)
 		fatal("kore_pool_init: strdup %s", errno_s);
@@ -107,9 +107,9 @@ kore_pool_put(struct kore_pool *pool, void *ptr)
 }
 
 static void
-pool_region_create(struct kore_pool *pool, u_int32_t elms)
+pool_region_create(struct kore_pool *pool, size_t elms)
 {
-	u_int32_t			i;
+	size_t				i;
 	u_int8_t			*p;
 	struct kore_pool_region		*reg;
 	struct kore_pool_entry		*entry;
