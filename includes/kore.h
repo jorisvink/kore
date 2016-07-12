@@ -348,6 +348,7 @@ struct kore_pool {
 	size_t			slen;
 	size_t			elms;
 	size_t			inuse;
+	volatile int		lock;
 	char			*name;
 
 	LIST_HEAD(, kore_pool_region)	regions;

@@ -24,6 +24,11 @@
 #define POOL_ELEMENT_BUSY		0
 #define POOL_ELEMENT_FREE		1
 
+#if defined(KORE_USE_TASKS)
+static void		pool_lock(struct kore_pool *);
+static void		pool_unlock(struct kore_pool *);
+#endif
+
 static void		pool_region_create(struct kore_pool *, size_t);
 static void		pool_region_destroy(struct kore_pool *);
 
@@ -36,6 +41,7 @@ kore_pool_init(struct kore_pool *pool, const char *name,
 	if ((pool->name = strdup(name)) == NULL)
 		fatal("kore_pool_init: strdup %s", errno_s);
 
+	pool->lock = 0;
 	pool->elms = 0;
 	pool->inuse = 0;
 	pool->elen = len;
@@ -50,6 +56,7 @@ kore_pool_init(struct kore_pool *pool, const char *name,
 void
 kore_pool_cleanup(struct kore_pool *pool)
 {
+	pool->lock = 0;
 	pool->elms = 0;
 	pool->inuse = 0;
 	pool->elen = 0;
@@ -69,10 +76,13 @@ kore_pool_get(struct kore_pool *pool)
 	u_int8_t			*ptr;
 	struct kore_pool_entry		*entry;
 
+#if defined(KORE_USE_TASKS)
+	pool_lock(pool);
+#endif
+
 	if (LIST_EMPTY(&(pool->freelist))) {
 		kore_log(LOG_NOTICE, "pool %s is exhausted (%d/%d)",
 		    pool->name, pool->inuse, pool->elms);
-
 		pool_region_create(pool, pool->elms);
 	}
 
@@ -86,6 +96,10 @@ kore_pool_get(struct kore_pool *pool)
 
 	pool->inuse++;
 
+#if defined(KORE_USE_TASKS)
+	pool_unlock(pool);
+#endif
+
 	return (ptr);
 }
 
@@ -93,6 +107,10 @@ void
 kore_pool_put(struct kore_pool *pool, void *ptr)
 {
 	struct kore_pool_entry		*entry;
+
+#if defined(KORE_USE_TASKS)
+	pool_lock(pool);
+#endif
 
 	entry = (struct kore_pool_entry *)
 	    ((u_int8_t *)ptr - sizeof(struct kore_pool_entry));
@@ -104,6 +122,10 @@ kore_pool_put(struct kore_pool *pool, void *ptr)
 	LIST_INSERT_HEAD(&(pool->freelist), entry, list);
 
 	pool->inuse--;
+
+#if defined(KORE_USE_TASKS)
+	pool_unlock(pool);
+#endif
 }
 
 static void
@@ -163,3 +185,21 @@ pool_region_destroy(struct kore_pool *pool)
 	LIST_INIT(&pool->freelist);
 	pool->elms = 0;
 }
+
+#if defined(KORE_USE_TASKS)
+static void
+pool_lock(struct kore_pool *pool)
+{
+	for (;;) {
+		if (__sync_bool_compare_and_swap(&pool->lock, 0, 1))
+			break;
+	}
+}
+
+static void
+pool_unlock(struct kore_pool *pool)
+{
+	if (!__sync_bool_compare_and_swap(&pool->lock, 1, 0))
+		fatal("pool_unlock: failed to release %s", pool->name);
+}
+#endif
