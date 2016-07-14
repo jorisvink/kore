@@ -323,10 +323,11 @@ struct kore_validator {
 };
 #endif
 
-#define KORE_BUF_INCREMENT	4096
+#define KORE_BUF_OWNER_API	0x0001
 
 struct kore_buf {
 	u_int8_t		*data;
+	int			flags;
 	size_t			length;
 	size_t			offset;
 };
@@ -632,7 +633,6 @@ void		kore_buf_cleanup(struct kore_buf *);
 char	*kore_buf_stringify(struct kore_buf *, size_t *);
 void	kore_buf_appendf(struct kore_buf *, const char *, ...);
 void	kore_buf_appendv(struct kore_buf *, const char *, va_list);
-void	kore_buf_appendb(struct kore_buf *, struct kore_buf *);
 void	kore_buf_replace_string(struct kore_buf *, char *, void *, size_t);
 
 void	kore_keymgr_run(void);

@@ -28,6 +28,7 @@ kore_buf_alloc(size_t initial)
 
 	buf = kore_malloc(sizeof(*buf));
 	kore_buf_init(buf, initial);
+	buf->flags = KORE_BUF_OWNER_API;
 
 	return (buf);
 }
@@ -42,6 +43,24 @@ kore_buf_init(struct kore_buf *buf, size_t initial)
 
 	buf->length = initial;
 	buf->offset = 0;
+	buf->flags = 0;
+}
+
+void
+kore_buf_cleanup(struct kore_buf *buf)
+{
+	kore_free(buf->data);
+	buf->data = NULL;
+	buf->offset = 0;
+	buf->length = 0;
+}
+
+void
+kore_buf_free(struct kore_buf *buf)
+{
+	kore_buf_cleanup(buf);
+	if (buf->flags & KORE_BUF_OWNER_API)
+		kore_free(buf);
 }
 
 void
@@ -57,17 +76,6 @@ kore_buf_append(struct kore_buf *buf, const void *d, size_t len)
 
 	memcpy((buf->data + buf->offset), d, len);
 	buf->offset += len;
-}
-
-void
-kore_buf_appendb(struct kore_buf *buf, struct kore_buf *src)
-{
-	u_int8_t	*d;
-	size_t		len;
-
-	d = kore_buf_release(src, &len);
-	kore_buf_append(buf, d, len);
-	kore_free(d);
 }
 
 void
@@ -124,26 +132,11 @@ kore_buf_release(struct kore_buf *buf, size_t *len)
 
 	p = buf->data;
 	*len = buf->offset;
-	kore_free(buf);
+
+	buf->data = NULL;
+	kore_buf_free(buf);
 
 	return (p);
-}
-
-void
-kore_buf_free(struct kore_buf *buf)
-{
-	kore_free(buf->data);
-	kore_free(buf);
-}
-
-void
-kore_buf_cleanup(struct kore_buf *buf)
-{
-	if (buf->data)
-		kore_free(buf->data);
-	buf->data = NULL;
-	buf->offset = 0;
-	buf->length = 0;
 }
 
 void
