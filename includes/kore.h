@@ -623,9 +623,11 @@ void		net_send_stream(struct connection *, void *,
 
 void		kore_buf_free(struct kore_buf *);
 struct kore_buf	*kore_buf_create(size_t);
+void		kore_buf_init(struct kore_buf *, size_t);
 void		kore_buf_append(struct kore_buf *, const void *, size_t);
 u_int8_t	*kore_buf_release(struct kore_buf *, size_t *);
 void		kore_buf_reset(struct kore_buf *);
+void		kore_buf_destroy(struct kore_buf *);
 
 char	*kore_buf_stringify(struct kore_buf *, size_t *);
 void	kore_buf_appendf(struct kore_buf *, const char *, ...);

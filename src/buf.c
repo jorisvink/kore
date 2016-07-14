@@ -27,11 +27,17 @@ kore_buf_create(size_t initial)
 	struct kore_buf		*buf;
 
 	buf = kore_malloc(sizeof(*buf));
+	kore_buf_init(buf, initial);
+
+	return (buf);
+}
+
+void
+kore_buf_init(struct kore_buf *buf, size_t initial)
+{
 	buf->data = kore_malloc(initial);
 	buf->length = initial;
 	buf->offset = 0;
-
-	return (buf);
 }
 
 void
@@ -124,6 +130,16 @@ kore_buf_free(struct kore_buf *buf)
 {
 	kore_free(buf->data);
 	kore_free(buf);
+}
+
+void
+kore_buf_destroy(struct kore_buf *buf)
+{
+	if (buf->data)
+		kore_mem_free(buf->data);
+	buf->data = NULL;
+	buf->offset = 0;
+	buf->length = 0;
 }
 
 void
