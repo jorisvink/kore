@@ -136,7 +136,7 @@ void
 kore_buf_destroy(struct kore_buf *buf)
 {
 	if (buf->data)
-		kore_mem_free(buf->data);
+		kore_free(buf->data);
 	buf->data = NULL;
 	buf->offset = 0;
 	buf->length = 0;
