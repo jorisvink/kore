@@ -400,7 +400,7 @@ kore_base64_encode(u_int8_t *data, size_t len, char **out)
 		pdata = data;
 	}
 
-	res = kore_buf_create(plen);
+	res = kore_buf_alloc(plen);
 
 	i = 2;
 	b = 0;
@@ -456,7 +456,7 @@ kore_base64_decode(char *in, u_int8_t **out, size_t *olen)
 	d = 0;
 	c = 0;
 	len = strlen(in);
-	res = kore_buf_create(len);
+	res = kore_buf_alloc(len);
 
 	for (idx = 0; idx < len; idx++) {
 		c = in[idx];

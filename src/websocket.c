@@ -73,7 +73,7 @@ kore_websocket_handshake(struct http_request *req, struct kore_wscbs *wscbs)
 		return;
 	}
 
-	buf = kore_buf_create(128);
+	buf = kore_buf_alloc(128);
 	kore_buf_appendf(buf, "%s%s", key, WEBSOCKET_SERVER_RESPONSE);
 
 	(void)SHA1_Init(&sctx);
@@ -116,7 +116,7 @@ kore_websocket_send(struct connection *c, u_int8_t op, const void *data,
 {
 	struct kore_buf		*frame;
 
-	frame = kore_buf_create(len);
+	frame = kore_buf_alloc(len);
 	websocket_frame_build(frame, op, data, len);
 	net_send_queue(c, frame->data, frame->offset);
 	kore_buf_free(frame);
@@ -129,7 +129,7 @@ kore_websocket_broadcast(struct connection *src, u_int8_t op, const void *data,
 	struct connection	*c;
 	struct kore_buf		*frame;
 
-	frame = kore_buf_create(len);
+	frame = kore_buf_alloc(len);
 	websocket_frame_build(frame, op, data, len);
 
 	TAILQ_FOREACH(c, &connections, list) {

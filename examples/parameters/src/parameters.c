@@ -56,7 +56,7 @@ page(struct http_request *req)
 	 * and Kore will return an error when trying to read it as such.
 	 */
 
-	buf = kore_buf_create(128);
+	buf = kore_buf_alloc(128);
 
 	/* Grab it as a string, we shouldn't free the result in sid. */
 	if (http_argument_get_string(req, "id", &sid))

@@ -43,7 +43,7 @@ page(struct http_request *req)
 	/*
 	 * Read the entire received body into a memory buffer.
 	 */
-	buf = kore_buf_create(128);
+	buf = kore_buf_alloc(128);
 	for (;;) {
 		ret = http_body_read(req, data, sizeof(data));
 		if (ret == -1) {

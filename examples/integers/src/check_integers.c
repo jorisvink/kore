@@ -17,7 +17,7 @@ page(struct http_request *req)
 	u_int8_t		c, *data;
 
 	http_populate_get(req);
-	buf = kore_buf_create(128);
+	buf = kore_buf_alloc(128);
 
 	if (http_argument_get_byte(req, "id", &c))
 		kore_buf_appendf(buf, "byte\t%c\n", c);
