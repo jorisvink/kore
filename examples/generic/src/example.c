@@ -122,7 +122,7 @@ serve_b64test(struct http_request *req)
 	struct kore_buf		*res;
 	u_int8_t		*data;
 
-	res = kore_buf_create(1024);
+	res = kore_buf_alloc(1024);
 	for (i = 0; b64tests[i] != NULL; i++)
 		test_base64((u_int8_t *)b64tests[i], strlen(b64tests[i]), res);
 
@@ -144,7 +144,7 @@ serve_file_upload(struct http_request *req)
 	size_t			len;
 	char			*name, buf[BUFSIZ];
 
-	b = kore_buf_create(asset_len_upload_html);
+	b = kore_buf_alloc(asset_len_upload_html);
 	kore_buf_append(b, asset_upload_html, asset_len_upload_html);
 
 	if (req->method == HTTP_METHOD_POST) {
@@ -247,7 +247,7 @@ serve_params_test(struct http_request *req)
 	else if (req->method == HTTP_METHOD_POST)
 		http_populate_post(req);
 
-	b = kore_buf_create(asset_len_params_html);
+	b = kore_buf_alloc(asset_len_params_html);
 	kore_buf_append(b, asset_params_html, asset_len_params_html);
 
 	/*

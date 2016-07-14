@@ -1381,7 +1381,7 @@ cli_buildopt_cflags(struct buildopt *bopt, const char *string)
 		bopt = cli_buildopt_default();
 
 	if (bopt->cflags == NULL)
-		bopt->cflags = kore_buf_create(128);
+		bopt->cflags = kore_buf_alloc(128);
 
 	kore_buf_appendf(bopt->cflags, "%s ", string);
 }
@@ -1393,7 +1393,7 @@ cli_buildopt_cxxflags(struct buildopt *bopt, const char *string)
 		bopt = cli_buildopt_default();
 
 	if (bopt->cxxflags == NULL)
-		bopt->cxxflags = kore_buf_create(128);
+		bopt->cxxflags = kore_buf_alloc(128);
 
 	kore_buf_appendf(bopt->cxxflags, "%s ", string);
 }
@@ -1405,7 +1405,7 @@ cli_buildopt_ldflags(struct buildopt *bopt, const char *string)
 		bopt = cli_buildopt_default();
 
 	if (bopt->ldflags == NULL)
-		bopt->ldflags = kore_buf_create(128);
+		bopt->ldflags = kore_buf_alloc(128);
 
 	kore_buf_appendf(bopt->ldflags, "%s ", string);
 }
@@ -1488,7 +1488,7 @@ cli_build_cflags(struct buildopt *bopt)
 		cli_fatal("no such build flavor: %s", flavor);
 
 	if (bopt->cflags == NULL)
-		bopt->cflags = kore_buf_create(128);
+		bopt->cflags = kore_buf_alloc(128);
 
 	cli_build_flags_common(bopt->cflags);
 
@@ -1515,7 +1515,7 @@ cli_build_cxxflags(struct buildopt *bopt)
 		cli_fatal("no such build flavor: %s", flavor);
 
 	if (bopt->cxxflags == NULL)
-		bopt->cxxflags = kore_buf_create(128);
+		bopt->cxxflags = kore_buf_alloc(128);
 
 	cli_build_flags_common(bopt->cxxflags);
 
@@ -1540,7 +1540,7 @@ cli_build_ldflags(struct buildopt *bopt)
 		cli_fatal("no such build flavor: %s", flavor);
 
 	if (bopt->ldflags == NULL)
-		bopt->ldflags = kore_buf_create(128);
+		bopt->ldflags = kore_buf_alloc(128);
 
 	if (bopt->single_binary == 0) {
 #if defined(__MACH__)

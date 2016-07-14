@@ -22,16 +22,45 @@
 #include "kore.h"
 
 struct kore_buf *
-kore_buf_create(size_t initial)
+kore_buf_alloc(size_t initial)
 {
 	struct kore_buf		*buf;
 
 	buf = kore_malloc(sizeof(*buf));
-	buf->data = kore_malloc(initial);
-	buf->length = initial;
-	buf->offset = 0;
+	kore_buf_init(buf, initial);
+	buf->flags = KORE_BUF_OWNER_API;
 
 	return (buf);
+}
+
+void
+kore_buf_init(struct kore_buf *buf, size_t initial)
+{
+	if (initial > 0)
+		buf->data = kore_malloc(initial);
+	else
+		buf->data = NULL;
+
+	buf->length = initial;
+	buf->offset = 0;
+	buf->flags = 0;
+}
+
+void
+kore_buf_cleanup(struct kore_buf *buf)
+{
+	kore_free(buf->data);
+	buf->data = NULL;
+	buf->offset = 0;
+	buf->length = 0;
+}
+
+void
+kore_buf_free(struct kore_buf *buf)
+{
+	kore_buf_cleanup(buf);
+	if (buf->flags & KORE_BUF_OWNER_API)
+		kore_free(buf);
 }
 
 void
@@ -41,23 +70,12 @@ kore_buf_append(struct kore_buf *buf, const void *d, size_t len)
 		fatal("overflow in kore_buf_append");
 
 	if ((buf->offset + len) > buf->length) {
-		buf->length += len + KORE_BUF_INCREMENT;
+		buf->length += len;
 		buf->data = kore_realloc(buf->data, buf->length);
 	}
 
 	memcpy((buf->data + buf->offset), d, len);
 	buf->offset += len;
-}
-
-void
-kore_buf_appendb(struct kore_buf *buf, struct kore_buf *src)
-{
-	u_int8_t	*d;
-	size_t		len;
-
-	d = kore_buf_release(src, &len);
-	kore_buf_append(buf, d, len);
-	kore_free(d);
 }
 
 void
@@ -114,16 +132,11 @@ kore_buf_release(struct kore_buf *buf, size_t *len)
 
 	p = buf->data;
 	*len = buf->offset;
-	kore_free(buf);
+
+	buf->data = NULL;
+	kore_buf_free(buf);
 
 	return (p);
-}
-
-void
-kore_buf_free(struct kore_buf *buf)
-{
-	kore_free(buf->data);
-	kore_free(buf);
 }
 
 void

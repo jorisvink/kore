@@ -193,7 +193,7 @@ run_curl(struct kore_task *t)
 	if ((curl = curl_easy_init()) == NULL)
 		return (KORE_RESULT_ERROR);
 
-	b = kore_buf_create(128);
+	b = kore_buf_alloc(128);
 
 	/* Do CURL magic. */
 	curl_easy_setopt(curl, CURLOPT_POST, 1);

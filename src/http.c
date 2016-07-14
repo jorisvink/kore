@@ -79,7 +79,7 @@ http_init(void)
 	TAILQ_INIT(&http_requests);
 	TAILQ_INIT(&http_requests_sleeping);
 
-	header_buf = kore_buf_create(1024);
+	header_buf = kore_buf_alloc(1024);
 
 	l = snprintf(http_version, sizeof(http_version),
 	    "server: kore (%d.%d.%d-%s)\r\n", KORE_VERSION_MAJOR,
@@ -702,7 +702,7 @@ http_header_recv(struct netbuf *nb)
 			}
 		} else {
 			req->http_body_fd = -1;
-			req->http_body = kore_buf_create(req->content_length);
+			req->http_body = kore_buf_alloc(req->content_length);
 			kore_buf_append(req->http_body, end_headers,
 			    (nb->s_off - len));
 		}
@@ -917,7 +917,7 @@ http_populate_post(struct http_request *req)
 		req->http_body->offset = req->content_length;
 		string = kore_buf_stringify(req->http_body, NULL);
 	} else {
-		body = kore_buf_create(128);
+		body = kore_buf_alloc(128);
 		for (;;) {
 			ret = http_body_read(req, data, sizeof(data));
 			if (ret == -1)
@@ -990,8 +990,8 @@ http_populate_multipart_form(struct http_request *req)
 	if (blen == -1 || (size_t)blen >= sizeof(boundary))
 		return;
 
-	in = kore_buf_create(128);
-	out = kore_buf_create(128);
+	in = kore_buf_alloc(128);
+	out = kore_buf_alloc(128);
 
 	if (!multipart_find_data(in, NULL, NULL, req, boundary, blen))
 		goto cleanup;
@@ -1239,7 +1239,7 @@ multipart_add_field(struct http_request *req, struct kore_buf *in,
 	struct kore_buf		*data;
 	char			*string;
 
-	data = kore_buf_create(128);
+	data = kore_buf_alloc(128);
 
 	if (!multipart_find_data(in, data, NULL, req, boundary, blen)) {
 		kore_buf_free(data);
