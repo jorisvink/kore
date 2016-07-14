@@ -22,7 +22,7 @@
 #include "kore.h"
 
 struct kore_buf *
-kore_buf_create(size_t initial)
+kore_buf_alloc(size_t initial)
 {
 	struct kore_buf		*buf;
 
@@ -35,7 +35,11 @@ kore_buf_create(size_t initial)
 void
 kore_buf_init(struct kore_buf *buf, size_t initial)
 {
-	buf->data = kore_malloc(initial);
+	if (initial > 0)
+		buf->data = kore_malloc(initial);
+	else
+		buf->data = NULL;
+
 	buf->length = initial;
 	buf->offset = 0;
 }
@@ -47,7 +51,7 @@ kore_buf_append(struct kore_buf *buf, const void *d, size_t len)
 		fatal("overflow in kore_buf_append");
 
 	if ((buf->offset + len) > buf->length) {
-		buf->length += len + KORE_BUF_INCREMENT;
+		buf->length += len;
 		buf->data = kore_realloc(buf->data, buf->length);
 	}
 
@@ -133,7 +137,7 @@ kore_buf_free(struct kore_buf *buf)
 }
 
 void
-kore_buf_destroy(struct kore_buf *buf)
+kore_buf_cleanup(struct kore_buf *buf)
 {
 	if (buf->data)
 		kore_free(buf->data);
