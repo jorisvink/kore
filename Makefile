@@ -78,7 +78,7 @@ else ifeq ("$(OSNAME)", "linux")
 else
 	S_SRC+=src/bsd.c
 	ifneq ("$(JSONRPC)", "")
-		CFLAGS=-I/usr/local/include
+		CFLAGS+=-I/usr/local/include
 		LDFLAGS+=-L/usr/local/lib
 	endif
 endif
