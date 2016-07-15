@@ -415,6 +415,9 @@ kore_server_start(void)
 #if defined(KORE_USE_TASKS)
 	kore_log(LOG_NOTICE, "tasks built-in enabled");
 #endif
+#if defined(KORE_USE_JSONRPC)
+	kore_log(LOG_NOTICE, "jsonrpc built-in enabled");
+#endif
 
 	kore_platform_proctitle("kore [parent]");
 	kore_msg_init();

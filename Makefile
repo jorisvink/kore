@@ -30,6 +30,9 @@ endif
 
 ifneq ("$(NOHTTP)", "")
 	CFLAGS+=-DKORE_NO_HTTP
+	ifneq ("$(JSONRPC)", "")
+		$(error "JSONRPC support needs HTTP")
+	endif
 else
 	S_SRC+= src/auth.c src/accesslog.c src/http.c \
 		src/validator.c src/websocket.c
@@ -55,6 +58,12 @@ ifneq ("$(TASKS)", "")
 	S_SRC+=src/tasks.c
 	LDFLAGS+=-lpthread
 	CFLAGS+=-DKORE_USE_TASKS
+endif
+
+ifneq ("$(JSONRPC)", "")
+	S_SRC+=src/jsonrpc.c
+	LDFLAGS+=-lyajl
+	CFLAGS+=-DKORE_USE_JSONRPC
 endif
 
 OSNAME=$(shell uname -s | sed -e 's/[-_].*//g' | tr A-Z a-z)
