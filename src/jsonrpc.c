@@ -50,7 +50,7 @@ static void
 free_log(struct jsonrpc_log *root)
 {
 	for (struct jsonrpc_log *it = root->next; it != root; it = it->next) {
-		kore_mem_free(it);
+		kore_free(it);
 	}
 }
 
@@ -81,7 +81,7 @@ jsonrpc_destroy_request(struct jsonrpc_request *req)
 		yajl_tree_free(req->json);
 		req->json = NULL;
 	}
-	kore_buf_destroy(&req->buf);
+	kore_buf_cleanup(&req->buf);
 	free_log(&req->log);
 }
 
