@@ -77,6 +77,10 @@ else ifeq ("$(OSNAME)", "linux")
 	S_SRC+=src/linux.c
 else
 	S_SRC+=src/bsd.c
+	ifneq ("$(JSONRPC)", "")
+		CFLAGS=-I/usr/local/include
+		LDFLAGS+=-L/usr/local/lib
+	endif
 endif
 
 S_OBJS=	$(S_SRC:src/%.c=$(OBJDIR)/%.o)
