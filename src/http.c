@@ -1274,6 +1274,7 @@ multipart_file_add(struct http_request *req, struct kore_buf *in,
 
 	f = kore_malloc(sizeof(struct http_file));
 	f->req = req;
+	f->offset = 0;
 	f->length = len;
 	f->position = position;
 	f->name = kore_strdup(name);
