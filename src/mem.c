@@ -25,6 +25,7 @@
 #define KORE_MEM_BLOCK_SIZE_MAX		8192
 #define KORE_MEM_BLOCK_PREALLOC		128
 
+#define KORE_MEM_ALIGN		(sizeof(size_t))
 #define KORE_MEM_MAGIC		0xd0d0
 #define KORE_MEMSIZE(x)		\
 	(*(size_t *)((u_int8_t *)x - sizeof(size_t)))
@@ -58,7 +59,10 @@ kore_mem_init(void)
 			fatal("kore_mem_init: snprintf");
 
 		elm = (KORE_MEM_BLOCK_PREALLOC * 1024) / size;
-		mlen = sizeof(size_t) + size + sizeof(struct meminfo);
+		mlen = sizeof(size_t) + size +
+		    sizeof(struct meminfo) + KORE_MEM_ALIGN;
+		mlen = mlen & ~(KORE_MEM_ALIGN - 1);
+
 		kore_pool_init(&blocks[i].pool, name, mlen, elm);
 
 		size = size << 1;
