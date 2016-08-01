@@ -41,7 +41,7 @@ Platforms supported
 
 Building Kore
 -------------
-Fetch a release tarball or clone the repository.
+Grab the [latest release](https://github.com/jorisvink/kore/releases/tag/2.0.0-release)  tarball or clone the repository.
 
 Requirements
 * openssl (latest)
