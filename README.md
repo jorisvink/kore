@@ -13,16 +13,16 @@ Features
 * Supports SNI
 * Supports HTTP/1.1
 * Websocket support
+* Privseps by default
 * Lightweight background tasks
 * Built-in parameter validation
 * Only HTTPS connections allowed
-* Multiple modules can be loaded at once
 * Built-in asynchronous PostgreSQL support
-* Private keys isolated in separate process
+* Private keys isolated in separate process (RSA and ECDSA)
 * Default sane TLS ciphersuites (PFS in all major browsers)
-* Load your web application as a precompiled dynamic library
 * Modules can be reloaded on-the-fly, even while serving content
 * Event driven (epoll/kqueue) architecture with per CPU core workers
+* Build your web application as a precompiled dynamic library or single binary
 
 License
 -------
@@ -39,14 +39,11 @@ See https://kore.io/doc/#requirements for more information.
 
 Latest release
 --------------
-* [2015-05-21] version 1.2.3 - https://kore.io/release/kore-1.2.3-release.tgz
-
-Upcoming release
-----------------
-* Kore 2.0.0 will be released 1st of August 2016.
+* [2016-08-01] version 2.0.0 - https://kore.io/release/kore-2.0.0-release.tgz
 
 Old releases
 ------------
+* [2015-05-21] version 1.2.3 - https://kore.io/release/kore-1.2.3-release.tgz
 * [2015-04-09] version 1.2.2 - https://kore.io/release/kore-1.2.2-release.tgz
 * [2014-12-12] version 1.2.1 - https://kore.io/release/kore-1.2.1-release.tgz
 * [2014-08-25] version 1.2 - https://kore.io/release/kore-1.2-stable.tgz
@@ -56,7 +53,7 @@ Building Kore
 -------------
 
 Requirements
-* openssl (latest is always the safest bet, right?)
+* openssl (latest)
   (note: this requirement drops away when building with NOTLS=1 NOHTTP=1)
 
 Requirements for background tasks (optional)
@@ -82,17 +79,15 @@ those by setting a shell environment variable before running **_make_**.
 * NOTLS=1 (compiles Kore without TLS)
 * NOHTTP=1 (compiles Kore without HTTP support)
 * NOOPT=1 (disable compiler optimizations)
+* JSONRPC=1 (compiles in JSONRPC support)
 
-Example libraries
+Example applications
 -----------------
 
-You can find example libraries under **_examples/_**.
+You can find example applications under **_examples/_**.
 
 The examples contain a README file with instructions on how
 to build or use them.
-
-I apologize for unclear examples or documentation, I am working on
-improving those.
 
 Bugs, contributions and more
 ----------------------------
