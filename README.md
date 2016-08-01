@@ -37,18 +37,6 @@ Platforms supported
 
 See https://kore.io/doc/#requirements for more information.
 
-Latest release
---------------
-* [2016-08-01] version 2.0.0 - https://kore.io/release/kore-2.0.0-release.tgz
-
-Old releases
-------------
-* [2015-05-21] version 1.2.3 - https://kore.io/release/kore-1.2.3-release.tgz
-* [2015-04-09] version 1.2.2 - https://kore.io/release/kore-1.2.2-release.tgz
-* [2014-12-12] version 1.2.1 - https://kore.io/release/kore-1.2.1-release.tgz
-* [2014-08-25] version 1.2 - https://kore.io/release/kore-1.2-stable.tgz
-* [2014-03-01] version 1.1 - https://kore.io/release/kore-1.1-stable.tgz
-
 Building Kore
 -------------
 
