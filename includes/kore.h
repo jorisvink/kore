@@ -58,9 +58,9 @@ extern int daemon(int, int);
 #define KORE_RESULT_RETRY	2
 
 #define KORE_VERSION_MAJOR	2
-#define KORE_VERSION_MINOR	0
+#define KORE_VERSION_MINOR	1
 #define KORE_VERSION_PATCH	0
-#define KORE_VERSION_STATE	"release"
+#define KORE_VERSION_STATE	"devel"
 
 #define KORE_TLS_VERSION_1_2	0
 #define KORE_TLS_VERSION_1_0	1
