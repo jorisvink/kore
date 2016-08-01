@@ -30,9 +30,6 @@ endif
 
 ifneq ("$(NOHTTP)", "")
 	CFLAGS+=-DKORE_NO_HTTP
-	ifneq ("$(JSONRPC)", "")
-		$(error "JSONRPC support needs HTTP")
-	endif
 else
 	S_SRC+= src/auth.c src/accesslog.c src/http.c \
 		src/validator.c src/websocket.c
