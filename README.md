@@ -28,6 +28,10 @@ License
 -------
 * Kore is licensed under the ISC license
 
+Documentation
+--------------
+[Read the documentation](https://jorisvink.gitbooks.io/kore-doc/content/)
+
 Platforms supported
 -------------------
 * Linux
@@ -35,10 +39,9 @@ Platforms supported
 * FreeBSD
 * OSX
 
-See https://kore.io/doc/#requirements for more information.
-
 Building Kore
 -------------
+Fetch a release tarball or clone the repository.
 
 Requirements
 * openssl (latest)
@@ -71,7 +74,6 @@ those by setting a shell environment variable before running **_make_**.
 
 Example applications
 -----------------
-
 You can find example applications under **_examples/_**.
 
 The examples contain a README file with instructions on how
@@ -79,7 +81,6 @@ to build or use them.
 
 Bugs, contributions and more
 ----------------------------
-
 If you run into any bugs, have suggestions or patches please
 contact me at joris@coders.se.
 
