@@ -203,7 +203,11 @@ run_curl(struct kore_task *t)
 	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0);
 	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, fields);
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_cb);
+#if !defined(KORE_NO_TLS)
 	curl_easy_setopt(curl, CURLOPT_URL, "https://127.0.0.1:8888/post_back");
+#else
+	curl_easy_setopt(curl, CURLOPT_URL, "http://127.0.0.1:8888/post_back");
+#endif
 
 	res = curl_easy_perform(curl);
 	if (res != CURLE_OK) {
