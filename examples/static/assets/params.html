@@ -1,0 +1,33 @@
+<!DOCTYPE>
+<html>
+<head>
+	<link rel="stylesheet" href="/css/style.css" type="text/css">
+	<title>Kore params test</title>
+</head>
+
+<body style="overflow: auto">
+
+<div class="content" style="font-size: 12px; font-weight: normal">
+	<p>You can pass one GET parameter (arg1), any other GET parameter will
+	   be filtered out</p>
+	<p>Only two out of the three input fields will be visible to Kore.</p>
+	<p>The first field accepts the input "test"</p>
+	<p>The second field accepts anything like /test/[a-z]*</p>
+	<p>The third field will be removed by Kore, as it is not in the params
+	   block configured for this page.</p>
+	<form method="POST">
+		<input type="input" name="test1" value="$test1$">
+		<input type="input" name="test2" value="$test2$">
+		<input type="input" name="test3" value="$test3$">
+		<input type="submit">
+	</form>
+
+	<p style="font-size: 12px; font-weight: normal">GET param arg1: $arg1$</p>
+	<p style="font-size: 12px; font-weight: normal">GET param arg2: $arg2$</p>
+	<p style="font-size: 12px; font-weight: normal">test1: $test1$</p>
+	<p style="font-size: 12px; font-weight: normal">test2: $test2$</p>
+	<p style="font-size: 12px; font-weight: normal">test3: $test3$</p>
+</div>
+
+</body>
+</html>
