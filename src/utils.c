@@ -224,7 +224,7 @@ kore_strtonum64(const char *str, int sign, int *err)
 }
 
 int
-kore_split_string(char *input, char *delim, char **out, size_t ele)
+kore_split_string(char *input, const char *delim, char **out, size_t ele)
 {
 	int		count;
 	char		**ap;

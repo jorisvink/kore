@@ -219,13 +219,11 @@ kore_pgsql_query_params(struct kore_pgsql *pgsql,
 	int		ret;
 	va_list		args;
 
-	if (count > 0)
-		va_start(args, count);
+	va_start(args, count);
 
 	ret = kore_pgsql_v_query_params(pgsql, query, result, count, args);
 
-	if (count > 0)
-		va_end(args);
+	va_end(args);
 
 	return (ret);
 }

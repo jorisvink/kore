@@ -141,6 +141,7 @@ kore_connection_accept(struct listener *listener, struct connection **out)
 #endif
 
 	kore_connection_start_idletimer(c);
+	worker_active_connections++;
 
 	*out = c;
 	return (KORE_RESULT_OK);
@@ -356,6 +357,7 @@ kore_connection_remove(struct connection *c)
 	}
 
 	kore_pool_put(&connection_pool, c);
+	worker_active_connections--;
 }
 
 void
