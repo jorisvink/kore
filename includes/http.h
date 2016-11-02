@@ -24,11 +24,7 @@ extern "C" {
 #endif
 
 #define HTTP_KEEPALIVE_TIME	20
-#if defined(KORE_NO_TLS)
-#define HTTP_HSTS_ENABLE	0
-#else
 #define HTTP_HSTS_ENABLE	31536000
-#endif
 #define HTTP_HEADER_MAX_LEN	4096
 #define HTTP_BODY_MAX_LEN	1024000
 #define HTTP_URI_LEN		2000
