@@ -65,7 +65,6 @@ static int		configure_tls_version(char *);
 static int		configure_tls_cipher(char *);
 static int		configure_tls_dhparam(char *);
 static int		configure_client_certificates(char *);
-static int		configure_http_hsts_enable(char *);
 #endif
 
 #if !defined(KORE_NO_HTTP)
@@ -75,6 +74,7 @@ static int		configure_dynamic_handler(char *);
 static int		configure_accesslog(char *);
 static int		configure_http_header_max(char *);
 static int		configure_http_body_max(char *);
+static int		configure_http_hsts_enable(char *);
 static int		configure_http_keepalive_time(char *);
 static int		configure_http_request_limit(char *);
 static int		configure_http_body_disk_offload(char *);
@@ -128,7 +128,6 @@ static struct {
 	{ "certfile",			configure_certfile },
 	{ "certkey",			configure_certkey },
 	{ "client_certificates",	configure_client_certificates },
-	{ "http_hsts_enable",		configure_http_hsts_enable },
 #endif
 #if !defined(KORE_NO_HTTP)
 	{ "static",			configure_static_handler },
@@ -136,6 +135,7 @@ static struct {
 	{ "accesslog",			configure_accesslog },
 	{ "http_header_max",		configure_http_header_max },
 	{ "http_body_max",		configure_http_body_max },
+	{ "http_hsts_enable",		configure_http_hsts_enable },
 	{ "http_keepalive_time",	configure_http_keepalive_time },
 	{ "http_request_limit",		configure_http_request_limit },
 	{ "http_body_disk_offload",	configure_http_body_disk_offload },
@@ -478,19 +478,6 @@ configure_certkey(char *path)
 	return (KORE_RESULT_OK);
 }
 
-static int
-configure_http_hsts_enable(char *option)
-{
-	int		err;
-
-	http_hsts_enable = kore_strtonum(option, 10, 0, LONG_MAX, &err);
-	if (err != KORE_RESULT_OK) {
-		printf("bad http_hsts_enable value: %s\n", option);
-		return (KORE_RESULT_ERROR);
-	}
-
-	return (KORE_RESULT_OK);
-}
 #endif /* !KORE_NO_TLS */
 
 static int
@@ -637,6 +624,20 @@ configure_http_body_disk_path(char *path)
 		kore_free(http_body_disk_path);
 
 	http_body_disk_path = kore_strdup(path);
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_http_hsts_enable(char *option)
+{
+	int		err;
+
+	http_hsts_enable = kore_strtonum(option, 10, 0, LONG_MAX, &err);
+	if (err != KORE_RESULT_OK) {
+		printf("bad http_hsts_enable value: %s\n", option);
+		return (KORE_RESULT_ERROR);
+	}
+
 	return (KORE_RESULT_OK);
 }
 
