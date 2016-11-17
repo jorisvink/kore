@@ -400,6 +400,9 @@ kore_server_start(void)
 {
 	u_int32_t	tmp;
 	int		quit;
+#if defined(KORE_SINGLE_BINARY)
+	void		(*preload)(void);
+#endif
 
 	if (foreground == 0 && daemon(1, 1) == -1)
 		fatal("cannot daemon(): %s", errno_s);
@@ -417,6 +420,11 @@ kore_server_start(void)
 #endif
 #if defined(KORE_USE_JSONRPC)
 	kore_log(LOG_NOTICE, "jsonrpc built-in enabled");
+#endif
+#if defined(KORE_SINGLE_BINARY)
+	*(void **)&(preload) = kore_module_getsym("kore_preload");
+	if (preload != NULL)
+		preload();
 #endif
 
 	kore_platform_proctitle("kore [parent]");
