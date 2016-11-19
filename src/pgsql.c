@@ -151,7 +151,7 @@ kore_pgsql_query(struct kore_pgsql *pgsql, const char *query)
 
 int
 kore_pgsql_v_query_params(struct kore_pgsql *pgsql,
-    const char *query, int result, u_int8_t count, va_list args)
+    const char *query, int result, int count, va_list args)
 {
 	u_int8_t	i;
 	char		**values;
@@ -214,7 +214,7 @@ cleanup:
 
 int
 kore_pgsql_query_params(struct kore_pgsql *pgsql,
-    const char *query, int result, u_int8_t count, ...)
+    const char *query, int result, int count, ...)
 {
 	int		ret;
 	va_list		args;
