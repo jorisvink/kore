@@ -1307,6 +1307,8 @@ parse_option:
 			printf("ignoring unknown option '%s'\n", p);
 		}
 	}
+
+	fclose(fp);
 }
 
 static struct buildopt *
