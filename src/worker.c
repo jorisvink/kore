@@ -360,6 +360,8 @@ kore_worker_entry(struct kore_worker *kw)
 
 		now = kore_time_ms();
 		netwait = kore_timer_run(now);
+		if (netwait > 100)
+			netwait = 100;
 
 		if (now > next_lock) {
 			if (kore_worker_acceptlock_obtain()) {
