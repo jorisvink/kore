@@ -40,6 +40,8 @@
 #include "tasks.h"
 #endif
 
+#define WORKER_DEBUG
+
 #if defined(WORKER_DEBUG)
 #define worker_debug(fmt, ...)		printf(fmt, ##__VA_ARGS__)
 #else
@@ -317,6 +319,8 @@ kore_worker_entry(struct kore_worker *kw)
 	had_lock = 0;
 	next_lock = 0;
 	idle_check = 0;
+	worker_active_connections = 0;
+
 	kore_platform_event_init();
 	kore_msg_worker_init();
 
