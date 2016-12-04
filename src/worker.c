@@ -40,8 +40,6 @@
 #include "tasks.h"
 #endif
 
-#define WORKER_DEBUG
-
 #if defined(WORKER_DEBUG)
 #define worker_debug(fmt, ...)		printf(fmt, ##__VA_ARGS__)
 #else
