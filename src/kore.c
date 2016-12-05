@@ -69,7 +69,7 @@ usage(void)
 	fprintf(stderr, "\t-c\tconfiguration to use\n");
 #endif
 #if defined(KORE_DEBUG)
-	fprintf(stderr, "\t-d\trun with debug on)\n");
+	fprintf(stderr, "\t-d\trun with debug on\n");
 #endif
 	fprintf(stderr, "\t-f\tstart in foreground\n");
 	fprintf(stderr, "\t-h\tthis help text\n");
