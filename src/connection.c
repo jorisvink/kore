@@ -224,6 +224,7 @@ kore_connection_handle(struct connection *c)
 			SSL_set_app_data(c->ssl, c);
 		}
 
+		ERR_clear_error();
 		r = SSL_accept(c->ssl);
 		if (r <= 0) {
 			r = SSL_get_error(c->ssl, r);
