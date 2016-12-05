@@ -281,6 +281,7 @@ net_write_ssl(struct connection *c, int len, int *written)
 {
 	int		r;
 
+	ERR_clear_error();
 	r = SSL_write(c->ssl, (c->snb->buf + c->snb->s_off), len);
 	if (c->tls_reneg > 1)
 		return (KORE_RESULT_ERROR);
@@ -321,6 +322,7 @@ net_read_ssl(struct connection *c, int *bytes)
 {
 	int		r;
 
+	ERR_clear_error();
 	r = SSL_read(c->ssl, (c->rnb->buf + c->rnb->s_off),
 	    (c->rnb->b_len - c->rnb->s_off));
 
