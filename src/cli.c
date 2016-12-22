@@ -768,11 +768,13 @@ static void
 cli_build_asset(char *fpath, struct dirent *dp)
 {
 	struct stat		st;
-	u_int8_t		*d;
+	SHA_CTX			sctx;
 	off_t			off;
 	void			*base;
-	int			in, out;
+	int			in, out, i, len;
+	u_int8_t		*d, digest[SHA_DIGEST_LENGTH];
 	char			*cpath, *ext, *opath, *p, *name;
+	char			hash[(SHA_DIGEST_LENGTH * 2) + 1];
 
 	name = kore_strdup(dp->d_name);
 
@@ -842,12 +844,26 @@ cli_build_asset(char *fpath, struct dirent *dp)
 	 */
 	cli_file_writef(out, "0x00");
 
+	/* Calculate the SHA1 digest of the contents. */
+	(void)SHA1_Init(&sctx);
+	(void)SHA1_Update(&sctx, base, st.st_size);
+	(void)SHA1_Final(digest, &sctx);
+
+	for (i = 0; i < (int)sizeof(digest); i++) {
+		len = snprintf(hash + (i * 2), sizeof(hash) - (i * 2),
+		    "%02x", digest[i]);
+		if (len == -1 || (size_t)len >= sizeof(hash))
+			cli_fatal("failed to convert SHA1 digest to hex");
+	}
+
 	/* Add the meta data. */
 	cli_file_writef(out, "};\n\n");
 	cli_file_writef(out, "u_int32_t asset_len_%s_%s = %" PRIu32 ";\n",
 	    name, ext, (u_int32_t)st.st_size);
 	cli_file_writef(out, "time_t asset_mtime_%s_%s = %" PRI_TIME_T ";\n",
 	    name, ext, st.st_mtime);
+	cli_file_writef(out, "const char *asset_sha1_%s_%s = \"%s\";\n",
+	    name, ext, hash);
 
 	/* Write the file symbols into assets.h so they can be used. */
 	cli_write_asset(name, ext);
