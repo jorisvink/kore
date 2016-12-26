@@ -333,9 +333,11 @@ kore_connection_remove(struct connection *c)
 		kore_free(c->hdlr_extra);
 
 #if !defined(KORE_NO_HTTP)
-	for (req = TAILQ_FIRST(&(c->http_requests)); req != NULL; req = rnext) {
+	for (req = TAILQ_FIRST(&(c->http_requests));
+	    req != NULL; req = rnext) {
 		rnext = TAILQ_NEXT(req, olist);
 		TAILQ_REMOVE(&(c->http_requests), req, olist);
+		req->owner = NULL;
 		req->flags |= HTTP_REQUEST_DELETE;
 		http_request_wakeup(req);
 	}

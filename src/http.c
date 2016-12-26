@@ -419,7 +419,8 @@ http_request_free(struct http_request *req)
 	req->path = NULL;
 
 	TAILQ_REMOVE(&http_requests, req, list);
-	TAILQ_REMOVE(&(req->owner->http_requests), req, olist);
+	if (req->owner != NULL)
+		TAILQ_REMOVE(&(req->owner->http_requests), req, olist);
 
 	for (hdr = TAILQ_FIRST(&(req->resp_headers)); hdr != NULL; hdr = next) {
 		next = TAILQ_NEXT(hdr, list);
