@@ -482,6 +482,29 @@ http_request_free(struct http_request *req)
 }
 
 void
+http_serveable(struct http_request *req, const void *data, size_t len,
+    const char *etag)
+{
+	char		*match;
+
+	if (req->method != HTTP_METHOD_GET) {
+		http_response_header(req, "allow", "get");
+		http_response(req, HTTP_STATUS_BAD_REQUEST, NULL, 0);
+		return;
+	}
+
+	if (http_request_header(req, "if-none-match", &match)) {
+		if (!strcmp(match, etag)) {
+			http_response(req, HTTP_STATUS_NOT_MODIFIED, NULL, 0);
+			return;
+		}
+	}
+
+	http_response_header(req, "etag", etag);
+	http_response(req, HTTP_STATUS_OK, data, len);
+}
+
+void
 http_response(struct http_request *req, int status, const void *d, size_t l)
 {
 	kore_debug("http_response(%p, %d, %p, %zu)", req, status, d, l);

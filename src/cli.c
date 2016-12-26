@@ -187,6 +187,16 @@ static const char *gen_dirs[] = {
 	NULL
 };
 
+static const char *http_serveable_function =
+	"int asset_serve_%s_%s(struct http_request *);\n\n"
+	"int\n"
+	"asset_serve_%s_%s(struct http_request *req)\n"
+	"{\n"
+	"	http_serveable(req, asset_%s_%s, asset_len_%s_%s,\n"
+	"	    asset_sha1_%s_%s);\n"
+	"	return (KORE_RESULT_OK);\n"
+	"}\n";
+
 static const char *src_data =
 	"#include <kore/kore.h>\n"
 	"#include <kore/http.h>\n"
@@ -830,6 +840,8 @@ cli_build_asset(char *fpath, struct dirent *dp)
 	/* Start generating the file. */
 	cli_file_writef(out, "/* Auto generated */\n");
 	cli_file_writef(out, "#include <sys/types.h>\n\n");
+	cli_file_writef(out, "#include <kore/kore.h>\n");
+	cli_file_writef(out, "#include <kore/http.h>\n\n");
 
 	/* Write the file data as a byte array. */
 	cli_file_writef(out, "u_int8_t asset_%s_%s[] = {\n", name, ext);
@@ -862,8 +874,11 @@ cli_build_asset(char *fpath, struct dirent *dp)
 	    name, ext, (u_int32_t)st.st_size);
 	cli_file_writef(out, "time_t asset_mtime_%s_%s = %" PRI_TIME_T ";\n",
 	    name, ext, st.st_mtime);
-	cli_file_writef(out, "const char *asset_sha1_%s_%s = \"%s\";\n",
+	cli_file_writef(out,
+	    "const char *asset_sha1_%s_%s = \"\\\"%s\\\"\";\n",
 	    name, ext, hash);
+	cli_file_writef(out, http_serveable_function, name, ext,
+	    name, ext, name, ext, name, ext, name, ext);
 
 	/* Write the file symbols into assets.h so they can be used. */
 	cli_write_asset(name, ext);
