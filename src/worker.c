@@ -264,7 +264,7 @@ kore_worker_entry(struct kore_worker *kw)
 {
 	char			buf[16];
 	int			quit, had_lock, r;
-	u_int64_t		now, idle_check, next_lock, netwait;
+	u_int64_t		now, next_lock, netwait;
 #if defined(KORE_SINGLE_BINARY)
 	void			(*onload)(void);
 #endif
@@ -316,7 +316,6 @@ kore_worker_entry(struct kore_worker *kw)
 	quit = 0;
 	had_lock = 0;
 	next_lock = 0;
-	idle_check = 0;
 	worker_active_connections = 0;
 
 	kore_platform_event_init();
@@ -391,11 +390,7 @@ kore_worker_entry(struct kore_worker *kw)
 		http_process();
 #endif
 
-		if ((now - idle_check) >= 10000) {
-			idle_check = now;
-			kore_connection_check_timeout();
-		}
-
+		kore_connection_check_timeout();
 		kore_connection_prune(KORE_CONNECTION_PRUNE_DISCONNECT);
 
 		if (quit)
