@@ -66,6 +66,14 @@
 #define BUILD_C			1
 #define BUILD_CXX		2
 
+struct mime_type {
+	char			*ext;
+	char			*type;
+	TAILQ_ENTRY(mime_type)	list;
+};
+
+TAILQ_HEAD(mime_list, mime_type);
+
 struct buildopt {
 	char			*name;
 	char			*kore_source;
@@ -145,6 +153,7 @@ static void		cli_buildopt_kore_source(struct buildopt *,
 			    const char *);
 static void		cli_buildopt_kore_flavor(struct buildopt *,
 			    const char *);
+static void		cli_buildopt_mime(struct buildopt *, const char *);
 
 static void		cli_flavor_load(void);
 static void		cli_flavor_change(const char *);
@@ -193,7 +202,7 @@ static const char *http_serveable_function =
 	"asset_serve_%s_%s(struct http_request *req)\n"
 	"{\n"
 	"	http_serveable(req, asset_%s_%s, asset_len_%s_%s,\n"
-	"	    asset_sha1_%s_%s);\n"
+	"	    asset_sha1_%s_%s, \"%s\");\n"
 	"	return (KORE_RESULT_OK);\n"
 	"}\n";
 
@@ -247,6 +256,11 @@ static const char *build_data =
 	"cxxflags=-Wall -Wmissing-declarations -Wshadow\n"
 	"cxxflags=-Wpointer-arith -Wcast-qual -Wsign-compare\n"
 	"\n"
+	"# Mime types for assets served via the builtin asset_serve_*\n"
+	"#mime_add=txt:text/plain; charset=utf-8\n"
+	"#mime_add=png:image/png\n"
+	"#mime_add=html:text/html; charset=utf-8\n"
+	"\n"
 	"dev {\n"
 	"	# These flags are added to the shared ones when\n"
 	"	# you build the \"dev\" flavor.\n"
@@ -280,6 +294,7 @@ static char			*rootdir = NULL;
 static char			*compiler_c = "gcc";
 static char			*compiler_cpp = "g++";
 static char			*compiler_ld = "gcc";
+static struct mime_list		mime_types;
 static struct cfile_list	source_files;
 static struct buildopt_list	build_options;
 static int			source_files_count;
@@ -450,6 +465,7 @@ cli_build(int argc, char **argv)
 	cxx_files_count = 0;
 	TAILQ_INIT(&source_files);
 	TAILQ_INIT(&build_options);
+	TAILQ_INIT(&mime_types);
 
 	(void)cli_vasprintf(&src_path, "%s/src", rootdir);
 	(void)cli_vasprintf(&assets_path, "%s/assets", rootdir);
@@ -781,6 +797,8 @@ cli_build_asset(char *fpath, struct dirent *dp)
 	SHA_CTX			sctx;
 	off_t			off;
 	void			*base;
+	struct mime_type	*mime;
+	const char		*mime_type;
 	int			in, out, i, len;
 	u_int8_t		*d, digest[SHA_DIGEST_LENGTH];
 	char			*cpath, *ext, *opath, *p, *name;
@@ -868,6 +886,17 @@ cli_build_asset(char *fpath, struct dirent *dp)
 			cli_fatal("failed to convert SHA1 digest to hex");
 	}
 
+	mime = NULL;
+	TAILQ_FOREACH(mime, &mime_types, list) {
+		if (!strcasecmp(mime->ext, ext))
+			break;
+	}
+
+	if (mime != NULL)
+		mime_type = mime->type;
+	else
+		mime_type = "text/plain";
+
 	/* Add the meta data. */
 	cli_file_writef(out, "};\n\n");
 	cli_file_writef(out, "u_int32_t asset_len_%s_%s = %" PRIu32 ";\n",
@@ -878,7 +907,7 @@ cli_build_asset(char *fpath, struct dirent *dp)
 	    "const char *asset_sha1_%s_%s = \"\\\"%s\\\"\";\n",
 	    name, ext, hash);
 	cli_file_writef(out, http_serveable_function, name, ext,
-	    name, ext, name, ext, name, ext, name, ext);
+	    name, ext, name, ext, name, ext, name, ext, mime_type);
 
 	/* Write the file symbols into assets.h so they can be used. */
 	cli_write_asset(name, ext);
@@ -1334,6 +1363,8 @@ parse_option:
 			cli_buildopt_kore_source(bopt, t);
 		} else if (!strcasecmp(p, "kore_flavor")) {
 			cli_buildopt_kore_flavor(bopt, t);
+		} else if (!strcasecmp(p, "mime_add")) {
+			cli_buildopt_mime(bopt, t);
 		} else {
 			printf("ignoring unknown option '%s'\n", p);
 		}
@@ -1388,6 +1419,7 @@ static void
 cli_buildopt_cleanup(void)
 {
 	struct buildopt		*bopt, *next;
+	struct mime_type	*mime, *mnext;
 
 	for (bopt = TAILQ_FIRST(&build_options); bopt != NULL; bopt = next) {
 		next = TAILQ_NEXT(bopt, list);
@@ -1404,6 +1436,14 @@ cli_buildopt_cleanup(void)
 		if (bopt->kore_flavor != NULL)
 			kore_free(bopt->kore_flavor);
 		kore_free(bopt);
+	}
+
+	for (mime = TAILQ_FIRST(&mime_types); mime != NULL; mime = mnext) {
+		mnext = TAILQ_NEXT(mime, list);
+		TAILQ_REMOVE(&mime_types, mime, list);
+		kore_free(mime->type);
+		kore_free(mime->ext);
+		kore_free(mime);
 	}
 }
 
@@ -1483,6 +1523,33 @@ cli_buildopt_kore_flavor(struct buildopt *bopt, const char *string)
 		kore_free(bopt->kore_flavor);
 
 	bopt->kore_flavor = kore_strdup(string);
+}
+
+static void
+cli_buildopt_mime(struct buildopt *bopt, const char *ext)
+{
+	struct mime_type	*mime;
+	char			*type;
+
+	if (bopt == NULL)
+		bopt = cli_buildopt_default();
+	else
+		cli_fatal("mime_add only supported in global context");
+
+	if ((type = strchr(ext, ':')) == NULL)
+		cli_fatal("no type given in %s", ext);
+
+	*(type)++ = '\0';
+	TAILQ_FOREACH(mime, &mime_types, list) {
+		if (!strcmp(mime->ext, ext))
+			cli_fatal("duplicate extension %s found", ext);
+	}
+
+	mime = kore_malloc(sizeof(*mime));
+	mime->ext = kore_strdup(ext);
+	mime->type = kore_strdup(type);
+
+	TAILQ_INSERT_TAIL(&mime_types, mime, list);
 }
 
 static void

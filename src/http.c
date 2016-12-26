@@ -483,7 +483,7 @@ http_request_free(struct http_request *req)
 
 void
 http_serveable(struct http_request *req, const void *data, size_t len,
-    const char *etag)
+    const char *etag, const char *type)
 {
 	char		*match;
 
@@ -501,6 +501,7 @@ http_serveable(struct http_request *req, const void *data, size_t len,
 	}
 
 	http_response_header(req, "etag", etag);
+	http_response_header(req, "content-type", type);
 	http_response(req, HTTP_STATUS_OK, data, len);
 }
 
