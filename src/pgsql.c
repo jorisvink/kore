@@ -169,7 +169,7 @@ kore_pgsql_v_query_params(struct kore_pgsql *pgsql,
 
 		for (i = 0; i < count; i++) {
 			values[i] = va_arg(args, void *);
-			lengths[i] = va_arg(args, u_int32_t);
+			lengths[i] = va_arg(args, int);
 			formats[i] = va_arg(args, int);
 		}
 	} else {
