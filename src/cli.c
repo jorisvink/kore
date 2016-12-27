@@ -197,7 +197,6 @@ static const char *gen_dirs[] = {
 };
 
 static const char *http_serveable_function =
-	"int asset_serve_%s_%s(struct http_request *);\n\n"
 	"int\n"
 	"asset_serve_%s_%s(struct http_request *req)\n"
 	"{\n"
@@ -788,6 +787,9 @@ cli_write_asset(const char *n, const char *e)
 	cli_file_writef(s_fd, "extern u_int8_t asset_%s_%s[];\n", n, e);
 	cli_file_writef(s_fd, "extern u_int32_t asset_len_%s_%s;\n", n, e);
 	cli_file_writef(s_fd, "extern time_t asset_mtime_%s_%s;\n", n, e);
+	cli_file_writef(s_fd, "extern const char *asset_sha1_%s_%s;\n", n, e);
+	cli_file_writef(s_fd,
+	    "int asset_serve_%s_%s(struct http_request *);\n", n, e);
 }
 
 static void
@@ -860,6 +862,7 @@ cli_build_asset(char *fpath, struct dirent *dp)
 	cli_file_writef(out, "#include <sys/types.h>\n\n");
 	cli_file_writef(out, "#include <kore/kore.h>\n");
 	cli_file_writef(out, "#include <kore/http.h>\n\n");
+	cli_file_writef(out, "#include \"assets.h\"\n\n");
 
 	/* Write the file data as a byte array. */
 	cli_file_writef(out, "u_int8_t asset_%s_%s[] = {\n", name, ext);
