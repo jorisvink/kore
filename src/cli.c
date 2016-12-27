@@ -413,6 +413,7 @@ cli_flavor(int argc, char **argv)
 	free(conf);
 
 	TAILQ_INIT(&build_options);
+	TAILQ_INIT(&mime_types);
 	(void)cli_buildopt_new("_default");
 	cli_buildopt_parse("conf/build.conf");
 
