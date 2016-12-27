@@ -910,7 +910,7 @@ cli_build_asset(char *fpath, struct dirent *dp)
 	cli_file_writef(out,
 	    "const char *asset_sha1_%s_%s = \"\\\"%s\\\"\";\n",
 	    name, ext, hash);
-	cli_file_writef(out, http_serveable_function, name, ext,
+	cli_file_writef(out, http_serveable_function,
 	    name, ext, name, ext, name, ext, name, ext, mime_type);
 
 	/* Write the file symbols into assets.h so they can be used. */
