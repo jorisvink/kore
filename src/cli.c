@@ -175,7 +175,7 @@ static struct cmd cmds[] = {
 	{ "build",	"build an application",			cli_build },
 	{ "clean",	"cleanup the build files",		cli_clean },
 	{ "create",	"create a new application skeleton",	cli_create },
-	{ "flavor",	"switch build flavor",			cli_flavor },
+	{ "flavor",	"switch between build flavors",		cli_flavor },
 	{ NULL,		NULL,					NULL }
 };
 
