@@ -455,11 +455,15 @@ cli_build(int argc, char **argv)
 	rootdir = ".";
 	appl = basename(pwd);
 
-	if ((p = getenv("CC")) != NULL)
+	if ((p = getenv("CC")) != NULL) {
 		compiler_c = p;
+		compiler_ld = p;
+	}
 
-	if ((p = getenv("CXX")) != NULL)
+	if ((p = getenv("CXX")) != NULL) {
 		compiler_cpp = p;
+		compiler_ld = p;
+	}
 
 	source_files_count = 0;
 	cxx_files_count = 0;
