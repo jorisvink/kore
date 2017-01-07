@@ -19,6 +19,9 @@
 #ifndef __H_HTTP_H
 #define __H_HTTP_H
 
+#include <sys/types.h>
+#include <sys/queue.h>
+
 #if defined(__cplusplus)
 extern "C" {
 #endif
