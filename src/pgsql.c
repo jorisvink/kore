@@ -476,7 +476,14 @@ pgsql_conn_create(struct kore_pgsql *pgsql, struct pgsql_db *db)
 		fatal("pgsql_conn_create: no connection string");
 
 	pgsql_conn_count++;
+
 	conn = kore_malloc(sizeof(*conn));
+	conn->job = NULL;
+	conn->flags = PGSQL_CONN_FREE;
+	conn->type = KORE_TYPE_PGSQL_CONN;
+	conn->name = kore_strdup(db->name);
+	TAILQ_INSERT_TAIL(&pgsql_conn_free, conn, list);
+
 	kore_debug("pgsql_conn_create(): %p", conn);
 
 	conn->db = PQconnectdb(db->conn_string);
@@ -485,12 +492,6 @@ pgsql_conn_create(struct kore_pgsql *pgsql, struct pgsql_db *db)
 		pgsql_conn_cleanup(conn);
 		return (NULL);
 	}
-
-	conn->job = NULL;
-	conn->flags = PGSQL_CONN_FREE;
-	conn->type = KORE_TYPE_PGSQL_CONN;
-	conn->name = kore_strdup(db->name);
-	TAILQ_INSERT_TAIL(&pgsql_conn_free, conn, list);
 
 	return (conn);
 }
