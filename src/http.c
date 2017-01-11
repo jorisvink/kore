@@ -132,6 +132,9 @@ http_request_new(struct connection *c, const char *host,
 	kore_debug("http_request_new(%p, %s, %s, %s, %s)", c, host,
 	    method, path, version);
 
+	if ((p = strrchr(host, ':')) != NULL)
+		*p = '\0';
+
 	if ((hostlen = strlen(host)) >= KORE_DOMAINNAME_LEN - 1) {
 		http_error_response(c, 500);
 		return (KORE_RESULT_ERROR);
@@ -200,9 +203,6 @@ http_request_new(struct connection *c, const char *host,
 	req->http_body_length = 0;
 	req->http_body_offset = 0;
 	req->http_body_path = NULL;
-
-	if ((p = strrchr(host, ':')) != NULL)
-		*p = '\0';
 
 	req->host = kore_pool_get(&http_host_pool);
 	memcpy(req->host, host, hostlen);
@@ -571,7 +571,7 @@ http_header_recv(struct netbuf *nb)
 	u_int64_t		bytes_left;
 	u_int8_t		*end_headers;
 	int			h, i, v, skip, l;
-	char			*request[4], *host[3], *hbuf;
+	char			*request[4], *host, *hbuf;
 	char			*p, *headers[HTTP_REQ_HEADER_MAX];
 	struct connection	*c = (struct connection *)nb->owner;
 
@@ -607,34 +607,34 @@ http_header_recv(struct netbuf *nb)
 	}
 
 	skip = 0;
-	host[0] = NULL;
+	host = NULL;
 	for (i = 0; i < h; i++) {
 		if (strncasecmp(headers[i], "host", 4))
 			continue;
 
-		v = kore_split_string(headers[i], ":", host, 3);
-		if (v != 2) {
+		if ((host = strchr(headers[i], ':')) == NULL) {
 			http_error_response(c, 400);
 			return (KORE_RESULT_OK);
 		}
 
-		if ((host[1] - host[0]) != 5 ||
-		    strncasecmp(host[0], "host", 4) || host[1] == '\0') {
+		*(host)++ = '\0';
+
+		if (*host == '\0') {
 			http_error_response(c, 400);
 			return (KORE_RESULT_OK);
 		}
 
-		host[1]++;
+		host++;
 		skip = i;
 		break;
 	}
 
-	if (host[0] == NULL) {
+	if (host == NULL) {
 		http_error_response(c, 400);
 		return (KORE_RESULT_OK);
 	}
 
-	if (!http_request_new(c, host[1],
+	if (!http_request_new(c, host,
 	    request[0], request[1], request[2], &req))
 		return (KORE_RESULT_OK);
 

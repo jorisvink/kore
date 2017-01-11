@@ -351,6 +351,8 @@ kore_domain_lookup(const char *domain)
 	struct kore_domain	*dom;
 
 	TAILQ_FOREACH(dom, &domains, list) {
+		if (!strcmp(dom->domain, domain))
+			return (dom);
 		if (!fnmatch(dom->domain, domain, FNM_CASEFOLD))
 			return (dom);
 	}
