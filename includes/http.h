@@ -186,6 +186,10 @@ struct http_request {
 	char				*query_string;
 	struct kore_module_handle	*hdlr;
 
+#if defined(KORE_USE_PYTHON)
+	void				*py_object;
+#endif
+
 	LIST_HEAD(, kore_task)		tasks;
 	LIST_HEAD(, kore_pgsql)		pgsqls;
 

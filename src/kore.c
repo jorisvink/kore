@@ -30,6 +30,10 @@
 #include "http.h"
 #endif
 
+#if defined(KORE_USE_PYTHON)
+#include "python_api.h"
+#endif
+
 volatile sig_atomic_t			sig_recv;
 
 struct listener_head	listeners;
@@ -175,6 +179,9 @@ main(int argc, char *argv[])
 	LIST_INIT(&listeners);
 
 	kore_log_init();
+#if defined(KORE_USE_PYTHON)
+	kore_python_init();
+#endif
 #if !defined(KORE_NO_HTTP)
 	kore_auth_init();
 	kore_validator_init();
@@ -187,7 +194,7 @@ main(int argc, char *argv[])
 	if (config_file == NULL)
 		usage();
 #else
-	kore_module_load(NULL, NULL);
+	kore_module_load(NULL, NULL, KORE_MODULE_NATIVE);
 #endif
 
 	kore_parse_config();
@@ -340,8 +347,7 @@ kore_server_bind(const char *ip, const char *port, const char *ccb)
 	}
 
 	if (ccb != NULL) {
-		*(void **)&(l->connect) = kore_module_getsym(ccb);
-		if (l->connect == NULL) {
+		if ((l->connect = kore_runtime_getcall(ccb)) == NULL) {
 			printf("no such callback: '%s'\n", ccb);
 			close(l->fd);
 			kore_free(l);
@@ -398,10 +404,10 @@ kore_server_sslstart(void)
 static void
 kore_server_start(void)
 {
-	u_int32_t	tmp;
-	int		quit;
+	u_int32_t			tmp;
+	int				quit;
 #if defined(KORE_SINGLE_BINARY)
-	void		(*preload)(void);
+	struct kore_runtime_call	*rcall;
 #endif
 
 	if (foreground == 0 && daemon(1, 1) == -1)
@@ -422,9 +428,11 @@ kore_server_start(void)
 	kore_log(LOG_NOTICE, "jsonrpc built-in enabled");
 #endif
 #if defined(KORE_SINGLE_BINARY)
-	*(void **)&(preload) = kore_module_getsym("kore_preload");
-	if (preload != NULL)
-		preload();
+	rcall = kore_runtime_getcall("kore_preload");
+	if (rcall != NULL) {
+		rcall->runtime->execute(rcall->addr, NULL);
+		kore_free(rcall);
+	}
 #endif
 
 	kore_platform_proctitle("kore [parent]");

@@ -9,7 +9,8 @@ INCLUDE_DIR=$(PREFIX)/include/kore
 
 S_SRC=	src/kore.c src/buf.c src/cli.c src/config.c src/connection.c \
 	src/domain.c src/mem.c src/msg.c src/module.c src/net.c \
-	src/pool.c src/timer.c src/utils.c src/worker.c src/keymgr.c
+	src/pool.c src/runtime.c src/timer.c src/utils.c src/worker.c \
+	src/keymgr.c
 
 CFLAGS+=-Wall -Werror -Wstrict-prototypes -Wmissing-prototypes
 CFLAGS+=-Wmissing-declarations -Wshadow -Wpointer-arith -Wcast-qual
@@ -61,6 +62,12 @@ ifneq ("$(JSONRPC)", "")
 	S_SRC+=src/jsonrpc.c
 	LDFLAGS+=-lyajl
 	CFLAGS+=-DKORE_USE_JSONRPC
+endif
+
+ifneq ("$(PYTHON)", "")
+	S_SRC+=src/python.c
+	LDFLAGS+=$(shell python3-config --ldflags)
+	CFLAGS+=$(shell python3-config --includes) -DKORE_USE_PYTHON
 endif
 
 OSNAME=$(shell uname -s | sed -e 's/[-_].*//g' | tr A-Z a-z)

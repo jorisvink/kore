@@ -35,6 +35,10 @@
 #include "tasks.h"
 #endif
 
+#if defined(KORE_USE_PYTHON)
+#include "python_api.h"
+#endif
+
 /* XXX - This is becoming a clusterfuck. Fix it. */
 
 #if !defined(KORE_SINGLE_BINARY)
@@ -99,6 +103,10 @@ static int		configure_pgsql_conn_max(char *);
 static int		configure_task_threads(char *);
 #endif
 
+#if defined(KORE_USE_PYTHON)
+static int		configure_python_import(char *);
+#endif
+
 static void		domain_sslstart(void);
 static void		kore_parse_config_file(const char *);
 
@@ -110,6 +118,9 @@ static struct {
 	{ "bind",			configure_bind },
 #if !defined(KORE_SINGLE_BINARY)
 	{ "load",			configure_load },
+#endif
+#if defined(KORE_USE_PYTHON)
+	{ "python_import",		configure_python_import },
 #endif
 	{ "domain",			configure_domain },
 	{ "chroot",			configure_chroot },
@@ -313,7 +324,7 @@ configure_load(char *options)
 	if (argv[0] == NULL)
 		return (KORE_RESULT_ERROR);
 
-	kore_module_load(argv[0], argv[1]);
+	kore_module_load(argv[0], argv[1], KORE_MODULE_NATIVE);
 	return (KORE_RESULT_OK);
 }
 #else
@@ -1070,6 +1081,21 @@ configure_task_threads(char *option)
 		return (KORE_RESULT_ERROR);
 	}
 
+	return (KORE_RESULT_OK);
+}
+#endif
+
+#if defined(KORE_USE_PYTHON)
+static int
+configure_python_import(char *module)
+{
+	char		*argv[3];
+
+	kore_split_string(module, " ", argv, 3);
+	if (argv[0] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	kore_module_load(argv[0], argv[1], KORE_MODULE_PYTHON);
 	return (KORE_RESULT_OK);
 }
 #endif

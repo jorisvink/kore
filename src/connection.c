@@ -128,7 +128,7 @@ kore_connection_accept(struct listener *listener, struct connection **out)
 	c->read = net_read;
 
 	if (listener->connect != NULL) {
-		listener->connect(c);
+		kore_runtime_connect(listener->connect, c);
 	} else {
 #if !defined(KORE_NO_HTTP)
 		c->proto = CONN_PROTO_HTTP;
@@ -265,7 +265,7 @@ kore_connection_handle(struct connection *c)
 		if (c->owner != NULL) {
 			listener = (struct listener *)c->owner;
 			if (listener->connect != NULL) {
-				listener->connect(c);
+				kore_runtime_connect(listener->connect, c);
 				return (KORE_RESULT_OK);
 			}
 		}

@@ -40,6 +40,10 @@
 #include "tasks.h"
 #endif
 
+#if defined(KORE_USE_PYTHON)
+#include "python_api.h"
+#endif
+
 #if defined(WORKER_DEBUG)
 #define worker_debug(fmt, ...)		printf(fmt, ##__VA_ARGS__)
 #else
@@ -262,11 +266,11 @@ kore_worker_privdrop(void)
 void
 kore_worker_entry(struct kore_worker *kw)
 {
-	char			buf[16];
-	int			quit, had_lock, r;
-	u_int64_t		now, next_lock, netwait;
+	char				buf[16];
+	int				quit, had_lock, r;
+	u_int64_t			now, next_lock, netwait;
 #if defined(KORE_SINGLE_BINARY)
-	void			(*onload)(void);
+	struct kore_runtime_call	*rcall;
 #endif
 
 	worker = kw;
@@ -332,9 +336,11 @@ kore_worker_entry(struct kore_worker *kw)
 	kore_log(LOG_NOTICE, "worker %d started (cpu#%d)", kw->id, kw->cpu);
 
 #if defined(KORE_SINGLE_BINARY)
-	*(void **)&(onload) = kore_module_getsym("kore_onload");
-	if (onload != NULL)
-		onload();
+	rcall = kore_runtime_getcall("kore_onload");
+	if (rcall != NULL) {
+		rcall->runtime->execute(rcall->addr, NULL);
+		kore_free(rcall);
+	}
 #else
 	kore_module_onload();
 #endif
@@ -405,6 +411,10 @@ kore_worker_entry(struct kore_worker *kw)
 	http_cleanup();
 #endif
 	net_cleanup();
+
+#if defined(KORE_USE_PYTHON)
+	kore_python_cleanup();
+#endif
 
 	kore_debug("worker %d shutting down", kw->id);
 	exit(0);

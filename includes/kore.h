@@ -207,11 +207,32 @@ TAILQ_HEAD(connection_list, connection);
 extern struct connection_list	connections;
 extern struct connection_list	disconnected;
 
+#define KORE_RUNTIME_NATIVE	0
+#define KORE_RUNTIME_PYTHON	1
+
+struct kore_runtime {
+	int	type;
+#if !defined(KORE_NO_HTTP)
+	int	(*http_request)(void *, struct http_request *);
+	int	(*validator)(void *, struct http_request *, void *);
+#endif
+	int	(*execute)(void *, void *);
+	int	(*onload)(void *, int);
+	void	(*connect)(void *, struct connection *);
+};
+
+struct kore_runtime_call {
+	void			*addr;
+	struct kore_runtime	*runtime;
+};
+
+extern struct kore_runtime	kore_native_runtime;
+
 struct listener {
-	u_int8_t		type;
-	u_int8_t		addrtype;
-	int			fd;
-	void			(*connect)(struct connection *);
+	u_int8_t			type;
+	u_int8_t			addrtype;
+	int				fd;
+	struct kore_runtime_call	*connect;
 
 	union {
 		struct sockaddr_in	ipv4;
@@ -250,32 +271,48 @@ struct kore_auth {
 #define HANDLER_TYPE_STATIC	1
 #define HANDLER_TYPE_DYNAMIC	2
 
-#endif
+#endif /* !KORE_NO_HTTP */
 
 #define KORE_MODULE_LOAD	1
 #define KORE_MODULE_UNLOAD	2
 
-struct kore_module {
-	void			*handle;
-	char			*path;
-	char			*onload;
-	int			(*ocb)(int);
+#define KORE_MODULE_NATIVE	0
+#define KORE_MODULE_PYTHON	1
 
-	time_t			mtime;
+struct kore_module;
+
+struct kore_module_functions {
+	void			(*free)(struct kore_module *);
+	void			(*reload)(struct kore_module *);
+	int			(*callback)(struct kore_module *, int);
+	void			(*load)(struct kore_module *, const char *);
+	void			*(*getsym)(struct kore_module *, const char *);
+};
+
+struct kore_module {
+	void				*handle;
+	char				*path;
+	char				*onload;
+	int				type;
+	time_t				mtime;
+	struct kore_runtime_call	*ocb;
+
+	struct kore_module_functions	*fun;
+	struct kore_runtime		*runtime;
 
 	TAILQ_ENTRY(kore_module)	list;
 };
 
 struct kore_module_handle {
-	char			*path;
-	char			*func;
-	void			*addr;
-	int			type;
-	int			errors;
-	regex_t			rctx;
-	struct kore_domain	*dom;
+	char				*path;
+	char				*func;
+	int				type;
+	int				errors;
+	regex_t				rctx;
+	struct kore_domain		*dom;
+	struct kore_runtime_call	*rcall;
 #if !defined(KORE_NO_HTTP)
-	struct kore_auth	*auth;
+	struct kore_auth			*auth;
 	TAILQ_HEAD(, kore_handler_params)	params;
 #endif
 	TAILQ_ENTRY(kore_module_handle)		list;
@@ -313,15 +350,15 @@ TAILQ_HEAD(kore_domain_h, kore_domain);
 #define KORE_VALIDATOR_TYPE_FUNCTION	2
 
 struct kore_validator {
-	u_int8_t		type;
-	char			*name;
-	char			*arg;
-	regex_t			rctx;
-	int			(*func)(struct http_request *, char *);
+	u_int8_t			type;
+	char				*name;
+	char				*arg;
+	regex_t				rctx;
+	struct kore_runtime_call	*rcall;
 
 	TAILQ_ENTRY(kore_validator)	list;
 };
-#endif
+#endif /* !KORE_NO_HTTP */
 
 #define KORE_BUF_OWNER_API	0x0001
 
@@ -568,15 +605,26 @@ void		kore_module_reload(int);
 void		kore_module_onload(void);
 int		kore_module_loaded(void);
 void		kore_domain_closelogs(void);
-void		*kore_module_getsym(const char *);
+void		*kore_module_getsym(const char *, struct kore_runtime **);
 void		kore_domain_load_crl(void);
 void		kore_domain_keymgr_init(void);
-void		kore_module_load(const char *, const char *);
 void		kore_domain_sslstart(struct kore_domain *);
+void		kore_module_load(const char *, const char *, int);
 void		kore_domain_callback(void (*cb)(struct kore_domain *));
 int		kore_module_handler_new(const char *, const char *,
 		    const char *, const char *, int);
 void		kore_module_handler_free(struct kore_module_handle *);
+
+struct kore_runtime_call	*kore_runtime_getcall(const char *);
+
+int	kore_runtime_onload(struct kore_runtime_call *, int);
+void	kore_runtime_connect(struct kore_runtime_call *, struct connection *);
+#if !defined(KORE_NO_HTTP)
+int	kore_runtime_http_request(struct kore_runtime_call *,
+	    struct http_request *);
+int	kore_runtime_validator(struct kore_runtime_call *,
+	    struct http_request *, void *);
+#endif
 
 struct kore_domain		*kore_domain_lookup(const char *);
 struct kore_module_handle	*kore_module_handler_find(const char *,

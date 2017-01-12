@@ -42,8 +42,8 @@ kore_validator_add(const char *name, u_int8_t type, const char *arg)
 		}
 		break;
 	case KORE_VALIDATOR_TYPE_FUNCTION:
-		*(void **)(&val->func) = kore_module_getsym(arg);
-		if (val->func == NULL) {
+		val->rcall = kore_runtime_getcall(arg);
+		if (val->rcall == NULL) {
 			kore_free(val);
 			kore_log(LOG_NOTICE,
 			    "validator %s has undefined callback %s",
@@ -92,7 +92,7 @@ kore_validator_check(struct http_request *req, struct kore_validator *val,
 			r = KORE_RESULT_ERROR;
 		break;
 	case KORE_VALIDATOR_TYPE_FUNCTION:
-		r = val->func(req, data);
+		r = kore_runtime_validator(val->rcall, req, data);
 		break;
 	default:
 		r = KORE_RESULT_ERROR;
@@ -113,9 +113,10 @@ kore_validator_reload(void)
 		if (val->type != KORE_VALIDATOR_TYPE_FUNCTION)
 			continue;
 
-		*(void **)&(val->func) = kore_module_getsym(val->arg);
-		if (val->func == NULL)
-			fatal("no function for validator %s found", val->name);
+		kore_free(val->rcall);
+		val->rcall = kore_runtime_getcall(val->arg);
+		if (val->rcall == NULL)
+			fatal("no function for validator %s found", val->arg);
 	}
 }
 

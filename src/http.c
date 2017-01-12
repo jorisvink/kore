@@ -204,6 +204,10 @@ http_request_new(struct connection *c, const char *host,
 	req->http_body_offset = 0;
 	req->http_body_path = NULL;
 
+#if defined(KORE_USE_PYTHON)
+	req->py_object = NULL;
+#endif
+
 	req->host = kore_pool_get(&http_host_pool);
 	memcpy(req->host, host, hostlen);
 	req->host[hostlen] = '\0';
@@ -298,7 +302,7 @@ http_process(void)
 void
 http_process_request(struct http_request *req)
 {
-	int		r, (*cb)(struct http_request *);
+	int		r;
 
 	kore_debug("http_process_request: %p->%p (%s)",
 	    req->owner, req, req->path);
@@ -314,10 +318,7 @@ http_process_request(struct http_request *req)
 
 	switch (r) {
 	case KORE_RESULT_OK:
-		*(void **)&(cb) = req->hdlr->addr;
-		worker->active_hdlr = req->hdlr;
-		r = cb(req);
-		worker->active_hdlr = NULL;
+		r = kore_runtime_http_request(req->hdlr->rcall, req);
 		break;
 	case KORE_RESULT_RETRY:
 		break;
