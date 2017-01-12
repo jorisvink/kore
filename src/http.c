@@ -1053,7 +1053,7 @@ http_populate_cookies(struct http_request *req)
 	    	kore_log(LOG_ERR, "cookie name is too long");
 	    	continue;
 	    }
-	    value = '\0';
+	    value = "\0";
 	    ck = kore_pool_get(&http_cookie_pool);
 		ck->name = kore_strdup(value);
 	    value++;
