@@ -215,6 +215,7 @@ void		kore_accesslog(struct http_request *);
 
 void		http_init(void);
 void		http_cleanup(void);
+void 		http_server_version(const char *);
 void		http_process(void);
 const char	*http_status_text(int);
 const char	*http_method_text(int);

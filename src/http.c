@@ -118,6 +118,19 @@ http_cleanup(void)
 	kore_pool_cleanup(&http_body_path);
 }
 
+void
+http_server_version(const char *version)
+{
+	int		l;
+
+	l = snprintf(http_version, sizeof(http_version),
+	    "server: %s\r\n", version);
+	if (l == -1 || (size_t)l >= sizeof(http_version))
+		fatal("http_server_version(): http_version buffer too small");
+
+	http_version_len = l;
+}
+
 int
 http_request_new(struct connection *c, const char *host,
     const char *method, const char *path, const char *version,
