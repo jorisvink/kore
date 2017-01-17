@@ -36,6 +36,7 @@ static void		msg_disconnected_parent(struct connection *);
 static void		msg_disconnected_worker(struct connection *);
 
 #if !defined(KORE_NO_HTTP)
+static void 	msg_type_shutdown(struct kore_msg *msg, const void *data);
 static void		msg_type_accesslog(struct kore_msg *, const void *);
 static void		msg_type_websocket(struct kore_msg *, const void *);
 #endif
@@ -58,6 +59,7 @@ kore_msg_parent_init(void)
 	}
 
 #if !defined(KORE_NO_HTTP)
+	kore_msg_register(KORE_MSG_SHUTDOWN, msg_type_shutdown);
 	kore_msg_register(KORE_MSG_ACCESSLOG, msg_type_accesslog);
 #endif
 }
@@ -208,6 +210,13 @@ msg_disconnected_worker(struct connection *c)
 }
 
 #if !defined(KORE_NO_HTTP)
+static void
+msg_type_shutdown(struct kore_msg *msg, const void *data)
+{
+	kore_log(LOG_NOTICE, "worker requested shutdown");
+	kore_signal(SIGQUIT);
+}
+
 static void
 msg_type_accesslog(struct kore_msg *msg, const void *data)
 {
