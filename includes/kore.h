@@ -380,6 +380,7 @@ struct kore_timer {
 #define KORE_MSG_WEBSOCKET	2
 #define KORE_MSG_KEYMGR_REQ	3
 #define KORE_MSG_KEYMGR_RESP	4
+#define KORE_MSG_SHUTDOWN	5
 
 /* Predefined message targets. */
 #define KORE_MSG_PARENT		1000
