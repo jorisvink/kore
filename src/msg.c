@@ -36,7 +36,7 @@ static void		msg_disconnected_parent(struct connection *);
 static void		msg_disconnected_worker(struct connection *);
 
 #if !defined(KORE_NO_HTTP)
-static void 	msg_type_shutdown(struct kore_msg *msg, const void *data);
+static void		msg_type_shutdown(struct kore_msg *msg, const void *data);
 static void		msg_type_accesslog(struct kore_msg *, const void *);
 static void		msg_type_websocket(struct kore_msg *, const void *);
 #endif
