@@ -145,11 +145,26 @@ http_request_new(struct connection *c, const char *host,
 	kore_debug("http_request_new(%p, %s, %s, %s, %s)", c, host,
 	    method, path, version);
 
-	if ((p = strrchr(host, ':')) != NULL)
-		*p = '\0';
+	switch (c->addrtype) {
+	case AF_INET6:
+		if (*host == '[') {
+			if ((p = strrchr(host, ']')) == NULL) {
+				http_error_response(c, 400);
+				return (KORE_RESULT_ERROR);
+			}
+			p++;
+			if (*p == ':')
+				*p = '\0';
+		}
+		break;
+	default:
+		if ((p = strrchr(host, ':')) != NULL)
+			*p = '\0';
+		break;
+	}
 
 	if ((hostlen = strlen(host)) >= KORE_DOMAINNAME_LEN - 1) {
-		http_error_response(c, 500);
+		http_error_response(c, 400);
 		return (KORE_RESULT_ERROR);
 	}
 
