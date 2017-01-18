@@ -23,6 +23,8 @@
 
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
 
 #include "kore.h"
 #include "http.h"
