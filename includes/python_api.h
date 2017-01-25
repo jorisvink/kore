@@ -18,6 +18,9 @@
 #ifndef __H_PYTHON_H
 #define __H_PYTHON_H
 
+#undef _POSIX_C_SOURCE
+#undef _XOPEN_SOURCE
+
 #include <Python.h>
 
 void		kore_python_init(void);
