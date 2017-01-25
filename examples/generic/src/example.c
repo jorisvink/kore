@@ -58,6 +58,9 @@ example_load(int state)
 	switch (state) {
 	case KORE_MODULE_LOAD:
 		kore_log(LOG_NOTICE, "module loading");
+
+		/* Set server version */
+		http_server_version("Server/0.1");
 		break;
 	case KORE_MODULE_UNLOAD:
 		kore_log(LOG_NOTICE, "module unloading");

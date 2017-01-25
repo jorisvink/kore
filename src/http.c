@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2016 Joris Vink <joris@coders.se>
+ * Copyright (c) 2013-2017 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -23,6 +23,8 @@
 
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
 
 #include "kore.h"
 #include "http.h"
@@ -118,6 +120,19 @@ http_cleanup(void)
 	kore_pool_cleanup(&http_body_path);
 }
 
+void
+http_server_version(const char *version)
+{
+	int		l;
+
+	l = snprintf(http_version, sizeof(http_version),
+	    "server: %s\r\n", version);
+	if (l == -1 || (size_t)l >= sizeof(http_version))
+		fatal("http_server_version(): http_version buffer too small");
+
+	http_version_len = l;
+}
+
 int
 http_request_new(struct connection *c, const char *host,
     const char *method, const char *path, const char *version,
@@ -132,11 +147,26 @@ http_request_new(struct connection *c, const char *host,
 	kore_debug("http_request_new(%p, %s, %s, %s, %s)", c, host,
 	    method, path, version);
 
-	if ((p = strrchr(host, ':')) != NULL)
-		*p = '\0';
+	switch (c->addrtype) {
+	case AF_INET6:
+		if (*host == '[') {
+			if ((p = strrchr(host, ']')) == NULL) {
+				http_error_response(c, 400);
+				return (KORE_RESULT_ERROR);
+			}
+			p++;
+			if (*p == ':')
+				*p = '\0';
+		}
+		break;
+	default:
+		if ((p = strrchr(host, ':')) != NULL)
+			*p = '\0';
+		break;
+	}
 
 	if ((hostlen = strlen(host)) >= KORE_DOMAINNAME_LEN - 1) {
-		http_error_response(c, 500);
+		http_error_response(c, 400);
 		return (KORE_RESULT_ERROR);
 	}
 
