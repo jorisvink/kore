@@ -224,17 +224,19 @@ python_module_getsym(struct kore_module *module, const char *symbol)
 	return (python_callable(module->handle, symbol));
 }
 
-static void pyhttp_dealloc(struct pyhttp_request *pyreq)
-{
-	PyObject_Del((PyObject *)pyreq);
-}
-
-static void pyconnection_dealloc(struct pyconnection *pyc)
+static void
+pyconnection_dealloc(struct pyconnection *pyc)
 {
 	PyObject_Del((PyObject *)pyc);
 }
 
 #if !defined(KORE_NO_HTTP)
+static void
+pyhttp_dealloc(struct pyhttp_request *pyreq)
+{
+	PyObject_Del((PyObject *)pyreq);
+}
+
 static int
 python_runtime_http_request(void *addr, struct http_request *req)
 {
