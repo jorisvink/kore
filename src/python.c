@@ -71,6 +71,34 @@ struct kore_runtime kore_python_runtime = {
 	.connect = python_runtime_connect
 };
 
+static struct {
+	const char		*symbol;
+	int			value;
+} python_integers[] = {
+	{ "LOG_ERR", LOG_ERR },
+	{ "LOG_INFO", LOG_INFO },
+	{ "LOG_NOTICE", LOG_NOTICE },
+	{ "RESULT_OK", KORE_RESULT_OK },
+	{ "RESULT_RETRY", KORE_RESULT_RETRY },
+	{ "RESULT_ERROR", KORE_RESULT_ERROR },
+	{ "MODULE_LOAD", KORE_MODULE_LOAD },
+	{ "MODULE_UNLOAD", KORE_MODULE_UNLOAD },
+	{ "CONN_PROTO_HTTP", CONN_PROTO_HTTP },
+	{ "CONN_PROTO_UNKNOWN", CONN_PROTO_UNKNOWN },
+	{ "CONN_PROTO_WEBSOCKET", CONN_PROTO_WEBSOCKET },
+	{ "CONN_STATE_ESTABLISHED", CONN_STATE_ESTABLISHED },
+#if !defined(KORE_NO_HTTP)
+	{ "METHOD_GET", HTTP_METHOD_GET },
+	{ "METHOD_PUT", HTTP_METHOD_PUT },
+	{ "METHOD_HEAD", HTTP_METHOD_HEAD },
+	{ "METHOD_POST", HTTP_METHOD_POST },
+	{ "METHOD_DELETE", HTTP_METHOD_DELETE },
+	{ "WEBSOCKET_BROADCAST_LOCAL", WEBSOCKET_BROADCAST_LOCAL },
+	{ "WEBSOCKET_BROADCAST_GLOBAL", WEBSOCKET_BROADCAST_GLOBAL },
+#endif
+	{ NULL, -1 }
+};
+
 void
 kore_python_init(void)
 {
@@ -281,6 +309,7 @@ python_runtime_connect(void *addr, struct connection *c)
 static PyMODINIT_FUNC
 python_module_init(void)
 {
+	int		i;
 	PyObject	*pykore;
 
 	if ((pykore = PyModule_Create(&pykore_module)) == NULL)
@@ -288,28 +317,13 @@ python_module_init(void)
 
 	python_push_type("pyconnection", pykore, &pyconnection_type);
 
-	python_push_integer(pykore, "RESULT_OK", KORE_RESULT_OK);
-	python_push_integer(pykore, "RESULT_RETRY", KORE_RESULT_RETRY);
-	python_push_integer(pykore, "RESULT_ERROR", KORE_RESULT_ERROR);
-	python_push_integer(pykore, "MODULE_LOAD", KORE_MODULE_LOAD);
-	python_push_integer(pykore, "MODULE_UNLOAD", KORE_MODULE_UNLOAD);
-
-	python_push_integer(pykore, "LOG_ERR", LOG_ERR);
-	python_push_integer(pykore, "LOG_INFO", LOG_INFO);
-	python_push_integer(pykore, "LOG_NOTICE", LOG_NOTICE);
+	for (i = 0; python_integers[i].symbol != NULL; i++) {
+		python_push_integer(pykore, python_integers[i].symbol,
+		    python_integers[i].value);
+	}
 
 #if !defined(KORE_NO_HTTP)
 	python_push_type("pyhttp_request", pykore, &pyhttp_request_type);
-
-	python_push_integer(pykore, "METHOD_GET", HTTP_METHOD_GET);
-	python_push_integer(pykore, "METHOD_PUT", HTTP_METHOD_PUT);
-	python_push_integer(pykore, "METHOD_HEAD", HTTP_METHOD_HEAD);
-	python_push_integer(pykore, "METHOD_POST", HTTP_METHOD_POST);
-	python_push_integer(pykore, "METHOD_DELETE", HTTP_METHOD_DELETE);
-	python_push_integer(pykore,
-	    "WEBSOCKET_BROADCAST_LOCAL", WEBSOCKET_BROADCAST_LOCAL);
-	python_push_integer(pykore,
-	    "WEBSOCKET_BROADCAST_GLOBAL", WEBSOCKET_BROADCAST_GLOBAL);
 #endif
 
 	return (pykore);
