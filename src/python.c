@@ -54,6 +54,11 @@ static void	python_module_reload(struct kore_module *);
 static void	python_module_load(struct kore_module *, const char *);
 static void	*python_module_getsym(struct kore_module *, const char *);
 
+static void	*python_malloc(void *, size_t);
+static void	*python_calloc(void *, size_t, size_t);
+static void	*python_realloc(void *, void *, size_t);
+static void	python_free(void *, void *);
+
 struct kore_module_functions kore_python_module = {
 	.free = python_module_free,
 	.load = python_module_load,
@@ -99,9 +104,22 @@ static struct {
 	{ NULL, -1 }
 };
 
+static PyMemAllocatorEx allocator = {
+	.ctx = NULL,
+	.malloc = python_malloc,
+	.calloc = python_calloc,
+	.realloc = python_realloc,
+	.free = python_free
+};
+
 void
 kore_python_init(void)
 {
+	PyMem_SetAllocator(PYMEM_DOMAIN_OBJ, &allocator);
+	PyMem_SetAllocator(PYMEM_DOMAIN_MEM, &allocator);
+	PyMem_SetAllocator(PYMEM_DOMAIN_RAW, &allocator);
+	PyMem_SetupDebugHooks();
+
 	if (PyImport_AppendInittab("kore", &python_module_init) == -1)
 		fatal("kore_python_init: failed to add new module");
 
@@ -113,6 +131,35 @@ kore_python_cleanup(void)
 {
 	if (Py_IsInitialized())
 		Py_Finalize();
+}
+
+static void *
+python_malloc(void *ctx, size_t len)
+{
+	return (kore_malloc(len));
+}
+
+static void *
+python_calloc(void *ctx, size_t memb, size_t len)
+{
+	void		*ptr;
+
+	ptr = kore_calloc(memb, len);
+	memset(ptr, 0, len);
+
+	return (ptr);
+}
+
+static void *
+python_realloc(void *ctx, void *ptr, size_t len)
+{
+	return (kore_realloc(ptr, len));
+}
+
+static void
+python_free(void *ctx, void *ptr)
+{
+	kore_free(ptr);
 }
 
 static void
@@ -179,13 +226,11 @@ python_module_getsym(struct kore_module *module, const char *symbol)
 
 static void pyhttp_dealloc(struct pyhttp_request *pyreq)
 {
-	printf("pyreq %p goes byebye\n", (void *)pyreq);
 	PyObject_Del((PyObject *)pyreq);
 }
 
 static void pyconnection_dealloc(struct pyconnection *pyc)
 {
-	printf("pyc %p goes byebye\n", (void *)pyc);
 	PyObject_Del((PyObject *)pyc);
 }
 
@@ -207,8 +252,6 @@ python_runtime_http_request(void *addr, struct http_request *req)
 
 	if ((args = PyTuple_New(1)) == NULL)
 		fatal("python_runtime_http_request: PyTuple_New failed");
-
-	printf("  args tuple: %p\n", (void *)args);
 
 	if (PyTuple_SetItem(args, 0, pyreq) != 0)
 		fatal("python_runtime_http_request: PyTuple_SetItem failed");
@@ -485,7 +528,6 @@ pyconnection_alloc(struct connection *c)
 	if (pyc == NULL)
 		return (NULL);
 
-	printf("  pyc: %p\n", (void *)pyc);
 	pyc->c = c;
 
 	return ((PyObject *)pyc);
