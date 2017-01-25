@@ -112,6 +112,10 @@ version(void)
 #if defined(KORE_SINGLE_BINARY)
 	printf("single ");
 #endif
+#if defined(KORE_USE_PYTHON)
+	printf("python ");
+#endif
+
 	printf("\n");
 
 	exit(0);
