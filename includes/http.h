@@ -162,6 +162,8 @@ struct http_file {
 #define HTTP_REQUEST_NO_CONTENT_LENGTH	0x0080
 #define HTTP_REQUEST_AUTHED		0x0100
 
+#define HTTP_VALIDATOR_IS_REQUEST	0x8000
+
 struct kore_task;
 
 struct http_request {

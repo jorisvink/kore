@@ -157,7 +157,13 @@ kore_auth_header(struct http_request *req, struct kore_auth *auth)
 static int
 kore_auth_request(struct http_request *req, struct kore_auth *auth)
 {
-	return (kore_validator_check(req, auth->validator, req));
+	int		ret;
+
+	req->flags |= HTTP_VALIDATOR_IS_REQUEST;
+	ret = kore_validator_check(req, auth->validator, req);
+	req->flags &= ~HTTP_VALIDATOR_IS_REQUEST;
+
+	return (ret);
 }
 
 struct kore_auth *

@@ -125,8 +125,10 @@ python_log_error(const char *function)
 
 	PyErr_Fetch(&type, &value, &traceback);
 
-	if (type == NULL || value == NULL || traceback == NULL)
-		fatal("python_log_error(): exception but no error trace?");
+	if (type == NULL || value == NULL || traceback == NULL) {
+		kore_log(LOG_ERR, "unknown python exception in '%s'", function);
+		return;
+	}
 
 	kore_log(LOG_ERR,
 	    "python exception in '%s' - type:%s - value:%s - trace:%s",
@@ -237,8 +239,57 @@ python_runtime_http_request(void *addr, struct http_request *req)
 static int
 python_runtime_validator(void *addr, struct http_request *req, void *data)
 {
-	printf("python_runtime_validator: XXX %s\n", req->path);
-	return (KORE_RESULT_OK);
+	int		ret;
+	PyObject	*pyret, *pyreq, *args, *callable, *arg;
+
+	callable = (PyObject *)addr;
+
+	if ((pyreq = pyhttp_request_alloc(req)) == NULL) {
+		kore_log(LOG_ERR, "cannot create new pyhttp_request");
+		http_response(req, HTTP_STATUS_INTERNAL_ERROR, NULL, 0);
+		return (KORE_RESULT_OK);
+	}
+
+	if (req->flags & HTTP_VALIDATOR_IS_REQUEST) {
+		if ((arg = pyhttp_request_alloc(data)) == NULL) {
+			Py_DECREF(pyreq);
+			kore_log(LOG_ERR, "cannot create new pyhttp_request");
+			http_response(req, HTTP_STATUS_INTERNAL_ERROR, NULL, 0);
+			return (KORE_RESULT_OK);
+		}
+	} else {
+		if ((arg = PyUnicode_FromString(data)) == NULL) {
+			Py_DECREF(pyreq);
+			kore_log(LOG_ERR, "cannot create new pyhttp_request");
+			http_response(req, HTTP_STATUS_INTERNAL_ERROR, NULL, 0);
+			return (KORE_RESULT_OK);
+		}
+	}
+
+	if ((args = PyTuple_New(2)) == NULL)
+		fatal("python_runtime_validator: PyTuple_New failed");
+
+	if (PyTuple_SetItem(args, 0, pyreq) != 0 ||
+	    PyTuple_SetItem(args, 1, arg) != 0)
+		fatal("python_runtime_vaildator: PyTuple_SetItem failed");
+
+	PyErr_Clear();
+	pyret = PyObject_Call(callable, args, NULL);
+	Py_DECREF(args);
+
+	if (pyret == NULL) {
+		python_log_error("python_runtime_validator");
+		http_response(req, HTTP_STATUS_INTERNAL_ERROR, NULL, 0);
+		return (KORE_RESULT_OK);
+	}
+
+	if (!PyLong_Check(pyret))
+		fatal("python_runtime_validator: unexpected return type");
+
+	ret = (int)PyLong_AsLong(pyret);
+	Py_DECREF(pyret);
+
+	return (ret);
 }
 #endif
 
@@ -259,6 +310,7 @@ python_runtime_onload(void *addr, int action)
 	if (PyTuple_SetItem(args, 0, pyact) != 0)
 		fatal("python_runtime_onload: PyTuple_SetItem failed");
 
+	PyErr_Clear();
 	pyret = PyObject_Call(callable, args, NULL);
 	Py_DECREF(args);
 
@@ -295,6 +347,7 @@ python_runtime_connect(void *addr, struct connection *c)
 	if (PyTuple_SetItem(args, 0, pyc) != 0)
 		fatal("python_runtime_connect: PyTuple_SetItem failed");
 
+	PyErr_Clear();
 	pyret = PyObject_Call(callable, args, NULL);
 	Py_DECREF(args);
 
