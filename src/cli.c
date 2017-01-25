@@ -223,6 +223,9 @@ static const char *config_data =
 	"\n"
 	"bind\t\t127.0.0.1 8888\n"
 	"load\t\t./%s.so\n"
+#if defined(KORE_USE_PYTHON)
+	"\n#python_import src/handler.py\n"
+#endif
 #if !defined(KORE_NO_TLS)
 	"tls_dhparam\tdh2048.pem\n"
 #endif
@@ -580,8 +583,9 @@ cli_build(int argc, char **argv)
 		(void)cli_vasprintf(&sofile, "%s.so", appl);
 	}
 
-	if (!cli_file_exists(sofile))
+	if (!cli_file_exists(sofile) && source_files_count > 0)
 		requires_relink++;
+
 	free(sofile);
 
 	if (requires_relink) {
