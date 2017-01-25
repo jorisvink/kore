@@ -104,6 +104,9 @@ workers		4
 # which Kore will call when the module is loaded/reloaded.
 load contrib/examples/generic/example.module	example_load
 
+# Load a python file (if built with PYTHON=1)
+#python_import src/index.py example_load
+
 # Validators
 #	validator	name	type	regex|function
 #
