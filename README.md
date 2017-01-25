@@ -18,6 +18,7 @@ Features
 * Built-in parameter validation
 * Only HTTPS connections allowed
 * Built-in asynchronous PostgreSQL support
+* Built-in support for page handlers in Python
 * Private keys isolated in separate process (RSA and ECDSA)
 * Default sane TLS ciphersuites (PFS in all major browsers)
 * Modules can be reloaded on-the-fly, even while serving content
@@ -53,6 +54,9 @@ Requirements for background tasks (optional)
 Requirements for pgsql (optional)
 * libpq
 
+Requirements for python (optional)
+* Python 3.6
+
 Normal compilation and installation:
 
 ```
@@ -71,6 +75,7 @@ those by setting a shell environment variable before running **_make_**.
 * NOHTTP=1 (compiles Kore without HTTP support)
 * NOOPT=1 (disable compiler optimizations)
 * JSONRPC=1 (compiles in JSONRPC support)
+* PYTHON=1 (compiles in the Python support)
 
 Example applications
 -----------------
