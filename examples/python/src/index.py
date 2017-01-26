@@ -11,15 +11,6 @@ def python_validator(req, data):
 	print("python validator called %s" % data)
 	return kore.RESULT_OK
 
-def python_handle(c):
-	print("python_handle %s" % c)
-
-def python_on_connect(c):
-	c.proto = kore.CONN_PROTO_UNKNOWN;
-	c.state = kore.CONN_STATE_ESTABLISHED;
-	c.handle = python_handle
-	print("onconnect %s" % c)
-
 def onload(action):
 	kore.log(kore.LOG_INFO, "FOOBAR python onload called with %d" % action)
 	return kore.RESULT_OK
@@ -31,11 +22,11 @@ def kore_preload():
 	print("kore_preload called")
 
 def page(req):
-#	print("%s path is %s - host is %s" % (req, req.path, req.host))
-#	print("connection is %s" % req.connection)
+	print("%s path is %s - host is %s" % (req, req.path, req.host))
+	print("connection is %s" % req.connection)
 	xframe = req.request_header("xframe")
-#	if xframe != None:
-#		print("xframe header present %s" % xframe)
+	if xframe != None:
+		print("xframe header present %s" % xframe)
 	if req.method == kore.METHOD_POST:
 		try:
 			length, body = req.body_read(1024)
@@ -52,6 +43,9 @@ def page(req):
 			req.response(200, body)
 	else:
 		req.populate_get()
+		id = req.argument("id")
+		if id != None:
+			print("got id of %s" % id)
 		req.response_header("content-type", "text/plain")
 		req.response(200, "hello 1234".encode("utf-8"))
 	return kore.RESULT_OK
