@@ -658,6 +658,28 @@ pyhttp_populate_post(struct pyhttp_request *pyreq, PyObject *args)
 }
 
 static PyObject *
+pyhttp_argument(struct pyhttp_request *pyreq, PyObject *args)
+{
+	const char	*name;
+	PyObject	*value;
+	char		*string;
+
+	if (!PyArg_ParseTuple(args, "s", &name)) {
+		PyErr_SetString(PyExc_TypeError, "invalid parameters");
+		return (NULL);
+	}
+
+	if (!http_argument_get_string(pyreq->req, name, &string)) {
+		Py_RETURN_NONE;
+	}
+
+	if ((value = PyUnicode_FromString(string)) == NULL)
+		return (PyErr_NoMemory());
+
+	return (value);
+}
+
+static PyObject *
 pyhttp_get_host(struct pyhttp_request *pyreq, void *closure)
 {
 	PyObject	*host;

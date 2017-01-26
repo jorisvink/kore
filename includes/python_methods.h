@@ -65,6 +65,7 @@ struct pyhttp_request {
 static void	pyhttp_dealloc(struct pyhttp_request *);
 
 static PyObject	*pyhttp_response(struct pyhttp_request *, PyObject *);
+static PyObject *pyhttp_argument(struct pyhttp_request *, PyObject *);
 static PyObject	*pyhttp_body_read(struct pyhttp_request *, PyObject *);
 static PyObject	*pyhttp_populate_get(struct pyhttp_request *, PyObject *);
 static PyObject	*pyhttp_populate_post(struct pyhttp_request *, PyObject *);
@@ -73,6 +74,7 @@ static PyObject	*pyhttp_response_header(struct pyhttp_request *, PyObject *);
 
 static PyMethodDef pyhttp_request_methods[] = {
 	METHOD("response", pyhttp_response, METH_VARARGS),
+	METHOD("argument", pyhttp_argument, METH_VARARGS),
 	METHOD("body_read", pyhttp_body_read, METH_VARARGS),
 	METHOD("populate_get", pyhttp_populate_get, METH_NOARGS),
 	METHOD("populate_post", pyhttp_populate_post, METH_NOARGS),
