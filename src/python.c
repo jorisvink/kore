@@ -200,19 +200,20 @@ python_module_free(struct kore_module *module)
 static void
 python_module_reload(struct kore_module *module)
 {
-	/* Calls through to kore_python_module_load() below. */
-	module->fun->load(module, module->onload);
+	PyObject	*handle;
+
+	if ((handle = PyImport_ReloadModule(module->handle)) == NULL) {
+		python_log_error("python_module_reload");
+		return;
+	}
+
+	Py_DECREF(module->handle);
+	module->handle = handle;
 }
 
 static void
 python_module_load(struct kore_module *module, const char *onload)
 {
-	if (module->handle != NULL)
-		Py_DECREF(module->handle);
-
-	kore_python_cleanup();
-	kore_python_init();
-
 	module->handle = python_import(module->path);
 	if (module->handle == NULL)
 		fatal("%s: failed to import module", module->path);
