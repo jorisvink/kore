@@ -41,9 +41,9 @@
 
 /* XXX - This is becoming a clusterfuck. Fix it. */
 
-#if !defined(KORE_SINGLE_BINARY)
 static int		configure_load(char *);
-#else
+
+#if defined(KORE_SINGLE_BINARY)
 static FILE		*config_file_write(void);
 extern u_int8_t		asset_builtin_kore_conf[];
 extern u_int32_t	asset_len_builtin_kore_conf;
@@ -116,9 +116,7 @@ static struct {
 } config_names[] = {
 	{ "include",			configure_include },
 	{ "bind",			configure_bind },
-#if !defined(KORE_SINGLE_BINARY)
 	{ "load",			configure_load },
-#endif
 #if defined(KORE_USE_PYTHON)
 	{ "python_import",		configure_python_import },
 #endif
@@ -314,7 +312,6 @@ configure_bind(char *options)
 	return (kore_server_bind(argv[0], argv[1], argv[2]));
 }
 
-#if !defined(KORE_SINGLE_BINARY)
 static int
 configure_load(char *options)
 {
@@ -327,7 +324,8 @@ configure_load(char *options)
 	kore_module_load(argv[0], argv[1], KORE_MODULE_NATIVE);
 	return (KORE_RESULT_OK);
 }
-#else
+
+#if defined(KORE_SINGLE_BINARY)
 static FILE *
 config_file_write(void)
 {

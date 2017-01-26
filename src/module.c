@@ -63,9 +63,7 @@ kore_module_cleanup(void)
 void
 kore_module_load(const char *path, const char *onload, int type)
 {
-#if !defined(KORE_SINGLE_BINARY)
 	struct stat		st;
-#endif
 	struct kore_module	*module;
 
 	kore_debug("kore_module_load(%s, %s)", path, onload);
@@ -76,16 +74,16 @@ kore_module_load(const char *path, const char *onload, int type)
 	module->onload = NULL;
 	module->handle = NULL;
 
-#if !defined(KORE_SINGLE_BINARY)
-	if (stat(path, &st) == -1)
-		fatal("stat(%s): %s", path, errno_s);
+	if (path != NULL) {
+		if (stat(path, &st) == -1)
+			fatal("stat(%s): %s", path, errno_s);
 
-	module->path = kore_strdup(path);
-	module->mtime = st.st_mtime;
-#else
-	module->path = NULL;
-	module->mtime = 0;
-#endif
+		module->path = kore_strdup(path);
+		module->mtime = st.st_mtime;
+	} else {
+		module->path = NULL;
+		module->mtime = 0;
+	}
 
 	switch (module->type) {
 	case KORE_MODULE_NATIVE:
@@ -120,22 +118,19 @@ kore_module_load(const char *path, const char *onload, int type)
 void
 kore_module_onload(void)
 {
-#if !defined(KORE_SINGLE_BINARY)
 	struct kore_module	*module;
 
 	TAILQ_FOREACH(module, &modules, list) {
-		if (module->ocb == NULL)
+		if (module->path == NULL || module->ocb == NULL)
 			continue;
 
 		kore_runtime_onload(module->ocb, KORE_MODULE_LOAD);
 	}
-#endif
 }
 
 void
 kore_module_reload(int cbs)
 {
-#if !defined(KORE_SINGLE_BINARY)
 	struct stat			st;
 	int				ret;
 	struct kore_domain		*dom;
@@ -143,6 +138,9 @@ kore_module_reload(int cbs)
 	struct kore_module		*module;
 
 	TAILQ_FOREACH(module, &modules, list) {
+		if (module->path == NULL)
+			continue;
+
 		if (stat(module->path, &st) == -1) {
 			kore_log(LOG_NOTICE, "stat(%s): %s, skipping reload",
 			    module->path, errno_s);
@@ -197,7 +195,6 @@ kore_module_reload(int cbs)
 
 #if !defined(KORE_NO_HTTP)
 	kore_validator_reload();
-#endif
 #endif
 }
 
