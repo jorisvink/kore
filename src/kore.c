@@ -434,7 +434,7 @@ kore_server_start(void)
 #if defined(KORE_SINGLE_BINARY)
 	rcall = kore_runtime_getcall("kore_preload");
 	if (rcall != NULL) {
-		rcall->runtime->execute(rcall->addr, NULL);
+		kore_runtime_execute(rcall);
 		kore_free(rcall);
 	}
 #endif
@@ -458,10 +458,8 @@ kore_server_start(void)
 		if (sig_recv != 0) {
 			switch (sig_recv) {
 			case SIGHUP:
-#if !defined(KORE_SINGLE_BINARY)
 				kore_worker_dispatch_signal(sig_recv);
 				kore_module_reload(0);
-#endif
 				break;
 			case SIGINT:
 			case SIGQUIT:

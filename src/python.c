@@ -46,6 +46,7 @@ static void	python_push_type(const char *, PyObject *, PyTypeObject *);
 static int	python_runtime_http_request(void *, struct http_request *);
 static int	python_runtime_validator(void *, struct http_request *, void *);
 #endif
+static void	python_runtime_execute(void *);
 static int	python_runtime_onload(void *, int);
 static void	python_runtime_connect(void *, struct connection *);
 
@@ -73,7 +74,8 @@ struct kore_runtime kore_python_runtime = {
 	.validator = python_runtime_validator,
 #endif
 	.onload = python_runtime_onload,
-	.connect = python_runtime_connect
+	.connect = python_runtime_connect,
+	.execute = python_runtime_execute
 };
 
 static struct {
@@ -338,6 +340,28 @@ python_runtime_validator(void *addr, struct http_request *req, void *data)
 	return (ret);
 }
 #endif
+
+static void
+python_runtime_execute(void *addr)
+{
+	PyObject	*callable, *args, *pyret;
+
+	callable = (PyObject *)addr;
+
+	if ((args = PyTuple_New(0)) == NULL)
+		fatal("python_runtime_execute: PyTuple_New failed");
+
+	PyErr_Clear();
+	pyret = PyObject_Call(callable, args, NULL);
+	Py_DECREF(args);
+
+	if (pyret == NULL) {
+		python_log_error("python_runtime_execute");
+		fatal("failed to execute python call");
+	}
+
+	Py_DECREF(pyret);
+}
 
 static int
 python_runtime_onload(void *addr, int action)

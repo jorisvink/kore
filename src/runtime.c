@@ -26,6 +26,7 @@
 #include "python_api.h"
 #endif
 
+static void	native_runtime_execute(void *);
 static int	native_runtime_onload(void *, int);
 static void	native_runtime_connect(void *, struct connection *);
 #if !defined(KORE_NO_HTTP)
@@ -40,7 +41,8 @@ struct kore_runtime kore_native_runtime = {
 	.validator = native_runtime_validator,
 #endif
 	.onload = native_runtime_onload,
-	.connect = native_runtime_connect
+	.connect = native_runtime_connect,
+	.execute = native_runtime_execute
 };
 
 struct kore_runtime_call *
@@ -59,6 +61,12 @@ kore_runtime_getcall(const char *symbol)
 	rcall->runtime = runtime;
 
 	return (rcall);
+}
+
+void
+kore_runtime_execute(struct kore_runtime_call *rcall)
+{
+	rcall->runtime->execute(rcall->addr);
 }
 
 int
@@ -88,6 +96,15 @@ kore_runtime_validator(struct kore_runtime_call *rcall,
 	return (rcall->runtime->validator(rcall->addr, req, data));
 }
 #endif
+
+static void
+native_runtime_execute(void *addr)
+{
+	void	(*cb)(void);
+
+	*(void **)&(cb) = addr;
+	cb();
+}
 
 static void
 native_runtime_connect(void *addr, struct connection *c)

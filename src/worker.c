@@ -338,20 +338,17 @@ kore_worker_entry(struct kore_worker *kw)
 #if defined(KORE_SINGLE_BINARY)
 	rcall = kore_runtime_getcall("kore_onload");
 	if (rcall != NULL) {
-		rcall->runtime->execute(rcall->addr, NULL);
+		kore_runtime_execute(rcall);
 		kore_free(rcall);
 	}
-#else
-	kore_module_onload();
 #endif
+	kore_module_onload();
 
 	for (;;) {
 		if (sig_recv != 0) {
 			switch (sig_recv) {
 			case SIGHUP:
-#if !defined(KORE_SINGLE_BINARY)
 				kore_module_reload(1);
-#endif
 				break;
 			case SIGQUIT:
 			case SIGINT:

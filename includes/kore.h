@@ -216,7 +216,7 @@ struct kore_runtime {
 	int	(*http_request)(void *, struct http_request *);
 	int	(*validator)(void *, struct http_request *, void *);
 #endif
-	int	(*execute)(void *, void *);
+	void	(*execute)(void *);
 	int	(*onload)(void *, int);
 	void	(*connect)(void *, struct connection *);
 };
@@ -618,6 +618,7 @@ void		kore_module_handler_free(struct kore_module_handle *);
 
 struct kore_runtime_call	*kore_runtime_getcall(const char *);
 
+void	kore_runtime_execute(struct kore_runtime_call *);
 int	kore_runtime_onload(struct kore_runtime_call *, int);
 void	kore_runtime_connect(struct kore_runtime_call *, struct connection *);
 #if !defined(KORE_NO_HTTP)
