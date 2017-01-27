@@ -1019,48 +1019,36 @@ http_populate_cookies(struct http_request *req)
 {
 	int						 i, v;
 	size_t					 nlen;
-    struct http_cookie		*ck;
-    char					*c, *header, *value;
-    char					*cookies[HTTP_MAX_COOKIES];
-    const char				*semicol = ";";
-    const char				*comma = ",";
-    const char				*delim = NULL;
+	struct http_cookie		*ck;
+	char					*c, *header, *value;
+	char					*cookies[HTTP_MAX_COOKIES];
 
-    if (!http_request_header(req, "cookie", &c))
+	if (!http_request_header(req, "cookie", &c))
 	   return;
 
-    header = kore_strdup(c);
-    if (strstr(header, semicol) != NULL) {
-    	delim = semicol;
-    }
-    else if (strstr(header, comma) != NULL) {
-    	delim = comma;
-    }
-    else
-    	delim = semicol;
+	header = kore_strdup(c);
+	v = kore_split_string(header, ";", cookies, HTTP_MAX_COOKIES);
+	for (i = 0; i < v; i++) {
+		for (c = cookies[i]; isspace(*c); c++)
+			;
 
-    v = kore_split_string(header, delim, cookies, HTTP_MAX_COOKIES);
-    for (i = 0; i < v; i++) {
-    	for (c = cookies[i]; isspace(*c); c++)
-    	    ;
-
-    	if ( (value = strchr(c, '=')) == NULL) {
-	    	kore_log(LOG_ERR, "malformed cookie");
-	    	continue;
-	    }
-	    nlen = value - c - 1;
-	    if (nlen > HTTP_MAX_COOKIENAME) {
-	    	kore_log(LOG_ERR, "cookie name is too long");
-	    	continue;
-	    }
-	    value = "\0";
-	    ck = kore_pool_get(&http_cookie_pool);
+		if ( (value = strchr(c, '=')) == NULL) {
+			kore_log(LOG_ERR, "malformed cookie");
+			continue;
+		}
+		nlen = value - c - 1;
+		if (nlen > HTTP_MAX_COOKIENAME) {
+			kore_log(LOG_ERR, "cookie name is too long");
+			continue;
+		}
+		value = "\0";
+		ck = kore_pool_get(&http_cookie_pool);
 		ck->name = kore_strdup(value);
-	    value++;
+		value++;
 		ck->value = kore_strdup(value);
 		TAILQ_INSERT_TAIL(&(req->req_cookies), ck, list);
-    }
-    kore_free(header);
+	}
+	kore_free(header);
 }
 
 void
