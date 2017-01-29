@@ -24,6 +24,7 @@
 
 #define KORE_PGSQL_SYNC			0x0001
 #define KORE_PGSQL_ASYNC		0x0002
+#define KORE_PGSQL_SCHEDULED		0x0004
 
 #if defined(__cplusplus)
 extern "C" {

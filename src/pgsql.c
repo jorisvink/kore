@@ -432,6 +432,7 @@ pgsql_schedule(struct kore_pgsql *pgsql)
 
 	kore_platform_schedule_read(fd, pgsql->conn);
 	pgsql->state = KORE_PGSQL_STATE_WAIT;
+	pgsql->flags |= KORE_PGSQL_SCHEDULED;
 }
 
 static void
@@ -507,8 +508,10 @@ pgsql_conn_release(struct kore_pgsql *pgsql)
 	/* Async query cleanup */
 	if (pgsql->flags & KORE_PGSQL_ASYNC) {
 		if (pgsql->conn != NULL) {
-			fd = PQsocket(pgsql->conn->db);
-			kore_platform_disable_read(fd);
+			if (pgsql->flags & KORE_PGSQL_SCHEDULED) {
+				fd = PQsocket(pgsql->conn->db);
+				kore_platform_disable_read(fd);
+			}
 			kore_pool_put(&pgsql_job_pool, pgsql->conn->job);
 		}
 	}
