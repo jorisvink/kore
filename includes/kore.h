@@ -196,7 +196,9 @@ struct connection {
 	struct netbuf		*rnb;
 
 #if !defined(KORE_NO_HTTP)
-	void				*wscbs;
+	struct kore_runtime_call	*ws_connect;
+	struct kore_runtime_call	*ws_message;
+	struct kore_runtime_call	*ws_disconnect;
 	TAILQ_HEAD(, http_request)	http_requests;
 #endif
 
@@ -215,6 +217,10 @@ struct kore_runtime {
 #if !defined(KORE_NO_HTTP)
 	int	(*http_request)(void *, struct http_request *);
 	int	(*validator)(void *, struct http_request *, void *);
+	void	(*wsconnect)(void *, struct connection *);
+	void	(*wsdisconnect)(void *, struct connection *);
+	void	(*wsmessage)(void *, struct connection *,
+		    u_int8_t, const void *, size_t);
 #endif
 	void	(*execute)(void *);
 	int	(*onload)(void *, int);
@@ -391,13 +397,6 @@ struct kore_pool {
 
 	LIST_HEAD(, kore_pool_region)	regions;
 	LIST_HEAD(, kore_pool_entry)	freelist;
-};
-
-struct kore_wscbs {
-	void		(*connect)(struct connection *);
-	void		(*message)(struct connection *, u_int8_t,
-			    void *, size_t);
-	void		(*disconnect)(struct connection *);
 };
 
 struct kore_timer {
@@ -580,7 +579,7 @@ char		*kore_read_line(FILE *, char *, size_t);
 
 #if !defined(KORE_NO_HTTP)
 void		kore_websocket_handshake(struct http_request *,
-		    struct kore_wscbs *);
+		    const char *, const char *, const char *);
 void		kore_websocket_send(struct connection *,
 		    u_int8_t, const void *, size_t);
 void		kore_websocket_broadcast(struct connection *,
@@ -626,6 +625,11 @@ int	kore_runtime_http_request(struct kore_runtime_call *,
 	    struct http_request *);
 int	kore_runtime_validator(struct kore_runtime_call *,
 	    struct http_request *, void *);
+void	kore_runtime_wsconnect(struct kore_runtime_call *, struct connection *);
+void	kore_runtime_wsdisconnect(struct kore_runtime_call *,
+	    struct connection *);
+void	kore_runtime_wsmessage(struct kore_runtime_call *,
+	    struct connection *, u_int8_t, const void *, size_t);
 #endif
 
 struct kore_domain		*kore_domain_lookup(const char *);

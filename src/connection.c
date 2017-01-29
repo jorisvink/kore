@@ -73,7 +73,9 @@ kore_connection_new(void *owner)
 	c->idle_timer.length = KORE_IDLE_TIMER_MAX;
 
 #if !defined(KORE_NO_HTTP)
-	c->wscbs = NULL;
+	c->ws_connect = NULL;
+	c->ws_message = NULL;
+	c->ws_disconnect = NULL;
 	TAILQ_INIT(&(c->http_requests));
 #endif
 
@@ -341,6 +343,10 @@ kore_connection_remove(struct connection *c)
 		req->flags |= HTTP_REQUEST_DELETE;
 		http_request_wakeup(req);
 	}
+
+	kore_free(c->ws_connect);
+	kore_free(c->ws_message);
+	kore_free(c->ws_disconnect);
 #endif
 
 	for (nb = TAILQ_FIRST(&(c->send_queue)); nb != NULL; nb = next) {

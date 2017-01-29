@@ -45,6 +45,8 @@ static void	python_push_type(const char *, PyObject *, PyTypeObject *);
 #if !defined(KORE_NO_HTTP)
 static int	python_runtime_http_request(void *, struct http_request *);
 static int	python_runtime_validator(void *, struct http_request *, void *);
+static void	python_runtime_wsmessage(void *, struct connection *,
+		    u_int8_t, const void *, size_t);
 #endif
 static void	python_runtime_execute(void *);
 static int	python_runtime_onload(void *, int);
@@ -72,6 +74,9 @@ struct kore_runtime kore_python_runtime = {
 #if !defined(KORE_NO_HTTP)
 	.http_request = python_runtime_http_request,
 	.validator = python_runtime_validator,
+	.wsconnect = python_runtime_connect,
+	.wsmessage = python_runtime_wsmessage,
+	.wsdisconnect = python_runtime_connect,
 #endif
 	.onload = python_runtime_onload,
 	.connect = python_runtime_connect,
@@ -248,12 +253,8 @@ python_runtime_http_request(void *addr, struct http_request *req)
 
 	callable = (PyObject *)addr;
 
-	pyreq = pyhttp_request_alloc(req);
-	if (pyreq == NULL) {
-		kore_log(LOG_ERR, "cannot create new pyhttp_request");
-		http_response(req, HTTP_STATUS_INTERNAL_ERROR, NULL, 0);
-		return (KORE_RESULT_OK);
-	}
+	if ((pyreq = pyhttp_request_alloc(req)) == NULL)
+		fatal("python_runtime_http_request: pyreq alloc failed");
 
 	if ((args = PyTuple_New(1)) == NULL)
 		fatal("python_runtime_http_request: PyTuple_New failed");
@@ -266,10 +267,8 @@ python_runtime_http_request(void *addr, struct http_request *req)
 	Py_DECREF(args);
 
 	if (pyret == NULL) {
-		Py_XDECREF(req->py_object);
 		python_log_error("python_runtime_http_request");
-		http_response(req, HTTP_STATUS_INTERNAL_ERROR, NULL, 0);
-		return (KORE_RESULT_OK);
+		fatal("failed to execute python call");
 	}
 
 	if (!PyLong_Check(pyret))
@@ -292,26 +291,15 @@ python_runtime_validator(void *addr, struct http_request *req, void *data)
 
 	callable = (PyObject *)addr;
 
-	if ((pyreq = pyhttp_request_alloc(req)) == NULL) {
-		kore_log(LOG_ERR, "cannot create new pyhttp_request");
-		http_response(req, HTTP_STATUS_INTERNAL_ERROR, NULL, 0);
-		return (KORE_RESULT_OK);
-	}
+	if ((pyreq = pyhttp_request_alloc(req)) == NULL)
+		fatal("python_runtime_validator: pyreq alloc failed");
 
 	if (req->flags & HTTP_VALIDATOR_IS_REQUEST) {
-		if ((arg = pyhttp_request_alloc(data)) == NULL) {
-			Py_DECREF(pyreq);
-			kore_log(LOG_ERR, "cannot create new pyhttp_request");
-			http_response(req, HTTP_STATUS_INTERNAL_ERROR, NULL, 0);
-			return (KORE_RESULT_OK);
-		}
+		if ((arg = pyhttp_request_alloc(data)) == NULL)
+			fatal("python_runtime_validator: pyreq failed");
 	} else {
-		if ((arg = PyUnicode_FromString(data)) == NULL) {
-			Py_DECREF(pyreq);
-			kore_log(LOG_ERR, "cannot create new pyhttp_request");
-			http_response(req, HTTP_STATUS_INTERNAL_ERROR, NULL, 0);
-			return (KORE_RESULT_OK);
-		}
+		if ((arg = PyUnicode_FromString(data)) == NULL)
+			fatal("python_runtime_validator: PyUnicode failed");
 	}
 
 	if ((args = PyTuple_New(2)) == NULL)
@@ -327,8 +315,7 @@ python_runtime_validator(void *addr, struct http_request *req, void *data)
 
 	if (pyret == NULL) {
 		python_log_error("python_runtime_validator");
-		http_response(req, HTTP_STATUS_INTERNAL_ERROR, NULL, 0);
-		return (KORE_RESULT_OK);
+		fatal("failed to execute python call");
 	}
 
 	if (!PyLong_Check(pyret))
@@ -338,6 +325,43 @@ python_runtime_validator(void *addr, struct http_request *req, void *data)
 	Py_DECREF(pyret);
 
 	return (ret);
+}
+
+static void
+python_runtime_wsmessage(void *addr, struct connection *c, u_int8_t op,
+    const void *data, size_t len)
+{
+	PyObject	*callable, *args, *pyret, *pyc, *pyop, *pydata;
+
+	callable = (PyObject *)addr;
+
+	if ((pyc = pyconnection_alloc(c)) == NULL)
+		fatal("python_runtime_wsmessage: pyc alloc failed");
+
+	if ((pyop = PyLong_FromLong((long)op)) == NULL)
+		fatal("python_runtime_wsmessage: PyLong_FromLong failed");
+
+	if ((pydata = PyBytes_FromStringAndSize(data, len)) == NULL)
+		fatal("python_runtime_wsmessage: PyBytes_FromString failed");
+
+	if ((args = PyTuple_New(3)) == NULL)
+		fatal("python_runtime_wsmessage: PyTuple_New failed");
+
+	if (PyTuple_SetItem(args, 0, pyc) != 0 ||
+	    PyTuple_SetItem(args, 1, pyop) != 0 ||
+	    PyTuple_SetItem(args, 2, pydata) != 0)
+		fatal("python_runtime_wsmessage: PyTuple_SetItem failed");
+
+	PyErr_Clear();
+	pyret = PyObject_Call(callable, args, NULL);
+	Py_DECREF(args);
+
+	if (pyret == NULL) {
+		python_log_error("python_runtime_wsconnect");
+		fatal("failed to execute python call");
+	}
+
+	Py_DECREF(pyret);
 }
 #endif
 
@@ -405,11 +429,8 @@ python_runtime_connect(void *addr, struct connection *c)
 
 	callable = (PyObject *)addr;
 
-	if ((pyc = pyconnection_alloc(c)) == NULL) {
-		kore_log(LOG_ERR, "cannot create new pyconnection");
-		kore_connection_disconnect(c);
-		return;
-	}
+	if ((pyc = pyconnection_alloc(c)) == NULL)
+		fatal("python_runtime_connect: pyc alloc failed");
 
 	if ((args = PyTuple_New(1)) == NULL)
 		fatal("python_runtime_connect: PyTuple_New failed");
@@ -701,6 +722,29 @@ pyhttp_argument(struct pyhttp_request *pyreq, PyObject *args)
 		return (PyErr_NoMemory());
 
 	return (value);
+}
+
+static PyObject *
+pyhttp_websocket_handshake(struct pyhttp_request *pyreq, PyObject *args)
+{
+	const char	*onconnect, *onmsg, *ondisconnect;
+
+	if (!PyArg_ParseTuple(args, "sss", &onconnect, &onmsg, &ondisconnect)) {
+		PyErr_SetString(PyExc_TypeError, "invalid parameters");
+		return (NULL);
+	}
+
+	kore_websocket_handshake(pyreq->req, onconnect, onmsg, ondisconnect);
+
+	Py_RETURN_TRUE;
+}
+
+static PyObject *
+python_websocket_broadcast(PyObject *self, PyObject *args)
+{
+	printf("websocket_broadcast\n");
+
+	Py_RETURN_TRUE;
 }
 
 static PyObject *

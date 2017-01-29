@@ -49,7 +49,8 @@ static void	websocket_frame_build(struct kore_buf *, u_int8_t,
 		    const void *, size_t);
 
 void
-kore_websocket_handshake(struct http_request *req, struct kore_wscbs *wscbs)
+kore_websocket_handshake(struct http_request *req, const char *onconnect,
+    const char *onmessage, const char *ondisconnect)
 {
 	SHA_CTX			sctx;
 	struct kore_buf		*buf;
@@ -102,12 +103,35 @@ kore_websocket_handshake(struct http_request *req, struct kore_wscbs *wscbs)
 	req->owner->disconnect = websocket_disconnect;
 	req->owner->rnb->flags &= ~NETBUF_CALL_CB_ALWAYS;
 
-	req->owner->wscbs = wscbs;
 	req->owner->idle_timer.start = kore_time_ms();
 	req->owner->idle_timer.length = kore_websocket_timeout;
 
-	if (wscbs->connect != NULL)
-		wscbs->connect(req->owner);
+	if (onconnect != NULL) {
+		req->owner->ws_connect = kore_runtime_getcall(onconnect);
+		if (req->owner->ws_connect == NULL)
+			fatal("no symbol '%s' for ws_connect", onconnect);
+	} else {
+		req->owner->ws_connect = NULL;
+	}
+
+	if (onmessage != NULL) {
+		req->owner->ws_message = kore_runtime_getcall(onmessage);
+		if (req->owner->ws_message == NULL)
+			fatal("no symbol '%s' for ws_message", onmessage);
+	} else {
+		req->owner->ws_message = NULL;
+	}
+
+	if (ondisconnect != NULL) {
+		req->owner->ws_disconnect = kore_runtime_getcall(ondisconnect);
+		if (req->owner->ws_disconnect == NULL)
+			fatal("no symbol '%s' for ws_disconnect", ondisconnect);
+	} else {
+		req->owner->ws_disconnect = NULL;
+	}
+
+	if (req->owner->ws_connect != NULL)
+		kore_runtime_wsconnect(req->owner->ws_connect, req->owner);
 }
 
 void
@@ -245,12 +269,10 @@ websocket_recv_frame(struct netbuf *nb)
 {
 	struct connection	*c;
 	int			ret;
-	struct kore_wscbs	*wscbs;
 	u_int64_t		len, i, total;
 	u_int8_t		op, moff, extra;
 
 	c = nb->owner;
-	wscbs = c->wscbs;
 
 	op = nb->buf[0] & WEBSOCKET_OPCODE_MASK;
 	len = WEBSOCKET_FRAME_LENGTH(nb->buf[1]);
@@ -300,8 +322,10 @@ websocket_recv_frame(struct netbuf *nb)
 		break;
 	case WEBSOCKET_OP_TEXT:
 	case WEBSOCKET_OP_BINARY:
-		if (wscbs->message != NULL)
-			wscbs->message(c, op, &nb->buf[moff + 4], len);
+		if (c->ws_message != NULL) {
+			kore_runtime_wsmessage(c->ws_message,
+			    c, op, &nb->buf[moff + 4], len);
+		}
 		break;
 	case WEBSOCKET_OP_CLOSE:
 		kore_connection_disconnect(c);
@@ -322,8 +346,6 @@ websocket_recv_frame(struct netbuf *nb)
 static void
 websocket_disconnect(struct connection *c)
 {
-	struct kore_wscbs	*wscbs = c->wscbs;
-
-	if (wscbs->disconnect != NULL)
-		wscbs->disconnect(c);
+	if (c->ws_disconnect != NULL)
+		kore_runtime_wsdisconnect(c->ws_disconnect, c);
 }

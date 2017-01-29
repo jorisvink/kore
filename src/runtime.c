@@ -32,6 +32,9 @@ static void	native_runtime_connect(void *, struct connection *);
 #if !defined(KORE_NO_HTTP)
 static int	native_runtime_http_request(void *, struct http_request *);
 static int	native_runtime_validator(void *, struct http_request *, void *);
+
+static void	native_runtime_wsmessage(void *, struct connection *, u_int8_t,
+		    const void *, size_t);
 #endif
 
 struct kore_runtime kore_native_runtime = {
@@ -39,6 +42,9 @@ struct kore_runtime kore_native_runtime = {
 #if !defined(KORE_NO_HTTP)
 	.http_request = native_runtime_http_request,
 	.validator = native_runtime_validator,
+	.wsconnect = native_runtime_connect,
+	.wsmessage = native_runtime_wsmessage,
+	.wsdisconnect = native_runtime_connect,
 #endif
 	.onload = native_runtime_onload,
 	.connect = native_runtime_connect,
@@ -95,6 +101,25 @@ kore_runtime_validator(struct kore_runtime_call *rcall,
 {
 	return (rcall->runtime->validator(rcall->addr, req, data));
 }
+
+void
+kore_runtime_wsconnect(struct kore_runtime_call *rcall, struct connection *c)
+{
+	rcall->runtime->wsconnect(rcall->addr, c);
+}
+
+void
+kore_runtime_wsmessage(struct kore_runtime_call *rcall, struct connection *c,
+    u_int8_t op, const void *data, size_t len)
+{
+	rcall->runtime->wsmessage(rcall->addr, c, op, data, len);
+}
+
+void
+kore_runtime_wsdisconnect(struct kore_runtime_call *rcall, struct connection *c)
+{
+	rcall->runtime->wsdisconnect(rcall->addr, c);
+}
 #endif
 
 static void
@@ -141,5 +166,16 @@ native_runtime_validator(void *addr, struct http_request *req, void *data)
 
 	*(void **)&(cb) = addr;
 	return (cb(req, data));
+}
+
+static void
+native_runtime_wsmessage(void *addr, struct connection *c, u_int8_t op,
+    const void *data, size_t len)
+{
+	void	(*cb)(struct connection *, u_int8_t, const void *, size_t);
+
+	*(void **)&(cb) = addr;
+	cb(c, op, data, len);
+
 }
 #endif

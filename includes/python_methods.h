@@ -15,6 +15,7 @@
  */
 
 static PyObject		*python_exported_log(PyObject *, PyObject *);
+static PyObject		*python_websocket_broadcast(PyObject *, PyObject *);
 
 #define METHOD(n, c, a)		{ n, (PyCFunction)c, a, NULL }
 #define GETTER(n, g)		{ n, (getter)g, NULL, NULL, NULL }
@@ -23,6 +24,7 @@ static PyObject		*python_exported_log(PyObject *, PyObject *);
 
 static struct PyMethodDef pykore_methods[] = {
 	METHOD("log", python_exported_log, METH_VARARGS),
+	METHOD("websocket_broadcast", python_websocket_broadcast, METH_VARARGS),
 	{ NULL, NULL, 0, NULL }
 };
 
@@ -71,6 +73,8 @@ static PyObject	*pyhttp_populate_get(struct pyhttp_request *, PyObject *);
 static PyObject	*pyhttp_populate_post(struct pyhttp_request *, PyObject *);
 static PyObject	*pyhttp_request_header(struct pyhttp_request *, PyObject *);
 static PyObject	*pyhttp_response_header(struct pyhttp_request *, PyObject *);
+static PyObject *pyhttp_websocket_handshake(struct pyhttp_request *,
+		    PyObject *);
 
 static PyMethodDef pyhttp_request_methods[] = {
 	METHOD("response", pyhttp_response, METH_VARARGS),
@@ -80,6 +84,7 @@ static PyMethodDef pyhttp_request_methods[] = {
 	METHOD("populate_post", pyhttp_populate_post, METH_NOARGS),
 	METHOD("request_header", pyhttp_request_header, METH_VARARGS),
 	METHOD("response_header", pyhttp_response_header, METH_VARARGS),
+	METHOD("websocket_handshake", pyhttp_websocket_handshake, METH_VARARGS),
 	METHOD(NULL, NULL, -1)
 };
 
