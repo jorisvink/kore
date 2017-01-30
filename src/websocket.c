@@ -353,11 +353,11 @@ websocket_recv_frame(struct netbuf *nb)
 static void
 websocket_disconnect(struct connection *c)
 {
+	if (c->ws_disconnect != NULL)
+		kore_runtime_wsdisconnect(c->ws_disconnect, c);
+
 	if (!(c->flags & CONN_WS_CLOSE_SENT)) {
 		c->flags |= CONN_WS_CLOSE_SENT;
 		kore_websocket_send(c, WEBSOCKET_OP_CLOSE, NULL, 0);
 	}
-
-	if (c->ws_disconnect != NULL)
-		kore_runtime_wsdisconnect(c->ws_disconnect, c);
 }
