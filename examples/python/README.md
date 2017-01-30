@@ -1,5 +1,9 @@
 Kore python module example.
 
+This application requires kore to be built with PYTHON=1.
+
+It mixes native code (dso) with python code.
+
 Run:
 ```
 	$ kore run
