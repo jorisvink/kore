@@ -180,7 +180,7 @@ websocket_frame_build(struct kore_buf *frame, u_int8_t op, const void *data,
 	u_int64_t		len64;
 
 	if (len > WEBSOCKET_PAYLOAD_SINGLE) {
-		if (len < USHRT_MAX)
+		if (len <= USHRT_MAX)
 			len_1 = WEBSOCKET_PAYLOAD_EXTEND_1;
 		else
 			len_1 = WEBSOCKET_PAYLOAD_EXTEND_2;
@@ -328,6 +328,7 @@ websocket_recv_frame(struct netbuf *nb)
 		}
 		break;
 	case WEBSOCKET_OP_CLOSE:
+		kore_websocket_send(c, WEBSOCKET_OP_CLOSE, NULL, 0);
 		kore_connection_disconnect(c);
 		break;
 	case WEBSOCKET_OP_PING:
