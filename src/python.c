@@ -742,7 +742,18 @@ pyhttp_websocket_handshake(struct pyhttp_request *pyreq, PyObject *args)
 static PyObject *
 python_websocket_broadcast(PyObject *self, PyObject *args)
 {
-	printf("websocket_broadcast\n");
+	struct pyconnection	*pyc;
+	Py_buffer		data;
+	int			op, broadcast;
+
+	if (!PyArg_ParseTuple(args, "O!iy*i",
+	    &pyconnection_type, &pyc, &op, &data, &broadcast)) {
+		PyErr_SetString(PyExc_TypeError, "invalid parameters");
+		return (NULL);
+	}
+
+	kore_websocket_broadcast(pyc->c, op, data.buf, data.len, broadcast);
+	PyBuffer_Release(&data);
 
 	Py_RETURN_TRUE;
 }

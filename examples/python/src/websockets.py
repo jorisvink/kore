@@ -6,7 +6,6 @@ def onconnect(c):
 	kore.log(kore.LOG_INFO, "%s: py connected" % c)
 
 def onmessage(c, op, data):
-	kore.log(kore.LOG_INFO, "%s: got message" % c)
 	kore.websocket_broadcast(c, op, data, kore.WEBSOCKET_BROADCAST_GLOBAL)
 
 def ondisconnect(c):
