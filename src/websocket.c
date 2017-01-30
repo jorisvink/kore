@@ -144,6 +144,8 @@ kore_websocket_send(struct connection *c, u_int8_t op, const void *data,
 	websocket_frame_build(frame, op, data, len);
 	net_send_queue(c, frame->data, frame->offset);
 	kore_buf_free(frame);
+
+	net_send_flush(c);
 }
 
 void
@@ -315,8 +317,9 @@ websocket_recv_frame(struct netbuf *nb)
 
 	ret = KORE_RESULT_OK;
 	switch (op) {
-	case WEBSOCKET_OP_CONT:
 	case WEBSOCKET_OP_PONG:
+		break;
+	case WEBSOCKET_OP_CONT:
 		ret = KORE_RESULT_ERROR;
 		kore_log(LOG_ERR, "%p: we do not support op 0x%02x yet", c, op);
 		break;
@@ -328,7 +331,10 @@ websocket_recv_frame(struct netbuf *nb)
 		}
 		break;
 	case WEBSOCKET_OP_CLOSE:
-		kore_websocket_send(c, WEBSOCKET_OP_CLOSE, NULL, 0);
+		if (!(c->flags & CONN_WS_CLOSE_SENT)) {
+			c->flags |= CONN_WS_CLOSE_SENT;
+			kore_websocket_send(c, WEBSOCKET_OP_CLOSE, NULL, 0);
+		}
 		kore_connection_disconnect(c);
 		break;
 	case WEBSOCKET_OP_PING:
@@ -347,6 +353,11 @@ websocket_recv_frame(struct netbuf *nb)
 static void
 websocket_disconnect(struct connection *c)
 {
+	if (!(c->flags & CONN_WS_CLOSE_SENT)) {
+		c->flags |= CONN_WS_CLOSE_SENT;
+		kore_websocket_send(c, WEBSOCKET_OP_CLOSE, NULL, 0);
+	}
+
 	if (c->ws_disconnect != NULL)
 		kore_runtime_wsdisconnect(c->ws_disconnect, c);
 }

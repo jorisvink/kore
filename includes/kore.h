@@ -143,6 +143,7 @@ TAILQ_HEAD(netbuf_head, netbuf);
 #define CONN_IDLE_TIMER_ACT	0x10
 #define CONN_READ_BLOCK		0x20
 #define CONN_CLOSE_EMPTY	0x40
+#define CONN_WS_CLOSE_SENT	0x80
 
 #define KORE_IDLE_TIMER_MAX	20000
 
