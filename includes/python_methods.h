@@ -15,6 +15,7 @@
  */
 
 static PyObject		*python_exported_log(PyObject *, PyObject *);
+static PyObject		*python_websocket_send(PyObject *, PyObject *);
 static PyObject		*python_websocket_broadcast(PyObject *, PyObject *);
 
 #define METHOD(n, c, a)		{ n, (PyCFunction)c, a, NULL }
@@ -24,6 +25,7 @@ static PyObject		*python_websocket_broadcast(PyObject *, PyObject *);
 
 static struct PyMethodDef pykore_methods[] = {
 	METHOD("log", python_exported_log, METH_VARARGS),
+	METHOD("websocket_send", python_websocket_send, METH_VARARGS),
 	METHOD("websocket_broadcast", python_websocket_broadcast, METH_VARARGS),
 	{ NULL, NULL, 0, NULL }
 };

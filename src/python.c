@@ -774,6 +774,26 @@ python_websocket_broadcast(PyObject *self, PyObject *args)
 }
 
 static PyObject *
+python_websocket_send(PyObject *self, PyObject *args)
+{
+	int			op;
+	struct pyconnection	*pyc;
+	Py_buffer		data;
+
+	if (!PyArg_ParseTuple(args, "O!iy*",
+	    &pyconnection_type, &pyc, &op, &data)) {
+		PyErr_SetString(PyExc_TypeError, "invalid parameters");
+		return (NULL);
+	}
+
+
+	kore_websocket_send(pyc->c, op, data.buf, data.len);
+	PyBuffer_Release(&data);
+
+	Py_RETURN_TRUE;
+}
+
+static PyObject *
 pyhttp_get_host(struct pyhttp_request *pyreq, void *closure)
 {
 	PyObject	*host;
