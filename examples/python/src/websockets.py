@@ -33,8 +33,12 @@ def onconnect(c):
 # In this example we use the websocket_broadcast() method from kore to
 # simply relay the message to all other connection clients.
 #
+# If you want to send data directly back to the connection you can
+# use kore.websocket_send(connection, op, data)
+#
 def onmessage(c, op, data):
 	kore.websocket_broadcast(c, op, data, kore.WEBSOCKET_BROADCAST_GLOBAL)
+	#kore.websocket_send(c, op, data)
 
 #
 # Called for every connection that goes byebye.
