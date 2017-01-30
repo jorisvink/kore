@@ -224,7 +224,7 @@ websocket_recv_opcode(struct netbuf *nb)
 	}
 
 	if (WEBSOCKET_RSV(nb->buf[0], 1) || WEBSOCKET_RSV(nb->buf[0], 2) ||
-	    WEBSOCKET_RSV(nb->buf[0], 2)) {
+	    WEBSOCKET_RSV(nb->buf[0], 3)) {
 		kore_debug("%p: RSV bits are not zero", c);
 		return (KORE_RESULT_ERROR);
 	}
