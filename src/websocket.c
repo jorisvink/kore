@@ -331,6 +331,7 @@ websocket_recv_frame(struct netbuf *nb)
 		}
 		break;
 	case WEBSOCKET_OP_CLOSE:
+		c->flags &= ~CONN_READ_POSSIBLE;
 		if (!(c->flags & CONN_WS_CLOSE_SENT)) {
 			c->flags |= CONN_WS_CLOSE_SENT;
 			kore_websocket_send(c, WEBSOCKET_OP_CLOSE, NULL, 0);
@@ -347,6 +348,7 @@ websocket_recv_frame(struct netbuf *nb)
 	}
 
 	net_recv_reset(c, WEBSOCKET_FRAME_HDR, websocket_recv_opcode);
+
 	return (ret);
 }
 
@@ -357,6 +359,7 @@ websocket_disconnect(struct connection *c)
 		kore_runtime_wsdisconnect(c->ws_disconnect, c);
 
 	if (!(c->flags & CONN_WS_CLOSE_SENT)) {
+		c->flags &= ~CONN_READ_POSSIBLE;
 		c->flags |= CONN_WS_CLOSE_SENT;
 		kore_websocket_send(c, WEBSOCKET_OP_CLOSE, NULL, 0);
 	}
