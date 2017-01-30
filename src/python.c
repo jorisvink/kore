@@ -759,6 +759,7 @@ python_websocket_broadcast(PyObject *self, PyObject *args)
 		c = NULL;
 	} else {
 		if (!PyObject_TypeCheck(pysrc, &pyconnection_type)) {
+			PyBuffer_Release(&data);
 			PyErr_SetString(PyExc_TypeError, "invalid parameters");
 			return (NULL);
 		}
