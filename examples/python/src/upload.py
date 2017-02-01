@@ -16,7 +16,6 @@
 
 # Processing incoming files in a multipart form.
 
-import sys
 import kore
 
 #
@@ -55,5 +54,7 @@ def upload(req):
 		kore.log(kore.LOG_INFO, "got %d bytes of data" % len)
 		f.write(bytes)
 
+	f.close()
 	req.response(200, b'')
+
 	return kore.RESULT_OK
