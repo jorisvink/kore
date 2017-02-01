@@ -1320,7 +1320,7 @@ multipart_file_add(struct http_request *req, struct kore_buf *in,
 	struct http_file	*f;
 	size_t			position, len;
 
-	position= req->http_body_offset - in->offset;
+	position = req->http_body_offset - in->offset;
 	if (!multipart_find_data(in, NULL, &len, req, boundary, blen))
 		return;
 
