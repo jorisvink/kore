@@ -70,13 +70,21 @@ struct pyhttp_request {
 	struct http_request	*req;
 };
 
+struct pyhttp_file {
+	PyObject_HEAD
+	struct http_file	*file;
+};
+
 static void	pyhttp_dealloc(struct pyhttp_request *);
+static void	pyhttp_file_dealloc(struct pyhttp_file *);
 
 static PyObject	*pyhttp_response(struct pyhttp_request *, PyObject *);
 static PyObject *pyhttp_argument(struct pyhttp_request *, PyObject *);
 static PyObject	*pyhttp_body_read(struct pyhttp_request *, PyObject *);
+static PyObject	*pyhttp_file_lookup(struct pyhttp_request *, PyObject *);
 static PyObject	*pyhttp_populate_get(struct pyhttp_request *, PyObject *);
 static PyObject	*pyhttp_populate_post(struct pyhttp_request *, PyObject *);
+static PyObject	*pyhttp_populate_multi(struct pyhttp_request *, PyObject *);
 static PyObject	*pyhttp_request_header(struct pyhttp_request *, PyObject *);
 static PyObject	*pyhttp_response_header(struct pyhttp_request *, PyObject *);
 static PyObject *pyhttp_websocket_handshake(struct pyhttp_request *,
@@ -86,8 +94,10 @@ static PyMethodDef pyhttp_request_methods[] = {
 	METHOD("response", pyhttp_response, METH_VARARGS),
 	METHOD("argument", pyhttp_argument, METH_VARARGS),
 	METHOD("body_read", pyhttp_body_read, METH_VARARGS),
+	METHOD("file_lookup", pyhttp_file_lookup, METH_VARARGS),
 	METHOD("populate_get", pyhttp_populate_get, METH_NOARGS),
 	METHOD("populate_post", pyhttp_populate_post, METH_NOARGS),
+	METHOD("populate_multi", pyhttp_populate_multi, METH_NOARGS),
 	METHOD("request_header", pyhttp_request_header, METH_VARARGS),
 	METHOD("response_header", pyhttp_response_header, METH_VARARGS),
 	METHOD("websocket_handshake", pyhttp_websocket_handshake, METH_VARARGS),
@@ -123,6 +133,33 @@ static PyTypeObject pyhttp_request_type = {
 	.tp_methods = pyhttp_request_methods,
 	.tp_dealloc = (destructor)pyhttp_dealloc,
 	.tp_basicsize = sizeof(struct pyhttp_request),
+	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+};
+
+static PyObject	*pyhttp_file_read(struct pyhttp_file *, PyObject *);
+
+static PyMethodDef pyhttp_file_methods[] = {
+	METHOD("read", pyhttp_file_read, METH_VARARGS),
+	METHOD(NULL, NULL, -1)
+};
+
+static PyObject	*pyhttp_file_get_name(struct pyhttp_file *, void *);
+static PyObject	*pyhttp_file_get_filename(struct pyhttp_file *, void *);
+
+static PyGetSetDef pyhttp_file_getset[] = {
+	GETTER("name", pyhttp_file_get_name),
+	GETTER("filename", pyhttp_file_get_filename),
+	GETTER(NULL, NULL)
+};
+
+static PyTypeObject pyhttp_file_type = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "kore.http_file",
+	.tp_doc = "struct http_file",
+	.tp_getset = pyhttp_file_getset,
+	.tp_methods = pyhttp_file_methods,
+	.tp_dealloc = (destructor)pyhttp_file_dealloc,
+	.tp_basicsize = sizeof(struct pyhttp_file),
 	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
 };
 #endif

@@ -35,6 +35,7 @@ static PyObject		*pyconnection_alloc(struct connection *);
 static PyObject		*python_callable(PyObject *, const char *);
 
 #if !defined(KORE_NO_HTTP)
+static PyObject		*pyhttp_file_alloc(struct http_file *);
 static PyObject		*pyhttp_request_alloc(struct http_request *);
 #endif
 
@@ -245,6 +246,12 @@ static void
 pyhttp_dealloc(struct pyhttp_request *pyreq)
 {
 	PyObject_Del((PyObject *)pyreq);
+}
+
+static void
+pyhttp_file_dealloc(struct pyhttp_file *pyfile)
+{
+	PyObject_Del((PyObject *)pyfile);
 }
 
 static int
@@ -469,6 +476,7 @@ python_module_init(void)
 	}
 
 #if !defined(KORE_NO_HTTP)
+	python_push_type("pyhttp_file", pykore, &pyhttp_file_type);
 	python_push_type("pyhttp_request", pykore, &pyhttp_request_type);
 #endif
 
@@ -634,6 +642,20 @@ pyhttp_request_alloc(struct http_request *req)
 }
 
 static PyObject *
+pyhttp_file_alloc(struct http_file *file)
+{
+	struct pyhttp_file		*pyfile;
+
+	pyfile = PyObject_New(struct pyhttp_file, &pyhttp_file_type);
+	if (pyfile == NULL)
+		return (NULL);
+
+	pyfile->file = file;
+
+	return ((PyObject *)pyfile);
+}
+
+static PyObject *
 pyhttp_response(struct pyhttp_request *pyreq, PyObject *args)
 {
 	Py_buffer		body;
@@ -740,6 +762,13 @@ pyhttp_populate_post(struct pyhttp_request *pyreq, PyObject *args)
 }
 
 static PyObject *
+pyhttp_populate_multi(struct pyhttp_request *pyreq, PyObject *args)
+{
+	http_populate_multipart_form(pyreq->req);
+	Py_RETURN_TRUE;
+}
+
+static PyObject *
 pyhttp_argument(struct pyhttp_request *pyreq, PyObject *args)
 {
 	const char	*name;
@@ -759,6 +788,66 @@ pyhttp_argument(struct pyhttp_request *pyreq, PyObject *args)
 		return (PyErr_NoMemory());
 
 	return (value);
+}
+
+static PyObject *
+pyhttp_file_lookup(struct pyhttp_request *pyreq, PyObject *args)
+{
+	const char		*name;
+	struct http_file	*file;
+	PyObject		*pyfile;
+
+	if (!PyArg_ParseTuple(args, "s", &name)) {
+		PyErr_SetString(PyExc_TypeError, "invalid parameters");
+		return (NULL);
+	}
+
+	if ((file = http_file_lookup(pyreq->req, name)) == NULL) {
+		Py_RETURN_NONE;
+	}
+
+	if ((pyfile = pyhttp_file_alloc(file)) == NULL)
+		return (PyErr_NoMemory());
+
+	return (pyfile);
+}
+
+static PyObject *
+pyhttp_file_read(struct pyhttp_file *pyfile, PyObject *args)
+{
+	ssize_t			ret;
+	size_t			len;
+	Py_ssize_t		pylen;
+	PyObject		*result;
+	u_int8_t		buf[1024];
+
+	if (!PyArg_ParseTuple(args, "n", &pylen) || pylen < 0) {
+		PyErr_SetString(PyExc_TypeError, "invalid parameters");
+		return (NULL);
+	}
+
+	len = (size_t)pylen;
+	if (len > sizeof(buf)) {
+		PyErr_SetString(PyExc_RuntimeError, "len > sizeof(buf)");
+		return (NULL);
+	}
+
+	ret = http_file_read(pyfile->file, buf, len);
+	if (ret == -1) {
+		PyErr_SetString(PyExc_RuntimeError, "http_file_read() failed");
+		return (NULL);
+	}
+
+	if (ret > INT_MAX) {
+		PyErr_SetString(PyExc_RuntimeError, "ret > INT_MAX");
+		return (NULL);
+	}
+
+	result = Py_BuildValue("ny#", ret, buf, (int)ret);
+	if (result == NULL)
+		return (PyErr_NoMemory());
+
+	return (result);
 }
 
 static PyObject *
@@ -946,5 +1035,27 @@ pyhttp_get_connection(struct pyhttp_request *pyreq, void *closure)
 		return (PyErr_NoMemory());
 
 	return (pyc);
+}
+
+static PyObject *
+pyhttp_file_get_name(struct pyhttp_file *pyfile, void *closure)
+{
+	PyObject	*name;
+
+	if ((name = PyUnicode_FromString(pyfile->file->name)) == NULL)
+		return (PyErr_NoMemory());
+
+	return (name);
+}
+
+static PyObject *
+pyhttp_file_get_filename(struct pyhttp_file *pyfile, void *closure)
+{
+	PyObject	*name;
+
+	if ((name = PyUnicode_FromString(pyfile->file->filename)) == NULL)
+		return (PyErr_NoMemory());
+
+	return (name);
 }
 #endif
