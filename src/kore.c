@@ -308,15 +308,14 @@ kore_server_bind(const char *ip, const char *port, const char *ccb)
 	if ((l->fd = socket(results->ai_family, SOCK_STREAM, 0)) == -1) {
 		kore_free(l);
 		freeaddrinfo(results);
-		kore_debug("socket(): %s", errno_s);
-		printf("failed to create socket: %s\n", errno_s);
+		kore_log(LOG_ERR, "socket(): %s", errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
 	if (!kore_connection_nonblock(l->fd, 1)) {
 		kore_free(l);
 		freeaddrinfo(results);
-		printf("failed to make socket non blocking: %s\n", errno_s);
+		kore_log(LOG_ERR, "kore_connection_nonblock(): %s", errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -326,8 +325,7 @@ kore_server_bind(const char *ip, const char *port, const char *ccb)
 		close(l->fd);
 		kore_free(l);
 		freeaddrinfo(results);
-		kore_debug("setsockopt(): %s", errno_s);
-		printf("failed to set SO_REUSEADDR: %s\n", errno_s);
+		kore_log(LOG_ERR, "setsockopt(): %s", errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -335,8 +333,7 @@ kore_server_bind(const char *ip, const char *port, const char *ccb)
 		close(l->fd);
 		kore_free(l);
 		freeaddrinfo(results);
-		kore_debug("bind(): %s", errno_s);
-		printf("failed to bind to %s port %s: %s\n", ip, port, errno_s);
+		kore_log(LOG_ERR, "bind(): %s", errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -345,14 +342,13 @@ kore_server_bind(const char *ip, const char *port, const char *ccb)
 	if (listen(l->fd, kore_socket_backlog) == -1) {
 		close(l->fd);
 		kore_free(l);
-		kore_debug("listen(): %s", errno_s);
-		printf("failed to listen on socket: %s\n", errno_s);
+		kore_log(LOG_ERR, "listen(): %s", errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
 	if (ccb != NULL) {
 		if ((l->connect = kore_runtime_getcall(ccb)) == NULL) {
-			printf("no such callback: '%s'\n", ccb);
+			kore_log(LOG_ERR, "no such callback: '%s'", ccb);
 			close(l->fd);
 			kore_free(l);
 			return (KORE_RESULT_ERROR);
@@ -410,9 +406,7 @@ kore_server_start(void)
 {
 	u_int32_t			tmp;
 	int				quit;
-#if defined(KORE_SINGLE_BINARY)
 	struct kore_runtime_call	*rcall;
-#endif
 
 	if (foreground == 0 && daemon(1, 1) == -1)
 		fatal("cannot daemon(): %s", errno_s);
@@ -431,13 +425,12 @@ kore_server_start(void)
 #if defined(KORE_USE_JSONRPC)
 	kore_log(LOG_NOTICE, "jsonrpc built-in enabled");
 #endif
-#if defined(KORE_SINGLE_BINARY)
-	rcall = kore_runtime_getcall("kore_preload");
+
+	rcall = kore_runtime_getcall("kore_parent_configure");
 	if (rcall != NULL) {
 		kore_runtime_execute(rcall);
 		kore_free(rcall);
 	}
-#endif
 
 	kore_platform_proctitle("kore [parent]");
 	kore_msg_init();

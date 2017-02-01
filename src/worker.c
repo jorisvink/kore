@@ -266,12 +266,10 @@ kore_worker_privdrop(void)
 void
 kore_worker_entry(struct kore_worker *kw)
 {
+	struct kore_runtime_call	*rcall;
 	char				buf[16];
 	int				quit, had_lock, r;
 	u_int64_t			now, next_lock, netwait;
-#if defined(KORE_SINGLE_BINARY)
-	struct kore_runtime_call	*rcall;
-#endif
 
 	worker = kw;
 
@@ -335,13 +333,12 @@ kore_worker_entry(struct kore_worker *kw)
 
 	kore_log(LOG_NOTICE, "worker %d started (cpu#%d)", kw->id, kw->cpu);
 
-#if defined(KORE_SINGLE_BINARY)
-	rcall = kore_runtime_getcall("kore_onload");
+	rcall = kore_runtime_getcall("kore_worker_configure");
 	if (rcall != NULL) {
 		kore_runtime_execute(rcall);
 		kore_free(rcall);
 	}
-#endif
+
 	kore_module_onload();
 
 	for (;;) {

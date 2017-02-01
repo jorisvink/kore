@@ -693,10 +693,8 @@ void	kore_buf_replace_string(struct kore_buf *, char *, void *, size_t);
 void	kore_keymgr_run(void);
 void	kore_keymgr_cleanup(void);
 
-#if defined(KORE_SINGLE_BINARY)
-void	kore_preload(void);
-void	kore_onload(void);
-#endif
+void	kore_parent_configure(void);
+void	kore_worker_configure(void);
 
 #if defined(__cplusplus)
 }
