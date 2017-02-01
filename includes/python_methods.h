@@ -14,7 +14,9 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-static PyObject		*python_exported_log(PyObject *, PyObject *);
+static PyObject		*python_kore_log(PyObject *, PyObject *);
+static PyObject		*python_kore_fatal(PyObject *, PyObject *);
+static PyObject		*python_kore_listen(PyObject *, PyObject *);
 static PyObject		*python_websocket_send(PyObject *, PyObject *);
 static PyObject		*python_websocket_broadcast(PyObject *, PyObject *);
 
@@ -24,7 +26,9 @@ static PyObject		*python_websocket_broadcast(PyObject *, PyObject *);
 #define GETSET(n, g, s)		{ n, (getter)g, (setter)s, NULL, NULL }
 
 static struct PyMethodDef pykore_methods[] = {
-	METHOD("log", python_exported_log, METH_VARARGS),
+	METHOD("log", python_kore_log, METH_VARARGS),
+	METHOD("fatal", python_kore_fatal, METH_VARARGS),
+	METHOD("listen", python_kore_listen, METH_VARARGS),
 	METHOD("websocket_send", python_websocket_send, METH_VARARGS),
 	METHOD("websocket_broadcast", python_websocket_broadcast, METH_VARARGS),
 	{ NULL, NULL, 0, NULL }

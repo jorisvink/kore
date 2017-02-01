@@ -512,7 +512,7 @@ python_push_integer(PyObject *module, const char *name, long value)
 }
 
 static PyObject *
-python_exported_log(PyObject *self, PyObject *args)
+python_kore_log(PyObject *self, PyObject *args)
 {
 	int		prio;
 	const char	*message;
@@ -524,6 +524,41 @@ python_exported_log(PyObject *self, PyObject *args)
 
 	kore_log(prio, "%s", message);
 
+	Py_RETURN_TRUE;
+}
+
+static PyObject *
+python_kore_listen(PyObject *self, PyObject *args)
+{
+	const char	*ip, *port, *ccb;
+
+	if (!PyArg_ParseTuple(args, "sss", &ip, &port, &ccb)) {
+		PyErr_SetString(PyExc_TypeError, "invalid parameters");
+		return (NULL);
+	}
+
+	if (!strcmp(ccb, ""))
+		ccb = NULL;
+
+	if (!kore_server_bind(ip, port, ccb)) {
+		PyErr_SetString(PyExc_RuntimeError, "failed to listen");
+		return (NULL);
+	}
+
+	Py_RETURN_TRUE;
+}
+
+static PyObject *
+python_kore_fatal(PyObject *self, PyObject *args)
+{
+	const char	*reason;
+
+	if (!PyArg_ParseTuple(args, "s", &reason))
+		reason = "python_kore_fatal: PyArg_ParseTuple failed";
+
+	fatal("%s", reason);
+
+	/* not reached */
 	Py_RETURN_TRUE;
 }
 
