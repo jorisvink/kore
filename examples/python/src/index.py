@@ -46,14 +46,18 @@ def python_validator(req, data):
 # The action param is kore.MODULE_LOAD or kore.MODULE_UNLOAD respectively.
 #
 def onload(action):
-	kore.log(kore.LOG_INFO, "FOOBAR python onload called with %d" % action)
+	kore.log(kore.LOG_INFO, "python module onload called with %d!" % action)
 	return kore.RESULT_OK
 
-def kore_onload():
-	print("kore_onload called")
+# Called by Kore when the parent is starting.
+def kore_parent_configure():
+	# Listen on an additional interface and port.
+	kore.listen("127.0.0.1", "8889", "")
+	kore.log(kore.LOG_INFO, "kore_parent_configure called!")
 
-def kore_preload():
-	print("kore_preload called")
+# Called by Kore when the worker is starting.
+def kore_worker_configure():
+	kore.log(kore.LOG_INFO, "kore_worker_configure called!")
 
 #
 # Test page handler that displays some debug information as well as
