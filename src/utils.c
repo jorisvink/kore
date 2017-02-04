@@ -128,6 +128,39 @@ kore_strlcpy(char *dst, const char *src, const size_t len)
 	return (s - src);
 }
 
+size_t
+kore_strlcat(char *dst, const char *src, const size_t len)
+{
+	char		*d = dst;
+	const char	*s = src;
+	size_t		n = len;
+	size_t		dlen;
+
+	if (len == 0)
+		fatal("kore_strlcat: len == 0");
+
+	while (n-- != 0 && *d != '\0')
+		d++;
+
+	dlen = d - dst;
+	n = len - dlen;
+
+	if (n == 0)
+		return dlen + strlen(s);
+
+	while (*s != '\0') {
+		if (n != 1) {
+			*d++ = *s;
+			n--;
+		}
+
+		s++;
+	}
+	*d = '\0';
+
+	return dlen + (s - src);
+}
+
 int
 kore_snprintf(char *str, size_t size, int *len, const char *fmt, ...)
 {

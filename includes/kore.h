@@ -567,6 +567,7 @@ char		*kore_strdup(const char *);
 void		kore_log(int, const char *, ...);
 u_int64_t	kore_strtonum64(const char *, int, int *);
 size_t		kore_strlcpy(char *, const char *, const size_t);
+size_t		kore_strlcat(char *, const char *, const size_t);
 void		kore_server_disconnect(struct connection *);
 int		kore_split_string(char *, const char *, char **, size_t);
 void		kore_strip_chars(char *, const char, char **);
