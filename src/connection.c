@@ -88,7 +88,7 @@ int
 kore_connection_accept(struct listener *listener, struct connection **out)
 {
 	struct connection	*c;
-	struct sockaddr		*sin;
+	struct sockaddr		*s;
 	socklen_t		len;
 
 	kore_debug("kore_connection_accept(%p)", listener);
@@ -99,13 +99,13 @@ kore_connection_accept(struct listener *listener, struct connection **out)
 	c->addrtype = listener->addrtype;
 	if (c->addrtype == AF_INET) {
 		len = sizeof(struct sockaddr_in);
-		sin = (struct sockaddr *)&(c->addr.ipv4);
+		s = (struct sockaddr *)&(c->addr.ipv4);
 	} else {
 		len = sizeof(struct sockaddr_in6);
-		sin = (struct sockaddr *)&(c->addr.ipv6);
+		s = (struct sockaddr *)&(c->addr.ipv6);
 	}
 
-	if ((c->fd = accept(listener->fd, sin, &len)) == -1) {
+	if ((c->fd = accept(listener->fd, s, &len)) == -1) {
 		kore_pool_put(&connection_pool, c);
 		kore_debug("accept(): %s", errno_s);
 		return (KORE_RESULT_ERROR);
