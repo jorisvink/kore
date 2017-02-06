@@ -467,8 +467,6 @@ kore_server_start(void)
 				kore_worker_dispatch_signal(sig_recv);
 				continue;
 			default:
-				kore_log(LOG_NOTICE,
-				    "no action taken for signal %d", sig_recv);
 				break;
 			}
 
