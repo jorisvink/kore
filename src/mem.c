@@ -69,6 +69,16 @@ kore_mem_init(void)
 	}
 }
 
+void
+kore_mem_cleanup(void)
+{
+	int		i;
+
+	for (i = 0; i < KORE_MEM_BLOCKS; i++) {
+		kore_pool_cleanup(&blocks[i].pool);
+	}
+}
+
 void *
 kore_malloc(size_t len)
 {
