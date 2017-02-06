@@ -22,7 +22,7 @@ Features
 * Private keys isolated in separate process (RSA and ECDSA)
 * Default sane TLS ciphersuites (PFS in all major browsers)
 * Modules can be reloaded on-the-fly, even while serving content
-* Event driven (epoll/kqueue) architecture with per CPU core workers
+* Event driven (epoll/kqueue) architecture with per CPU worker processes
 * Build your web application as a precompiled dynamic library or single binary
 
 License
