@@ -321,7 +321,8 @@ websocket_recv_frame(struct netbuf *nb)
 		break;
 	case WEBSOCKET_OP_CONT:
 		ret = KORE_RESULT_ERROR;
-		kore_log(LOG_ERR, "%p: we do not support op 0x%02x yet", c, op);
+		kore_log(LOG_ERR,
+		    "%p: we do not support op 0x%02x yet", (void *)c, op);
 		break;
 	case WEBSOCKET_OP_TEXT:
 	case WEBSOCKET_OP_BINARY:
