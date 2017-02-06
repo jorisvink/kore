@@ -138,8 +138,10 @@ kore_python_init(void)
 void
 kore_python_cleanup(void)
 {
-	if (Py_IsInitialized())
+	if (Py_IsInitialized()) {
+		PyErr_Clear();
 		Py_Finalize();
+	}
 }
 
 static void *
