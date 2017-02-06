@@ -40,11 +40,11 @@
 static int	http_body_recv(struct netbuf *);
 static int	http_body_rewind(struct http_request *);
 static void	http_error_response(struct connection *, int);
-static void	http_argument_add(struct http_request *, const char *, char *);
+static void	http_argument_add(struct http_request *, char *, char *);
 static void	http_response_normal(struct http_request *,
 		    struct connection *, int, const void *, size_t);
 static void	multipart_add_field(struct http_request *, struct kore_buf *,
-		    const char *, const char *, const int);
+		    char *, const char *, const int);
 static void	multipart_file_add(struct http_request *, struct kore_buf *,
 		    const char *, const char *, const char *, const int);
 static int	multipart_find_data(struct kore_buf *, struct kore_buf *,
@@ -1299,7 +1299,7 @@ multipart_parse_headers(struct http_request *req, struct kore_buf *in,
 
 static void
 multipart_add_field(struct http_request *req, struct kore_buf *in,
-    const char *name, const char *boundary, const int blen)
+    char *name, const char *boundary, const int blen)
 {
 	struct kore_buf		*data;
 	char			*string;
@@ -1349,14 +1349,17 @@ multipart_file_add(struct http_request *req, struct kore_buf *in,
 }
 
 static void
-http_argument_add(struct http_request *req, const char *name, char *value)
+http_argument_add(struct http_request *req, char *name, char *value)
 {
 	struct http_arg			*q;
 	struct kore_handler_params	*p;
 
+	http_argument_urldecode(name);
+
 	TAILQ_FOREACH(p, &(req->hdlr->params), list) {
 		if (p->method != req->method)
 			continue;
+
 		if (strcmp(p->name, name))
 			continue;
 
