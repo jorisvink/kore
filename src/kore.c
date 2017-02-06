@@ -115,9 +115,7 @@ version(void)
 #if defined(KORE_USE_PYTHON)
 	printf("python ");
 #endif
-
 	printf("\n");
-
 	exit(0);
 }
 
