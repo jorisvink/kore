@@ -410,7 +410,13 @@ kore_worker_entry(struct kore_worker *kw)
 	kore_python_cleanup();
 #endif
 
+#if defined(KORE_USE_PGSQL)
+	kore_pgsql_sys_cleanup();
+#endif
+
 	kore_debug("worker %d shutting down", kw->id);
+
+	kore_mem_cleanup();
 	exit(0);
 }
 

@@ -69,7 +69,7 @@ u_int32_t	http_request_limit = HTTP_REQUEST_LIMIT;
 u_int64_t	http_hsts_enable = HTTP_HSTS_ENABLE;
 u_int16_t	http_header_max = HTTP_HEADER_MAX_LEN;
 u_int16_t	http_keepalive_time = HTTP_KEEPALIVE_TIME;
-u_int64_t	http_body_max = HTTP_BODY_MAX_LEN;
+size_t		http_body_max = HTTP_BODY_MAX_LEN;
 u_int64_t	http_body_disk_offload = HTTP_BODY_DISK_OFFLOAD;
 char		*http_body_disk_path = HTTP_BODY_DISK_PATH;
 
@@ -235,7 +235,7 @@ http_request_new(struct connection *c, const char *host,
 	req->http_body_path = NULL;
 
 #if defined(KORE_USE_PYTHON)
-	req->py_object = NULL;
+	req->py_coro = NULL;
 #endif
 
 	req->host = kore_pool_get(&http_host_pool);
@@ -431,6 +431,9 @@ http_request_free(struct http_request *req)
 	}
 #endif
 
+#if defined(KORE_USE_PYTHON)
+	Py_XDECREF(req->py_coro);
+#endif
 #if defined(KORE_USE_PGSQL)
 	while (!LIST_EMPTY(&(req->pgsqls))) {
 		pgsql = LIST_FIRST(&(req->pgsqls));
@@ -541,6 +544,9 @@ http_response(struct http_request *req, int status, const void *d, size_t l)
 {
 	kore_debug("http_response(%p, %d, %p, %zu)", req, status, d, l);
 
+	if (req->owner == NULL)
+		return;
+
 	req->status = status;
 
 	switch (req->owner->proto) {
@@ -559,6 +565,9 @@ http_response_stream(struct http_request *req, int status, void *base,
     size_t len, int (*cb)(struct netbuf *), void *arg)
 {
 	struct netbuf		*nb;
+
+	if (req->owner == NULL)
+		return;
 
 	req->status = status;
 
@@ -721,7 +730,7 @@ http_header_recv(struct netbuf *nb)
 		}
 
 		if (req->content_length > http_body_max) {
-			kore_log(LOG_NOTICE, "body too large (%ld > %ld)",
+			kore_log(LOG_NOTICE, "body too large (%zu > %zu)",
 			    req->content_length, http_body_max);
 			req->flags |= HTTP_REQUEST_DELETE;
 			http_error_response(req->owner, 413);

@@ -236,6 +236,12 @@ main(int argc, char *argv[])
 	kore_listener_cleanup();
 	kore_log(LOG_NOTICE, "goodbye");
 
+#if defined(KORE_USE_PYTHON)
+	kore_python_cleanup();
+#endif
+
+	kore_mem_cleanup();
+
 	return (0);
 }
 

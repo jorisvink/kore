@@ -20,9 +20,10 @@
 #include <libgen.h>
 
 #include "kore.h"
-
-#if !defined(KORE_NO_HTTP)
 #include "http.h"
+
+#if defined(KORE_USE_PGSQL)
+#include "pgsql.h"
 #endif
 
 #include "python_api.h"
@@ -34,21 +35,23 @@ static void		python_log_error(const char *);
 static PyObject		*pyconnection_alloc(struct connection *);
 static PyObject		*python_callable(PyObject *, const char *);
 
-#if !defined(KORE_NO_HTTP)
 static PyObject		*pyhttp_file_alloc(struct http_file *);
 static PyObject		*pyhttp_request_alloc(struct http_request *);
+
+#if defined(KORE_USE_PGSQL)
+static PyObject		*pykore_pgsql_alloc(struct http_request *,
+			    const char *, const char *);
 #endif
 
 static void	python_append_path(const char *);
+static int	python_coroutine_run(struct http_request *);
 static void	python_push_integer(PyObject *, const char *, long);
 static void	python_push_type(const char *, PyObject *, PyTypeObject *);
 
-#if !defined(KORE_NO_HTTP)
 static int	python_runtime_http_request(void *, struct http_request *);
 static int	python_runtime_validator(void *, struct http_request *, void *);
 static void	python_runtime_wsmessage(void *, struct connection *,
 		    u_int8_t, const void *, size_t);
-#endif
 static void	python_runtime_execute(void *);
 static int	python_runtime_onload(void *, int);
 static void	python_runtime_connect(void *, struct connection *);
@@ -72,13 +75,11 @@ struct kore_module_functions kore_python_module = {
 
 struct kore_runtime kore_python_runtime = {
 	KORE_RUNTIME_PYTHON,
-#if !defined(KORE_NO_HTTP)
 	.http_request = python_runtime_http_request,
 	.validator = python_runtime_validator,
 	.wsconnect = python_runtime_connect,
 	.wsmessage = python_runtime_wsmessage,
 	.wsdisconnect = python_runtime_connect,
-#endif
 	.onload = python_runtime_onload,
 	.connect = python_runtime_connect,
 	.execute = python_runtime_execute
@@ -100,7 +101,6 @@ static struct {
 	{ "CONN_PROTO_UNKNOWN", CONN_PROTO_UNKNOWN },
 	{ "CONN_PROTO_WEBSOCKET", CONN_PROTO_WEBSOCKET },
 	{ "CONN_STATE_ESTABLISHED", CONN_STATE_ESTABLISHED },
-#if !defined(KORE_NO_HTTP)
 	{ "METHOD_GET", HTTP_METHOD_GET },
 	{ "METHOD_PUT", HTTP_METHOD_PUT },
 	{ "METHOD_HEAD", HTTP_METHOD_HEAD },
@@ -110,7 +110,6 @@ static struct {
 	{ "WEBSOCKET_OP_BINARY", WEBSOCKET_OP_BINARY },
 	{ "WEBSOCKET_BROADCAST_LOCAL", WEBSOCKET_BROADCAST_LOCAL },
 	{ "WEBSOCKET_BROADCAST_GLOBAL", WEBSOCKET_BROADCAST_GLOBAL },
-#endif
 	{ NULL, -1 }
 };
 
@@ -177,7 +176,7 @@ python_log_error(const char *function)
 {
 	PyObject	*type, *value, *traceback;
 
-	if (!PyErr_Occurred())
+	if (!PyErr_Occurred() || PyErr_ExceptionMatches(PyExc_StopIteration))
 		return;
 
 	PyErr_Fetch(&type, &value, &traceback);
@@ -241,10 +240,10 @@ pyconnection_dealloc(struct pyconnection *pyc)
 	PyObject_Del((PyObject *)pyc);
 }
 
-#if !defined(KORE_NO_HTTP)
 static void
 pyhttp_dealloc(struct pyhttp_request *pyreq)
 {
+	Py_XDECREF(pyreq->data);
 	PyObject_Del((PyObject *)pyreq);
 }
 
@@ -255,10 +254,38 @@ pyhttp_file_dealloc(struct pyhttp_file *pyfile)
 }
 
 static int
+python_coroutine_run(struct http_request *req)
+{
+	PyObject	*item;
+
+	for (;;) {
+		PyErr_Clear();
+		item = _PyGen_Send((PyGenObject *)req->py_coro, NULL);
+		if (item == NULL) {
+			python_log_error("coroutine");
+			Py_DECREF(req->py_coro);
+			req->py_coro = NULL;
+			return (KORE_RESULT_OK);
+		}
+
+		if (item == Py_None) {
+			Py_DECREF(item);
+			break;
+		}
+
+		Py_DECREF(item);
+	}
+
+	return (KORE_RESULT_RETRY);
+}
+
+static int
 python_runtime_http_request(void *addr, struct http_request *req)
 {
-	int		ret;
 	PyObject	*pyret, *pyreq, *args, *callable;
+
+	if (req->py_coro != NULL)
+		return (python_coroutine_run(req));
 
 	callable = (PyObject *)addr;
 
@@ -280,16 +307,17 @@ python_runtime_http_request(void *addr, struct http_request *req)
 		fatal("failed to execute python call");
 	}
 
-	if (!PyLong_Check(pyret))
-		fatal("python_runtime_http_request: unexpected return type");
+	if (PyCoro_CheckExact(pyret)) {
+		req->py_coro = pyret;
+		return (python_coroutine_run(req));
+	}
 
-	ret = (int)PyLong_AsLong(pyret);
-	if (ret != KORE_RESULT_RETRY)
-		Py_XDECREF(req->py_object);
+	if (pyret != Py_None)
+		fatal("python_runtime_http_request: unexpected return type");
 
 	Py_DECREF(pyret);
 
-	return (ret);
+	return (KORE_RESULT_OK);
 }
 
 static int
@@ -372,7 +400,6 @@ python_runtime_wsmessage(void *addr, struct connection *c, u_int8_t op,
 
 	Py_DECREF(pyret);
 }
-#endif
 
 static void
 python_runtime_execute(void *addr)
@@ -475,10 +502,8 @@ python_module_init(void)
 		    python_integers[i].value);
 	}
 
-#if !defined(KORE_NO_HTTP)
 	python_push_type("pyhttp_file", pykore, &pyhttp_file_type);
 	python_push_type("pyhttp_request", pykore, &pyhttp_request_type);
-#endif
 
 	return (pykore);
 }
@@ -518,6 +543,23 @@ python_push_integer(PyObject *module, const char *name, long value)
 	if ((ret = PyModule_AddIntConstant(module, name, value)) == -1)
 		fatal("python_push_integer: failed to add %s", name);
 }
+
+#if defined(KORE_USE_PGSQL)
+static PyObject *
+python_kore_pgsql_register(PyObject *self, PyObject *args)
+{
+	const char	*db, *conninfo;
+
+	if (!PyArg_ParseTuple(args, "ss", &db, &conninfo)) {
+		PyErr_SetString(PyExc_TypeError, "invalid parameters");
+		return (NULL);
+	}
+
+	(void)kore_pgsql_register(db, conninfo);
+
+	Py_RETURN_TRUE;
+}
+#endif
 
 static PyObject *
 python_kore_log(PyObject *self, PyObject *args)
@@ -626,7 +668,6 @@ pyconnection_alloc(struct connection *c)
 	return ((PyObject *)pyc);
 }
 
-#if !defined(KORE_NO_HTTP)
 static PyObject *
 pyhttp_request_alloc(struct http_request *req)
 {
@@ -637,6 +678,7 @@ pyhttp_request_alloc(struct http_request *req)
 		return (NULL);
 
 	pyreq->req = req;
+	pyreq->data = NULL;
 
 	return ((PyObject *)pyreq);
 }
@@ -910,7 +952,6 @@ python_websocket_send(PyObject *self, PyObject *args)
 		return (NULL);
 	}
 
-
 	kore_websocket_send(pyc->c, op, data.buf, data.len);
 	PyBuffer_Release(&data);
 
@@ -988,33 +1029,6 @@ pyhttp_get_agent(struct pyhttp_request *pyreq, void *closure)
 	return (agent);
 }
 
-static int
-pyhttp_set_state(struct pyhttp_request *pyreq, PyObject *value, void *closure)
-{
-	if (value == NULL) {
-		PyErr_SetString(PyExc_TypeError,
-		    "pyhttp_set_state: value is NULL");
-		return (-1);
-	}
-
-	Py_XDECREF(pyreq->req->py_object);
-	pyreq->req->py_object = value;
-	Py_INCREF(pyreq->req->py_object);
-
-	return (0);
-}
-
-static PyObject *
-pyhttp_get_state(struct pyhttp_request *pyreq, void *closure)
-{
-	if (pyreq->req->py_object == NULL)
-		Py_RETURN_NONE;
-
-	Py_INCREF(pyreq->req->py_object);
-
-	return (pyreq->req->py_object);
-}
-
 static PyObject *
 pyhttp_get_method(struct pyhttp_request *pyreq, void *closure)
 {
@@ -1030,6 +1044,10 @@ static PyObject *
 pyhttp_get_connection(struct pyhttp_request *pyreq, void *closure)
 {
 	PyObject	*pyc;
+
+	if (pyreq->req->owner == NULL) {
+		Py_RETURN_NONE;
+	}
 
 	if ((pyc = pyconnection_alloc(pyreq->req->owner)) == NULL)
 		return (PyErr_NoMemory());
@@ -1057,5 +1075,192 @@ pyhttp_file_get_filename(struct pyhttp_file *pyfile, void *closure)
 		return (PyErr_NoMemory());
 
 	return (name);
+}
+
+#if defined(KORE_USE_PGSQL)
+static void
+pykore_pgsql_dealloc(struct pykore_pgsql *pysql)
+{
+	kore_free(pysql->db);
+	kore_free(pysql->query);
+	kore_pgsql_cleanup(&pysql->sql);
+
+	if (pysql->result != NULL)
+		Py_DECREF(pysql->result);
+
+	PyObject_Del((PyObject *)pysql);
+}
+
+static PyObject *
+pykore_pgsql_alloc(struct http_request *req, const char *db, const char *query)
+{
+	struct pykore_pgsql	*pysql;
+
+	pysql = PyObject_New(struct pykore_pgsql, &pykore_pgsql_type);
+	if (pysql == NULL)
+		return (NULL);
+
+	pysql->req = req;
+	pysql->result = NULL;
+	pysql->db = kore_strdup(db);
+	pysql->query = kore_strdup(query);
+	pysql->state = PYKORE_PGSQL_INITIALIZE;
+
+	memset(&pysql->sql, 0, sizeof(pysql->sql));
+
+	return ((PyObject *)pysql);
+}
+
+static PyObject *
+pykore_pgsql_iternext(struct pykore_pgsql *pysql)
+{
+	switch (pysql->state) {
+	case PYKORE_PGSQL_INITIALIZE:
+		if (!kore_pgsql_query_init(&pysql->sql, pysql->req,
+		    pysql->db, KORE_PGSQL_ASYNC)) {
+			if (pysql->sql.state == KORE_PGSQL_STATE_INIT)
+				break;
+			kore_pgsql_logerror(&pysql->sql);
+			PyErr_SetString(PyExc_RuntimeError, "pgsql error");
+			return (NULL);
+		}
+		/* fallthrough */
+	case PYKORE_PGSQL_QUERY:
+		if (!kore_pgsql_query(&pysql->sql, pysql->query)) {
+			kore_pgsql_logerror(&pysql->sql);
+			PyErr_SetString(PyExc_RuntimeError, "pgsql error");
+			return (NULL);
+		}
+		pysql->state = PYKORE_PGSQL_WAIT;
+		break;
+wait_again:
+	case PYKORE_PGSQL_WAIT:
+		switch (pysql->sql.state) {
+		case KORE_PGSQL_STATE_WAIT:
+			break;
+		case KORE_PGSQL_STATE_COMPLETE:
+			PyErr_SetNone(PyExc_StopIteration);
+			if (pysql->result != NULL) {
+				PyErr_SetObject(PyExc_StopIteration,
+				    pysql->result);
+				Py_DECREF(pysql->result);
+			} else {
+				PyErr_SetObject(PyExc_StopIteration, Py_None);
+			}
+			return (NULL);
+		case KORE_PGSQL_STATE_ERROR:
+			kore_pgsql_logerror(&pysql->sql);
+			PyErr_SetString(PyExc_RuntimeError,
+			    "failed to perform query");
+			return (NULL);
+		case KORE_PGSQL_STATE_RESULT:
+			if (!pykore_pgsql_result(pysql))
+				return (NULL);
+			goto wait_again;
+		default:
+			kore_pgsql_continue(pysql->req, &pysql->sql);
+			goto wait_again;
+		}
+		break;
+	default:
+		PyErr_SetString(PyExc_RuntimeError, "bad pykore_pgsql state");
+		return (NULL);
+	}
+
+	/* tell caller to wait. */
+	Py_RETURN_NONE;
+}
+
+static PyObject *
+pykore_pgsql_await(PyObject *obj)
+{
+	Py_INCREF(obj);
+	return (obj);
+}
+
+int
+pykore_pgsql_result(struct pykore_pgsql *pysql)
+{
+	const char	*val;
+	char		key[64];
+	PyObject	*list, *pyrow, *pyval;
+	int		rows, row, field, fields;
+
+	if ((list = PyList_New(0)) == NULL) {
+		PyErr_SetNone(PyExc_MemoryError);
+		return (KORE_RESULT_ERROR);
+	}
+
+	rows = kore_pgsql_ntuples(&pysql->sql);
+	fields = kore_pgsql_nfields(&pysql->sql);
+
+	for (row = 0; row < rows; row++) {
+		if ((pyrow = PyDict_New()) == NULL) {
+			Py_DECREF(list);
+			PyErr_SetNone(PyExc_MemoryError);
+			return (KORE_RESULT_ERROR);
+		}
+
+		for (field = 0; field < fields; field++) {
+			val = kore_pgsql_getvalue(&pysql->sql, row, field);
+
+			pyval = PyUnicode_FromString(val);
+			if (pyval == NULL) {
+				Py_DECREF(pyrow);
+				Py_DECREF(list);
+				PyErr_SetNone(PyExc_MemoryError);
+				return (KORE_RESULT_ERROR);
+			}
+
+			(void)snprintf(key, sizeof(key), "%s",
+			    kore_pgsql_fieldname(&pysql->sql, field));
+
+			if (PyDict_SetItemString(pyrow, key, pyval) == -1) {
+				Py_DECREF(pyval);
+				Py_DECREF(pyrow);
+				Py_DECREF(list);
+				PyErr_SetString(PyExc_RuntimeError,
+				    "failed to add new value to row");
+				return (KORE_RESULT_ERROR);
+			}
+
+			Py_DECREF(pyval);
+		}
+
+		if (PyList_Insert(list, row, pyrow) == -1) {
+			Py_DECREF(pyrow);
+			Py_DECREF(list);
+			PyErr_SetString(PyExc_RuntimeError,
+			    "failed to add new row to list");
+			return (KORE_RESULT_ERROR);
+		}
+
+		Py_DECREF(pyrow);
+	}
+
+	pysql->result = list;
+	kore_pgsql_continue(pysql->req, &pysql->sql);
+
+	return (KORE_RESULT_OK);
+}
+
+static PyObject *
+pyhttp_pgsql(struct pyhttp_request *pyreq, PyObject *args)
+{
+	PyObject			*obj;
+	const char			*db, *query;
+
+	if (!PyArg_ParseTuple(args, "ss", &db, &query)) {
+		PyErr_SetString(PyExc_TypeError, "invalid parameters");
+		return (NULL);
+	}
+
+	if ((obj = pykore_pgsql_alloc(pyreq->req, db, query)) == NULL)
+		return (PyErr_NoMemory());
+
+	Py_INCREF(obj);
+	pyreq->data = obj;
+
+	return ((PyObject *)obj);
 }
 #endif

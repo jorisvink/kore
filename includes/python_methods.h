@@ -17,6 +17,11 @@
 static PyObject		*python_kore_log(PyObject *, PyObject *);
 static PyObject		*python_kore_fatal(PyObject *, PyObject *);
 static PyObject		*python_kore_listen(PyObject *, PyObject *);
+
+#if defined(KORE_USE_PGSQL)
+static PyObject		*python_kore_pgsql_register(PyObject *, PyObject *);
+#endif
+
 static PyObject		*python_websocket_send(PyObject *, PyObject *);
 static PyObject		*python_websocket_broadcast(PyObject *, PyObject *);
 
@@ -31,6 +36,9 @@ static struct PyMethodDef pykore_methods[] = {
 	METHOD("listen", python_kore_listen, METH_VARARGS),
 	METHOD("websocket_send", python_websocket_send, METH_VARARGS),
 	METHOD("websocket_broadcast", python_websocket_broadcast, METH_VARARGS),
+#if defined(KORE_USE_PGSQL)
+	METHOD("register_database", python_kore_pgsql_register, METH_VARARGS),
+#endif
 	{ NULL, NULL, 0, NULL }
 };
 
@@ -64,10 +72,10 @@ static PyTypeObject pyconnection_type = {
 	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
 };
 
-#if !defined(KORE_NO_HTTP)
 struct pyhttp_request {
 	PyObject_HEAD
 	struct http_request	*req;
+	PyObject		*data;
 };
 
 struct pyhttp_file {
@@ -78,6 +86,9 @@ struct pyhttp_file {
 static void	pyhttp_dealloc(struct pyhttp_request *);
 static void	pyhttp_file_dealloc(struct pyhttp_file *);
 
+#if defined(KORE_USE_PGSQL)
+static PyObject	*pyhttp_pgsql(struct pyhttp_request *, PyObject *);
+#endif
 static PyObject	*pyhttp_response(struct pyhttp_request *, PyObject *);
 static PyObject *pyhttp_argument(struct pyhttp_request *, PyObject *);
 static PyObject	*pyhttp_body_read(struct pyhttp_request *, PyObject *);
@@ -91,6 +102,9 @@ static PyObject *pyhttp_websocket_handshake(struct pyhttp_request *,
 		    PyObject *);
 
 static PyMethodDef pyhttp_request_methods[] = {
+#if defined(KORE_USE_PGSQL)
+	METHOD("pgsql", pyhttp_pgsql, METH_VARARGS),
+#endif
 	METHOD("response", pyhttp_response, METH_VARARGS),
 	METHOD("argument", pyhttp_argument, METH_VARARGS),
 	METHOD("body_read", pyhttp_body_read, METH_VARARGS),
@@ -104,13 +118,10 @@ static PyMethodDef pyhttp_request_methods[] = {
 	METHOD(NULL, NULL, -1)
 };
 
-static int	pyhttp_set_state(struct pyhttp_request *, PyObject *, void *);
-
 static PyObject	*pyhttp_get_host(struct pyhttp_request *, void *);
 static PyObject	*pyhttp_get_path(struct pyhttp_request *, void *);
 static PyObject	*pyhttp_get_body(struct pyhttp_request *, void *);
 static PyObject	*pyhttp_get_agent(struct pyhttp_request *, void *);
-static PyObject	*pyhttp_get_state(struct pyhttp_request *, void *);
 static PyObject	*pyhttp_get_method(struct pyhttp_request *, void *);
 static PyObject	*pyhttp_get_connection(struct pyhttp_request *, void *);
 
@@ -121,7 +132,6 @@ static PyGetSetDef pyhttp_request_getset[] = {
 	GETTER("agent", pyhttp_get_agent),
 	GETTER("method", pyhttp_get_method),
 	GETTER("connection", pyhttp_get_connection),
-	GETSET("state", pyhttp_get_state, pyhttp_set_state),
 	GETTER(NULL, NULL)
 };
 
@@ -160,6 +170,45 @@ static PyTypeObject pyhttp_file_type = {
 	.tp_methods = pyhttp_file_methods,
 	.tp_dealloc = (destructor)pyhttp_file_dealloc,
 	.tp_basicsize = sizeof(struct pyhttp_file),
+	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+};
+
+#if defined(KORE_USE_PGSQL)
+
+#define PYKORE_PGSQL_INITIALIZE		1
+#define PYKORE_PGSQL_QUERY		2
+#define PYKORE_PGSQL_WAIT		3
+
+struct pykore_pgsql {
+	PyObject_HEAD
+	int			state;
+	char			*db;
+	char			*query;
+	struct http_request	*req;
+	PyObject		*result;
+	struct kore_pgsql	sql;
+};
+
+static void	pykore_pgsql_dealloc(struct pykore_pgsql *);
+int		pykore_pgsql_result(struct pykore_pgsql *);
+
+static PyObject	*pykore_pgsql_await(PyObject *);
+static PyObject	*pykore_pgsql_iternext(struct pykore_pgsql *);
+
+static PyAsyncMethods pykore_pgsql_async = {
+	(unaryfunc)pykore_pgsql_await,
+	NULL,
+	NULL
+};
+
+static PyTypeObject pykore_pgsql_type = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "kore.pgsql",
+	.tp_doc = "struct kore_pgsql",
+	.tp_as_async = &pykore_pgsql_async,
+	.tp_iternext = (iternextfunc)pykore_pgsql_iternext,
+	.tp_basicsize = sizeof(struct pykore_pgsql),
+	.tp_dealloc = (destructor)pykore_pgsql_dealloc,
 	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
 };
 #endif

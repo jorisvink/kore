@@ -81,7 +81,7 @@ kore_pool_get(struct kore_pool *pool)
 #endif
 
 	if (LIST_EMPTY(&(pool->freelist))) {
-		kore_log(LOG_NOTICE, "pool %s is exhausted (%d/%d)",
+		kore_log(LOG_NOTICE, "pool %s is exhausted (%zu/%zu)",
 		    pool->name, pool->inuse, pool->elms);
 		pool_region_create(pool, pool->elms);
 	}
@@ -136,7 +136,7 @@ pool_region_create(struct kore_pool *pool, size_t elms)
 	struct kore_pool_region		*reg;
 	struct kore_pool_entry		*entry;
 
-	kore_debug("pool_region_create(%p, %d)", pool, elms);
+	kore_debug("pool_region_create(%p, %zu)", pool, elms);
 
 	if ((reg = calloc(1, sizeof(struct kore_pool_region))) == NULL)
 		fatal("pool_region_create: calloc: %s", errno_s);
