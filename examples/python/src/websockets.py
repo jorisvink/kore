@@ -62,5 +62,3 @@ def ws_connect(req):
 		req.websocket_handshake("onconnect", "onmessage", "ondisconnect")
 	except:
 		req.response(500, b'')
-
-	return kore.RESULT_OK

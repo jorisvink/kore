@@ -97,7 +97,6 @@ def page(req):
 			kore.log(kore.LOG_INFO, "got id of %s" % id)
 		req.response_header("content-type", "text/plain")
 		req.response(200, "hello 1234".encode("utf-8"))
-	return kore.RESULT_OK
 
 #
 # Handler that parses the incoming body as JSON and dumps out some things.
@@ -105,42 +104,16 @@ def page(req):
 def json_parse(req):
 	if req.method != kore.METHOD_PUT:
 		req.response(400, b'')
-		return kore.RESULT_OK
+	else:
+		data = json.loads(req.body)
+		kore.log(kore.LOG_INFO, "loaded json %s" % data)
+		if data["hello"] == 123:
+			kore.log(kore.LOG_INFO, "hello is 123!")
 
-	data = json.loads(req.body)
-	kore.log(kore.LOG_INFO, "loaded json %s" % data)
-	if data["hello"] == 123:
-		kore.log(kore.LOG_INFO, "hello is 123!")
-
-	req.response(200, "ok".encode("utf-8"))
-	return kore.RESULT_OK
-
-#
-# Handler that stores some python state in req.state that it reuses
-# once the handler is called again by the event loop (after having
-# returned RESULT_RETRY to the event loop).
-#
-def state_test(req):
-	# If we don't have a state this is the first time we're called.
-	if req.state is None:
-		kore.log(kore.LOG_INFO, "state_test: first time")
-		req.state = "hello world"
-
-		# Tell Kore to call us again next event loop.
-		return kore.RESULT_RETRY
-
-	# We have been called before.
-	kore.log(kore.LOG_INFO, "state_test: second time, with %s" % req.state)
-	req.response(200, req.state.encode("utf-8"))
-
-	# We *MUST* reset state back to None before returning RESULT_OK
-	req.state = None;
-
-	return kore.RESULT_OK
+		req.response(200, "ok".encode("utf-8"))
 
 #
 # Small handler, returns 200 OK.
 #
 def minimal(req):
 	req.response(200, b'')
-	return kore.RESULT_OK

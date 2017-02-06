@@ -27,7 +27,7 @@ def upload(req):
 	if req.method is not kore.METHOD_POST:
 		req.response_header("allow", "post")
 		req.response(400, b'')
-		return kore.RESULT_OK
+		return
 
 	# Ask kore to parse incoming multipart data.
 	req.populate_multi()
@@ -36,7 +36,7 @@ def upload(req):
 	file = req.file_lookup("file")
 	if not file:
 		req.response(400, b'')
-		return kore.RESULT_OK
+		return
 
 	kore.log(kore.LOG_INFO,
 	    "%s (%s, filename=%s)" % (file, file.name, file.filename))
@@ -45,7 +45,7 @@ def upload(req):
 	f = open(file.filename, "wb")
 	if not f:
 		req.response(500, b'')
-		return kore.RESULT_OK
+		return
 
 	# Read all data from incoming file and write it to the output file.
 	len = True
@@ -56,5 +56,3 @@ def upload(req):
 
 	f.close()
 	req.response(200, b'')
-
-	return kore.RESULT_OK
