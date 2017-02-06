@@ -554,6 +554,7 @@ void		*kore_calloc(size_t, size_t);
 void		*kore_realloc(void *, size_t);
 void		kore_free(void *);
 void		kore_mem_init(void);
+void		kore_mem_cleanup(void);
 
 void		*kore_pool_get(struct kore_pool *);
 void		kore_pool_put(struct kore_pool *, void *);
@@ -564,7 +565,8 @@ void		kore_pool_cleanup(struct kore_pool *);
 time_t		kore_date_to_time(char *);
 char		*kore_time_to_date(time_t);
 char		*kore_strdup(const char *);
-void		kore_log(int, const char *, ...);
+void		kore_log(int, const char *, ...)
+		    __attribute__((format (printf, 2, 3)));
 u_int64_t	kore_strtonum64(const char *, int, int *);
 size_t		kore_strlcpy(char *, const char *, const size_t);
 void		kore_server_disconnect(struct connection *);
