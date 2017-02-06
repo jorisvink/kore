@@ -41,6 +41,7 @@ struct pgsql_wait {
 #define PGSQL_LIST_INSERTED	0x0100
 
 static void	pgsql_queue_wakeup(void);
+static void	pgsql_cancel(struct kore_pgsql *);
 static void	pgsql_set_error(struct kore_pgsql *, const char *);
 static void	pgsql_queue_add(struct http_request *);
 static void	pgsql_conn_release(struct kore_pgsql *);
@@ -527,8 +528,6 @@ static void
 pgsql_conn_release(struct kore_pgsql *pgsql)
 {
 	int		fd;
-	PGcancel	*cancel;
-	char		buf[256];
 
 	if (pgsql->conn == NULL)
 		return;
@@ -539,13 +538,8 @@ pgsql_conn_release(struct kore_pgsql *pgsql)
 			fd = PQsocket(pgsql->conn->db);
 			kore_platform_disable_read(fd);
 
-			if ((cancel = PQgetCancel(pgsql->conn->db)) != NULL) {
-				if (!PQcancel(cancel, buf, sizeof(buf))) {
-					kore_log(LOG_ERR,
-					    "failed to cancel: %s", buf);
-				}
-				PQfreeCancel(cancel);
-			}
+			if (pgsql->state != KORE_PGSQL_STATE_DONE)
+				pgsql_cancel(pgsql);
 		}
 		kore_pool_put(&pgsql_job_pool, pgsql->conn->job);
 	}
@@ -629,5 +623,18 @@ pgsql_read_result(struct kore_pgsql *pgsql)
 	case PGRES_FATAL_ERROR:
 		pgsql_set_error(pgsql, PQresultErrorMessage(pgsql->result));
 		break;
+	}
+}
+
+static void
+pgsql_cancel(struct kore_pgsql *pgsql)
+{
+	PGcancel	*cancel;
+	char		buf[256];
+
+	if ((cancel = PQgetCancel(pgsql->conn->db)) != NULL) {
+		if (!PQcancel(cancel, buf, sizeof(buf)))
+			kore_log(LOG_ERR, "failed to cancel: %s", buf);
+		PQfreeCancel(cancel);
 	}
 }
