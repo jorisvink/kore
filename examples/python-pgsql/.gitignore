@@ -1,0 +1,6 @@
+*.o
+.flavor
+.objs
+python-pgsql.so
+assets.h
+cert
