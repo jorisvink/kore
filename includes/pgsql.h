@@ -60,6 +60,7 @@ struct kore_pgsql {
 extern u_int16_t	pgsql_conn_max;
 
 void	kore_pgsql_init(void);
+void	kore_pgsql_sys_cleanup(void);
 int	kore_pgsql_query_init(struct kore_pgsql *, struct http_request *,
 	    const char *, int);
 void	kore_pgsql_handle(void *, int);
@@ -72,8 +73,10 @@ int	kore_pgsql_v_query_params(struct kore_pgsql *,
 	    const char *, int, int, va_list);
 int	kore_pgsql_register(const char *, const char *);
 int	kore_pgsql_ntuples(struct kore_pgsql *);
+int	kore_pgsql_nfields(struct kore_pgsql *);
 void	kore_pgsql_logerror(struct kore_pgsql *);
 void	kore_pgsql_queue_remove(struct http_request *);
+char	*kore_pgsql_fieldname(struct kore_pgsql *, int);
 char	*kore_pgsql_getvalue(struct kore_pgsql *, int, int);
 int	kore_pgsql_getlength(struct kore_pgsql *, int, int);
 

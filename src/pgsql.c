@@ -76,6 +76,20 @@ kore_pgsql_init(void)
 	    sizeof(struct pgsql_wait), 100);
 }
 
+void
+kore_pgsql_sys_cleanup(void)
+{
+	struct pgsql_conn	*conn, *next;
+
+	kore_pool_cleanup(&pgsql_job_pool);
+	kore_pool_cleanup(&pgsql_wait_pool);
+
+	for (conn = TAILQ_FIRST(&pgsql_conn_free); conn != NULL; conn = next) {
+		next = TAILQ_NEXT(conn, list);
+		pgsql_conn_cleanup(conn);
+	}
+}
+
 int
 kore_pgsql_query_init(struct kore_pgsql *pgsql, struct http_request *req,
     const char *dbname, int flags)
@@ -347,9 +361,21 @@ kore_pgsql_ntuples(struct kore_pgsql *pgsql)
 }
 
 int
+kore_pgsql_nfields(struct kore_pgsql *pgsql)
+{
+	return (PQnfields(pgsql->result));
+}
+
+int
 kore_pgsql_getlength(struct kore_pgsql *pgsql, int row, int col)
 {
 	return (PQgetlength(pgsql->result, row, col));
+}
+
+char *
+kore_pgsql_fieldname(struct kore_pgsql *pgsql, int field)
+{
+	return (PQfname(pgsql->result, field));
 }
 
 char *
@@ -501,19 +527,27 @@ static void
 pgsql_conn_release(struct kore_pgsql *pgsql)
 {
 	int		fd;
+	PGcancel	*cancel;
+	char		buf[256];
 
 	if (pgsql->conn == NULL)
 		return;
 
 	/* Async query cleanup */
 	if (pgsql->flags & KORE_PGSQL_ASYNC) {
-		if (pgsql->conn != NULL) {
-			if (pgsql->flags & KORE_PGSQL_SCHEDULED) {
-				fd = PQsocket(pgsql->conn->db);
-				kore_platform_disable_read(fd);
+		if (pgsql->flags & KORE_PGSQL_SCHEDULED) {
+			fd = PQsocket(pgsql->conn->db);
+			kore_platform_disable_read(fd);
+
+			if ((cancel = PQgetCancel(pgsql->conn->db)) != NULL) {
+				if (!PQcancel(cancel, buf, sizeof(buf))) {
+					kore_log(LOG_ERR,
+					    "failed to cancel: %s", buf);
+				}
+				PQfreeCancel(cancel);
 			}
-			kore_pool_put(&pgsql_job_pool, pgsql->conn->job);
 		}
+		kore_pool_put(&pgsql_job_pool, pgsql->conn->job);
 	}
 
 	/* Drain just in case. */
