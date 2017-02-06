@@ -604,7 +604,7 @@ configure_http_body_max(char *option)
 {
 	int		err;
 
-	http_body_max = kore_strtonum(option, 10, 0, SIZE_MAX, &err);
+	http_body_max = kore_strtonum(option, 10, 0, LONG_MAX, &err);
 	if (err != KORE_RESULT_OK) {
 		printf("bad http_body_max value: %s\n", option);
 		return (KORE_RESULT_ERROR);
