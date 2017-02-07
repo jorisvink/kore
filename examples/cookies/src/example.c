@@ -30,34 +30,33 @@ int		serve_cookies(struct http_request *);
 int
 serve_cookies(struct http_request *req)
 {
-	char 				*read;
-	struct http_cookie	*complex;
+	char 			*read;
+	struct http_cookie	*cookie;
 
 	http_populate_cookies(req);
-	if (http_request_cookie(req, "Simple", &read)) {
+
+	if (http_request_cookie(req, "Simple", &read))
 		kore_log(LOG_DEBUG, "Got simple: %s", read);
-	}
-	if (http_request_cookie(req, "Complex", &read)) {
+	if (http_request_cookie(req, "Complex", &read))
 		kore_log(LOG_DEBUG, "Got complex: %s", read);
-	}
-	if (http_request_cookie(req, "Formatted", &read)) {
+	if (http_request_cookie(req, "Formatted", &read))
 		kore_log(LOG_DEBUG, "Got formatted: %s", read);
-	}
 
 	/* set simple cookie */
-	http_response_cookie(req, "Simple", "Hello World!", HTTP_COOKIE_DEFAULT);
+	http_response_cookie(req, "Simple", "Hello World!", 0);
 
 	/* set complex cookie */
-	complex = http_response_cookie(req, "Complex", "Secure Value!", 
-		HTTP_COOKIE_HTTPONLY | HTTP_COOKIE_SECURE);
-	complex->path = kore_strdup("/secure");
-	complex->expires = time(NULL) + 1 * 60 * 60;
-	complex->domain = kore_strdup("127.0.0.1");
+	cookie = http_response_cookie(req, "Complex", "Secure Value!",
+	    HTTP_COOKIE_HTTPONLY | HTTP_COOKIE_SECURE);
+	cookie ->path = kore_strdup("/secure");
+	cookie->expires = time(NULL) + 1 * 60 * 60;
+	cookie->domain = kore_strdup(req->host);
 
 	/* set formatted cookie */
-	http_response_header(req, "set-cookie", 
-		"Formatted=TheValue; Path=/vault; HttpOnly");
+	http_response_header(req, "set-cookie",
+	    "Formatted=TheValue; Path=/vault; HttpOnly");
 
 	http_response(req, 200, html, strlen(html));
-	return KORE_RESULT_OK;
+
+	return (KORE_RESULT_OK);
 }
