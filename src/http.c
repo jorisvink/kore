@@ -1552,8 +1552,9 @@ http_response_normal(struct http_request *req, struct connection *c,
 	struct http_header	*hdr;
 	struct http_cookie	*ck;
 	struct kore_buf		*ckbuf;
-	char			  *conn;
-	int			connection_close;
+	char				*conn;
+	char				 expires[HTTP_DATE_MAXSIZE];
+	int					 connection_close;
 
 	header_buf->offset = 0;
 	ckhdr_buf->offset = 0;
@@ -1604,6 +1605,14 @@ http_response_normal(struct http_request *req, struct connection *c,
 				kore_buf_appendf(ckbuf, "; Path=%s", ck->path);
 			if (ck->domain != NULL)
 				kore_buf_appendf(ckbuf, "; Domain=%s", ck->domain);
+			if (ck->expires > 0) {
+				strftime(expires, HTTP_DATE_MAXSIZE, "%a, %d %b %y %H:%M:%S GMT",
+					gmtime(&ck->expires));
+				kore_buf_appendf(ckbuf, "; Expires=%s", expires);
+			}
+			if (ck->maxage != UINT32_MAX) {
+				kore_buf_appendf(ckbuf, "; Max-Age=%d", ck->maxage);
+			}
 			if (ck->flags & HTTP_COOKIE_HTTPONLY)
 				kore_buf_appendf(ckbuf, "; HttpOnly");
 			if (ck->flags & HTTP_COOKIE_SECURE)
