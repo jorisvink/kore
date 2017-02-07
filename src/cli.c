@@ -1433,8 +1433,7 @@ cli_buildopt_cleanup(void)
 	struct buildopt		*bopt, *next;
 	struct mime_type	*mime, *mnext;
 
-	for (bopt = TAILQ_FIRST(&build_options); bopt != NULL; bopt = next) {
-		next = TAILQ_NEXT(bopt, list);
+	TAILQ_FOREACH_SAFE(bopt, &build_options, list, next) {
 		TAILQ_REMOVE(&build_options, bopt, list);
 
 		if (bopt->cflags != NULL)
@@ -1450,8 +1449,7 @@ cli_buildopt_cleanup(void)
 		kore_free(bopt);
 	}
 
-	for (mime = TAILQ_FIRST(&mime_types); mime != NULL; mime = mnext) {
-		mnext = TAILQ_NEXT(mime, list);
+	TAILQ_FOREACH_SAFE(mime, &mime_types, list, mnext) {
 		TAILQ_REMOVE(&mime_types, mime, list);
 		kore_free(mime->type);
 		kore_free(mime->ext);

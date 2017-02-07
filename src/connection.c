@@ -171,15 +171,13 @@ kore_connection_prune(int all)
 	struct connection	*c, *cnext;
 
 	if (all) {
-		for (c = TAILQ_FIRST(&connections); c != NULL; c = cnext) {
-			cnext = TAILQ_NEXT(c, list);
+		TAILQ_FOREACH_SAFE(c, &connections, list, cnext) {
 			net_send_flush(c);
 			kore_connection_disconnect(c);
 		}
 	}
 
-	for (c = TAILQ_FIRST(&disconnected); c != NULL; c = cnext) {
-		cnext = TAILQ_NEXT(c, list);
+	TAILQ_FOREACH_SAFE(c, &disconnected, list, cnext) {
 		TAILQ_REMOVE(&disconnected, c, list);
 		kore_connection_remove(c);
 	}
@@ -335,9 +333,7 @@ kore_connection_remove(struct connection *c)
 		kore_free(c->hdlr_extra);
 
 #if !defined(KORE_NO_HTTP)
-	for (req = TAILQ_FIRST(&(c->http_requests));
-	    req != NULL; req = rnext) {
-		rnext = TAILQ_NEXT(req, olist);
+	TAILQ_FOREACH_SAFE(req, &(c->http_requests), olist, rnext) {
 		TAILQ_REMOVE(&(c->http_requests), req, olist);
 		req->owner = NULL;
 		req->flags |= HTTP_REQUEST_DELETE;
@@ -349,8 +345,7 @@ kore_connection_remove(struct connection *c)
 	kore_free(c->ws_disconnect);
 #endif
 
-	for (nb = TAILQ_FIRST(&(c->send_queue)); nb != NULL; nb = next) {
-		next = TAILQ_NEXT(nb, list);
+	TAILQ_FOREACH_SAFE(nb, &(c->send_queue), list, next) {
 		TAILQ_REMOVE(&(c->send_queue), nb, list);
 		if (!(nb->flags & NETBUF_IS_STREAM)) {
 			kore_free(nb->buf);

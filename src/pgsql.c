@@ -85,8 +85,7 @@ kore_pgsql_sys_cleanup(void)
 	kore_pool_cleanup(&pgsql_job_pool);
 	kore_pool_cleanup(&pgsql_wait_pool);
 
-	for (conn = TAILQ_FIRST(&pgsql_conn_free); conn != NULL; conn = next) {
-		next = TAILQ_NEXT(conn, list);
+	TAILQ_FOREACH_SAFE(conn, &pgsql_conn_free, list, next) {
 		pgsql_conn_cleanup(conn);
 	}
 }
@@ -390,8 +389,7 @@ kore_pgsql_queue_remove(struct http_request *req)
 {
 	struct pgsql_wait	*pgw, *next;
 
-	for (pgw = TAILQ_FIRST(&pgsql_wait_queue); pgw != NULL; pgw = next) {
-		next = TAILQ_NEXT(pgw, list);
+	TAILQ_FOREACH_SAFE(pgw, &pgsql_wait_queue, list, next) {
 		if (pgw->req != req)
 			continue;
 
@@ -481,8 +479,7 @@ pgsql_queue_wakeup(void)
 {
 	struct pgsql_wait	*pgw, *next;
 
-	for (pgw = TAILQ_FIRST(&pgsql_wait_queue); pgw != NULL; pgw = next) {
-		next = TAILQ_NEXT(pgw, list);
+	TAILQ_FOREACH_SAFE(pgw, &pgsql_wait_queue, list, next) {
 		if (pgw->req->flags & HTTP_REQUEST_DELETE)
 			continue;
 
