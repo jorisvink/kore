@@ -17,12 +17,6 @@
 #include <kore/kore.h>
 #include <kore/http.h>
 
-#include <openssl/sha.h>
-
-#include <fcntl.h>
-#include <stdlib.h>
-#include <unistd.h>
-
 static char 	*html = "<html><body><h1>Reload this page</h1></body></html>";
 
 int		serve_cookies(struct http_request *);
@@ -30,17 +24,17 @@ int		serve_cookies(struct http_request *);
 int
 serve_cookies(struct http_request *req)
 {
-	char 			*read;
+	char 			*value;
 	struct http_cookie	*cookie;
 
 	http_populate_cookies(req);
 
-	if (http_request_cookie(req, "Simple", &read))
-		kore_log(LOG_DEBUG, "Got simple: %s", read);
-	if (http_request_cookie(req, "Complex", &read))
-		kore_log(LOG_DEBUG, "Got complex: %s", read);
-	if (http_request_cookie(req, "Formatted", &read))
-		kore_log(LOG_DEBUG, "Got formatted: %s", read);
+	if (http_request_cookie(req, "Simple", &value))
+		kore_log(LOG_DEBUG, "Got simple: %s", value);
+	if (http_request_cookie(req, "Complex", &value))
+		kore_log(LOG_DEBUG, "Got complex: %s", value);
+	if (http_request_cookie(req, "Formatted", &value))
+		kore_log(LOG_DEBUG, "Got formatted: %s", value);
 
 	/* set simple cookie */
 	http_response_cookie(req, "Simple", "Hello World!", 0);
