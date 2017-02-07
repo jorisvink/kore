@@ -77,6 +77,9 @@ those by setting a shell environment variable before running **_make_**.
 * JSONRPC=1 (compiles in JSONRPC support)
 * PYTHON=1 (compiles in the Python support)
 
+Note that certain build flavors cannot be mixed together and you will just
+be met with compilation errors.
+
 Example applications
 -----------------
 You can find example applications under **_examples/_**.
