@@ -76,7 +76,7 @@ struct http_cookie {
 	char			*value;
 	char			*path;
 	char			*domain;
-	unsigned int	 maxage;
+	u_int32_t		 maxage;
 	time_t			 expires;
 	u_int16_t		 flags;  		
 
