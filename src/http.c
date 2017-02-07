@@ -513,8 +513,7 @@ http_request_free(struct http_request *req)
 
 		TAILQ_REMOVE(&(req->arguments), q, list);
 		kore_free(q->name);
-		if (q->s_value != NULL)
-			kore_free(q->s_value);
+		kore_free(q->s_value);
 		kore_free(q);
 	}
 
