@@ -1017,11 +1017,11 @@ http_file_rewind(struct http_file *file)
 void
 http_populate_cookies(struct http_request *req)
 {
-	int						 i, v;
-	size_t					 nlen;
+	int						 i, v, n;
 	struct http_cookie		*ck;
-	char					*c, *header, *value;
+	char					*c, *header;
 	char					*cookies[HTTP_MAX_COOKIES];
+	char					*pair[2];
 
 	if (!http_request_header(req, "cookie", &c))
 	   return;
@@ -1032,20 +1032,14 @@ http_populate_cookies(struct http_request *req)
 		for (c = cookies[i]; isspace(*c); c++)
 			;
 
-		if ( (value = strchr(c, '=')) == NULL) {
-			kore_log(LOG_ERR, "malformed cookie");
+		n = kore_split_string(c, "=", pair, 3);
+		if (n != 2) {
+			kore_log(LOG_ERR, "malformed cookie: %s", c);
 			continue;
 		}
-		nlen = value - c - 1;
-		if (nlen > HTTP_MAX_COOKIENAME) {
-			kore_log(LOG_ERR, "cookie name is too long");
-			continue;
-		}
-		value = "\0";
 		ck = kore_pool_get(&http_cookie_pool);
-		ck->name = kore_strdup(value);
-		value++;
-		ck->value = kore_strdup(value);
+		ck->name = kore_strdup(pair[0]);
+		ck->value = kore_strdup(pair[1]);
 		TAILQ_INSERT_TAIL(&(req->req_cookies), ck, list);
 	}
 	kore_free(header);
