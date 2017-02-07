@@ -52,7 +52,7 @@ serve_cookies(struct http_request *req)
 		HTTP_COOKIE_HTTPONLY | HTTP_COOKIE_SECURE);
 	complex->path = kore_strdup("/secure");
 	complex->expires = time(NULL) + 1 * 60 * 60;
-	complex->maxage = 1;
+	complex->domain = kore_strdup("127.0.0.1");
 
 	/* set formatted cookie */
 	http_response_header(req, "set-cookie", 
