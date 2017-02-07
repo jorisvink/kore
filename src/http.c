@@ -1350,7 +1350,7 @@ multipart_parse_headers(struct http_request *req, struct kore_buf *in,
 		if (strcasecmp(args[0], "content-disposition"))
 			continue;
 
-		for (d = args[1]; isspace(*d); d++)
+		for (d = args[1]; isspace(*(unsigned char *)d); d++)
 			;
 
 		c = kore_split_string(d, ";", opt, 5);
@@ -1374,7 +1374,7 @@ multipart_parse_headers(struct http_request *req, struct kore_buf *in,
 			continue;
 		}
 
-		for (d = opt[2]; isspace(*d); d++)
+		for (d = opt[2]; isspace(*(unsigned char *)d); d++)
 			;
 
 		if (!strncasecmp(d, "filename=", 9)) {

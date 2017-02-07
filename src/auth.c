@@ -118,7 +118,7 @@ kore_auth_cookie(struct http_request *req, struct kore_auth *auth)
 	slen = strlen(auth->value);
 	v = kore_split_string(cookie, ";", cookies, HTTP_MAX_COOKIES);
 	for (i = 0; i < v; i++) {
-		for (c = cookies[i]; isspace(*c); c++)
+		for (c = cookies[i]; isspace(*(unsigned char *)c); c++)
 			;
 
 		len = MIN(slen, strlen(cookies[i]));
