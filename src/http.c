@@ -413,18 +413,6 @@ http_response_header(struct http_request *req,
 }
 
 void
-http_response_cookie(struct http_request *req,
-    const char *name, const char *value)
-{
-	struct http_cookie	*ck;
-
-	ck = kore_pool_get(&http_cookie_pool);
-	ck->name = kore_strdup(name);
-	ck->value = kore_strdup(value);
-	TAILQ_INSERT_TAIL(&(req->resp_cookies), ck, list);
-}
-
-void
 http_request_free(struct http_request *req)
 {
 #if defined(KORE_USE_TASKS)
@@ -502,6 +490,10 @@ http_request_free(struct http_request *req)
 		TAILQ_REMOVE(&(req->resp_cookies), ck, list);
 		kore_free(ck->name);
 		kore_free(ck->value);
+		if (ck->path != NULL)
+			kore_free(ck->path);
+		if (ck->domain != NULL)
+			kore_free(ck->domain);
 		kore_pool_put(&http_cookie_pool, ck);
 	}
 
@@ -1012,6 +1004,30 @@ void
 http_file_rewind(struct http_file *file)
 {
 	file->offset = 0;
+}
+
+struct http_cookie*
+http_response_cookie(struct http_request *req, char *name, char *val, u_int16_t flags)
+{
+	if (name == NULL || strlen(name) == 0 ||
+		val == NULL || strlen(val) == 0) {
+		kore_log(LOG_ERR, "invalid cookie values to set");
+		return NULL;
+	}
+
+	struct http_cookie	*ck;
+	ck = kore_pool_get(&http_cookie_pool);
+
+	ck->name = kore_strdup(name);
+	ck->value = kore_strdup(val);
+	ck->flags = flags;
+	ck->path = NULL;
+	ck->domain = NULL;
+	ck->expires = 0;
+	ck->maxage = UINT32_MAX;
+
+	TAILQ_INSERT_TAIL(&(req->resp_cookies), ck, list);
+	return ck;
 }
 
 void
@@ -1535,7 +1551,8 @@ http_response_normal(struct http_request *req, struct connection *c,
 {
 	struct http_header	*hdr;
 	struct http_cookie	*ck;
-	char			*conn;
+	struct kore_buf		*ckbuf;
+	char			  *conn;
 	int			connection_close;
 
 	header_buf->offset = 0;
@@ -1579,24 +1596,26 @@ http_response_normal(struct http_request *req, struct connection *c,
 	}
 
 	if (req != NULL) {
+		ckbuf = kore_buf_alloc(HTTP_HEADER_BUFSIZE);
 		TAILQ_FOREACH(ck, &(req->resp_cookies), list) {
-			kore_buf_appendf(ckhdr_buf, "%s=%s;",
-			    ck->name, ck->value);
+			kore_buf_reset(ckbuf);
+			kore_buf_appendf(ckbuf, "%s=%s", ck->name, ck->value);
+			if (ck->path != NULL)
+				kore_buf_appendf(ckbuf, "; Path=%s", ck->path);
+			if (ck->domain != NULL)
+				kore_buf_appendf(ckbuf, "; Domain=%s", ck->domain);
+			if (ck->flags & HTTP_COOKIE_HTTPONLY)
+				kore_buf_appendf(ckbuf, "; HttpOnly");
+			if (ck->flags & HTTP_COOKIE_SECURE)
+				kore_buf_appendf(ckbuf, "; Secure");
+
+			kore_buf_appendf(header_buf, "set-cookie: %s\r\n",
+			    kore_buf_stringify(ckbuf, NULL));
 		}
 
 		TAILQ_FOREACH(hdr, &(req->resp_headers), list) {
-			/* skip set-cookie header if there are resp_cookies to set */
-			if (strcasecmp(hdr->header, "set-cookie") == 0 &&
-				ckhdr_buf->offset > 0) {
-				continue;
-			}
 			kore_buf_appendf(header_buf, "%s: %s\r\n",
 			    hdr->header, hdr->value);
-		}
-
-		if (ckhdr_buf->offset > 0) {
-			kore_buf_appendf(header_buf, "set-cookie: %s\r\n",
-				kore_buf_stringify(ckhdr_buf, NULL));
 		}
 
 		if (status != 204 && status >= 200 &&

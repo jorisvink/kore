@@ -66,9 +66,18 @@ struct http_header {
 	TAILQ_ENTRY(http_header)	list;
 };
 
+#define HTTP_COOKIE_DEFAULT   0x0000
+#define HTTP_COOKIE_HTTPONLY  0x0001
+#define HTTP_COOKIE_SECURE    0x0002
+
 struct http_cookie {
 	char			*name;
 	char			*value;
+	char			*path;
+	char			*domain;
+	unsigned int	 maxage;
+	time_t			 expires;
+	u_int16_t		 flags;  		
 
 	TAILQ_ENTRY(http_cookie)	list;
 };
@@ -254,8 +263,8 @@ int 	http_request_cookie(struct http_request *,
 			const char *, char **);
 void		http_response_header(struct http_request *,
 		    const char *, const char *);
-void		http_response_cookie(struct http_request *,
-			const char *, const char *);
+struct http_cookie	*http_response_cookie(struct http_request *, 
+			char *, char *, u_int16_t);
 int		http_request_new(struct connection *, const char *,
 		    const char *, const char *, const char *,
 		    struct http_request **);
