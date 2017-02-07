@@ -71,18 +71,17 @@ struct http_header {
 	TAILQ_ENTRY(http_header)	list;
 };
 
-#define HTTP_COOKIE_DEFAULT   0x0000
-#define HTTP_COOKIE_HTTPONLY  0x0001
-#define HTTP_COOKIE_SECURE    0x0002
+#define HTTP_COOKIE_HTTPONLY	0x0001
+#define HTTP_COOKIE_SECURE	0x0002
 
 struct http_cookie {
-	char			*name;
-	char			*value;
-	char			*path;
-	char			*domain;
-	u_int32_t		 maxage;
-	time_t			 expires;
-	u_int16_t		 flags;  		
+	char				*name;
+	char				*value;
+	char				*path;
+	char				*domain;
+	int				maxage;
+	time_t				expires;
+	u_int16_t			flags;
 
 	TAILQ_ENTRY(http_cookie)	list;
 };
