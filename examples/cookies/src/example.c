@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013 Joris Vink <joris@coders.se>
+ * Copyright (c) 2017 Stanislav Yudin <stan@endlessinsomnia.com>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -45,7 +45,7 @@ serve_cookies(struct http_request *req)
 	}
 
 	/* set simple cookie */
-	http_response_cookie(req, "Simple", "Hellow World!", HTTP_COOKIE_DEFAULT);
+	http_response_cookie(req, "Simple", "Hello World!", HTTP_COOKIE_DEFAULT);
 
 	/* set complex cookie */
 	complex = http_response_cookie(req, "Complex", "Secure Value!", 

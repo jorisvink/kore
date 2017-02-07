@@ -1,9 +1,8 @@
-Generic Kore application that shows off a few things:
+This example shows cookies API usage
 
-* File uploads (/upload)
-* Authentication blocks (/private)
-* base64 encoding tests (/b64test)
-* Parameter validator tests (/params-test)
+* Simple key value cookie
+* Complex cookie with RFC 6265 features
+* Mix with cookie formatted in the header
 
 Run:
 ```
