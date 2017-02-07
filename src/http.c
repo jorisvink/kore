@@ -1612,6 +1612,7 @@ http_response_normal(struct http_request *req, struct connection *c,
 			kore_buf_appendf(header_buf, "set-cookie: %s\r\n",
 			    kore_buf_stringify(ckbuf, NULL));
 		}
+		kore_buf_free(ckbuf);
 
 		TAILQ_FOREACH(hdr, &(req->resp_headers), list) {
 			kore_buf_appendf(header_buf, "%s: %s\r\n",
