@@ -89,6 +89,7 @@ static void	pyhttp_file_dealloc(struct pyhttp_file *);
 #if defined(KORE_USE_PGSQL)
 static PyObject	*pyhttp_pgsql(struct pyhttp_request *, PyObject *);
 #endif
+static PyObject *pyhttp_cookie(struct pyhttp_request *, PyObject *);
 static PyObject	*pyhttp_response(struct pyhttp_request *, PyObject *);
 static PyObject *pyhttp_argument(struct pyhttp_request *, PyObject *);
 static PyObject	*pyhttp_body_read(struct pyhttp_request *, PyObject *);
@@ -96,6 +97,7 @@ static PyObject	*pyhttp_file_lookup(struct pyhttp_request *, PyObject *);
 static PyObject	*pyhttp_populate_get(struct pyhttp_request *, PyObject *);
 static PyObject	*pyhttp_populate_post(struct pyhttp_request *, PyObject *);
 static PyObject	*pyhttp_populate_multi(struct pyhttp_request *, PyObject *);
+static PyObject	*pyhttp_populate_cookies(struct pyhttp_request *, PyObject *);
 static PyObject	*pyhttp_request_header(struct pyhttp_request *, PyObject *);
 static PyObject	*pyhttp_response_header(struct pyhttp_request *, PyObject *);
 static PyObject *pyhttp_websocket_handshake(struct pyhttp_request *,
@@ -105,6 +107,7 @@ static PyMethodDef pyhttp_request_methods[] = {
 #if defined(KORE_USE_PGSQL)
 	METHOD("pgsql", pyhttp_pgsql, METH_VARARGS),
 #endif
+	METHOD("cookie", pyhttp_cookie, METH_VARARGS),
 	METHOD("response", pyhttp_response, METH_VARARGS),
 	METHOD("argument", pyhttp_argument, METH_VARARGS),
 	METHOD("body_read", pyhttp_body_read, METH_VARARGS),
@@ -112,6 +115,7 @@ static PyMethodDef pyhttp_request_methods[] = {
 	METHOD("populate_get", pyhttp_populate_get, METH_NOARGS),
 	METHOD("populate_post", pyhttp_populate_post, METH_NOARGS),
 	METHOD("populate_multi", pyhttp_populate_multi, METH_NOARGS),
+	METHOD("populate_cookies", pyhttp_populate_cookies, METH_NOARGS),
 	METHOD("request_header", pyhttp_request_header, METH_VARARGS),
 	METHOD("response_header", pyhttp_response_header, METH_VARARGS),
 	METHOD("websocket_handshake", pyhttp_websocket_handshake, METH_VARARGS),

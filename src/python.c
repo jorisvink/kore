@@ -813,6 +813,13 @@ pyhttp_populate_multi(struct pyhttp_request *pyreq, PyObject *args)
 }
 
 static PyObject *
+pyhttp_populate_cookies(struct pyhttp_request *pyreq, PyObject *args)
+{
+	http_populate_cookies(pyreq->req);
+	Py_RETURN_TRUE;
+}
+
+static PyObject *
 pyhttp_argument(struct pyhttp_request *pyreq, PyObject *args)
 {
 	const char	*name;
@@ -825,6 +832,28 @@ pyhttp_argument(struct pyhttp_request *pyreq, PyObject *args)
 	}
 
 	if (!http_argument_get_string(pyreq->req, name, &string)) {
+		Py_RETURN_NONE;
+	}
+
+	if ((value = PyUnicode_FromString(string)) == NULL)
+		return (PyErr_NoMemory());
+
+	return (value);
+}
+
+static PyObject *
+pyhttp_cookie(struct pyhttp_request *pyreq, PyObject *args)
+{
+	const char	*name;
+	PyObject	*value;
+	char		*string;
+
+	if (!PyArg_ParseTuple(args, "s", &name)) {
+		PyErr_SetString(PyExc_TypeError, "invalid parameters");
+		return (NULL);
+	}
+
+	if (!http_request_cookie(pyreq->req, name, &string)) {
 		Py_RETURN_NONE;
 	}
 

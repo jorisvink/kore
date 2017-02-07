@@ -117,3 +117,13 @@ def json_parse(req):
 #
 def minimal(req):
 	req.response(200, b'')
+
+#
+# Small handler that grabs a cookie if set.
+#
+def kaka(req):
+	req.populate_cookies()
+	cookie = req.cookie("hello")
+	if cookie is not None:
+		kore.log(kore.LOG_INFO, "got hello with value %s" % cookie)
+	req.response(200, b'')
