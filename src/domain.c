@@ -281,6 +281,7 @@ kore_domain_sslstart(struct kore_domain *dom)
 	SSL_CTX_set_tmp_ecdh(dom->ssl_ctx, ecdh);
 	EC_KEY_free(ecdh);
 
+	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_SINGLE_ECDH_USE);
 	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_COMPRESSION);
 
 	if (dom->cafile != NULL) {
