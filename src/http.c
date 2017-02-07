@@ -320,7 +320,7 @@ http_process(void)
 	struct http_request		*req, *next;
 
 	count = 0;
-	TAILQ_FOREACH_SAFE(req, &http_requests, list, next) {
+	for (req = TAILQ_FIRST(&http_requests); req != NULL; req = next) {
 		if (count >= http_request_limit)
 			break;
 
@@ -470,21 +470,27 @@ http_request_free(struct http_request *req)
 	if (req->owner != NULL)
 		TAILQ_REMOVE(&(req->owner->http_requests), req, olist);
 
-	TAILQ_FOREACH_SAFE(hdr, &(req->resp_headers), list, next) {
+	for (hdr = TAILQ_FIRST(&(req->resp_headers)); hdr != NULL; hdr = next) {
+		next = TAILQ_NEXT(hdr, list);
+
 		TAILQ_REMOVE(&(req->resp_headers), hdr, list);
 		kore_free(hdr->header);
 		kore_free(hdr->value);
 		kore_pool_put(&http_header_pool, hdr);
 	}
 
-	TAILQ_FOREACH_SAFE(hdr, &(req->req_headers), list, next) {
+	for (hdr = TAILQ_FIRST(&(req->req_headers)); hdr != NULL; hdr = next) {
+		next = TAILQ_NEXT(hdr, list);
+
 		TAILQ_REMOVE(&(req->req_headers), hdr, list);
 		kore_free(hdr->header);
 		kore_free(hdr->value);
 		kore_pool_put(&http_header_pool, hdr);
 	}
 
-	TAILQ_FOREACH_SAFE(ck, &(req->resp_cookies), list, cknext) {
+	for (ck = TAILQ_FIRST(&(req->resp_cookies)); ck != NULL; ck = cknext) {
+		cknext = TAILQ_NEXT(ck, list);
+
 		TAILQ_REMOVE(&(req->resp_cookies), ck, list);
 		kore_free(ck->name);
 		kore_free(ck->value);
@@ -493,22 +499,28 @@ http_request_free(struct http_request *req)
 		kore_pool_put(&http_cookie_pool, ck);
 	}
 
-	TAILQ_FOREACH_SAFE(ck, &(req->req_cookies), list, cknext) {
+	for (ck = TAILQ_FIRST(&(req->req_cookies)); ck != NULL; ck = cknext) {
+		cknext = TAILQ_NEXT(ck, list);
+
 		TAILQ_REMOVE(&(req->req_cookies), ck, list);
 		kore_free(ck->name);
 		kore_free(ck->value);
 		kore_pool_put(&http_cookie_pool, ck);
 	}
 
-	TAILQ_FOREACH_SAFE(q, &(req->arguments), list, qnext) {
+	for (q = TAILQ_FIRST(&(req->arguments)); q != NULL; q = qnext) {
+		qnext = TAILQ_NEXT(q, list);
+
 		TAILQ_REMOVE(&(req->arguments), q, list);
 		kore_free(q->name);
 		kore_free(q->s_value);
 		kore_free(q);
 	}
 
-	TAILQ_FOREACH_SAFE(f, &(req->files), list, fnext) {
+	for (f = TAILQ_FIRST(&(req->files)); f != NULL; f = fnext) {
+		fnext = TAILQ_NEXT(f, list);
 		TAILQ_REMOVE(&(req->files), f, list);
+
 		kore_free(f->filename);
 		kore_free(f->name);
 		kore_free(f);

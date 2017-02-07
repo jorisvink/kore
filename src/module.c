@@ -53,7 +53,8 @@ kore_module_cleanup(void)
 {
 	struct kore_module	*module, *next;
 
-	TAILQ_FOREACH_SAFE(module, &modules, list, next) {
+	for (module = TAILQ_FIRST(&modules); module != NULL; module = next) {
+		next = TAILQ_NEXT(module, list);
 		TAILQ_REMOVE(&modules, module, list);
 		module->fun->free(module);
 	}
@@ -275,7 +276,8 @@ kore_module_handler_free(struct kore_module_handle *hdlr)
 	/* Drop all validators associated with this handler */
 	while ((param = TAILQ_FIRST(&(hdlr->params))) != NULL) {
 		TAILQ_REMOVE(&(hdlr->params), param, list);
-		kore_free(param->name);
+		if (param->name != NULL)
+			kore_free(param->name);
 		kore_free(param);
 	}
 
