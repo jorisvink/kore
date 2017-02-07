@@ -490,10 +490,8 @@ http_request_free(struct http_request *req)
 		TAILQ_REMOVE(&(req->resp_cookies), ck, list);
 		kore_free(ck->name);
 		kore_free(ck->value);
-		if (ck->path != NULL)
-			kore_free(ck->path);
-		if (ck->domain != NULL)
-			kore_free(ck->domain);
+		kore_free(ck->path);
+		kore_free(ck->domain);
 		kore_pool_put(&http_cookie_pool, ck);
 	}
 
@@ -628,7 +626,7 @@ http_request_header(struct http_request *req, const char *header, char **out)
 }
 
 int
-http_request_cookie(struct http_request *req, const char* cookie, char **out)
+http_request_cookie(struct http_request *req, const char *cookie, char **out)
 {
 	struct http_cookie	*ck;
 
@@ -1012,7 +1010,7 @@ http_response_cookie(struct http_request *req, char *name, char *val, u_int16_t 
 	if (name == NULL || strlen(name) == 0 ||
 		val == NULL || strlen(val) == 0) {
 		kore_log(LOG_ERR, "invalid cookie values to set");
-		return NULL;
+		return (NULL);
 	}
 
 	struct http_cookie	*ck;
@@ -1027,7 +1025,7 @@ http_response_cookie(struct http_request *req, char *name, char *val, u_int16_t 
 	ck->maxage = UINT32_MAX;
 
 	TAILQ_INSERT_TAIL(&(req->resp_cookies), ck, list);
-	return ck;
+	return (ck);
 }
 
 void
@@ -1037,7 +1035,7 @@ http_populate_cookies(struct http_request *req)
 	struct http_cookie		*ck;
 	char					*c, *header;
 	char					*cookies[HTTP_MAX_COOKIES];
-	char					*pair[2];
+	char					*pair[3];
 
 	if (!http_request_header(req, "cookie", &c))
 	   return;
@@ -1050,7 +1048,6 @@ http_populate_cookies(struct http_request *req)
 
 		n = kore_split_string(c, "=", pair, 3);
 		if (n != 2) {
-			kore_log(LOG_ERR, "malformed cookie: %s", c);
 			continue;
 		}
 		ck = kore_pool_get(&http_cookie_pool);
@@ -1551,13 +1548,12 @@ http_response_normal(struct http_request *req, struct connection *c,
 {
 	struct http_header	*hdr;
 	struct http_cookie	*ck;
-	struct kore_buf		*ckbuf;
+	struct tm			 expires_tm;
 	char				*conn;
 	char				 expires[HTTP_DATE_MAXSIZE];
 	int					 connection_close;
 
 	header_buf->offset = 0;
-	ckhdr_buf->offset = 0;
 
 	kore_buf_appendf(header_buf, "HTTP/1.1 %d %s\r\n",
 	    status, http_status_text(status));
@@ -1597,31 +1593,37 @@ http_response_normal(struct http_request *req, struct connection *c,
 	}
 
 	if (req != NULL) {
-		ckbuf = kore_buf_alloc(HTTP_HEADER_BUFSIZE);
 		TAILQ_FOREACH(ck, &(req->resp_cookies), list) {
-			kore_buf_reset(ckbuf);
-			kore_buf_appendf(ckbuf, "%s=%s", ck->name, ck->value);
+			kore_buf_reset(ckhdr_buf);
+			kore_buf_appendf(ckhdr_buf, "%s=%s", ck->name, ck->value);
 			if (ck->path != NULL)
-				kore_buf_appendf(ckbuf, "; Path=%s", ck->path);
+				kore_buf_appendf(ckhdr_buf, "; Path=%s", ck->path);
 			if (ck->domain != NULL)
-				kore_buf_appendf(ckbuf, "; Domain=%s", ck->domain);
+				kore_buf_appendf(ckhdr_buf, "; Domain=%s", ck->domain);
 			if (ck->expires > 0) {
-				strftime(expires, HTTP_DATE_MAXSIZE, "%a, %d %b %y %H:%M:%S GMT",
-					gmtime(&ck->expires));
-				kore_buf_appendf(ckbuf, "; Expires=%s", expires);
+				if (gmtime_r(&ck->expires, &expires_tm) == NULL) {
+					kore_log(LOG_ERR, "gmtime_r failed: %s", strerror(errno));
+					continue;
+				}
+
+				if (strftime(expires, sizeof(expires),
+						"%a, %d %b %y %H:%M:%S GMT", &expires_tm) == 0) {
+					kore_log(LOG_ERR, "strftime failed: %s", strerror(errno));
+					continue;
+				}
+				kore_buf_appendf(ckhdr_buf, "; Expires=%s", expires);
 			}
 			if (ck->maxage != UINT32_MAX) {
-				kore_buf_appendf(ckbuf, "; Max-Age=%d", ck->maxage);
+				kore_buf_appendf(ckhdr_buf, "; Max-Age=%u", ck->maxage);
 			}
 			if (ck->flags & HTTP_COOKIE_HTTPONLY)
-				kore_buf_appendf(ckbuf, "; HttpOnly");
+				kore_buf_appendf(ckhdr_buf, "; HttpOnly");
 			if (ck->flags & HTTP_COOKIE_SECURE)
-				kore_buf_appendf(ckbuf, "; Secure");
+				kore_buf_appendf(ckhdr_buf, "; Secure");
 
 			kore_buf_appendf(header_buf, "set-cookie: %s\r\n",
-			    kore_buf_stringify(ckbuf, NULL));
+			    kore_buf_stringify(ckhdr_buf, NULL));
 		}
-		kore_buf_free(ckbuf);
 
 		TAILQ_FOREACH(hdr, &(req->resp_headers), list) {
 			kore_buf_appendf(header_buf, "%s: %s\r\n",
