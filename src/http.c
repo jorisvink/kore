@@ -16,15 +16,15 @@
 
 #include <sys/param.h>
 
-#include <ctype.h>
-#include <inttypes.h>
-#include <stdio.h>
-#include <string.h>
-
-#include <fcntl.h>
-#include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+
+#include <ctype.h>
+#include <fcntl.h>
+#include <inttypes.h>
+#include <time.h>
+#include <stdio.h>
+#include <string.h>
 
 #include "kore.h"
 #include "http.h"
