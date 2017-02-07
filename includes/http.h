@@ -39,6 +39,10 @@ extern "C" {
 #define HTTP_REQ_HEADER_MAX	25
 #define HTTP_MAX_QUERY_ARGS	20
 #define HTTP_MAX_COOKIES	10
+#define HTTP_MAX_COOKIENAME	255
+#define HTTP_HEADER_BUFSIZE 1024
+#define HTTP_COOKIE_BUFSIZE 1024
+#define HTTP_DATE_MAXSIZE   255
 #define HTTP_REQUEST_LIMIT	1000
 #define HTTP_BODY_DISK_PATH	"tmp_files"
 #define HTTP_BODY_DISK_OFFLOAD	0
@@ -65,6 +69,22 @@ struct http_header {
 	char			*value;
 
 	TAILQ_ENTRY(http_header)	list;
+};
+
+#define HTTP_COOKIE_DEFAULT   0x0000
+#define HTTP_COOKIE_HTTPONLY  0x0001
+#define HTTP_COOKIE_SECURE    0x0002
+
+struct http_cookie {
+	char			*name;
+	char			*value;
+	char			*path;
+	char			*domain;
+	u_int32_t		 maxage;
+	time_t			 expires;
+	u_int16_t		 flags;  		
+
+	TAILQ_ENTRY(http_cookie)	list;
 };
 
 struct http_arg {
@@ -199,6 +219,8 @@ struct http_request {
 	LIST_HEAD(, kore_task)		tasks;
 	LIST_HEAD(, kore_pgsql)		pgsqls;
 
+	TAILQ_HEAD(, http_cookie)	req_cookies;
+	TAILQ_HEAD(, http_cookie)	resp_cookies;
 	TAILQ_HEAD(, http_header)	req_headers;
 	TAILQ_HEAD(, http_header)	resp_headers;
 	TAILQ_HEAD(, http_arg)		arguments;
@@ -242,8 +264,12 @@ void		http_response_stream(struct http_request *, int, void *,
 		    size_t, int (*cb)(struct netbuf *), void *);
 int		http_request_header(struct http_request *,
 		    const char *, char **);
+int 	http_request_cookie(struct http_request *,
+			const char *, char **);
 void		http_response_header(struct http_request *,
 		    const char *, const char *);
+struct http_cookie	*http_response_cookie(struct http_request *, 
+			char *, char *, u_int16_t);
 int		http_request_new(struct connection *, const char *,
 		    const char *, const char *, const char *,
 		    struct http_request **);
@@ -255,6 +281,7 @@ int		http_header_recv(struct netbuf *);
 void		http_populate_get(struct http_request *);
 void		http_populate_post(struct http_request *);
 void		http_populate_multipart_form(struct http_request *);
+void		http_populate_cookies(struct http_request *);
 int		http_argument_get(struct http_request *,
 		    const char *, void **, void *, int);
 
