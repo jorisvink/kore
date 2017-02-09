@@ -1651,7 +1651,7 @@ cli_build_cflags(struct buildopt *bopt)
 	int			fd;
 	size_t			len;
 	struct buildopt		*obopt;
-	char			*string, *buf;
+	char			*string, *buf, *path;
 
 	if ((obopt = cli_buildopt_find(flavor)) == NULL)
 		cli_fatal("no such build flavor: %s", flavor);
@@ -1667,9 +1667,11 @@ cli_build_cflags(struct buildopt *bopt)
 	}
 
 	if (bopt->single_binary) {
-		cli_file_open(".objs/features", O_RDONLY, &fd);
+		(void)cli_vasprintf(&path, "%s/.objs/features", rootdir);
+		cli_file_open(path, O_RDONLY, &fd);
 		cli_file_read(fd, &buf, &len);
 		cli_file_close(fd);
+		free(path);
 
 		if (buf[len - 1]  == '\n')
 			buf[len - 1] = '\0';
@@ -1715,7 +1717,7 @@ cli_build_ldflags(struct buildopt *bopt)
 	int			fd;
 	size_t			len;
 	struct buildopt		*obopt;
-	char			*string, *buf;
+	char			*string, *buf, *path;
 
 	if ((obopt = cli_buildopt_find(flavor)) == NULL)
 		cli_fatal("no such build flavor: %s", flavor);
@@ -1731,9 +1733,11 @@ cli_build_ldflags(struct buildopt *bopt)
 		kore_buf_appendf(bopt->ldflags, "-shared ");
 #endif
 	} else {
-		cli_file_open(".objs/ldflags", O_RDONLY, &fd);
+		(void)cli_vasprintf(&path, "%s/.objs/ldflags", rootdir);
+		cli_file_open(path, O_RDONLY, &fd);
 		cli_file_read(fd, &buf, &len);
 		cli_file_close(fd);
+		free(path);
 
 		if (buf[len - 1]  == '\n')
 			buf[len - 1] = '\0';
