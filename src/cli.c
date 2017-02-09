@@ -78,6 +78,7 @@ struct buildopt {
 	char			*name;
 	char			*kore_source;
 	char			*kore_flavor;
+	int			flavor_nohttp;
 	int			single_binary;
 	struct kore_buf		*cflags;
 	struct kore_buf		*cxxflags;
@@ -112,8 +113,8 @@ static void		cli_fatal(const char *, ...) __attribute__((noreturn));
 static void		cli_file_close(int);
 static void		cli_run_kore(void);
 static void		cli_generate_certs(void);
-static void		cli_link_library(void *);
 static void		cli_compile_kore(void *);
+static void		cli_link_application(void *);
 static void		cli_compile_source_file(void *);
 static void		cli_mkdir(const char *, int);
 static int		cli_dir_exists(const char *);
@@ -122,6 +123,7 @@ static void		cli_cleanup_files(const char *);
 static void		cli_build_cflags(struct buildopt *);
 static void		cli_build_cxxflags(struct buildopt *);
 static void		cli_build_ldflags(struct buildopt *);
+static void		cli_file_read(int, char **, size_t *);
 static void		cli_file_writef(int, const char *, ...);
 static void		cli_file_open(const char *, int, int *);
 static void		cli_file_remove(char *, struct dirent *);
@@ -129,7 +131,8 @@ static void		cli_build_asset(char *, struct dirent *);
 static void		cli_file_write(int, const void *, size_t);
 static int		cli_vasprintf(char **, const char *, ...);
 static void		cli_spawn_proc(void (*cb)(void *), void *);
-static void		cli_write_asset(const char *, const char *);
+static void		cli_write_asset(const char *, const char *,
+			    struct buildopt *);
 static void		cli_register_kore_file(char *, struct dirent *);
 static void		cli_register_source_file(char *, struct dirent *);
 static void		cli_file_create(const char *, const char *, size_t);
@@ -244,8 +247,7 @@ static const char *build_data =
 	"\n"
 	"# Set to yes if you wish to produce a single binary instead\n"
 	"# of a dynamic library. If you set this to yes you must also\n"
-	"# set kore_source together with kore_flavor and update ldflags\n"
-	"# to include the appropriate libraries you will be linking with.\n"
+	"# set kore_source together with kore_flavor.\n"
 	"#single_binary=no\n"
 	"#kore_source=/home/joris/src/kore\n"
 	"#kore_flavor=\n"
@@ -589,7 +591,7 @@ cli_build(int argc, char **argv)
 	free(sofile);
 
 	if (requires_relink) {
-		cli_spawn_proc(cli_link_library, bopt);
+		cli_spawn_proc(cli_link_application, bopt);
 		printf("%s built successfully!\n", appl);
 	} else {
 		printf("nothing to be done!\n");
@@ -729,6 +731,42 @@ cli_file_open(const char *fpath, int flags, int *fd)
 }
 
 static void
+cli_file_read(int fd, char **buf, size_t *len)
+{
+	struct stat	st;
+	char		*p;
+	ssize_t		ret;
+	size_t		offset, bytes;
+
+	if (fstat(fd, &st) == -1)
+		cli_fatal("fstat(): %s", errno_s);
+
+	if (st.st_size > USHRT_MAX)
+		cli_fatal("cli_file_read: way too big");
+
+	offset = 0;
+	bytes = st.st_size;
+	p = kore_malloc(bytes);
+
+	while (offset != bytes) {
+		ret = read(fd, p + offset, bytes - offset);
+		if (ret == -1) {
+			if (errno == EINTR)
+				continue;
+			cli_fatal("read(): %s", errno_s);
+		}
+
+		if (ret == 0)
+			cli_fatal("unexpected EOF");
+
+		offset += (size_t)ret;
+	}
+
+	*buf = p;
+	*len = bytes;
+}
+
+static void
 cli_file_close(int fd)
 {
 	if (close(fd) == -1)
@@ -791,14 +829,17 @@ cli_file_create(const char *name, const char *data, size_t len)
 }
 
 static void
-cli_write_asset(const char *n, const char *e)
+cli_write_asset(const char *n, const char *e, struct buildopt *bopt)
 {
 	cli_file_writef(s_fd, "extern u_int8_t asset_%s_%s[];\n", n, e);
 	cli_file_writef(s_fd, "extern u_int32_t asset_len_%s_%s;\n", n, e);
 	cli_file_writef(s_fd, "extern time_t asset_mtime_%s_%s;\n", n, e);
 	cli_file_writef(s_fd, "extern const char *asset_sha1_%s_%s;\n", n, e);
-	cli_file_writef(s_fd,
-	    "int asset_serve_%s_%s(struct http_request *);\n", n, e);
+
+	if (bopt->flavor_nohttp == 0) {
+		cli_file_writef(s_fd,
+		    "int asset_serve_%s_%s(struct http_request *);\n", n, e);
+	}
 }
 
 static void
@@ -809,12 +850,14 @@ cli_build_asset(char *fpath, struct dirent *dp)
 	off_t			off;
 	void			*base;
 	struct mime_type	*mime;
+	struct buildopt		*bopt;
 	const char		*mime_type;
 	int			in, out, i, len;
 	u_int8_t		*d, digest[SHA_DIGEST_LENGTH];
 	char			*cpath, *ext, *opath, *p, *name;
 	char			hash[(SHA_DIGEST_LENGTH * 2) + 1];
 
+	bopt = cli_buildopt_default();
 	name = kore_strdup(dp->d_name);
 
 	/* Grab the extension as we're using it in the symbol name. */
@@ -843,7 +886,7 @@ cli_build_asset(char *fpath, struct dirent *dp)
 	/* Check if the file needs to be built. */
 	if (!cli_file_requires_build(&st, opath)) {
 		*(ext)++ = '\0';
-		cli_write_asset(name, ext);
+		cli_write_asset(name, ext, bopt);
 		*ext = '_';
 
 		cli_add_source_file(name, cpath, opath, &st, BUILD_NOBUILD);
@@ -915,14 +958,17 @@ cli_build_asset(char *fpath, struct dirent *dp)
 	    name, ext, (u_int32_t)st.st_size);
 	cli_file_writef(out, "time_t asset_mtime_%s_%s = %" PRI_TIME_T ";\n",
 	    name, ext, st.st_mtime);
-	cli_file_writef(out,
-	    "const char *asset_sha1_%s_%s = \"\\\"%s\\\"\";\n",
-	    name, ext, hash);
-	cli_file_writef(out, http_serveable_function,
-	    name, ext, name, ext, name, ext, name, ext, mime_type);
+
+	if (bopt->flavor_nohttp == 0) {
+		cli_file_writef(out,
+		    "const char *asset_sha1_%s_%s = \"\\\"%s\\\"\";\n",
+		    name, ext, hash);
+		cli_file_writef(out, http_serveable_function,
+		    name, ext, name, ext, name, ext, name, ext, mime_type);
+	}
 
 	/* Write the file symbols into assets.h so they can be used. */
-	cli_write_asset(name, ext);
+	cli_write_asset(name, ext, bopt);
 
 	/* Cleanup static file source. */
 	if (munmap(base, st.st_size) == -1)
@@ -1204,7 +1250,7 @@ cli_compile_source_file(void *arg)
 }
 
 static void
-cli_link_library(void *arg)
+cli_link_application(void *arg)
 {
 	struct cfile		*cf;
 	struct buildopt		*bopt;
@@ -1228,13 +1274,6 @@ cli_link_library(void *arg)
 	for (i = 0; i < ldflags_count; i++)
 		args[idx++] = ldflags[i];
 
-	if (bopt->single_binary) {
-		args[idx++] = "-rdynamic";
-#if defined(__linux__)
-		args[idx++] = "-ldl";
-#endif
-	}
-
 	args[idx++] = "-o";
 	args[idx++] = output;
 	args[idx] = NULL;
@@ -1248,7 +1287,7 @@ cli_compile_kore(void *arg)
 {
 	struct buildopt		*bopt = arg;
 	int			idx, i, fcnt;
-	char			*obj, *args[16], pwd[MAXPATHLEN], *flavors[7];
+	char			*obj, *args[20], pwd[MAXPATHLEN], *flavors[7];
 
 	if (getcwd(pwd, sizeof(pwd)) == NULL)
 		cli_fatal("could not get cwd: %s", errno_s);
@@ -1257,9 +1296,6 @@ cli_compile_kore(void *arg)
 
 	if (putenv(obj) != 0)
 		cli_fatal("cannot set OBJDIR for building kore");
-
-	if (putenv("CFLAGS=-DKORE_SINGLE_BINARY") != 0)
-		cli_fatal("cannot set CFLAGS for building kore");
 
 	fcnt = kore_split_string(bopt->kore_flavor, " ", flavors, 7);
 
@@ -1281,6 +1317,7 @@ cli_compile_kore(void *arg)
 		args[idx++] = flavors[i];
 	}
 
+	args[idx++] = "KORE_SINGLE_BINARY=1";
 	args[idx] = NULL;
 
 	execvp(args[0], args);
@@ -1394,6 +1431,7 @@ cli_buildopt_new(const char *name)
 	bopt->cflags = NULL;
 	bopt->cxxflags = NULL;
 	bopt->ldflags = NULL;
+	bopt->flavor_nohttp = 0;
 	bopt->single_binary = 0;
 	bopt->kore_source = NULL;
 	bopt->kore_flavor = NULL;
@@ -1526,6 +1564,9 @@ cli_buildopt_kore_source(struct buildopt *bopt, const char *string)
 static void
 cli_buildopt_kore_flavor(struct buildopt *bopt, const char *string)
 {
+	int		cnt, i;
+	char		*p, *copy, *flavors[10];
+
 	if (bopt == NULL)
 		bopt = cli_buildopt_default();
 	else
@@ -1534,7 +1575,21 @@ cli_buildopt_kore_flavor(struct buildopt *bopt, const char *string)
 	if (bopt->kore_flavor != NULL)
 		kore_free(bopt->kore_flavor);
 
+	copy = kore_strdup(string);
+	cnt = kore_split_string(copy, " ", flavors, 10);
+
+	for (i = 0; i < cnt; i++) {
+		if ((p = strchr(flavors[i], '=')) == NULL)
+			cli_fatal("invalid flavor %s", string);
+
+		*p = '\0';
+
+		if (!strcmp(flavors[i], "NOHTTP"))
+			bopt->flavor_nohttp = 1;
+	}
+
 	bopt->kore_flavor = kore_strdup(string);
+	kore_free(copy);
 }
 
 static void
@@ -1593,8 +1648,10 @@ cli_build_flags_common(struct kore_buf* buf)
 static void
 cli_build_cflags(struct buildopt *bopt)
 {
+	int			fd;
+	size_t			len;
 	struct buildopt		*obopt;
-	char			*string;
+	char			*string, *buf;
 
 	if ((obopt = cli_buildopt_find(flavor)) == NULL)
 		cli_fatal("no such build flavor: %s", flavor);
@@ -1609,8 +1666,18 @@ cli_build_cflags(struct buildopt *bopt)
 		    obopt->cflags->offset);
 	}
 
-	if (bopt->single_binary)
-		kore_buf_appendf(bopt->cflags, "-DKORE_SINGLE_BINARY");
+	if (bopt->single_binary) {
+		cli_file_open(".objs/features", O_RDONLY, &fd);
+		cli_file_read(fd, &buf, &len);
+		cli_file_close(fd);
+
+		if (buf[len - 1]  == '\n')
+			buf[len - 1] = '\0';
+
+		kore_buf_append(bopt->cflags, buf, len);
+		kore_buf_appendf(bopt->cflags, " ");
+		kore_free(buf);
+	}
 
 	string = kore_buf_stringify(bopt->cflags, NULL);
 	printf("CFLAGS=%s\n", string);
@@ -1645,8 +1712,10 @@ cli_build_cxxflags(struct buildopt *bopt)
 static void
 cli_build_ldflags(struct buildopt *bopt)
 {
+	int			fd;
+	size_t			len;
 	struct buildopt		*obopt;
-	char			*string;
+	char			*string, *buf;
 
 	if ((obopt = cli_buildopt_find(flavor)) == NULL)
 		cli_fatal("no such build flavor: %s", flavor);
@@ -1661,6 +1730,17 @@ cli_build_ldflags(struct buildopt *bopt)
 #else
 		kore_buf_appendf(bopt->ldflags, "-shared ");
 #endif
+	} else {
+		cli_file_open(".objs/ldflags", O_RDONLY, &fd);
+		cli_file_read(fd, &buf, &len);
+		cli_file_close(fd);
+
+		if (buf[len - 1]  == '\n')
+			buf[len - 1] = '\0';
+
+		kore_buf_append(bopt->ldflags, buf, len);
+		kore_buf_appendf(bopt->ldflags, " ");
+		kore_free(buf);
 	}
 
 	if (obopt != NULL && obopt->ldflags != NULL) {
