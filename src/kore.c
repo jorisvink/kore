@@ -439,6 +439,9 @@ kore_server_start(void)
 #if defined(KORE_USE_JSONRPC)
 	kore_log(LOG_NOTICE, "jsonrpc built-in enabled");
 #endif
+#if defined(KORE_USE_PYTHON)
+	kore_log(LOG_NOTICE, "python built-in enabled");
+#endif
 #if !defined(KORE_SINGLE_BINARY)
 	rcall = kore_runtime_getcall("kore_parent_configure");
 	if (rcall != NULL) {
