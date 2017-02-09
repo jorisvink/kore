@@ -122,7 +122,8 @@ version(void)
 int
 main(int argc, char *argv[])
 {
-	int		ch, flags;
+	struct kore_runtime_call	*rcall;
+	int				ch, flags;
 
 	flags = 0;
 
@@ -198,6 +199,11 @@ main(int argc, char *argv[])
 #else
 	kore_module_load(NULL, NULL, KORE_MODULE_NATIVE);
 #endif
+	rcall = kore_runtime_getcall("kore_parent_configure");
+	if (rcall != NULL) {
+		kore_runtime_execute(rcall);
+		kore_free(rcall);
+	}
 
 	kore_parse_config();
 	kore_platform_init();
@@ -410,7 +416,6 @@ kore_server_start(void)
 {
 	u_int32_t			tmp;
 	int				quit;
-	struct kore_runtime_call	*rcall;
 
 	if (foreground == 0 && daemon(1, 1) == -1)
 		fatal("cannot daemon(): %s", errno_s);
@@ -429,13 +434,6 @@ kore_server_start(void)
 #if defined(KORE_USE_JSONRPC)
 	kore_log(LOG_NOTICE, "jsonrpc built-in enabled");
 #endif
-
-	rcall = kore_runtime_getcall("kore_parent_configure");
-	if (rcall != NULL) {
-		kore_runtime_execute(rcall);
-		kore_free(rcall);
-	}
-
 	kore_platform_proctitle("kore [parent]");
 	kore_msg_init();
 	kore_worker_init();
