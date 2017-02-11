@@ -665,9 +665,9 @@ int		net_send(struct connection *);
 int		net_send_flush(struct connection *);
 int		net_recv_flush(struct connection *);
 int		net_read(struct connection *, int *);
-int		net_read_ssl(struct connection *, int *);
+int		net_read_tls(struct connection *, int *);
 int		net_write(struct connection *, int, int *);
-int		net_write_ssl(struct connection *, int, int *);
+int		net_write_tls(struct connection *, int, int *);
 void		net_recv_reset(struct connection *, size_t,
 		    int (*cb)(struct netbuf *));
 void		net_remove_netbuf(struct netbuf_head *, struct netbuf *);

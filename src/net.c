@@ -277,7 +277,7 @@ net_remove_netbuf(struct netbuf_head *list, struct netbuf *nb)
 
 #if !defined(KORE_NO_TLS)
 int
-net_write_ssl(struct connection *c, int len, int *written)
+net_write_tls(struct connection *c, int len, int *written)
 {
 	int		r;
 
@@ -318,7 +318,7 @@ net_write_ssl(struct connection *c, int len, int *written)
 }
 
 int
-net_read_ssl(struct connection *c, int *bytes)
+net_read_tls(struct connection *c, int *bytes)
 {
 	int		r;
 
