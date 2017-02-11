@@ -194,7 +194,7 @@ kore_domain_free(struct kore_domain *dom)
 }
 
 void
-kore_domain_sslstart(struct kore_domain *dom)
+kore_domain_tlsinit(struct kore_domain *dom)
 {
 #if !defined(KORE_NO_TLS)
 	BIO			*in;

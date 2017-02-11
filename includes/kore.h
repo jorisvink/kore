@@ -128,7 +128,7 @@ TAILQ_HEAD(netbuf_head, netbuf);
 #define KORE_TYPE_TASK		4
 
 #define CONN_STATE_UNKNOWN		0
-#define CONN_STATE_SSL_SHAKE		1
+#define CONN_STATE_TLS_SHAKE		1
 #define CONN_STATE_ESTABLISHED		2
 #define CONN_STATE_DISCONNECTING	3
 
@@ -611,7 +611,7 @@ void		kore_domain_closelogs(void);
 void		*kore_module_getsym(const char *, struct kore_runtime **);
 void		kore_domain_load_crl(void);
 void		kore_domain_keymgr_init(void);
-void		kore_domain_sslstart(struct kore_domain *);
+void		kore_domain_tlsinit(struct kore_domain *);
 void		kore_module_load(const char *, const char *, int);
 void		kore_domain_callback(void (*cb)(struct kore_domain *));
 int		kore_module_handler_new(const char *, const char *,

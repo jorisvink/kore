@@ -121,9 +121,9 @@ kore_connection_accept(struct listener *listener, struct connection **out)
 	TAILQ_INSERT_TAIL(&connections, c, list);
 
 #if !defined(KORE_NO_TLS)
-	c->state = CONN_STATE_SSL_SHAKE;
-	c->write = net_write_ssl;
-	c->read = net_read_ssl;
+	c->state = CONN_STATE_TLS_SHAKE;
+	c->write = net_write_tls;
+	c->read = net_read_tls;
 #else
 	c->state = CONN_STATE_ESTABLISHED;
 	c->write = net_write;
@@ -213,7 +213,7 @@ kore_connection_handle(struct connection *c)
 
 	switch (c->state) {
 #if !defined(KORE_NO_TLS)
-	case CONN_STATE_SSL_SHAKE:
+	case CONN_STATE_TLS_SHAKE:
 		if (c->ssl == NULL) {
 			c->ssl = SSL_new(primary_dom->ssl_ctx);
 			if (c->ssl == NULL) {

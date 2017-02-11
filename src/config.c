@@ -108,7 +108,7 @@ static int		configure_task_threads(char *);
 static int		configure_python_import(char *);
 #endif
 
-static void		domain_sslstart(void);
+static void		domain_tls_init(void);
 static void		kore_parse_config_file(const char *);
 
 static struct {
@@ -255,7 +255,7 @@ kore_parse_config_file(const char *fpath)
 #endif
 
 		if (!strcmp(p, "}") && current_domain != NULL)
-			domain_sslstart();
+			domain_tls_init();
 
 		if (!strcmp(p, "}")) {
 			lineno++;
@@ -1046,9 +1046,9 @@ configure_socket_backlog(char *option)
 }
 
 static void
-domain_sslstart(void)
+domain_tls_init(void)
 {
-	kore_domain_sslstart(current_domain);
+	kore_domain_tlsinit(current_domain);
 	current_domain = NULL;
 }
 
