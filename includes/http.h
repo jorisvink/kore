@@ -19,10 +19,6 @@
 #ifndef __H_HTTP_H
 #define __H_HTTP_H
 
-#if defined(KORE_USE_PYTHON)
-#include "python_api.h"
-#endif
-
 #include <sys/types.h>
 #include <sys/queue.h>
 
@@ -212,7 +208,7 @@ struct http_request {
 	struct kore_module_handle	*hdlr;
 
 #if defined(KORE_USE_PYTHON)
-	PyObject			*py_coro;
+	void				*py_coro;
 #endif
 
 	LIST_HEAD(, kore_task)		tasks;

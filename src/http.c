@@ -29,6 +29,10 @@
 #include "kore.h"
 #include "http.h"
 
+#if defined(KORE_USE_PYTHON)
+#include "python_api.h"
+#endif
+
 #if defined(KORE_USE_PGSQL)
 #include "pgsql.h"
 #endif

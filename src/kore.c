@@ -63,7 +63,7 @@ static void
 usage(void)
 {
 #if !defined(KORE_SINGLE_BINARY)
-	fprintf(stderr, "Usage: kore [options | command]\n");
+	fprintf(stderr, "Usage: kore [options]\n");
 #else
 	fprintf(stderr, "Usage: %s [options]\n", __progname);
 #endif
@@ -81,12 +81,8 @@ usage(void)
 	fprintf(stderr, "\t-r\tdo not drop privileges\n");
 	fprintf(stderr, "\t-v\tdisplay kore build information\n");
 
-#if !defined(KORE_SINGLE_BINARY)
-	kore_cli_usage(0);
-#else
-	fprintf(stderr, "\nbuilt with https://kore.io\n");
+	fprintf(stderr, "\nFind more information on https://kore.io\n");
 	exit(1);
-#endif
 }
 
 static void
@@ -170,14 +166,6 @@ main(int argc, char *argv[])
 	argv += optind;
 
 	kore_mem_init();
-
-#if !defined(KORE_SINGLE_BINARY)
-	if (argc > 0) {
-		if (flags)
-			fatal("You cannot specify kore flags and a command");
-		return (kore_cli_main(argc, argv));
-	}
-#endif
 
 	kore_pid = getpid();
 	nlisteners = 0;
