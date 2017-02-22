@@ -147,17 +147,15 @@ kore_module_reload(int cbs)
 			continue;
 		}
 
-		if (module->mtime == st.st_mtime) {
-			kore_log(LOG_NOTICE, "not reloading %s", module->path);
+		if (module->mtime == st.st_mtime)
 			continue;
-		}
 
 		if (module->ocb != NULL && cbs == 1) {
 			ret = kore_runtime_onload(module->ocb,
 			    KORE_MODULE_UNLOAD);
 			if (ret == KORE_RESULT_ERROR) {
 				kore_log(LOG_NOTICE,
-				    "not reloading %s", module->path);
+				    "%s forced no reloaded", module->path);
 				continue;
 			}
 		}
