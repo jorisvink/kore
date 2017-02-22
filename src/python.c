@@ -213,6 +213,8 @@ python_module_reload(struct kore_module *module)
 {
 	PyObject	*handle;
 
+	PyErr_Clear();
+
 	if ((handle = PyImport_ReloadModule(module->handle)) == NULL) {
 		python_log_error("python_module_reload");
 		return;
