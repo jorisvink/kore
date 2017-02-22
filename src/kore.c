@@ -283,8 +283,8 @@ kore_tls_info_callback(const SSL *ssl, int flags, int ret)
 int
 kore_server_bind(const char *ip, const char *port, const char *ccb)
 {
+	int			r;
 	struct listener		*l;
-	int			on, r;
 	struct addrinfo		hints, *results;
 
 	kore_debug("kore_server_bind(%s, %s)", ip, port);
@@ -320,13 +320,10 @@ kore_server_bind(const char *ip, const char *port, const char *ccb)
 		return (KORE_RESULT_ERROR);
 	}
 
-	on = 1;
-	if (setsockopt(l->fd, SOL_SOCKET,
-	    SO_REUSEADDR, (const char *)&on, sizeof(on)) == -1) {
+	if (!kore_sockopt(l->fd, SOL_SOCKET, SO_REUSEADDR)) {
 		close(l->fd);
 		kore_free(l);
 		freeaddrinfo(results);
-		kore_log(LOG_ERR, "setsockopt(): %s", errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -367,6 +364,20 @@ kore_server_bind(const char *ip, const char *port, const char *ccb)
 #else
 		kore_log(LOG_NOTICE, "running on http://%s:%s", ip, port);
 #endif
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+int
+kore_sockopt(int fd, int what, int opt)
+{
+	int		on;
+
+	on = 1;
+	if (setsockopt(fd, what, opt, (const char *)&on, sizeof(on)) == -1) {
+		kore_log(LOG_ERR, "setsockopt(): %s", errno_s);
+		return (KORE_RESULT_ERROR);
 	}
 
 	return (KORE_RESULT_OK);

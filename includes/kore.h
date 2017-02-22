@@ -519,6 +519,7 @@ void		kore_timer_remove(struct kore_timer *);
 struct kore_timer	*kore_timer_add(void (*cb)(void *, u_int64_t),
 			    u_int64_t, void *, int);
 
+int		kore_sockopt(int, int, int);
 void		kore_listener_cleanup(void);
 int		kore_server_bind(const char *, const char *, const char *);
 #if !defined(KORE_NO_TLS)

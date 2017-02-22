@@ -418,9 +418,7 @@ kore_connection_nonblock(int fd, int nodelay)
 	}
 
 	if (nodelay) {
-		flags = 1;
-		if (setsockopt(fd, IPPROTO_TCP,
-		    TCP_NODELAY, (char *)&flags, sizeof(flags)) == -1) {
+		if (!kore_sockopt(fd, IPPROTO_TCP, TCP_NODELAY)) {
 			kore_log(LOG_NOTICE,
 			    "failed to set TCP_NODELAY on %d", fd);
 		}
