@@ -537,7 +537,7 @@ http_request_free(struct http_request *req)
 		(void)close(req->http_body_fd);
 
 	if (req->http_body_path != NULL) {
-		if (unlink(req->http_body_path) == -1) {
+		if (unlink(req->http_body_path) == -1 && errno != ENOENT) {
 			kore_log(LOG_NOTICE, "failed to unlink %s: %s",
 			    req->http_body_path, errno_s);
 		}
