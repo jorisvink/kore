@@ -1072,6 +1072,21 @@ pyhttp_get_method(struct pyhttp_request *pyreq, void *closure)
 }
 
 static PyObject *
+pyhttp_get_body_path(struct pyhttp_request *pyreq, void *closure)
+{
+	PyObject	*path;
+
+	if (pyreq->req->http_body_path == NULL) {
+		Py_RETURN_NONE;
+	}
+
+	if ((path = PyUnicode_FromString(pyreq->req->http_body_path)) == NULL)
+		return (PyErr_NoMemory());
+
+	return (path);
+}
+
+static PyObject *
 pyhttp_get_connection(struct pyhttp_request *pyreq, void *closure)
 {
 	PyObject	*pyc;
