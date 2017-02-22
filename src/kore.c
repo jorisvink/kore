@@ -167,6 +167,9 @@ main(int argc, char *argv[])
 
 	kore_mem_init();
 
+	if (argc > 0)
+		fatal("did you mean to run `kodev´ instead?");
+
 	kore_pid = getpid();
 	nlisteners = 0;
 	LIST_INIT(&listeners);
