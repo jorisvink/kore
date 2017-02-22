@@ -34,6 +34,7 @@
 #include <fcntl.h>
 #include <time.h>
 #include <stdarg.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -131,6 +132,7 @@ static void		*cli_realloc(void *, size_t);
 
 static char		*cli_text_trim(char *, size_t);
 static char		*cli_read_line(FILE *, char *, size_t);
+static long long	cli_strtonum(const char *, long long, long long);
 static int		cli_split_string(char *, const char *, char **, size_t);
 
 static void		usage(void) __attribute__((noreturn));
@@ -194,6 +196,7 @@ static void		cli_info(int, char **);
 static void		cli_build(int, char **);
 static void		cli_clean(int, char **);
 static void		cli_create(int, char **);
+static void		cli_reload(int, char **);
 static void		cli_flavor(int, char **);
 
 static void		file_create_src(void);
@@ -203,6 +206,7 @@ static void		file_create_gitignore(void);
 static struct cmd cmds[] = {
 	{ "help",	"this help text",			cli_help },
 	{ "run",	"run an application (-fnr implied)",	cli_run },
+	{ "reload",	"reload the application (SIGHUP)",	cli_reload },
 	{ "info",	"show info on kore on this system",	cli_info },
 	{ "build",	"build an application",			cli_build },
 	{ "clean",	"cleanup the build files",		cli_clean },
@@ -640,6 +644,29 @@ cli_run(int argc, char **argv)
 	 * the right cli options manually and just continue running.
 	 */
 	cli_run_kore();
+}
+
+static void
+cli_reload(int argc, char **argv)
+{
+	int		fd;
+	size_t		len;
+	pid_t		pid;
+	char		*buf;
+
+	cli_file_open("kore.pid", O_RDONLY, &fd);
+	cli_file_read(fd, &buf, &len);
+	cli_file_close(fd);
+
+	if (buf[len - 1]  == '\n')
+		buf[len - 1] = '\0';
+
+	pid = cli_strtonum(buf, 0, UINT_MAX);
+
+	if (kill(pid, SIGHUP) == -1)
+		fatal("failed to reload: %s", errno_s);
+
+	printf("reloaded application\n");
 }
 
 static void
@@ -2098,6 +2125,29 @@ cli_text_trim(char *string, size_t len)
 		*(end)-- = '\0';
 
 	return (string);
+}
+
+static long long
+cli_strtonum(const char *str, long long min, long long max)
+{
+	long long	l;
+	char		*ep;
+
+	if (min > max)
+		fatal("cli_strtonum: min > max");
+
+	errno = 0;
+	l = strtoll(str, &ep, 10);
+	if (errno != 0 || str == ep || *ep != '\0')
+		fatal("strtoll(): %s", errno_s);
+
+	if (l < min)
+		fatal("cli_strtonum: value < min");
+
+	if (l > max)
+		fatal("cli_strtonum: value > max");
+
+	return (l);
 }
 
 static void
