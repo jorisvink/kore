@@ -29,6 +29,10 @@
 
 #include "kore.h"
 
+#if !defined(KORE_NO_HTTP)
+#include "http.h"
+#endif
+
 #define SSL_SESSION_ID		"kore_ssl_sessionid"
 
 struct kore_domain_h		domains;
@@ -553,6 +557,9 @@ keymgr_await_data(void)
 	int			ret;
 	struct pollfd		pfd[1];
 	u_int64_t		start, cur;
+#if !defined(KORE_NO_HTTP)
+	int			process_requests;
+#endif
 
 	/*
 	 * We need to wait until the keymgr responds to us, so keep doing
@@ -562,10 +569,15 @@ keymgr_await_data(void)
 	 * This means other internal messages can still be delivered by
 	 * this worker process to the appropriate callbacks but we do not
 	 * drop out until we've either received an answer from the keymgr
-	 * or until the timeout has been reached.
+	 * or until the timeout has been reached (1 second currently).
 	 *
-	 * It will however block any other I/O and request handling on
-	 * this worker until either of the above criteria is met.
+	 * If we end up waiting for the keymgr process we will call
+	 * http_process (if not built with NOHTTP=1) to further existing
+	 * requests so those do not block too much.
+	 *
+	 * This means that all incoming data will stop being processed
+	 * while existing requests will get processed until we return
+	 * from this call.
 	 */
 	start = kore_time_ms();
 	kore_platform_disable_read(worker->msg[1]->fd);
@@ -573,7 +585,17 @@ keymgr_await_data(void)
 	keymgr_response = 0;
 	memset(keymgr_buf, 0, sizeof(keymgr_buf));
 
+#if !defined(KORE_NO_HTTP)
+	process_requests = 0;
+#endif
+
 	for (;;) {
+#if !defined(KORE_NO_HTTP)
+		if (process_requests) {
+			http_process();
+			process_requests = 0;
+		}
+#endif
 		pfd[0].fd = worker->msg[1]->fd;
 		pfd[0].events = POLLIN;
 		pfd[0].revents = 0;
@@ -589,8 +611,13 @@ keymgr_await_data(void)
 		if ((cur - start) > 1000)
 			break;
 
-		if (ret == 0)
+		if (ret == 0) {
+#if !defined(KORE_NO_HTTP)
+			/* No activity on channel, process HTTP requests. */
+			process_requests = 1;
+#endif
 			continue;
+		}
 
 		if (pfd[0].revents & (POLLERR | POLLHUP))
 			break;
@@ -603,6 +630,13 @@ keymgr_await_data(void)
 
 		if (keymgr_response)
 			break;
+
+#if !defined(KORE_NO_HTTP)
+		/* If we've spent 100ms already, process HTTP requests. */
+		if ((cur - start) > 100) {
+			process_requests = 1;
+		}
+#endif
 	}
 }
 
