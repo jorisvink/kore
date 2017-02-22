@@ -12,7 +12,7 @@ CFLAGS+=-Wall -Werror -Wstrict-prototypes -Wmissing-prototypes
 CFLAGS+=-Wmissing-declarations -Wshadow -Wpointer-arith -Wcast-qual
 CFLAGS+=-Wsign-compare -Iincludes -std=c99 -pedantic
 CFLAGS+=-DPREFIX='"$(PREFIX)"'
-LDFLAGS=-rdynamic -lcrypto
+LDFLAGS=-lcrypto
 
 ifneq ("$(NOOPT)", "")
 	CFLAGS+=-O0
