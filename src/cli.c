@@ -220,9 +220,7 @@ static struct filegen gen_files[] = {
 
 static const char *gen_dirs[] = {
 	"src",
-#if !defined(KORE_NO_TLS)
 	"cert",
-#endif
 	"conf",
 	"assets",
 	NULL
@@ -267,7 +265,7 @@ static const char *config_data =
 
 static const char *build_data =
 	"# %s build config\n"
-	"# You can switch flavors using: kore flavor [newflavor]\n"
+	"# You can switch flavors using: kodev flavor [newflavor]\n"
 	"\n"
 	"# Set to yes if you wish to produce a single binary instead\n"
 	"# of a dynamic library. If you set this to yes you must also\n"
@@ -301,7 +299,6 @@ static const char *build_data =
 	"#	included if you build with the \"prod\" flavor.\n"
 	"#}\n";
 
-#if !defined(KORE_NO_TLS)
 static const char *dh2048_data =
 	"-----BEGIN DH PARAMETERS-----\n"
 	"MIIBCAKCAQEAn4f4Qn5SudFjEYPWTbUaOTLUH85YWmmPFW1+b5bRa9ygr+1wfamv\n"
@@ -311,7 +308,6 @@ static const char *dh2048_data =
 	"Bzy9fYgnUlJ82g/bziCI83R2xAdtH014fR63MpElkqdNeChb94pPbEdFlNUvYIBN\n"
 	"xx2vTUQMqRbB4UdG2zuzzr5j98HDdblQ+wIBAg==\n"
 	"-----END DH PARAMETERS-----";
-#endif
 
 static const char *gitignore = "*.o\n.flavor\n.objs\n%s.so\nassets.h\ncert\n";
 
@@ -414,10 +410,8 @@ cli_create(int argc, char **argv)
 	cli_generate_certs();
 
 	printf("%s created successfully!\n", appl);
-
-#if !defined(KORE_NO_TLS)
-	printf("note: do NOT use the created DH parameters/certificates in production\n");
-#endif
+	printf("WARNING: DO NOT USE THE GENERATED DH PARAMETERS "
+	    "AND CERTIFICATES IN PRODUCTION\n");
 }
 
 static void
@@ -1148,7 +1142,6 @@ cli_find_files(const char *path, void (*cb)(char *, struct dirent *))
 static void
 cli_generate_certs(void)
 {
-#if !defined(KORE_NO_TLS)
 	BIGNUM			*e;
 	FILE			*fp;
 	time_t			now;
@@ -1238,7 +1231,6 @@ cli_generate_certs(void)
 
 	EVP_PKEY_free(pkey);
 	X509_free(x509);
-#endif
 }
 
 static void
