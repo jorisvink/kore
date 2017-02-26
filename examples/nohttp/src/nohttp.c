@@ -78,7 +78,7 @@ connection_recv_data(struct netbuf *nb)
 {
 	struct connection	*c = (struct connection *)nb->owner;
 
-	kore_log(LOG_NOTICE, "%p: received %u bytes", c, nb->s_off);
+	kore_log(LOG_NOTICE, "%p: received %zu bytes", (void *)c, nb->s_off);
 
 	/* We will just dump these back to the client. */
 	net_send_queue(c, nb->buf, nb->s_off);
