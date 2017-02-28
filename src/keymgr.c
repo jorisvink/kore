@@ -177,6 +177,7 @@ keymgr_load_randfile(void)
 
 		total += (size_t)ret;
 		RAND_seed(buf, (int)ret);
+		OPENSSL_cleanse(buf, sizeof(buf));
 	}
 
 	(void)close(fd);
@@ -204,7 +205,7 @@ keymgr_save_randfile(void)
 
 	if (RAND_bytes(buf, sizeof(buf)) != 1) {
 		kore_log(LOG_WARNING, "RAND_bytes: %s", ssl_errno_s);
-		return;
+		goto cleanup;
 	}
 
 	if ((fd = open(RAND_TMP_FILE,
@@ -212,7 +213,7 @@ keymgr_save_randfile(void)
 		kore_log(LOG_WARNING,
 		    "failed to open %s: %s - random data not written",
 		    RAND_TMP_FILE, errno_s);
-		return;
+		goto cleanup;
 	}
 
 	ret = write(fd, buf, sizeof(buf));
@@ -220,7 +221,7 @@ keymgr_save_randfile(void)
 		kore_log(LOG_WARNING, "failed to write random data");
 		(void)close(fd);
 		(void)unlink(RAND_TMP_FILE);
-		return;
+		goto cleanup;
 	}
 
 	if (close(fd) == -1)
@@ -232,6 +233,9 @@ keymgr_save_randfile(void)
 		(void)unlink(rand_file);
 		(void)unlink(RAND_TMP_FILE);
 	}
+
+cleanup:
+	OPENSSL_cleanse(buf, sizeof(buf));
 }
 
 static void
