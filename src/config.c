@@ -64,6 +64,7 @@ static int		configure_set_affinity(char *);
 static int		configure_socket_backlog(char *);
 
 #if !defined(KORE_NO_TLS)
+static int		configure_rand_file(char *);
 static int		configure_certfile(char *);
 static int		configure_certkey(char *);
 static int		configure_tls_version(char *);
@@ -135,6 +136,7 @@ static struct {
 	{ "tls_version",		configure_tls_version },
 	{ "tls_cipher",			configure_tls_cipher },
 	{ "tls_dhparam",		configure_tls_dhparam },
+	{ "rand_file",			configure_rand_file },
 	{ "certfile",			configure_certfile },
 	{ "certkey",			configure_certkey },
 	{ "client_certificates",	configure_client_certificates },
@@ -448,6 +450,17 @@ configure_client_certificates(char *options)
 	current_domain->cafile = kore_strdup(argv[0]);
 	if (argv[1] != NULL)
 		current_domain->crlfile = kore_strdup(argv[1]);
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_rand_file(char *path)
+{
+	if (rand_file != NULL)
+		kore_free(rand_file);
+
+	rand_file = kore_strdup(path);
 
 	return (KORE_RESULT_OK);
 }

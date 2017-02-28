@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016 Joris Vink <joris@coders.se>
+ * Copyright (c) 2016-2017 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -15,9 +15,12 @@
  */
 
 #include <sys/param.h>
+#include <sys/stat.h>
 
 #include <openssl/evp.h>
+#include <openssl/rand.h>
 
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
@@ -26,15 +29,25 @@
 #include "kore.h"
 
 #if !defined(KORE_NO_TLS)
+
+#define RAND_TMP_FILE		"rnd.tmp"
+#define RAND_POLL_INTERVAL	(1800 * 1000)
+#define RAND_FILE_SIZE		1024
+
 struct key {
 	EVP_PKEY		*pkey;
 	struct kore_domain	*dom;
 	TAILQ_ENTRY(key)	list;
 };
 
+char				*rand_file = NULL;
+
 static TAILQ_HEAD(, key)	keys;
 extern volatile sig_atomic_t	sig_recv;
 static int			initialized = 0;
+
+static void	keymgr_load_randfile(void);
+static void	keymgr_save_randfile(void);
 
 static void	keymgr_load_privatekey(struct kore_domain *);
 static void	keymgr_msg_recv(struct kore_msg *, const void *);
@@ -48,6 +61,13 @@ void
 kore_keymgr_run(void)
 {
 	int		quit;
+	u_int64_t	now, last_seed;
+
+	if (rand_file != NULL) {
+		keymgr_load_randfile();
+	} else {
+		kore_log(LOG_WARNING, "no rand_file location specified");
+	}
 
 	quit = 0;
 	initialized = 1;
@@ -66,9 +86,16 @@ kore_keymgr_run(void)
 	kore_msg_worker_init();
 	kore_msg_register(KORE_MSG_KEYMGR_REQ, keymgr_msg_recv);
 
+	last_seed = 0;
 	kore_log(LOG_NOTICE, "key manager started");
 
 	while (quit != 1) {
+		now = kore_time_ms();
+		if ((now - last_seed) > RAND_POLL_INTERVAL) {
+			RAND_poll();
+			last_seed = now;
+		}
+
 		if (sig_recv != 0) {
 			switch (sig_recv) {
 			case SIGQUIT:
@@ -102,12 +129,108 @@ kore_keymgr_cleanup(void)
 	if (initialized == 0)
 		return;
 
+	keymgr_save_randfile();
+
 	for (key = TAILQ_FIRST(&keys); key != NULL; key = next) {
 		next = TAILQ_NEXT(key, list);
 		TAILQ_REMOVE(&keys, key, list);
 
 		EVP_PKEY_free(key->pkey);
 		kore_free(key);
+	}
+}
+
+static void
+keymgr_load_randfile(void)
+{
+	int		fd;
+	struct stat	st;
+	ssize_t		ret;
+	size_t		total;
+	u_int8_t	buf[RAND_FILE_SIZE];
+
+	if (rand_file == NULL)
+		return;
+
+	if ((fd = open(rand_file, O_RDONLY)) == -1)
+		fatal("open(%s): %s", rand_file, errno_s);
+
+	if (fstat(fd, &st) == -1)
+		fatal("stat(%s): %s", rand_file, errno_s);
+	if (!S_ISREG(st.st_mode))
+		fatal("%s is not a file", rand_file);
+	if (st.st_size != RAND_FILE_SIZE)
+		fatal("%s has an invalid size", rand_file);
+
+	total = 0;
+
+	while (total != RAND_FILE_SIZE) {
+		ret = read(fd, buf, sizeof(buf));
+		if (ret == 0)
+			fatal("EOF on %s", rand_file);
+
+		if (ret == -1) {
+			if (errno == EINTR)
+				continue;
+			fatal("read(%s): %s", rand_file, errno_s);
+		}
+
+		total += (size_t)ret;
+		RAND_seed(buf, (int)ret);
+	}
+
+	(void)close(fd);
+	if (unlink(rand_file) == -1) {
+		kore_log(LOG_WARNING, "failed to unlink %s: %s",
+		    rand_file, errno_s);
+	}
+}
+
+static void
+keymgr_save_randfile(void)
+{
+	int		fd;
+	struct stat	st;
+	ssize_t		ret;
+	u_int8_t	buf[RAND_FILE_SIZE];
+
+	if (rand_file == NULL)
+		return;
+
+	if (stat(RAND_TMP_FILE, &st) != -1) {
+		kore_log(LOG_WARNING, "removing stale %s file", RAND_TMP_FILE);
+		(void)unlink(RAND_TMP_FILE);
+	}
+
+	if (RAND_bytes(buf, sizeof(buf)) != 1) {
+		kore_log(LOG_WARNING, "RAND_bytes: %s", ssl_errno_s);
+		return;
+	}
+
+	if ((fd = open(RAND_TMP_FILE,
+	    O_CREAT | O_TRUNC | O_WRONLY, 0400)) == -1) {
+		kore_log(LOG_WARNING,
+		    "failed to open %s: %s - random data not written",
+		    RAND_TMP_FILE, errno_s);
+		return;
+	}
+
+	ret = write(fd, buf, sizeof(buf));
+	if (ret == -1 || (size_t)ret != sizeof(buf)) {
+		kore_log(LOG_WARNING, "failed to write random data");
+		(void)close(fd);
+		(void)unlink(RAND_TMP_FILE);
+		return;
+	}
+
+	if (close(fd) == -1)
+		kore_log(LOG_WARNING, "close(%s): %s", RAND_TMP_FILE, errno_s);
+
+	if (rename(RAND_TMP_FILE, rand_file) == -1) {
+		kore_log(LOG_WARNING, "rename(%s, %s): %s",
+		    RAND_TMP_FILE, rand_file, errno_s);
+		(void)unlink(rand_file);
+		(void)unlink(RAND_TMP_FILE);
 	}
 }
 

@@ -457,6 +457,7 @@ extern int	tls_version;
 
 #if !defined(KORE_NO_TLS)
 extern DH	*tls_dhparam;
+extern char	*rand_file;
 #endif
 
 extern u_int8_t			nlisteners;
