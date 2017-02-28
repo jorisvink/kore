@@ -586,6 +586,13 @@ worker_unlock(void)
 static void
 worker_entropy_recv(struct kore_msg *msg, const void *data)
 {
+	if (msg->length != 1024) {
+		kore_log(LOG_WARNING,
+		    "short entropy response (got:%u - wanted:1024)",
+		    msg->length);
+	}
+
+	RAND_poll();
 	RAND_seed(data, msg->length);
 }
 #endif
