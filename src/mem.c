@@ -135,10 +135,17 @@ kore_realloc(void *ptr, size_t len)
 void *
 kore_calloc(size_t memb, size_t len)
 {
+	void		*ptr;
+	size_t		total;
+
 	if (SIZE_MAX / memb < len)
 		fatal("kore_calloc(): memb * len > SIZE_MAX");
 
-	return (kore_malloc(memb * len));
+	total = memb * len;
+	ptr = kore_malloc(total);
+	memset(ptr, 0, total);
+
+	return (ptr);
 }
 
 void
