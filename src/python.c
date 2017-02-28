@@ -153,12 +153,7 @@ python_malloc(void *ctx, size_t len)
 static void *
 python_calloc(void *ctx, size_t memb, size_t len)
 {
-	void		*ptr;
-
-	ptr = kore_calloc(memb, len);
-	memset(ptr, 0, len);
-
-	return (ptr);
+	return (kore_calloc(memb, len));
 }
 
 static void *
