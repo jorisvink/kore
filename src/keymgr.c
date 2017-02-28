@@ -51,6 +51,7 @@ static void	keymgr_save_randfile(void);
 
 static void	keymgr_load_privatekey(struct kore_domain *);
 static void	keymgr_msg_recv(struct kore_msg *, const void *);
+static void	keymgr_entropy_request(struct kore_msg *, const void *);
 
 static void	keymgr_rsa_encrypt(struct kore_msg *, const void *,
 		    struct key *);
@@ -85,6 +86,7 @@ kore_keymgr_run(void)
 
 	kore_msg_worker_init();
 	kore_msg_register(KORE_MSG_KEYMGR_REQ, keymgr_msg_recv);
+	kore_msg_register(KORE_MSG_ENTROPY_REQ, keymgr_entropy_request);
 
 	last_seed = 0;
 	kore_log(LOG_NOTICE, "key manager started");
@@ -261,6 +263,22 @@ keymgr_load_privatekey(struct kore_domain *dom)
 	dom->certkey = NULL;
 
 	TAILQ_INSERT_TAIL(&keys, key, list);
+}
+
+static void
+keymgr_entropy_request(struct kore_msg *msg, const void *data)
+{
+	u_int8_t	buf[RAND_FILE_SIZE];
+
+	if (RAND_bytes(buf, sizeof(buf)) != 1) {
+		kore_log(LOG_WARNING,
+		    "failed to generate entropy for worker %u: %s",
+		    msg->src, ssl_errno_s);
+		return;
+	}
+
+	/* No cleanse, this stuff is leaked in the kernel path anyway. */
+	kore_msg_send(msg->src, KORE_MSG_ENTROPY_RESP, buf, sizeof(buf));
 }
 
 static void

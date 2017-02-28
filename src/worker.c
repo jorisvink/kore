@@ -21,6 +21,10 @@
 #include <sys/resource.h>
 #include <sys/socket.h>
 
+#if !defined(KORE_NO_TLS)
+#include <openssl/rand.h>
+#endif
+
 #include <fcntl.h>
 #include <grp.h>
 #include <pwd.h>
@@ -70,6 +74,10 @@ static void	worker_unlock(void);
 
 static inline int	kore_worker_acceptlock_obtain(void);
 static inline void	kore_worker_acceptlock_release(void);
+
+#if !defined(KORE_NO_TLS)
+static void		worker_entropy_recv(struct kore_msg *, const void *);
+#endif
 
 static struct kore_worker		*kore_workers;
 static int				shm_accept_key;
@@ -270,6 +278,9 @@ kore_worker_entry(struct kore_worker *kw)
 	char				buf[16];
 	int				quit, had_lock, r;
 	u_int64_t			now, next_lock, netwait;
+#if !defined(KORE_NO_TLS)
+	u_int64_t			last_seed;
+#endif
 
 	worker = kw;
 
@@ -331,6 +342,11 @@ kore_worker_entry(struct kore_worker *kw)
 	kore_task_init();
 #endif
 
+#if !defined(KORE_NO_TLS)
+	last_seed = 0;
+	kore_msg_register(KORE_MSG_ENTROPY_RESP, worker_entropy_recv);
+#endif
+
 	kore_log(LOG_NOTICE, "worker %d started (cpu#%d)", kw->id, kw->cpu);
 
 	rcall = kore_runtime_getcall("kore_worker_configure");
@@ -363,6 +379,14 @@ kore_worker_entry(struct kore_worker *kw)
 		netwait = kore_timer_run(now);
 		if (netwait > 100)
 			netwait = 100;
+
+#if !defined(KORE_NO_TLS)
+		if ((now - last_seed) > KORE_RESEED_TIME) {
+			kore_msg_send(KORE_WORKER_KEYMGR,
+			    KORE_MSG_ENTROPY_REQ, NULL, 0);
+			last_seed = now;
+		}
+#endif
 
 		if (now > next_lock) {
 			if (kore_worker_acceptlock_obtain()) {
@@ -557,3 +581,11 @@ worker_unlock(void)
 	if (!__sync_bool_compare_and_swap(&(accept_lock->lock), 1, 0))
 		kore_log(LOG_NOTICE, "worker_unlock(): wasnt locked");
 }
+
+#if !defined(KORE_NO_TLS)
+static void
+worker_entropy_recv(struct kore_msg *msg, const void *data)
+{
+	RAND_seed(data, msg->length);
+}
+#endif

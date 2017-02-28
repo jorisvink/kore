@@ -66,6 +66,8 @@ extern int daemon(int, int);
 #define KORE_TLS_VERSION_1_0	1
 #define KORE_TLS_VERSION_BOTH	2
 
+#define KORE_RESEED_TIME	(1800 * 1000)
+
 #define errno_s			strerror(errno)
 #define ssl_errno_s		ERR_error_string(ERR_get_error(), NULL)
 
@@ -418,6 +420,8 @@ struct kore_timer {
 #define KORE_MSG_KEYMGR_REQ	3
 #define KORE_MSG_KEYMGR_RESP	4
 #define KORE_MSG_SHUTDOWN	5
+#define KORE_MSG_ENTROPY_REQ	6
+#define KORE_MSG_ENTROPY_RESP	7
 
 /* Predefined message targets. */
 #define KORE_MSG_PARENT		1000
