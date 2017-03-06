@@ -656,9 +656,7 @@ cli_reload(int argc, char **argv)
 	cli_file_open("kore.pid", O_RDONLY, &fd);
 	cli_file_read(fd, &buf, &len);
 	cli_file_close(fd);
-
-	if (buf[len - 1]  == '\n')
-		buf[len - 1] = '\0';
+	buf[len - 1] = '\0';
 
 	pid = cli_strtonum(buf, 0, UINT_MAX);
 
@@ -1777,9 +1775,7 @@ cli_build_ldflags(struct buildopt *bopt)
 		cli_file_open(".objs/ldflags", O_RDONLY, &fd);
 		cli_file_read(fd, &buf, &len);
 		cli_file_close(fd);
-
-		if (buf[len - 1]  == '\n')
-			buf[len - 1] = '\0';
+		buf[len - 1] = '\0';
 
 		cli_buf_append(bopt->ldflags, buf, len);
 		cli_buf_appendf(bopt->ldflags, " ");
@@ -1847,9 +1843,7 @@ cli_kore_features(struct buildopt *bopt, char **out, size_t *outlen)
 	cli_file_read(fd, &data, &len);
 	cli_file_close(fd);
 	free(path);
-
-	if (data[len - 1]  == '\n')
-		data[len - 1] = '\0';
+	data[len - 1] = '\0';
 
 	*out = data;
 	*outlen = len;
