@@ -66,6 +66,7 @@ kore_keymgr_run(void)
 
 	if (rand_file != NULL) {
 		keymgr_load_randfile();
+		keymgr_save_randfile();
 	} else {
 		kore_log(LOG_WARNING, "no rand_file location specified");
 	}
@@ -130,8 +131,6 @@ kore_keymgr_cleanup(void)
 
 	if (initialized == 0)
 		return;
-
-	keymgr_save_randfile();
 
 	for (key = TAILQ_FIRST(&keys); key != NULL; key = next) {
 		next = TAILQ_NEXT(key, list);
