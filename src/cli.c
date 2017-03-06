@@ -583,7 +583,6 @@ cli_build(int argc, char **argv)
 		requires_relink++;
 	}
 
-	(void)unlink(assets_header);
 	free(assets_header);
 
 	if (!cli_dir_exists("cert")) {
