@@ -64,6 +64,8 @@ workers		4
 #
 # Kore will refuse to start if the specified file does not exist,
 # is of the wrong size or cannot be opened in anyway.
+#
+# NOTE: This file location must be inside your chrooted environment.
 #rand_file	random.data
 
 # HTTP specific settings.
