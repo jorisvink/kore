@@ -656,6 +656,10 @@ cli_reload(int argc, char **argv)
 	cli_file_open("kore.pid", O_RDONLY, &fd);
 	cli_file_read(fd, &buf, &len);
 	cli_file_close(fd);
+
+	if (len == 0)
+		fatal("reload: pid file is empty");
+
 	buf[len - 1] = '\0';
 
 	pid = cli_strtonum(buf, 0, UINT_MAX);
@@ -1775,6 +1779,8 @@ cli_build_ldflags(struct buildopt *bopt)
 		cli_file_open(".objs/ldflags", O_RDONLY, &fd);
 		cli_file_read(fd, &buf, &len);
 		cli_file_close(fd);
+		if (len == 0)
+			fatal(".objs/ldflags is empty");
 		buf[len - 1] = '\0';
 
 		cli_buf_append(bopt->ldflags, buf, len);
@@ -1843,6 +1849,10 @@ cli_kore_features(struct buildopt *bopt, char **out, size_t *outlen)
 	cli_file_read(fd, &data, &len);
 	cli_file_close(fd);
 	free(path);
+
+	if (len == 0)
+		fatal(".objs/features is empty");
+
 	data[len - 1] = '\0';
 
 	*out = data;
