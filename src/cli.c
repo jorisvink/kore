@@ -235,7 +235,7 @@ static const char *http_serveable_function =
 	"asset_serve_%s_%s(struct http_request *req)\n"
 	"{\n"
 	"	http_serveable(req, asset_%s_%s, asset_len_%s_%s,\n"
-	"	    asset_sha1_%s_%s, \"%s\");\n"
+	"	    asset_sha256_%s_%s, \"%s\");\n"
 	"	return (KORE_RESULT_OK);\n"
 	"}\n";
 
@@ -893,10 +893,10 @@ cli_file_create(const char *name, const char *data, size_t len)
 static void
 cli_write_asset(const char *n, const char *e, struct buildopt *bopt)
 {
-	cli_file_writef(s_fd, "extern u_int8_t asset_%s_%s[];\n", n, e);
-	cli_file_writef(s_fd, "extern u_int32_t asset_len_%s_%s;\n", n, e);
-	cli_file_writef(s_fd, "extern time_t asset_mtime_%s_%s;\n", n, e);
-	cli_file_writef(s_fd, "extern const char *asset_sha1_%s_%s;\n", n, e);
+	cli_file_writef(s_fd, "extern const u_int8_t asset_%s_%s[];\n", n, e);
+	cli_file_writef(s_fd, "extern const u_int32_t asset_len_%s_%s;\n", n, e);
+	cli_file_writef(s_fd, "extern const time_t asset_mtime_%s_%s;\n", n, e);
+	cli_file_writef(s_fd, "extern const char *asset_sha256_%s_%s;\n", n, e);
 
 	if (bopt->flavor_nohttp == 0) {
 		cli_file_writef(s_fd,
@@ -908,16 +908,16 @@ static void
 cli_build_asset(char *fpath, struct dirent *dp)
 {
 	struct stat		st;
-	SHA_CTX			sctx;
+	SHA256_CTX		sctx;
 	off_t			off;
 	void			*base;
 	struct mime_type	*mime;
 	struct buildopt		*bopt;
 	const char		*mime_type;
 	int			in, out, i, len;
-	u_int8_t		*d, digest[SHA_DIGEST_LENGTH];
+	u_int8_t		*d, digest[SHA256_DIGEST_LENGTH];
 	char			*cpath, *ext, *opath, *p, *name;
-	char			hash[(SHA_DIGEST_LENGTH * 2) + 1];
+	char			hash[(SHA256_DIGEST_LENGTH * 2) + 1];
 
 	bopt = cli_buildopt_default();
 	name = cli_strdup(dp->d_name);
@@ -979,7 +979,7 @@ cli_build_asset(char *fpath, struct dirent *dp)
 	cli_file_writef(out, "#include \"assets.h\"\n\n");
 
 	/* Write the file data as a byte array. */
-	cli_file_writef(out, "u_int8_t asset_%s_%s[] = {\n", name, ext);
+	cli_file_writef(out, "const u_int8_t asset_%s_%s[] = {\n", name, ext);
 	d = base;
 	for (off = 0; off < st.st_size; off++)
 		cli_file_writef(out, "0x%02x,", *d++);
@@ -991,16 +991,16 @@ cli_build_asset(char *fpath, struct dirent *dp)
 	 */
 	cli_file_writef(out, "0x00");
 
-	/* Calculate the SHA1 digest of the contents. */
-	(void)SHA1_Init(&sctx);
-	(void)SHA1_Update(&sctx, base, st.st_size);
-	(void)SHA1_Final(digest, &sctx);
+	/* Calculate the SHA256 digest of the contents. */
+	(void)SHA256_Init(&sctx);
+	(void)SHA256_Update(&sctx, base, st.st_size);
+	(void)SHA256_Final(digest, &sctx);
 
 	for (i = 0; i < (int)sizeof(digest); i++) {
 		len = snprintf(hash + (i * 2), sizeof(hash) - (i * 2),
 		    "%02x", digest[i]);
 		if (len == -1 || (size_t)len >= sizeof(hash))
-			fatal("failed to convert SHA1 digest to hex");
+			fatal("failed to convert SHA256 digest to hex");
 	}
 
 	mime = NULL;
@@ -1016,14 +1016,14 @@ cli_build_asset(char *fpath, struct dirent *dp)
 
 	/* Add the meta data. */
 	cli_file_writef(out, "};\n\n");
-	cli_file_writef(out, "u_int32_t asset_len_%s_%s = %" PRIu32 ";\n",
+	cli_file_writef(out, "const u_int32_t asset_len_%s_%s = %" PRIu32 ";\n",
 	    name, ext, (u_int32_t)st.st_size);
-	cli_file_writef(out, "time_t asset_mtime_%s_%s = %" PRI_TIME_T ";\n",
+	cli_file_writef(out, "const time_t asset_mtime_%s_%s = %" PRI_TIME_T ";\n",
 	    name, ext, st.st_mtime);
 
 	if (bopt->flavor_nohttp == 0) {
 		cli_file_writef(out,
-		    "const char *asset_sha1_%s_%s = \"\\\"%s\\\"\";\n",
+		    "const char *asset_sha256_%s_%s = \"\\\"%s\\\"\";\n",
 		    name, ext, hash);
 		cli_file_writef(out, http_serveable_function,
 		    name, ext, name, ext, name, ext, name, ext, mime_type);
