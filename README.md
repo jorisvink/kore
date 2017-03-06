@@ -60,8 +60,8 @@ Requirements for python (optional)
 Normal compilation and installation:
 
 ```
-# cd kore
-# make
+$ cd kore
+$ make
 # make install
 ```
 
