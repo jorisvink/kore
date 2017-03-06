@@ -2,7 +2,7 @@ Example on how to read HTTP request headers and set your own custom ones.
 
 Run:
 ```
-	# kore run
+	# kodev run
 ```
 
 Test:

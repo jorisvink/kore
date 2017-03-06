@@ -6,7 +6,7 @@ It mixes native code (dso) with python code.
 
 Run:
 ```
-	$ kore run
+	$ kodev run
 ```
 
 Test:

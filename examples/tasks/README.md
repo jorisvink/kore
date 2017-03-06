@@ -6,12 +6,12 @@ before returning to the client.
 
 Build:
 ```
-	$ kore build
+	$ kodev build
 ```
 
 Run:
 ```
-	$ kore run
+	$ kodev run
 ```
 
 Test:

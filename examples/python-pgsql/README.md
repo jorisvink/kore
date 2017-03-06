@@ -4,7 +4,7 @@ This application requires kore to be built with PYTHON=1 PGSQL=1.
 
 Run:
 ```
-	$ kore run
+	$ kodev run
 ```
 
 Test:

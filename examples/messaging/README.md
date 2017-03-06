@@ -2,7 +2,7 @@ Kore message framework example
 
 Run:
 ```
-	# kore run
+	# kodev run
 ```
 
 Test:

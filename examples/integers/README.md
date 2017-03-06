@@ -2,7 +2,7 @@ Test parameter to integer conversions.
 
 Run:
 ```
-	# kore run
+	# kodev run
 ```
 
 Test:

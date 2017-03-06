@@ -8,7 +8,7 @@ Before you run this make the pipe:
 
 Run:
 ```
-	$ kore run
+	$ kodev run
 ```
 
 Test:

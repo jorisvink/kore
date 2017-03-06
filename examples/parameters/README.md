@@ -2,7 +2,7 @@ Example on how to handle GET/POST parameters in Kore.
 
 Run:
 ```
-	# kore run
+	# kodev run
 ```
 
 Test:

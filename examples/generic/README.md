@@ -7,5 +7,5 @@ Generic Kore application that shows off a few things:
 
 Run:
 ```
-	# kore run
+	# kodev run
 ```

@@ -10,15 +10,15 @@ extern “C” {
 ```
 In order to run this example with the default C++ settings (default compiler dialect, libstdc++):
 ```
-	# kore run
+	# kodev run
 ```
 
 In order to run with a specific dialect and C++ runtime:
 ```
-	# env CXXSTD=c++11 CXXLIB=c++ kore run
+	# env CXXSTD=c++11 CXXLIB=c++ kodev run
 ```
 
 You can also supply your own compiler combined with the above:
 ```
-	# env CC=clang++ CXXSTD=c++11 CXXLIB=c++ kore run
+	# env CC=clang++ CXXSTD=c++11 CXXLIB=c++ kodev run
 ```

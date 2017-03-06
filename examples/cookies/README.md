@@ -6,5 +6,5 @@ This example shows cookies API usage
 
 Run:
 ```
-	# kore run
+	# kodev run
 ```
