@@ -375,7 +375,7 @@ main(int argc, char **argv)
 	}
 
 	if (cmds[i].name == NULL) {
-		fprintf(stderr, "No such command: %s\n", argv[0]);
+		fprintf(stderr, "unknown command: %s\n", argv[0]);
 		usage();
 	}
 
