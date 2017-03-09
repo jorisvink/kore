@@ -188,7 +188,8 @@ static void		cli_buildopt_mime(struct buildopt *, const char *);
 
 static void		cli_flavor_load(void);
 static void		cli_flavor_change(const char *);
-static void		cli_kore_features(struct buildopt *, char **, size_t *);
+static void		cli_kore_features(struct buildopt *,
+			    char **, size_t *);
 
 static void		cli_run(int, char **);
 static void		cli_help(int, char **);
@@ -1781,7 +1782,7 @@ cli_build_ldflags(struct buildopt *bopt)
 		cli_file_close(fd);
 		if (len == 0)
 			fatal(".objs/ldflags is empty");
-		buf[len - 1] = '\0';
+		len--;
 
 		cli_buf_append(bopt->ldflags, buf, len);
 		cli_buf_appendf(bopt->ldflags, " ");
@@ -1853,7 +1854,7 @@ cli_kore_features(struct buildopt *bopt, char **out, size_t *outlen)
 	if (len == 0)
 		fatal(".objs/features is empty");
 
-	data[len - 1] = '\0';
+	len--;
 
 	*out = data;
 	*outlen = len;
