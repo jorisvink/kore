@@ -36,15 +36,19 @@ serve_cookies(struct http_request *req)
 	if (http_request_cookie(req, "Formatted", &value))
 		kore_log(LOG_DEBUG, "Got formatted: %s", value);
 
-	/* set simple cookie */
-	http_response_cookie(req, "Simple", "Hello World!", NULL);
+	/* no expire, no maxage for current path. */
+	http_response_cookie(req, "Simple", "Hello World!",
+	    req->path, 0, -1, NULL);
 
-	/* set complex cookie */
-	http_response_cookie(req, "Complex", "Secure Value!", &cookie);
-	cookie->path = kore_strdup("/secure");
-	cookie->expires = time(NULL) + 1 * 60 * 60;
+	/* expire, no maxage, for /secure. */
+	http_response_cookie(req, "Complex", "Secure Value!", "/secure",
+	    time(NULL) + (1 * 60 * 60), -1, NULL);
 
-	/* set formatted cookie */
+	/* maxage, no httponly, for current path. */
+	http_response_cookie(req, "key", "value", req->path, 0, 60, &cookie);
+	cookie->flags &= ~HTTP_COOKIE_HTTPONLY;
+
+	/* set formatted cookie via header directly. */
 	http_response_header(req, "set-cookie",
 	    "Formatted=TheValue; Path=/vault; HttpOnly");
 

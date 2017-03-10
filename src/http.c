@@ -1019,7 +1019,8 @@ http_file_rewind(struct http_file *file)
 
 void
 http_response_cookie(struct http_request *req, const char *name,
-    const char *val, struct http_cookie **out)
+    const char *val, const char *path, time_t expires, int maxage,
+    struct http_cookie **out)
 {
 	struct http_cookie	*ck;
 
@@ -1028,13 +1029,17 @@ http_response_cookie(struct http_request *req, const char *name,
 
 	ck = kore_pool_get(&http_cookie_pool);
 
-	ck->expires = 0;
-	ck->maxage = -1;
-	ck->path = NULL;
+	ck->maxage = maxage;
+	ck->expires = expires;
 	ck->name = kore_strdup(name);
 	ck->value = kore_strdup(val);
 	ck->domain = kore_strdup(req->host);
 	ck->flags = HTTP_COOKIE_HTTPONLY | HTTP_COOKIE_SECURE;
+
+	if (path != NULL)
+		ck->path = kore_strdup(path);
+	else
+		ck->path = NULL;
 
 	TAILQ_INSERT_TAIL(&(req->resp_cookies), ck, list);
 

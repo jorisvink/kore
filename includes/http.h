@@ -268,8 +268,9 @@ int		http_state_run(struct http_state *, u_int8_t,
 		    struct http_request *);
 int	 	http_request_cookie(struct http_request *,
 		    const char *, char **);
-void		http_response_cookie(struct http_request *,
-		    const char *, const char *, struct http_cookie **);
+void		http_response_cookie(struct http_request *, const char *,
+		    const char *, const char *, time_t, int,
+		    struct http_cookie **);
 
 int		http_argument_urldecode(char *);
 int		http_header_recv(struct netbuf *);
