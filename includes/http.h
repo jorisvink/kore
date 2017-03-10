@@ -259,17 +259,17 @@ void		http_response_stream(struct http_request *, int, void *,
 		    size_t, int (*cb)(struct netbuf *), void *);
 int		http_request_header(struct http_request *,
 		    const char *, char **);
-int 	http_request_cookie(struct http_request *,
-			const char *, char **);
 void		http_response_header(struct http_request *,
 		    const char *, const char *);
-struct http_cookie	*http_response_cookie(struct http_request *, 
-			char *, char *, u_int16_t);
 int		http_request_new(struct connection *, const char *,
 		    const char *, const char *, const char *,
 		    struct http_request **);
 int		http_state_run(struct http_state *, u_int8_t,
 		    struct http_request *);
+int	 	http_request_cookie(struct http_request *,
+		    const char *, char **);
+void		http_response_cookie(struct http_request *,
+		    const char *, const char *, struct http_cookie **);
 
 int		http_argument_urldecode(char *);
 int		http_header_recv(struct netbuf *);

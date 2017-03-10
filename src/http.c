@@ -1017,9 +1017,9 @@ http_file_rewind(struct http_file *file)
 	file->offset = 0;
 }
 
-struct http_cookie *
-http_response_cookie(struct http_request *req, char *name, char *val,
-    u_int16_t flags)
+void
+http_response_cookie(struct http_request *req, const char *name,
+    const char *val, struct http_cookie **out)
 {
 	struct http_cookie	*ck;
 
@@ -1031,14 +1031,15 @@ http_response_cookie(struct http_request *req, char *name, char *val,
 	ck->expires = 0;
 	ck->maxage = -1;
 	ck->path = NULL;
-	ck->domain = NULL;
-	ck->flags = flags;
 	ck->name = kore_strdup(name);
 	ck->value = kore_strdup(val);
+	ck->domain = kore_strdup(req->host);
+	ck->flags = HTTP_COOKIE_HTTPONLY | HTTP_COOKIE_SECURE;
 
 	TAILQ_INSERT_TAIL(&(req->resp_cookies), ck, list);
 
-	return (ck);
+	if (out != NULL)
+		*out = ck;
 }
 
 void

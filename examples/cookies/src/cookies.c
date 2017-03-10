@@ -37,14 +37,12 @@ serve_cookies(struct http_request *req)
 		kore_log(LOG_DEBUG, "Got formatted: %s", value);
 
 	/* set simple cookie */
-	http_response_cookie(req, "Simple", "Hello World!", 0);
+	http_response_cookie(req, "Simple", "Hello World!", NULL);
 
 	/* set complex cookie */
-	cookie = http_response_cookie(req, "Complex", "Secure Value!",
-	    HTTP_COOKIE_HTTPONLY | HTTP_COOKIE_SECURE);
-	cookie ->path = kore_strdup("/secure");
+	http_response_cookie(req, "Complex", "Secure Value!", &cookie);
+	cookie->path = kore_strdup("/secure");
 	cookie->expires = time(NULL) + 1 * 60 * 60;
-	cookie->domain = kore_strdup(req->host);
 
 	/* set formatted cookie */
 	http_response_header(req, "set-cookie",
