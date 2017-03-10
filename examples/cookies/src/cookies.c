@@ -38,11 +38,11 @@ serve_cookies(struct http_request *req)
 
 	/* no expire, no maxage for current path. */
 	http_response_cookie(req, "Simple", "Hello World!",
-	    req->path, 0, -1, NULL);
+	    req->path, 0, 0, NULL);
 
 	/* expire, no maxage, for /secure. */
 	http_response_cookie(req, "Complex", "Secure Value!", "/secure",
-	    time(NULL) + (1 * 60 * 60), -1, NULL);
+	    time(NULL) + (1 * 60 * 60), 0, NULL);
 
 	/* maxage, no httponly, for current path. */
 	http_response_cookie(req, "key", "value", req->path, 0, 60, &cookie);

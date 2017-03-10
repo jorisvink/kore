@@ -1019,7 +1019,7 @@ http_file_rewind(struct http_file *file)
 
 void
 http_response_cookie(struct http_request *req, const char *name,
-    const char *val, const char *path, time_t expires, int maxage,
+    const char *val, const char *path, time_t expires, u_int32_t maxage,
     struct http_cookie **out)
 {
 	struct http_cookie	*ck;
@@ -1672,8 +1672,8 @@ http_write_response_cookie(struct http_cookie *ck)
 		kore_buf_appendf(ckhdr_buf, "; Expires=%s", expires);
 	}
 
-	if (ck->maxage != -1)
-		kore_buf_appendf(ckhdr_buf, "; Max-Age=%d", ck->maxage);
+	if (ck->maxage > 0)
+		kore_buf_appendf(ckhdr_buf, "; Max-Age=%u", ck->maxage);
 
 	if (ck->flags & HTTP_COOKIE_HTTPONLY)
 		kore_buf_appendf(ckhdr_buf, "; HttpOnly");

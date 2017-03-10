@@ -75,7 +75,7 @@ struct http_cookie {
 	char				*value;
 	char				*path;
 	char				*domain;
-	int				maxage;
+	u_int32_t			maxage;
 	time_t				expires;
 	u_int16_t			flags;
 
@@ -269,7 +269,7 @@ int		http_state_run(struct http_state *, u_int8_t,
 int	 	http_request_cookie(struct http_request *,
 		    const char *, char **);
 void		http_response_cookie(struct http_request *, const char *,
-		    const char *, const char *, time_t, int,
+		    const char *, const char *, time_t, u_int32_t,
 		    struct http_cookie **);
 
 int		http_argument_urldecode(char *);
