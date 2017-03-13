@@ -80,6 +80,7 @@ static void		worker_entropy_recv(struct kore_msg *, const void *);
 #endif
 
 static struct kore_worker		*kore_workers;
+static int				worker_no_lock;
 static int				shm_accept_key;
 static struct wlock			*accept_lock;
 
@@ -96,6 +97,8 @@ kore_worker_init(void)
 {
 	size_t			len;
 	u_int16_t		i, cpu;
+
+	worker_no_lock = 0;
 
 	if (worker_count == 0)
 		worker_count = 1;
@@ -347,6 +350,9 @@ kore_worker_entry(struct kore_worker *kw)
 	kore_msg_register(KORE_MSG_ENTROPY_RESP, worker_entropy_recv);
 #endif
 
+	if (nlisteners == 0)
+		worker_no_lock = 1;
+
 	kore_log(LOG_NOTICE, "worker %d started (cpu#%d)", kw->id, kw->cpu);
 
 	rcall = kore_runtime_getcall("kore_worker_configure");
@@ -498,7 +504,8 @@ kore_worker_wait(int final)
 			}
 #endif
 
-			if (kw->pid == accept_lock->current)
+			if (kw->pid == accept_lock->current &&
+			    worker_no_lock == 0)
 				worker_unlock();
 
 			if (kw->active_hdlr != NULL) {
@@ -526,7 +533,7 @@ kore_worker_wait(int final)
 static inline void
 kore_worker_acceptlock_release(void)
 {
-	if (worker_count == 1)
+	if (worker_count == 1 || worker_no_lock == 1)
 		return;
 
 	if (worker->has_lock != 1)
@@ -544,7 +551,7 @@ kore_worker_acceptlock_obtain(void)
 	if (worker->has_lock == 1)
 		return (1);
 
-	if (worker_count == 1) {
+	if (worker_count == 1 || worker_no_lock == 1) {
 		worker->has_lock = 1;
 		return (1);
 	}
