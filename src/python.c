@@ -377,8 +377,18 @@ python_runtime_wsmessage(void *addr, struct connection *c, u_int8_t op,
 	if ((pyop = PyLong_FromLong((long)op)) == NULL)
 		fatal("python_runtime_wsmessage: PyLong_FromLong failed");
 
-	if ((pydata = PyBytes_FromStringAndSize(data, len)) == NULL)
-		fatal("python_runtime_wsmessage: PyBytes_FromString failed");
+	switch (op) {
+	case WEBSOCKET_OP_TEXT:
+		if ((pydata = PyUnicode_FromStringAndSize(data, len)) == NULL)
+			fatal("wsmessage: PyUnicode_AsUTF8AndSize failed");
+		break;
+	case WEBSOCKET_OP_BINARY:
+		if ((pydata = PyBytes_FromStringAndSize(data, len)) == NULL)
+			fatal("wsmessage: PyBytes_FromString failed");
+		break;
+	default:
+		fatal("python_runtime_wsmessage: invalid op");
+	}
 
 	if ((args = PyTuple_New(3)) == NULL)
 		fatal("python_runtime_wsmessage: PyTuple_New failed");
