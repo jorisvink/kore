@@ -251,6 +251,7 @@ void		http_request_free(struct http_request *);
 void		http_request_sleep(struct http_request *);
 void		http_request_wakeup(struct http_request *);
 void		http_process_request(struct http_request *);
+int		http_body_rewind(struct http_request *);
 ssize_t		http_body_read(struct http_request *, void *, size_t);
 void		http_response(struct http_request *, int, const void *, size_t);
 void		http_serveable(struct http_request *, const void *,

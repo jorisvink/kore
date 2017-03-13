@@ -1017,6 +1017,7 @@ pyhttp_get_body(struct pyhttp_request *pyreq, void *closure)
 	u_int8_t		data[BUFSIZ];
 
 	kore_buf_init(&buf, 1024);
+	http_body_rewind(pyreq->req);
 
 	for (;;) {
 		ret = http_body_read(pyreq->req, data, sizeof(data));

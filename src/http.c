@@ -42,7 +42,6 @@
 #endif
 
 static int	http_body_recv(struct netbuf *);
-static int	http_body_rewind(struct http_request *);
 static void	http_error_response(struct connection *, int);
 static void	http_write_response_cookie(struct http_cookie *);
 static void	http_argument_add(struct http_request *, char *, char *);
@@ -1191,6 +1190,25 @@ cleanup:
 	kore_buf_free(out);
 }
 
+int
+http_body_rewind(struct http_request *req)
+{
+	if (req->http_body_fd != -1) {
+		if (lseek(req->http_body_fd, 0, SEEK_SET) == -1) {
+			kore_log(LOG_ERR, "lseek(%s) failed: %s",
+			    req->http_body_path, errno_s);
+			return (KORE_RESULT_ERROR);
+		}
+	} else {
+		kore_buf_reset(req->http_body);
+	}
+
+	req->http_body_offset = 0;
+	req->http_body_length = req->content_length;
+
+	return (KORE_RESULT_OK);
+}
+
 ssize_t
 http_body_read(struct http_request *req, void *out, size_t len)
 {
@@ -1528,22 +1546,6 @@ http_body_recv(struct netbuf *nb)
 		net_recv_reset(nb->owner,
 		    MIN(bytes_left, NETBUF_SEND_PAYLOAD_MAX),
 		    http_body_recv);
-	}
-
-	return (KORE_RESULT_OK);
-}
-
-static int
-http_body_rewind(struct http_request *req)
-{
-	if (req->http_body_fd != -1) {
-		if (lseek(req->http_body_fd, 0, SEEK_SET) == -1) {
-			kore_log(LOG_ERR, "lseek(%s) failed: %s",
-			    req->http_body_path, errno_s);
-			return (KORE_RESULT_ERROR);
-		}
-	} else {
-		kore_buf_reset(req->http_body);
 	}
 
 	return (KORE_RESULT_OK);
