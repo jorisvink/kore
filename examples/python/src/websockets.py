@@ -38,7 +38,7 @@ def onconnect(c):
 #
 def onmessage(c, op, data):
 	kore.websocket_broadcast(c, op, data, kore.WEBSOCKET_BROADCAST_GLOBAL)
-	#kore.websocket_send(c, op, data)
+	#c.websocket_send(op, data)
 
 #
 # Called for every connection that goes byebye.
