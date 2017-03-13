@@ -51,11 +51,17 @@ struct pyconnection {
 	struct connection	*c;
 };
 
+static PyObject *pyconnection_disconnect(struct pyconnection *, PyObject *);
+
 static PyMethodDef pyconnection_methods[] = {
+	METHOD("disconnect", pyconnection_disconnect, METH_NOARGS),
 	METHOD(NULL, NULL, -1),
 };
 
+static PyObject	*pyconnection_get_fd(struct pyconnection *, void *);
+
 static PyGetSetDef pyconnection_getset[] = {
+	GETTER("fd", pyconnection_get_fd),
 	GETTER(NULL, NULL),
 };
 

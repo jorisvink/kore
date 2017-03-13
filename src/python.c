@@ -668,6 +668,25 @@ pyconnection_alloc(struct connection *c)
 }
 
 static PyObject *
+pyconnection_disconnect(struct pyconnection *pyc, PyObject *args)
+{
+	kore_connection_disconnect(pyc->c);
+
+	Py_RETURN_TRUE;
+}
+
+static PyObject *
+pyconnection_get_fd(struct pyconnection *pyc, void *closure)
+{
+	PyObject	*fd;
+
+	if ((fd = PyLong_FromLong(pyc->c->fd)) == NULL)
+		return (PyErr_NoMemory());
+
+	return (fd);
+}
+
+static PyObject *
 pyhttp_request_alloc(struct http_request *req)
 {
 	struct pyhttp_request		*pyreq;
