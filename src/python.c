@@ -728,16 +728,22 @@ pyhttp_file_alloc(struct http_file *file)
 static PyObject *
 pyhttp_response(struct pyhttp_request *pyreq, PyObject *args)
 {
-	Py_buffer		body;
-	int			status;
+	const char		*body;
+	int			status, len;
 
-	if (!PyArg_ParseTuple(args, "iy*", &status, &body)) {
+	len = -1;
+
+	if (!PyArg_ParseTuple(args, "iy#", &status, &body, &len)) {
 		PyErr_SetString(PyExc_TypeError, "invalid parameters");
 		return (NULL);
 	}
 
-	http_response(pyreq->req, status, body.buf, body.len);
-	PyBuffer_Release(&body);
+	if (len < 0) {
+		PyErr_SetString(PyExc_TypeError, "invalid length");
+		return (NULL);
+	}
+
+	http_response(pyreq->req, status, body, len);
 
 	Py_RETURN_TRUE;
 }
@@ -965,16 +971,70 @@ pyhttp_websocket_handshake(struct pyhttp_request *pyreq, PyObject *args)
 }
 
 static PyObject *
+pyconnection_websocket_send(struct pyconnection *pyc, PyObject *args)
+{
+	const char	*data;
+	int		op, len;
+
+	if (pyc->c->proto != CONN_PROTO_WEBSOCKET) {
+		PyErr_SetString(PyExc_TypeError, "not a websocket connection");
+		return (NULL);
+	}
+
+	len = -1;
+
+	if (!PyArg_ParseTuple(args, "iy#", &op, &data, &len)) {
+		PyErr_SetString(PyExc_TypeError, "invalid parameters");
+		return (NULL);
+	}
+
+	if (len < 0) {
+		PyErr_SetString(PyExc_TypeError, "invalid length");
+		return (NULL);
+	}
+
+	switch (op) {
+	case WEBSOCKET_OP_TEXT:
+	case WEBSOCKET_OP_BINARY:
+		break;
+	default:
+		PyErr_SetString(PyExc_TypeError, "invalid op parameter");
+		return (NULL);
+	}
+
+	kore_websocket_send(pyc->c, op, data, len);
+
+	Py_RETURN_TRUE;
+}
+
+static PyObject *
 python_websocket_broadcast(PyObject *self, PyObject *args)
 {
 	struct connection	*c;
 	struct pyconnection	*pyc;
-	Py_buffer		data;
+	const char		*data;
 	PyObject		*pysrc;
-	int			op, broadcast;
+	int			op, broadcast, len;
 
-	if (!PyArg_ParseTuple(args, "Oiy*i", &pysrc, &op, &data, &broadcast)) {
+	len = -1;
+
+	if (!PyArg_ParseTuple(args, "Oiy#i", &pysrc, &op, &data, &len,
+	    &broadcast)) {
 		PyErr_SetString(PyExc_TypeError, "invalid parameters");
+		return (NULL);
+	}
+
+	if (len < 0) {
+		PyErr_SetString(PyExc_TypeError, "invalid length");
+		return (NULL);
+	}
+
+	switch (op) {
+	case WEBSOCKET_OP_TEXT:
+	case WEBSOCKET_OP_BINARY:
+		break;
+	default:
+		PyErr_SetString(PyExc_TypeError, "invalid op parameter");
 		return (NULL);
 	}
 
@@ -982,7 +1042,6 @@ python_websocket_broadcast(PyObject *self, PyObject *args)
 		c = NULL;
 	} else {
 		if (!PyObject_TypeCheck(pysrc, &pyconnection_type)) {
-			PyBuffer_Release(&data);
 			PyErr_SetString(PyExc_TypeError, "invalid parameters");
 			return (NULL);
 		}
@@ -990,27 +1049,7 @@ python_websocket_broadcast(PyObject *self, PyObject *args)
 		c = pyc->c;
 	}
 
-	kore_websocket_broadcast(c, op, data.buf, data.len, broadcast);
-	PyBuffer_Release(&data);
-
-	Py_RETURN_TRUE;
-}
-
-static PyObject *
-python_websocket_send(PyObject *self, PyObject *args)
-{
-	int			op;
-	struct pyconnection	*pyc;
-	Py_buffer		data;
-
-	if (!PyArg_ParseTuple(args, "O!iy*",
-	    &pyconnection_type, &pyc, &op, &data)) {
-		PyErr_SetString(PyExc_TypeError, "invalid parameters");
-		return (NULL);
-	}
-
-	kore_websocket_send(pyc->c, op, data.buf, data.len);
-	PyBuffer_Release(&data);
+	kore_websocket_broadcast(c, op, data, len, broadcast);
 
 	Py_RETURN_TRUE;
 }

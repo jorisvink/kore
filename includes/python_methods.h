@@ -22,7 +22,6 @@ static PyObject		*python_kore_listen(PyObject *, PyObject *);
 static PyObject		*python_kore_pgsql_register(PyObject *, PyObject *);
 #endif
 
-static PyObject		*python_websocket_send(PyObject *, PyObject *);
 static PyObject		*python_websocket_broadcast(PyObject *, PyObject *);
 
 #define METHOD(n, c, a)		{ n, (PyCFunction)c, a, NULL }
@@ -34,7 +33,6 @@ static struct PyMethodDef pykore_methods[] = {
 	METHOD("log", python_kore_log, METH_VARARGS),
 	METHOD("fatal", python_kore_fatal, METH_VARARGS),
 	METHOD("listen", python_kore_listen, METH_VARARGS),
-	METHOD("websocket_send", python_websocket_send, METH_VARARGS),
 	METHOD("websocket_broadcast", python_websocket_broadcast, METH_VARARGS),
 #if defined(KORE_USE_PGSQL)
 	METHOD("register_database", python_kore_pgsql_register, METH_VARARGS),
@@ -52,9 +50,11 @@ struct pyconnection {
 };
 
 static PyObject *pyconnection_disconnect(struct pyconnection *, PyObject *);
+static PyObject *pyconnection_websocket_send(struct pyconnection *, PyObject *);
 
 static PyMethodDef pyconnection_methods[] = {
 	METHOD("disconnect", pyconnection_disconnect, METH_NOARGS),
+	METHOD("websocket_send", pyconnection_websocket_send, METH_VARARGS),
 	METHOD(NULL, NULL, -1),
 };
 
