@@ -974,7 +974,7 @@ http_file_read(struct http_file *file, void *buf, size_t len)
 
 	off = file->position + file->offset;
 	toread = MIN(len, (file->length - file->offset));
-	if (toread <= 0)
+	if (toread == 0)
 		return (0);
 
 	if (file->req->http_body_fd != -1) {
@@ -1198,7 +1198,7 @@ http_body_read(struct http_request *req, void *out, size_t len)
 	size_t		toread;
 
 	toread = MIN(req->http_body_length, len);
-	if (toread <= 0)
+	if (toread == 0)
 		return (0);
 
 	if (req->http_body_fd != -1) {
