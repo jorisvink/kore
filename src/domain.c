@@ -210,7 +210,7 @@ kore_domain_tlsinit(struct kore_domain *dom)
 	X509_STORE		*store;
 	const SSL_METHOD	*method;
 #if !defined(OPENSSL_NO_EC)
-	EC_KEY		*ecdh;
+	EC_KEY			*ecdh;
 #endif
 
 	kore_debug("kore_domain_sslstart(%s)", dom->domain);
