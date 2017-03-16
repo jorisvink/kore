@@ -180,8 +180,8 @@ struct connection {
 
 	int			(*handle)(struct connection *);
 	void			(*disconnect)(struct connection *);
-	int			(*read)(struct connection *, int *);
-	int			(*write)(struct connection *, int, int *);
+	int			(*read)(struct connection *, size_t *);
+	int			(*write)(struct connection *, size_t, size_t *);
 
 	u_int8_t		addrtype;
 	union {
@@ -667,10 +667,10 @@ void		net_cleanup(void);
 int		net_send(struct connection *);
 int		net_send_flush(struct connection *);
 int		net_recv_flush(struct connection *);
-int		net_read(struct connection *, int *);
-int		net_read_tls(struct connection *, int *);
-int		net_write(struct connection *, int, int *);
-int		net_write_tls(struct connection *, int, int *);
+int		net_read(struct connection *, size_t *);
+int		net_read_tls(struct connection *, size_t *);
+int		net_write(struct connection *, size_t, size_t *);
+int		net_write_tls(struct connection *, size_t, size_t *);
 void		net_recv_reset(struct connection *, size_t,
 		    int (*cb)(struct netbuf *));
 void		net_remove_netbuf(struct netbuf_head *, struct netbuf *);

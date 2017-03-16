@@ -174,8 +174,7 @@ net_recv_expand(struct connection *c, size_t len, int (*cb)(struct netbuf *))
 int
 net_send(struct connection *c)
 {
-	int			r;
-	u_int32_t		len, smin;
+	size_t		r, len, smin;
 
 	c->snb = TAILQ_FIRST(&(c->send_queue));
 	if (c->snb->b_len != 0) {
@@ -187,10 +186,7 @@ net_send(struct connection *c)
 		if (!(c->flags & CONN_WRITE_POSSIBLE))
 			return (KORE_RESULT_OK);
 
-		kore_debug("net_send(%p/%d/%d bytes), progress with %d",
-		    c->snb, c->snb->s_off, c->snb->b_len, r);
-
-		c->snb->s_off += (size_t)r;
+		c->snb->s_off += r;
 		c->snb->flags &= ~NETBUF_MUST_RESEND;
 	}
 
@@ -223,7 +219,7 @@ net_send_flush(struct connection *c)
 int
 net_recv_flush(struct connection *c)
 {
-	int			r;
+	size_t		r;
 
 	kore_debug("net_recv_flush(%p)", c);
 
@@ -236,10 +232,7 @@ net_recv_flush(struct connection *c)
 		if (!(c->flags & CONN_READ_POSSIBLE))
 			break;
 
-		kore_debug("net_recv(%ld/%ld bytes), progress with %d",
-		    c->rnb->s_off, c->rnb->b_len, r);
-
-		c->rnb->s_off += (size_t)r;
+		c->rnb->s_off += r;
 		if (c->rnb->s_off == c->rnb->b_len ||
 		    (c->rnb->flags & NETBUF_CALL_CB_ALWAYS)) {
 			r = c->rnb->cb(c->rnb);
@@ -277,9 +270,12 @@ net_remove_netbuf(struct netbuf_head *list, struct netbuf *nb)
 
 #if !defined(KORE_NO_TLS)
 int
-net_write_tls(struct connection *c, int len, int *written)
+net_write_tls(struct connection *c, size_t len, size_t *written)
 {
 	int		r;
+
+	if (len > INT_MAX)
+		return (KORE_RESULT_ERROR);
 
 	ERR_clear_error();
 	r = SSL_write(c->ssl, (c->snb->buf + c->snb->s_off), len);
@@ -313,12 +309,13 @@ net_write_tls(struct connection *c, int len, int *written)
 		}
 	}
 
-	*written = r;
+	*written = (size_t)r;
+
 	return (KORE_RESULT_OK);
 }
 
 int
-net_read_tls(struct connection *c, int *bytes)
+net_read_tls(struct connection *c, size_t *bytes)
 {
 	int		r;
 
@@ -355,15 +352,16 @@ net_read_tls(struct connection *c, int *bytes)
 		}
 	}
 
-	*bytes = r;
+	*bytes = (size_t)r;
+
 	return (KORE_RESULT_OK);
 }
 #endif
 
 int
-net_write(struct connection *c, int len, int *written)
+net_write(struct connection *c, size_t len, size_t *written)
 {
-	int		r;
+	ssize_t		r;
 
 	r = write(c->fd, (c->snb->buf + c->snb->s_off), len);
 	if (r <= -1) {
@@ -380,14 +378,15 @@ net_write(struct connection *c, int len, int *written)
 		}
 	}
 
-	*written = r;
+	*written = (size_t)r;
+
 	return (KORE_RESULT_OK);
 }
 
 int
-net_read(struct connection *c, int *bytes)
+net_read(struct connection *c, size_t *bytes)
 {
-	int		r;
+	ssize_t		r;
 
 	r = read(c->fd, (c->rnb->buf + c->rnb->s_off),
 	    (c->rnb->b_len - c->rnb->s_off));
@@ -405,7 +404,8 @@ net_read(struct connection *c, int *bytes)
 		}
 	}
 
-	*bytes = r;
+	*bytes = (size_t)r;
+
 	return (KORE_RESULT_OK);
 }
 
