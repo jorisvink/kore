@@ -1250,7 +1250,7 @@ pykore_pgsql_alloc(struct http_request *req, const char *db, const char *query)
 	pysql->result = NULL;
 	pysql->db = kore_strdup(db);
 	pysql->query = kore_strdup(query);
-	pysql->state = PYKORE_PGSQL_INITIALIZE;
+	pysql->state = PYKORE_PGSQL_PREINIT;
 
 	memset(&pysql->sql, 0, sizeof(pysql->sql));
 
@@ -1261,9 +1261,14 @@ static PyObject *
 pykore_pgsql_iternext(struct pykore_pgsql *pysql)
 {
 	switch (pysql->state) {
+	case PYKORE_PGSQL_PREINIT:
+		kore_pgsql_init(&pysql->sql);
+		kore_pgsql_bind_request(&pysql->sql, pysql->req);
+		pysql->state = PYKORE_PGSQL_INITIALIZE;
+		/* fallthrough */
 	case PYKORE_PGSQL_INITIALIZE:
-		if (!kore_pgsql_query_init(&pysql->sql, pysql->req,
-		    pysql->db, KORE_PGSQL_ASYNC)) {
+		if (!kore_pgsql_setup(&pysql->sql, pysql->db,
+		    KORE_PGSQL_ASYNC)) {
 			if (pysql->sql.state == KORE_PGSQL_STATE_INIT)
 				break;
 			kore_pgsql_logerror(&pysql->sql);
@@ -1304,7 +1309,7 @@ wait_again:
 				return (NULL);
 			goto wait_again;
 		default:
-			kore_pgsql_continue(pysql->req, &pysql->sql);
+			kore_pgsql_continue(&pysql->sql);
 			goto wait_again;
 		}
 		break;
@@ -1385,7 +1390,7 @@ pykore_pgsql_result(struct pykore_pgsql *pysql)
 	}
 
 	pysql->result = list;
-	kore_pgsql_continue(pysql->req, &pysql->sql);
+	kore_pgsql_continue(&pysql->sql);
 
 	return (KORE_RESULT_OK);
 }

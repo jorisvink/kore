@@ -338,7 +338,7 @@ kore_worker_entry(struct kore_worker *kw)
 	kore_msg_worker_init();
 
 #if defined(KORE_USE_PGSQL)
-	kore_pgsql_init();
+	kore_pgsql_sys_init();
 #endif
 
 #if defined(KORE_USE_TASKS)

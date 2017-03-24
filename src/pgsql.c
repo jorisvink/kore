@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2016 Joris Vink <joris@coders.se>
+ * Copyright (c) 2014-2017 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -21,19 +21,21 @@
 #include <pg_config.h>
 
 #include "kore.h"
+
+#if !defined(KORE_NO_HTTP)
 #include "http.h"
+#endif
+
 #include "pgsql.h"
 
-struct pgsql_job {
-	struct http_request	*req;
+struct pgsql_wait {
 	struct kore_pgsql	*pgsql;
-
-	TAILQ_ENTRY(pgsql_job)	list;
+	TAILQ_ENTRY(pgsql_wait)	list;
 };
 
-struct pgsql_wait {
-	struct http_request		*req;
-	TAILQ_ENTRY(pgsql_wait)		list;
+struct pgsql_job {
+	struct kore_pgsql	*pgsql;
+	TAILQ_ENTRY(pgsql_job)	list;
 };
 
 #define PGSQL_CONN_MAX		2
@@ -43,7 +45,8 @@ struct pgsql_wait {
 static void	pgsql_queue_wakeup(void);
 static void	pgsql_cancel(struct kore_pgsql *);
 static void	pgsql_set_error(struct kore_pgsql *, const char *);
-static void	pgsql_queue_add(struct http_request *);
+static void	pgsql_queue_add(struct kore_pgsql *);
+static void	pgsql_queue_remove(struct kore_pgsql *);
 static void	pgsql_conn_release(struct kore_pgsql *);
 static void	pgsql_conn_cleanup(struct pgsql_conn *);
 static void	pgsql_read_result(struct kore_pgsql *);
@@ -52,8 +55,7 @@ static void	pgsql_schedule(struct kore_pgsql *);
 static struct pgsql_conn	*pgsql_conn_create(struct kore_pgsql *,
 				    struct pgsql_db *);
 static struct pgsql_conn	*pgsql_conn_next(struct kore_pgsql *,
-				    struct pgsql_db *,
-				    struct http_request *);
+				    struct pgsql_db *);
 
 static struct kore_pool			pgsql_job_pool;
 static struct kore_pool			pgsql_wait_pool;
@@ -64,7 +66,7 @@ static u_int16_t			pgsql_conn_count;
 u_int16_t				pgsql_conn_max = PGSQL_CONN_MAX;
 
 void
-kore_pgsql_init(void)
+kore_pgsql_sys_init(void)
 {
 	pgsql_conn_count = 0;
 	TAILQ_INIT(&pgsql_conn_free);
@@ -91,23 +93,31 @@ kore_pgsql_sys_cleanup(void)
 	}
 }
 
+void
+kore_pgsql_init(struct kore_pgsql *pgsql)
+{
+	memset(pgsql, 0, sizeof(*pgsql));
+	pgsql->state = KORE_PGSQL_STATE_INIT;
+}
+
 int
-kore_pgsql_query_init(struct kore_pgsql *pgsql, struct http_request *req,
-    const char *dbname, int flags)
+kore_pgsql_setup(struct kore_pgsql *pgsql, const char *dbname, int flags)
 {
 	struct pgsql_db		*db;
 
-	memset(pgsql, 0, sizeof(*pgsql));
-	pgsql->flags = flags;
-	pgsql->state = KORE_PGSQL_STATE_INIT;
-
-	if ((req == NULL && (flags & KORE_PGSQL_ASYNC)) ||
-	    ((flags & KORE_PGSQL_ASYNC) && (flags & KORE_PGSQL_SYNC))) {
+	if ((flags & KORE_PGSQL_ASYNC) && (flags & KORE_PGSQL_SYNC)) {
 		pgsql_set_error(pgsql, "invalid query init parameters");
 		return (KORE_RESULT_ERROR);
 	}
 
+	if (pgsql->req == NULL && pgsql->cb == NULL) {
+		pgsql_set_error(pgsql, "nothing was bound");
+		return (KORE_RESULT_ERROR);
+	}
+
 	db = NULL;
+	pgsql->flags |= flags;
+
 	LIST_FOREACH(db, &pgsql_db_conn_strings, rlist) {
 		if (!strcmp(db->name, dbname))
 			break;
@@ -118,20 +128,43 @@ kore_pgsql_query_init(struct kore_pgsql *pgsql, struct http_request *req,
 		return (KORE_RESULT_ERROR);
 	}
 
-	if ((pgsql->conn = pgsql_conn_next(pgsql, db, req)) == NULL)
+	if ((pgsql->conn = pgsql_conn_next(pgsql, db)) == NULL)
 		return (KORE_RESULT_ERROR);
 
 	if (pgsql->flags & KORE_PGSQL_ASYNC) {
 		pgsql->conn->job = kore_pool_get(&pgsql_job_pool);
-		pgsql->conn->job->req = req;
 		pgsql->conn->job->pgsql = pgsql;
-
-		http_request_sleep(req);
-		pgsql->flags |= PGSQL_LIST_INSERTED;
-		LIST_INSERT_HEAD(&(req->pgsqls), pgsql, rlist);
 	}
 
 	return (KORE_RESULT_OK);
+}
+
+#if !defined(KORE_NO_HTTP)
+void
+kore_pgsql_bind_request(struct kore_pgsql *pgsql, struct http_request *req)
+{
+	if (pgsql->req != NULL || pgsql->cb != NULL)
+		fatal("kore_pgsql_bind_request: already bound");
+
+	pgsql->req = req;
+	pgsql->flags |= PGSQL_LIST_INSERTED;
+
+	LIST_INSERT_HEAD(&(req->pgsqls), pgsql, rlist);
+}
+#endif
+
+void
+kore_pgsql_bind_callback(struct kore_pgsql *pgsql,
+    void (*cb)(struct kore_pgsql *, void *), void *arg)
+{
+	if (pgsql->req != NULL)
+		fatal("kore_pgsql_bind_callback: already bound");
+
+	if (pgsql->cb != NULL)
+		fatal("kore_pgsql_bind_callback: already bound");
+
+	pgsql->cb = cb;
+	pgsql->arg = arg;
 }
 
 int
@@ -264,7 +297,6 @@ kore_pgsql_register(const char *dbname, const char *connstring)
 void
 kore_pgsql_handle(void *c, int err)
 {
-	struct http_request	*req;
 	struct kore_pgsql	*pgsql;
 	struct pgsql_conn	*conn = (struct pgsql_conn *)c;
 
@@ -273,9 +305,7 @@ kore_pgsql_handle(void *c, int err)
 		return;
 	}
 
-	req = conn->job->req;
 	pgsql = conn->job->pgsql;
-	kore_debug("kore_pgsql_handle: %p (%d)", req, pgsql->state);
 
 	if (!PQconsumeInput(conn->db)) {
 		pgsql->state = KORE_PGSQL_STATE_ERROR;
@@ -285,18 +315,25 @@ kore_pgsql_handle(void *c, int err)
 	}
 
 	if (pgsql->state == KORE_PGSQL_STATE_WAIT) {
-		http_request_sleep(req);
+#if !defined(KORE_NO_HTTP)
+		if (pgsql->req != NULL)
+			http_request_sleep(pgsql->req);
+#endif
+		if (pgsql->cb != NULL)
+			pgsql->cb(pgsql, pgsql->arg);
 	} else {
-		http_request_wakeup(req);
+#if !defined(KORE_NO_HTTP)
+		if (pgsql->req != NULL)
+			http_request_wakeup(pgsql->req);
+#endif
+		if (pgsql->cb != NULL)
+			pgsql->cb(pgsql, pgsql->arg);
 	}
 }
 
 void
-kore_pgsql_continue(struct http_request *req, struct kore_pgsql *pgsql)
+kore_pgsql_continue(struct kore_pgsql *pgsql)
 {
-	kore_debug("kore_pgsql_continue: %p->%p (%d)",
-	    req->owner, req, pgsql->state);
-
 	if (pgsql->error) {
 		kore_free(pgsql->error);
 		pgsql->error = NULL;
@@ -312,7 +349,10 @@ kore_pgsql_continue(struct http_request *req, struct kore_pgsql *pgsql)
 	case KORE_PGSQL_STATE_WAIT:
 		break;
 	case KORE_PGSQL_STATE_DONE:
-		http_request_wakeup(req);
+#if !defined(KORE_NO_HTTP)
+		if (pgsql->req != NULL)
+			http_request_wakeup(pgsql->req);
+#endif
 		pgsql_conn_release(pgsql);
 		break;
 	case KORE_PGSQL_STATE_ERROR:
@@ -328,6 +368,8 @@ void
 kore_pgsql_cleanup(struct kore_pgsql *pgsql)
 {
 	kore_debug("kore_pgsql_cleanup(%p)", pgsql);
+
+	pgsql_queue_remove(pgsql);
 
 	if (pgsql->result != NULL)
 		PQclear(pgsql->result);
@@ -385,25 +427,8 @@ kore_pgsql_getvalue(struct kore_pgsql *pgsql, int row, int col)
 	return (PQgetvalue(pgsql->result, row, col));
 }
 
-void
-kore_pgsql_queue_remove(struct http_request *req)
-{
-	struct pgsql_wait	*pgw, *next;
-
-	for (pgw = TAILQ_FIRST(&pgsql_wait_queue); pgw != NULL; pgw = next) {
-		next = TAILQ_NEXT(pgw, list);
-		if (pgw->req != req)
-			continue;
-
-		TAILQ_REMOVE(&pgsql_wait_queue, pgw, list);
-		kore_pool_put(&pgsql_wait_pool, pgw);
-		return;
-	}
-}
-
 static struct pgsql_conn *
-pgsql_conn_next(struct kore_pgsql *pgsql, struct pgsql_db *db,
-    struct http_request *req)
+pgsql_conn_next(struct kore_pgsql *pgsql, struct pgsql_db *db)
 {
 	struct pgsql_conn	*conn;
 
@@ -419,7 +444,7 @@ pgsql_conn_next(struct kore_pgsql *pgsql, struct pgsql_db *db,
 	if (conn == NULL) {
 		if (pgsql_conn_count >= pgsql_conn_max) {
 			if (pgsql->flags & KORE_PGSQL_ASYNC) {
-				pgsql_queue_add(req);
+				pgsql_queue_add(pgsql);
 			} else {
 				pgsql_set_error(pgsql,
 				    "no available connection");
@@ -460,20 +485,44 @@ pgsql_schedule(struct kore_pgsql *pgsql)
 	kore_platform_schedule_read(fd, pgsql->conn);
 	pgsql->state = KORE_PGSQL_STATE_WAIT;
 	pgsql->flags |= KORE_PGSQL_SCHEDULED;
+
+#if !defined(KORE_NO_HTTP)
+	if (pgsql->req != NULL)
+		http_request_sleep(pgsql->req);
+#endif
+	if (pgsql->cb != NULL)
+		pgsql->cb(pgsql, pgsql->arg);
 }
 
 static void
-pgsql_queue_add(struct http_request *req)
+pgsql_queue_add(struct kore_pgsql *pgsql)
 {
 	struct pgsql_wait	*pgw;
 
-	http_request_sleep(req);
+#if !defined(KORE_NO_HTTP)
+	if (pgsql->req != NULL)
+		http_request_sleep(pgsql->req);
+#endif
 
 	pgw = kore_pool_get(&pgsql_wait_pool);
-	pgw->req = req;
-	pgw->req->flags |= HTTP_REQUEST_PGSQL_QUEUE;
-
+	pgw->pgsql = pgsql;
 	TAILQ_INSERT_TAIL(&pgsql_wait_queue, pgw, list);
+}
+
+static void
+pgsql_queue_remove(struct kore_pgsql *pgsql)
+{
+	struct pgsql_wait	*pgw, *next;
+
+	for (pgw = TAILQ_FIRST(&pgsql_wait_queue); pgw != NULL; pgw = next) {
+		next = TAILQ_NEXT(pgw, list);
+		if (pgw->pgsql != pgsql)
+			continue;
+
+		TAILQ_REMOVE(&pgsql_wait_queue, pgw, list);
+		kore_pool_put(&pgsql_wait_pool, pgw);
+		return;
+	}
 }
 
 static void
@@ -483,11 +532,20 @@ pgsql_queue_wakeup(void)
 
 	for (pgw = TAILQ_FIRST(&pgsql_wait_queue); pgw != NULL; pgw = next) {
 		next = TAILQ_NEXT(pgw, list);
-		if (pgw->req->flags & HTTP_REQUEST_DELETE)
-			continue;
 
-		http_request_wakeup(pgw->req);
-		pgw->req->flags &= ~HTTP_REQUEST_PGSQL_QUEUE;
+#if !defined(KORE_NO_HTTP)
+		if (pgw->pgsql->req != NULL) {
+			if (pgw->pgsql->req->flags & HTTP_REQUEST_DELETE) {
+				TAILQ_REMOVE(&pgsql_wait_queue, pgw, list);
+				kore_pool_put(&pgsql_wait_pool, pgw);
+				continue;
+			}
+
+			http_request_wakeup(pgw->pgsql->req);
+		}
+#endif
+		if (pgw->pgsql->cb != NULL)
+			pgw->pgsql->cb(pgw->pgsql, pgw->pgsql->arg);
 
 		TAILQ_REMOVE(&pgsql_wait_queue, pgw, list);
 		kore_pool_put(&pgsql_wait_pool, pgw);
@@ -555,13 +613,15 @@ pgsql_conn_release(struct kore_pgsql *pgsql)
 	pgsql->conn = NULL;
 	pgsql->state = KORE_PGSQL_STATE_COMPLETE;
 
+	if (pgsql->cb != NULL)
+		pgsql->cb(pgsql, pgsql->arg);
+
 	pgsql_queue_wakeup();
 }
 
 static void
 pgsql_conn_cleanup(struct pgsql_conn *conn)
 {
-	struct http_request	*req;
 	struct kore_pgsql	*pgsql;
 
 	kore_debug("pgsql_conn_cleanup(): %p", conn);
@@ -570,10 +630,11 @@ pgsql_conn_cleanup(struct pgsql_conn *conn)
 		TAILQ_REMOVE(&pgsql_conn_free, conn, list);
 
 	if (conn->job) {
-		req = conn->job->req;
 		pgsql = conn->job->pgsql;
-		http_request_wakeup(req);
-
+#if !defined(KORE_NO_HTTP)
+		if (pgsql->req != NULL)
+			http_request_wakeup(pgsql->req);
+#endif
 		pgsql->conn = NULL;
 		pgsql_set_error(pgsql, PQerrorMessage(conn->db));
 

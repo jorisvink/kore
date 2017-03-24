@@ -456,9 +456,6 @@ http_request_free(struct http_request *req)
 		pgsql = LIST_FIRST(&(req->pgsqls));
 		kore_pgsql_cleanup(pgsql);
 	}
-
-	if (req->flags & HTTP_REQUEST_PGSQL_QUEUE)
-		kore_pgsql_queue_remove(req);
 #endif
 
 	kore_debug("http_request_free: %p->%p", req->owner, req);
@@ -1286,6 +1283,39 @@ http_state_run(struct http_state *states, u_int8_t elm,
 	kore_debug("http_state_run(%p): done", req);
 
 	return (KORE_RESULT_OK);
+}
+
+int
+http_state_exists(struct http_request *req)
+{
+	return (req->hdlr_extra != NULL);
+}
+
+void *
+http_state_create(struct http_request *req, size_t len)
+{
+	if (req->hdlr_extra != NULL) {
+		if (req->state_len != len)
+			fatal("http_state_create: state already set");
+	} else {
+		req->state_len = len;
+		req->hdlr_extra = kore_calloc(1, len);
+	}
+
+	return (req->hdlr_extra);
+}
+
+void *
+http_state_get(struct http_request *req)
+{
+	return (req->hdlr_extra);
+}
+
+void
+http_state_cleanup(struct http_request *req)
+{
+	kore_free(req->hdlr_extra);
+	req->hdlr_extra = NULL;
 }
 
 static int

@@ -189,9 +189,10 @@ static PyTypeObject pyhttp_file_type = {
 
 #if defined(KORE_USE_PGSQL)
 
-#define PYKORE_PGSQL_INITIALIZE		1
-#define PYKORE_PGSQL_QUERY		2
-#define PYKORE_PGSQL_WAIT		3
+#define PYKORE_PGSQL_PREINIT		1
+#define PYKORE_PGSQL_INITIALIZE		2
+#define PYKORE_PGSQL_QUERY		3
+#define PYKORE_PGSQL_WAIT		4
 
 struct pykore_pgsql {
 	PyObject_HEAD

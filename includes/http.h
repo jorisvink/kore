@@ -175,7 +175,6 @@ struct http_file {
 #define HTTP_REQUEST_COMPLETE		0x0001
 #define HTTP_REQUEST_DELETE		0x0002
 #define HTTP_REQUEST_SLEEPING		0x0004
-#define HTTP_REQUEST_PGSQL_QUEUE	0x0010
 #define HTTP_REQUEST_EXPECT_BODY	0x0020
 #define HTTP_REQUEST_RETAIN_EXTRA	0x0040
 #define HTTP_REQUEST_NO_CONTENT_LENGTH	0x0080
@@ -204,6 +203,7 @@ struct http_request {
 	size_t				http_body_offset;
 	size_t				content_length;
 	void				*hdlr_extra;
+	size_t				state_len;
 	char				*query_string;
 	struct kore_module_handle	*hdlr;
 
@@ -272,6 +272,11 @@ int	 	http_request_cookie(struct http_request *,
 void		http_response_cookie(struct http_request *, const char *,
 		    const char *, const char *, time_t, u_int32_t,
 		    struct http_cookie **);
+
+void		*http_state_get(struct http_request *);
+int		http_state_exists(struct http_request *);
+void		http_state_cleanup(struct http_request *);
+void		*http_state_create(struct http_request *, size_t);
 
 int		http_argument_urldecode(char *);
 int		http_header_recv(struct netbuf *);

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014 Joris Vink <joris@coders.se>
+ * Copyright (c) 2014-2017 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -54,18 +54,25 @@ struct kore_pgsql {
 	PGresult		*result;
 	struct pgsql_conn	*conn;
 
+	struct http_request	*req;
+	void			*arg;
+	void			(*cb)(struct kore_pgsql *, void *);
+
 	LIST_ENTRY(kore_pgsql)	rlist;
 };
 
 extern u_int16_t	pgsql_conn_max;
 
-void	kore_pgsql_init(void);
+void	kore_pgsql_sys_init(void);
 void	kore_pgsql_sys_cleanup(void);
-int	kore_pgsql_query_init(struct kore_pgsql *, struct http_request *,
-	    const char *, int);
+void	kore_pgsql_init(struct kore_pgsql *);
+void	kore_pgsql_bind_request(struct kore_pgsql *, struct http_request *);
+void	kore_pgsql_bind_callback(struct kore_pgsql *,
+	    void (*cb)(struct kore_pgsql *, void *), void *);
+int	kore_pgsql_setup(struct kore_pgsql *, const char *, int);
 void	kore_pgsql_handle(void *, int);
 void	kore_pgsql_cleanup(struct kore_pgsql *);
-void	kore_pgsql_continue(struct http_request *, struct kore_pgsql *);
+void	kore_pgsql_continue(struct kore_pgsql *);
 int	kore_pgsql_query(struct kore_pgsql *, const char *);
 int	kore_pgsql_query_params(struct kore_pgsql *,
 	    const char *, int, int, ...);
@@ -75,7 +82,6 @@ int	kore_pgsql_register(const char *, const char *);
 int	kore_pgsql_ntuples(struct kore_pgsql *);
 int	kore_pgsql_nfields(struct kore_pgsql *);
 void	kore_pgsql_logerror(struct kore_pgsql *);
-void	kore_pgsql_queue_remove(struct http_request *);
 char	*kore_pgsql_fieldname(struct kore_pgsql *, int);
 char	*kore_pgsql_getvalue(struct kore_pgsql *, int, int);
 int	kore_pgsql_getlength(struct kore_pgsql *, int, int);
