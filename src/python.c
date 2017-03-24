@@ -697,6 +697,36 @@ pyconnection_get_fd(struct pyconnection *pyc, void *closure)
 }
 
 static PyObject *
+pyconnection_get_addr(struct pyconnection *pyc, void *closure)
+{
+	void		*ptr;
+	PyObject	*result;
+	char		addr[INET6_ADDRSTRLEN];
+
+	switch (pyc->c->addrtype) {
+	case AF_INET:
+		ptr = &pyc->c->addr.ipv4.sin_addr;
+		break;
+	case AF_INET6:
+		ptr = &pyc->c->addr.ipv6.sin6_addr;
+		break;
+	default:
+		PyErr_SetString(PyExc_RuntimeError, "invalid addrtype");
+		return (NULL);
+	}
+
+	if (inet_ntop(pyc->c->addrtype, ptr, addr, sizeof(addr)) == NULL) {
+		PyErr_SetString(PyExc_RuntimeError, "inet_ntop failed");
+		return (NULL);
+	}
+
+	if ((result = PyUnicode_FromString(addr)) == NULL)
+		return (PyErr_NoMemory());
+
+	return (result);
+}
+
+static PyObject *
 pyhttp_request_alloc(struct http_request *req)
 {
 	struct pyhttp_request		*pyreq;

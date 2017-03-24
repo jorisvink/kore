@@ -59,9 +59,11 @@ static PyMethodDef pyconnection_methods[] = {
 };
 
 static PyObject	*pyconnection_get_fd(struct pyconnection *, void *);
+static PyObject	*pyconnection_get_addr(struct pyconnection *, void *);
 
 static PyGetSetDef pyconnection_getset[] = {
 	GETTER("fd", pyconnection_get_fd),
+	GETTER("addr", pyconnection_get_addr),
 	GETTER(NULL, NULL),
 };
 
