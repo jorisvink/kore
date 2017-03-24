@@ -110,9 +110,11 @@ kore_pgsql_setup(struct kore_pgsql *pgsql, const char *dbname, int flags)
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (pgsql->req == NULL && pgsql->cb == NULL) {
-		pgsql_set_error(pgsql, "nothing was bound");
-		return (KORE_RESULT_ERROR);
+	if (flags & KORE_PGSQL_ASYNC) {
+		if (pgsql->req == NULL && pgsql->cb == NULL) {
+			pgsql_set_error(pgsql, "nothing was bound");
+			return (KORE_RESULT_ERROR);
+		}
 	}
 
 	db = NULL;
