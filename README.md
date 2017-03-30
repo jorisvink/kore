@@ -45,8 +45,9 @@ Building Kore
 Grab the [latest release](https://github.com/jorisvink/kore/releases/tag/2.0.0-release)  tarball or clone the repository.
 
 Requirements
-* openssl (latest)
+* openssl (1.0.2 releases only right now, 1.1.0 support coming)
   (note: this requirement drops away when building with NOTLS=1 NOHTTP=1)
+  (note: libressl works as a replacement)
 
 Requirements for background tasks (optional)
 * pthreads
@@ -55,7 +56,7 @@ Requirements for pgsql (optional)
 * libpq
 
 Requirements for python (optional)
-* Python 3.6
+* Python 3.6+
 
 Normal compilation and installation:
 
