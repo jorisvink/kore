@@ -152,32 +152,14 @@ http_request_new(struct connection *c, const char *host,
     const char *method, const char *path, const char *version,
     struct http_request **out)
 {
-	char				*p;
 	struct http_request		*req;
 	struct kore_module_handle	*hdlr;
+	char				*p, *hp;
 	int				m, flags;
 	size_t				hostlen, pathlen, qsoff;
 
 	kore_debug("http_request_new(%p, %s, %s, %s, %s)", c, host,
 	    method, path, version);
-
-	switch (c->addrtype) {
-	case AF_INET6:
-		if (*host == '[') {
-			if ((p = strrchr(host, ']')) == NULL) {
-				http_error_response(c, 400);
-				return (KORE_RESULT_ERROR);
-			}
-			p++;
-			if (*p == ':')
-				*p = '\0';
-		}
-		break;
-	default:
-		if ((p = strrchr(host, ':')) != NULL)
-			*p = '\0';
-		break;
-	}
 
 	if ((hostlen = strlen(host)) >= KORE_DOMAINNAME_LEN - 1) {
 		http_error_response(c, 400);
@@ -201,10 +183,35 @@ http_request_new(struct connection *c, const char *host,
 		qsoff = 0;
 	}
 
+	hp = NULL;
+
+	switch (c->addrtype) {
+	case AF_INET6:
+		if (*host == '[') {
+			if ((hp = strrchr(host, ']')) == NULL) {
+				http_error_response(c, 400);
+				return (KORE_RESULT_ERROR);
+			}
+			hp++;
+			if (*hp == ':')
+				*hp = '\0';
+			else
+				hp = NULL;
+		}
+		break;
+	default:
+		if ((hp = strrchr(host, ':')) != NULL)
+			*hp = '\0';
+		break;
+	}
+
 	if ((hdlr = kore_module_handler_find(host, path)) == NULL) {
 		http_error_response(c, 404);
 		return (KORE_RESULT_ERROR);
 	}
+
+	if (hp != NULL)
+		*hp = ':';
 
 	if (p != NULL)
 		*p = '?';
@@ -629,6 +636,11 @@ http_request_header(struct http_request *req, const char *header, char **out)
 			*out = hdr->value;
 			return (KORE_RESULT_OK);
 		}
+	}
+
+	if (!strcasecmp(header, "host")) {
+		*out = req->host;
+		return (KORE_RESULT_OK);
 	}
 
 	return (KORE_RESULT_ERROR);
