@@ -231,6 +231,9 @@ http_request_new(struct connection *c, const char *host,
 	} else if (!strcasecmp(method, "head")) {
 		m = HTTP_METHOD_HEAD;
 		flags = HTTP_REQUEST_COMPLETE;
+	} else if (!strcasecmp(method, "options")) {
+		m = HTTP_METHOD_OPTIONS;
+		flags = HTTP_REQUEST_COMPLETE;
 	} else {
 		http_error_response(c, 400);
 		return (KORE_RESULT_ERROR);
@@ -1882,6 +1885,9 @@ http_method_text(int method)
 		break;
 	case HTTP_METHOD_HEAD:
 		r = "HEAD";
+		break;
+	case HTTP_METHOD_OPTIONS:
+		r = "OPTIONS";
 		break;
 	default:
 		r = "";
