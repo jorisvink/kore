@@ -318,19 +318,25 @@ static void
 keymgr_rsa_encrypt(struct kore_msg *msg, const void *data, struct key *key)
 {
 	int				ret;
+	RSA				*rsa;
 	const struct kore_keyreq	*req;
 	size_t				keylen;
 	u_int8_t			buf[1024];
 
 	req = (const struct kore_keyreq *)data;
 
-	keylen = RSA_size(key->pkey->pkey.rsa);
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+	rsa = EVP_PKEY_get0_RSA(key->pkey);
+#else
+	rsa = key->pkey->pkey.rsa;
+#endif
+	keylen = RSA_size(rsa);
 	if (req->data_len > keylen || keylen > sizeof(buf))
 		return;
 
 	ret = RSA_private_encrypt(req->data_len, req->data,
-	    buf, key->pkey->pkey.rsa, req->padding);
-	if (ret != RSA_size(key->pkey->pkey.rsa))
+	    buf, rsa, req->padding);
+	if (ret != RSA_size(rsa))
 		return;
 
 	kore_msg_send(msg->src, KORE_MSG_KEYMGR_RESP, buf, ret);
@@ -340,18 +346,23 @@ static void
 keymgr_ecdsa_sign(struct kore_msg *msg, const void *data, struct key *key)
 {
 	size_t				len;
+	EC_KEY				*ec;
 	const struct kore_keyreq	*req;
 	unsigned int			siglen;
 	u_int8_t			sig[1024];
 
 	req = (const struct kore_keyreq *)data;
-
-	len = ECDSA_size(key->pkey->pkey.ec);
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+	ec = EVP_PKEY_get0_EC_KEY(key->pkey);
+#else
+	ec = key->pkey->pkey.ec;
+#endif
+	len = ECDSA_size(ec);
 	if (req->data_len > len || len > sizeof(sig))
 		return;
 
-	if (ECDSA_sign(key->pkey->save_type, req->data, req->data_len,
-	    sig, &siglen, key->pkey->pkey.ec) == 0)
+	if (ECDSA_sign(EVP_PKEY_NONE, req->data, req->data_len,
+	    sig, &siglen, ec) == 0)
 		return;
 
 	if (siglen > sizeof(sig))
