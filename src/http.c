@@ -1652,12 +1652,14 @@ http_response_normal(struct http_request *req, struct connection *c,
 		}
 	}
 
+	#if !defined(KORE_NO_TLS)
 	if (http_hsts_enable) {
 		kore_buf_appendf(header_buf, "strict-transport-security: ");
 		kore_buf_appendf(header_buf,
 		    "max-age=%" PRIu64 "; includeSubDomains\r\n",
 		    http_hsts_enable);
 	}
+	#endif
 
 	if (req != NULL) {
 		TAILQ_FOREACH(ck, &(req->resp_cookies), list)
