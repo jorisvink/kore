@@ -68,7 +68,7 @@ static int	keymgr_rsa_privenc(int, const unsigned char *,
 static ECDSA_SIG	*keymgr_ecdsa_sign(const unsigned char *, int,
 			    const BIGNUM *, const BIGNUM *, EC_KEY *);
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+#if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
 static RSA_METHOD	*keymgr_rsa_meth = NULL;
 static EC_KEY_METHOD	*keymgr_ec_meth = NULL;
 #else
@@ -124,7 +124,7 @@ kore_domain_init(void)
 {
 	TAILQ_INIT(&domains);
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+#if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
 	if (keymgr_rsa_meth == NULL) {
 		if ((keymgr_rsa_meth = RSA_meth_new("kore RSA keymgr method",
 		    RSA_METHOD_FLAG_NO_CHECK)) == NULL)
@@ -154,7 +154,7 @@ kore_domain_cleanup(void)
 		kore_domain_free(dom);
 	}
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+#if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
 	if (keymgr_rsa_meth != NULL) {
 		RSA_meth_free(keymgr_rsa_meth);
 		keymgr_rsa_meth = NULL;
@@ -254,7 +254,7 @@ kore_domain_tlsinit(struct kore_domain *dom)
 
 	kore_debug("kore_domain_sslstart(%s)", dom->domain);
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+#if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
 	if ((method = TLS_method()) == NULL)
 		fatal("TLS_method(): %s", ssl_errno_s);
 #else
@@ -277,7 +277,7 @@ kore_domain_tlsinit(struct kore_domain *dom)
 	if ((dom->ssl_ctx = SSL_CTX_new(method)) == NULL)
 		fatal("SSL_ctx_new(): %s", ssl_errno_s);
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+#if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
 	if (!SSL_CTX_set_min_proto_version(dom->ssl_ctx, TLS1_VERSION))
 		fatal("SSL_CTX_set_min_proto_version: %s", ssl_errno_s);
 	if (!SSL_CTX_set_max_proto_version(dom->ssl_ctx, TLS1_2_VERSION))
@@ -322,7 +322,7 @@ kore_domain_tlsinit(struct kore_domain *dom)
 		if ((rsa = EVP_PKEY_get1_RSA(pkey)) == NULL)
 			fatal("no RSA public key present");
 		RSA_set_app_data(rsa, dom);
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+#if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
 		RSA_set_method(rsa, keymgr_rsa_meth);
 #else
 		RSA_set_method(rsa, &keymgr_rsa);
@@ -331,7 +331,7 @@ kore_domain_tlsinit(struct kore_domain *dom)
 	case EVP_PKEY_EC:
 		if ((eckey = EVP_PKEY_get1_EC_KEY(pkey)) == NULL)
 			fatal("no EC public key present");
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+#if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
 		EC_KEY_set_ex_data(eckey, 0, dom);
 		EC_KEY_set_method(eckey, keymgr_ec_meth);
 #else
@@ -514,7 +514,7 @@ keymgr_init(void)
 	if ((meth = RSA_get_default_method()) == NULL)
 		fatal("failed to obtain RSA method");
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+#if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
 	RSA_meth_set_pub_enc(keymgr_rsa_meth, RSA_meth_get_pub_enc(meth));
 	RSA_meth_set_pub_dec(keymgr_rsa_meth, RSA_meth_get_pub_dec(meth));
 	RSA_meth_set_bn_mod_exp(keymgr_rsa_meth, RSA_meth_get_bn_mod_exp(meth));
@@ -529,7 +529,7 @@ static int
 keymgr_rsa_init(RSA *rsa)
 {
 	if (rsa != NULL) {
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+#if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
 		RSA_set_flags(rsa, RSA_flags(rsa) |
 		    RSA_FLAG_EXT_PKEY | RSA_METHOD_FLAG_NO_CHECK);
 #else
@@ -611,7 +611,7 @@ keymgr_ecdsa_sign(const unsigned char *dgst, int dgst_len,
 	if (len > sizeof(keymgr_buf))
 		fatal("keymgr_buf too small");
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+#if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
 	if ((dom = EC_KEY_get_ex_data(eckey, 0)) == NULL)
 		fatal("EC_KEY has no domain");
 #else
