@@ -55,8 +55,7 @@ page(struct http_request *req)
 	 * Initialise our kore_pgsql data structure with the database name
 	 * we want to connect to (note that we registered this earlier with
 	 * kore_pgsql_register()). We also say we will perform a synchronous
-	 * query (KORE_PGSQL_SYNC) and we do not need to pass our http_request
-	 * so we pass NULL instead.
+	 * query (KORE_PGSQL_SYNC).
 	 */
 	if (!kore_pgsql_setup(&sql, "db", KORE_PGSQL_SYNC)) {
 		kore_pgsql_logerror(&sql);
