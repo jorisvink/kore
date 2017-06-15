@@ -218,7 +218,7 @@ http_request_new(struct connection *c, const char *host,
 
 	if (!strcasecmp(method, "get")) {
 		m = HTTP_METHOD_GET;
-		flags = HTTP_REQUEST_COMPLETE;
+		flags = HTTP_REQUEST_EXPECT_BODY;
 	} else if (!strcasecmp(method, "delete")) {
 		m = HTTP_METHOD_DELETE;
 		flags = HTTP_REQUEST_COMPLETE;
