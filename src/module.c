@@ -243,7 +243,7 @@ kore_module_handler_new(const char *path, const char *domain,
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (hdlr->type == HANDLER_TYPE_DYNAMIC) {
+	if ((hdlr->type == HANDLER_TYPE_DYNAMIC)||(hdlr->type == HANDLER_TYPE_FILE)) {
 		if (regcomp(&(hdlr->rctx), hdlr->path,
 		    REG_EXTENDED | REG_NOSUB)) {
 			kore_module_handler_free(hdlr);

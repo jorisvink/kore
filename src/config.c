@@ -77,6 +77,7 @@ static int		configure_client_certificates(char *);
 static int		configure_handler(int, char *);
 static int		configure_static_handler(char *);
 static int		configure_dynamic_handler(char *);
+static int              configure_file_handler(char *);
 static int		configure_accesslog(char *);
 static int		configure_http_header_max(char *);
 static int		configure_http_body_max(char *);
@@ -144,6 +145,7 @@ static struct {
 #if !defined(KORE_NO_HTTP)
 	{ "static",			configure_static_handler },
 	{ "dynamic",			configure_dynamic_handler },
+	{ "file",                       configure_file_handler },
 	{ "accesslog",			configure_accesslog },
 	{ "http_header_max",		configure_http_header_max },
 	{ "http_body_max",		configure_http_body_max },
@@ -545,6 +547,12 @@ static int
 configure_dynamic_handler(char *options)
 {
 	return (configure_handler(HANDLER_TYPE_DYNAMIC, options));
+}
+
+static int
+configure_file_handler(char *options)
+{
+	return (configure_handler(HANDLER_TYPE_FILE, options));
 }
 
 static int
