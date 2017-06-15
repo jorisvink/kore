@@ -279,6 +279,7 @@ struct kore_auth {
 
 #define HANDLER_TYPE_STATIC	1
 #define HANDLER_TYPE_DYNAMIC	2
+#define HANDLER_TYPE_FILE       3
 
 #endif /* !KORE_NO_HTTP */
 
