@@ -218,10 +218,10 @@ http_request_new(struct connection *c, const char *host,
 
 	if (!strcasecmp(method, "get")) {
 		m = HTTP_METHOD_GET;
-		flags = HTTP_REQUEST_COMPLETE;
+		flags = HTTP_REQUEST_EXPECT_BODY;
 	} else if (!strcasecmp(method, "delete")) {
 		m = HTTP_METHOD_DELETE;
-		flags = HTTP_REQUEST_COMPLETE;
+		flags = HTTP_REQUEST_EXPECT_BODY;
 	} else if (!strcasecmp(method, "post")) {
 		m = HTTP_METHOD_POST;
 		flags = HTTP_REQUEST_EXPECT_BODY;
@@ -230,10 +230,10 @@ http_request_new(struct connection *c, const char *host,
 		flags = HTTP_REQUEST_EXPECT_BODY;
 	} else if (!strcasecmp(method, "head")) {
 		m = HTTP_METHOD_HEAD;
-		flags = HTTP_REQUEST_COMPLETE;
+		flags = HTTP_REQUEST_EXPECT_BODY;
 	} else if (!strcasecmp(method, "options")) {
 		m = HTTP_METHOD_OPTIONS;
-		flags = HTTP_REQUEST_COMPLETE;
+		flags = HTTP_REQUEST_EXPECT_BODY;
 	} else {
 		http_error_response(c, 400);
 		return (KORE_RESULT_ERROR);
