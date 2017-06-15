@@ -18,10 +18,11 @@ Features
 * Built-in parameter validation
 * Only HTTPS connections allowed
 * Built-in asynchronous PostgreSQL support
+* Built-in support for page handlers in Python
 * Private keys isolated in separate process (RSA and ECDSA)
 * Default sane TLS ciphersuites (PFS in all major browsers)
 * Modules can be reloaded on-the-fly, even while serving content
-* Event driven (epoll/kqueue) architecture with per CPU core workers
+* Event driven (epoll/kqueue) architecture with per CPU worker processes
 * Build your web application as a precompiled dynamic library or single binary
 
 License
@@ -44,8 +45,9 @@ Building Kore
 Grab the [latest release](https://github.com/jorisvink/kore/releases/tag/2.0.0-release)  tarball or clone the repository.
 
 Requirements
-* openssl (latest)
+* openssl (1.0.2k or 1.1.0e)
   (note: this requirement drops away when building with NOTLS=1 NOHTTP=1)
+  (note: libressl should work as a replacement)
 
 Requirements for background tasks (optional)
 * pthreads
@@ -53,11 +55,14 @@ Requirements for background tasks (optional)
 Requirements for pgsql (optional)
 * libpq
 
+Requirements for python (optional)
+* Python 3.6+
+
 Normal compilation and installation:
 
 ```
-# cd kore
-# make
+$ cd kore
+$ make
 # make install
 ```
 
@@ -71,6 +76,10 @@ those by setting a shell environment variable before running **_make_**.
 * NOHTTP=1 (compiles Kore without HTTP support)
 * NOOPT=1 (disable compiler optimizations)
 * JSONRPC=1 (compiles in JSONRPC support)
+* PYTHON=1 (compiles in the Python support)
+
+Note that certain build flavors cannot be mixed together and you will just
+be met with compilation errors.
 
 Example applications
 -----------------

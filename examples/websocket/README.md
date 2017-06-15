@@ -2,7 +2,7 @@ Kore example websocket server
 
 Run:
 ```
-	# kore run
+	# kodev run
 ```
 
 Test:

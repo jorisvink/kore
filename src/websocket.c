@@ -49,7 +49,8 @@ static void	websocket_frame_build(struct kore_buf *, u_int8_t,
 		    const void *, size_t);
 
 void
-kore_websocket_handshake(struct http_request *req, struct kore_wscbs *wscbs)
+kore_websocket_handshake(struct http_request *req, const char *onconnect,
+    const char *onmessage, const char *ondisconnect)
 {
 	SHA_CTX			sctx;
 	struct kore_buf		*buf;
@@ -102,12 +103,35 @@ kore_websocket_handshake(struct http_request *req, struct kore_wscbs *wscbs)
 	req->owner->disconnect = websocket_disconnect;
 	req->owner->rnb->flags &= ~NETBUF_CALL_CB_ALWAYS;
 
-	req->owner->wscbs = wscbs;
 	req->owner->idle_timer.start = kore_time_ms();
 	req->owner->idle_timer.length = kore_websocket_timeout;
 
-	if (wscbs->connect != NULL)
-		wscbs->connect(req->owner);
+	if (onconnect != NULL) {
+		req->owner->ws_connect = kore_runtime_getcall(onconnect);
+		if (req->owner->ws_connect == NULL)
+			fatal("no symbol '%s' for ws_connect", onconnect);
+	} else {
+		req->owner->ws_connect = NULL;
+	}
+
+	if (onmessage != NULL) {
+		req->owner->ws_message = kore_runtime_getcall(onmessage);
+		if (req->owner->ws_message == NULL)
+			fatal("no symbol '%s' for ws_message", onmessage);
+	} else {
+		req->owner->ws_message = NULL;
+	}
+
+	if (ondisconnect != NULL) {
+		req->owner->ws_disconnect = kore_runtime_getcall(ondisconnect);
+		if (req->owner->ws_disconnect == NULL)
+			fatal("no symbol '%s' for ws_disconnect", ondisconnect);
+	} else {
+		req->owner->ws_disconnect = NULL;
+	}
+
+	if (req->owner->ws_connect != NULL)
+		kore_runtime_wsconnect(req->owner->ws_connect, req->owner);
 }
 
 void
@@ -120,6 +144,8 @@ kore_websocket_send(struct connection *c, u_int8_t op, const void *data,
 	websocket_frame_build(frame, op, data, len);
 	net_send_queue(c, frame->data, frame->offset);
 	kore_buf_free(frame);
+
+	net_send_flush(c);
 }
 
 void
@@ -156,7 +182,7 @@ websocket_frame_build(struct kore_buf *frame, u_int8_t op, const void *data,
 	u_int64_t		len64;
 
 	if (len > WEBSOCKET_PAYLOAD_SINGLE) {
-		if (len < USHRT_MAX)
+		if (len <= USHRT_MAX)
 			len_1 = WEBSOCKET_PAYLOAD_EXTEND_1;
 		else
 			len_1 = WEBSOCKET_PAYLOAD_EXTEND_2;
@@ -198,7 +224,7 @@ websocket_recv_opcode(struct netbuf *nb)
 	}
 
 	if (WEBSOCKET_RSV(nb->buf[0], 1) || WEBSOCKET_RSV(nb->buf[0], 2) ||
-	    WEBSOCKET_RSV(nb->buf[0], 2)) {
+	    WEBSOCKET_RSV(nb->buf[0], 3)) {
 		kore_debug("%p: RSV bits are not zero", c);
 		return (KORE_RESULT_ERROR);
 	}
@@ -245,12 +271,10 @@ websocket_recv_frame(struct netbuf *nb)
 {
 	struct connection	*c;
 	int			ret;
-	struct kore_wscbs	*wscbs;
 	u_int64_t		len, i, total;
 	u_int8_t		op, moff, extra;
 
 	c = nb->owner;
-	wscbs = c->wscbs;
 
 	op = nb->buf[0] & WEBSOCKET_OPCODE_MASK;
 	len = WEBSOCKET_FRAME_LENGTH(nb->buf[1]);
@@ -293,17 +317,26 @@ websocket_recv_frame(struct netbuf *nb)
 
 	ret = KORE_RESULT_OK;
 	switch (op) {
-	case WEBSOCKET_OP_CONT:
 	case WEBSOCKET_OP_PONG:
+		break;
+	case WEBSOCKET_OP_CONT:
 		ret = KORE_RESULT_ERROR;
-		kore_log(LOG_ERR, "%p: we do not support op 0x%02x yet", c, op);
+		kore_log(LOG_ERR,
+		    "%p: we do not support op 0x%02x yet", (void *)c, op);
 		break;
 	case WEBSOCKET_OP_TEXT:
 	case WEBSOCKET_OP_BINARY:
-		if (wscbs->message != NULL)
-			wscbs->message(c, op, &nb->buf[moff + 4], len);
+		if (c->ws_message != NULL) {
+			kore_runtime_wsmessage(c->ws_message,
+			    c, op, &nb->buf[moff + 4], len);
+		}
 		break;
 	case WEBSOCKET_OP_CLOSE:
+		c->flags &= ~CONN_READ_POSSIBLE;
+		if (!(c->flags & CONN_WS_CLOSE_SENT)) {
+			c->flags |= CONN_WS_CLOSE_SENT;
+			kore_websocket_send(c, WEBSOCKET_OP_CLOSE, NULL, 0);
+		}
 		kore_connection_disconnect(c);
 		break;
 	case WEBSOCKET_OP_PING:
@@ -316,14 +349,19 @@ websocket_recv_frame(struct netbuf *nb)
 	}
 
 	net_recv_reset(c, WEBSOCKET_FRAME_HDR, websocket_recv_opcode);
+
 	return (ret);
 }
 
 static void
 websocket_disconnect(struct connection *c)
 {
-	struct kore_wscbs	*wscbs = c->wscbs;
+	if (c->ws_disconnect != NULL)
+		kore_runtime_wsdisconnect(c->ws_disconnect, c);
 
-	if (wscbs->disconnect != NULL)
-		wscbs->disconnect(c);
+	if (!(c->flags & CONN_WS_CLOSE_SENT)) {
+		c->flags &= ~CONN_READ_POSSIBLE;
+		c->flags |= CONN_WS_CLOSE_SENT;
+		kore_websocket_send(c, WEBSOCKET_OP_CLOSE, NULL, 0);
+	}
 }

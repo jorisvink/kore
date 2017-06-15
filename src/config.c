@@ -19,6 +19,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdint.h>
 #include <ctype.h>
 #include <limits.h>
 #include <fcntl.h>
@@ -35,11 +36,15 @@
 #include "tasks.h"
 #endif
 
+#if defined(KORE_USE_PYTHON)
+#include "python_api.h"
+#endif
+
 /* XXX - This is becoming a clusterfuck. Fix it. */
 
-#if !defined(KORE_SINGLE_BINARY)
 static int		configure_load(char *);
-#else
+
+#if defined(KORE_SINGLE_BINARY)
 static FILE		*config_file_write(void);
 extern u_int8_t		asset_builtin_kore_conf[];
 extern u_int32_t	asset_len_builtin_kore_conf;
@@ -59,6 +64,7 @@ static int		configure_set_affinity(char *);
 static int		configure_socket_backlog(char *);
 
 #if !defined(KORE_NO_TLS)
+static int		configure_rand_file(char *);
 static int		configure_certfile(char *);
 static int		configure_certkey(char *);
 static int		configure_tls_version(char *);
@@ -99,7 +105,11 @@ static int		configure_pgsql_conn_max(char *);
 static int		configure_task_threads(char *);
 #endif
 
-static void		domain_sslstart(void);
+#if defined(KORE_USE_PYTHON)
+static int		configure_python_import(char *);
+#endif
+
+static void		domain_tls_init(void);
 static void		kore_parse_config_file(const char *);
 
 static struct {
@@ -108,8 +118,9 @@ static struct {
 } config_names[] = {
 	{ "include",			configure_include },
 	{ "bind",			configure_bind },
-#if !defined(KORE_SINGLE_BINARY)
 	{ "load",			configure_load },
+#if defined(KORE_USE_PYTHON)
+	{ "python_import",		configure_python_import },
 #endif
 	{ "domain",			configure_domain },
 	{ "chroot",			configure_chroot },
@@ -125,6 +136,7 @@ static struct {
 	{ "tls_version",		configure_tls_version },
 	{ "tls_cipher",			configure_tls_cipher },
 	{ "tls_dhparam",		configure_tls_dhparam },
+	{ "rand_file",			configure_rand_file },
 	{ "certfile",			configure_certfile },
 	{ "certkey",			configure_certkey },
 	{ "client_certificates",	configure_client_certificates },
@@ -245,7 +257,7 @@ kore_parse_config_file(const char *fpath)
 #endif
 
 		if (!strcmp(p, "}") && current_domain != NULL)
-			domain_sslstart();
+			domain_tls_init();
 
 		if (!strcmp(p, "}")) {
 			lineno++;
@@ -303,7 +315,6 @@ configure_bind(char *options)
 	return (kore_server_bind(argv[0], argv[1], argv[2]));
 }
 
-#if !defined(KORE_SINGLE_BINARY)
 static int
 configure_load(char *options)
 {
@@ -313,10 +324,11 @@ configure_load(char *options)
 	if (argv[0] == NULL)
 		return (KORE_RESULT_ERROR);
 
-	kore_module_load(argv[0], argv[1]);
+	kore_module_load(argv[0], argv[1], KORE_MODULE_NATIVE);
 	return (KORE_RESULT_OK);
 }
-#else
+
+#if defined(KORE_SINGLE_BINARY)
 static FILE *
 config_file_write(void)
 {
@@ -438,6 +450,17 @@ configure_client_certificates(char *options)
 	current_domain->cafile = kore_strdup(argv[0]);
 	if (argv[1] != NULL)
 		current_domain->crlfile = kore_strdup(argv[1]);
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_rand_file(char *path)
+{
+	if (rand_file != NULL)
+		kore_free(rand_file);
+
+	rand_file = kore_strdup(path);
 
 	return (KORE_RESULT_OK);
 }
@@ -1036,9 +1059,9 @@ configure_socket_backlog(char *option)
 }
 
 static void
-domain_sslstart(void)
+domain_tls_init(void)
 {
-	kore_domain_sslstart(current_domain);
+	kore_domain_tlsinit(current_domain);
 	current_domain = NULL;
 }
 
@@ -1070,6 +1093,21 @@ configure_task_threads(char *option)
 		return (KORE_RESULT_ERROR);
 	}
 
+	return (KORE_RESULT_OK);
+}
+#endif
+
+#if defined(KORE_USE_PYTHON)
+static int
+configure_python_import(char *module)
+{
+	char		*argv[3];
+
+	kore_split_string(module, " ", argv, 3);
+	if (argv[0] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	kore_module_load(argv[0], argv[1], KORE_MODULE_PYTHON);
 	return (KORE_RESULT_OK);
 }
 #endif

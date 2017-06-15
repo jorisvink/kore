@@ -7,7 +7,7 @@ completely remove the HTTP component and only run the net code.
 
 Run:
 ```
-	$ kore run
+	$ kodev run
 ```
 
 Test:

@@ -9,12 +9,12 @@ Building:
 	If you did not save your video as videos/video.ogg make sure you
 	update the assets/video.html file to point to the right video.
 
-	When done, run a kore build.
+	When done, run a kodev build.
 ```
 
 Run:
 ```
-	kore run
+	kodev run
 ```
 
 Visit the URI and you should see a video stream.

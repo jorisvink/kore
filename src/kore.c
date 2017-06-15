@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2016 Joris Vink <joris@coders.se>
+ * Copyright (c) 2013-2017 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -28,6 +28,10 @@
 
 #if !defined(KORE_NO_HTTP)
 #include "http.h"
+#endif
+
+#if defined(KORE_USE_PYTHON)
+#include "python_api.h"
 #endif
 
 volatile sig_atomic_t			sig_recv;
@@ -59,7 +63,7 @@ static void
 usage(void)
 {
 #if !defined(KORE_SINGLE_BINARY)
-	fprintf(stderr, "Usage: kore [options | command]\n");
+	fprintf(stderr, "Usage: kore [options]\n");
 #else
 	fprintf(stderr, "Usage: %s [options]\n", __progname);
 #endif
@@ -69,7 +73,7 @@ usage(void)
 	fprintf(stderr, "\t-c\tconfiguration to use\n");
 #endif
 #if defined(KORE_DEBUG)
-	fprintf(stderr, "\t-d\trun with debug on)\n");
+	fprintf(stderr, "\t-d\trun with debug on\n");
 #endif
 	fprintf(stderr, "\t-f\tstart in foreground\n");
 	fprintf(stderr, "\t-h\tthis help text\n");
@@ -77,12 +81,8 @@ usage(void)
 	fprintf(stderr, "\t-r\tdo not drop privileges\n");
 	fprintf(stderr, "\t-v\tdisplay kore build information\n");
 
-#if !defined(KORE_SINGLE_BINARY)
-	kore_cli_usage(0);
-#else
-	fprintf(stderr, "\nbuilt with https://kore.io\n");
+	fprintf(stderr, "\nFind more information on https://kore.io\n");
 	exit(1);
-#endif
 }
 
 static void
@@ -108,15 +108,20 @@ version(void)
 #if defined(KORE_SINGLE_BINARY)
 	printf("single ");
 #endif
+#if defined(KORE_USE_PYTHON)
+	printf("python ");
+#endif
 	printf("\n");
-
 	exit(0);
 }
 
 int
 main(int argc, char *argv[])
 {
-	int		ch, flags;
+#if defined(KORE_SINGLE_BINARY)
+	struct kore_runtime_call	*rcall;
+#endif
+	int				ch, flags;
 
 	flags = 0;
 
@@ -162,19 +167,17 @@ main(int argc, char *argv[])
 
 	kore_mem_init();
 
-#if !defined(KORE_SINGLE_BINARY)
-	if (argc > 0) {
-		if (flags)
-			fatal("You cannot specify kore flags and a command");
-		return (kore_cli_main(argc, argv));
-	}
-#endif
+	if (argc > 0)
+		fatal("did you mean to run `kodev´ instead?");
 
 	kore_pid = getpid();
 	nlisteners = 0;
 	LIST_INIT(&listeners);
 
 	kore_log_init();
+#if defined(KORE_USE_PYTHON)
+	kore_python_init();
+#endif
 #if !defined(KORE_NO_HTTP)
 	kore_auth_init();
 	kore_validator_init();
@@ -187,7 +190,12 @@ main(int argc, char *argv[])
 	if (config_file == NULL)
 		usage();
 #else
-	kore_module_load(NULL, NULL);
+	kore_module_load(NULL, NULL, KORE_MODULE_NATIVE);
+	rcall = kore_runtime_getcall("kore_parent_configure");
+	if (rcall != NULL) {
+		kore_runtime_execute(rcall);
+		kore_free(rcall);
+	}
 #endif
 
 	kore_parse_config();
@@ -218,12 +226,16 @@ main(int argc, char *argv[])
 
 	kore_log(LOG_NOTICE, "server shutting down");
 	kore_worker_shutdown();
-
-	if (!foreground)
-		unlink(kore_pidfile);
+	unlink(kore_pidfile);
 
 	kore_listener_cleanup();
 	kore_log(LOG_NOTICE, "goodbye");
+
+#if defined(KORE_USE_PYTHON)
+	kore_python_cleanup();
+#endif
+
+	kore_mem_cleanup();
 
 	return (0);
 }
@@ -271,8 +283,8 @@ kore_tls_info_callback(const SSL *ssl, int flags, int ret)
 int
 kore_server_bind(const char *ip, const char *port, const char *ccb)
 {
+	int			r;
 	struct listener		*l;
-	int			on, r;
 	struct addrinfo		hints, *results;
 
 	kore_debug("kore_server_bind(%s, %s)", ip, port);
@@ -297,26 +309,21 @@ kore_server_bind(const char *ip, const char *port, const char *ccb)
 	if ((l->fd = socket(results->ai_family, SOCK_STREAM, 0)) == -1) {
 		kore_free(l);
 		freeaddrinfo(results);
-		kore_debug("socket(): %s", errno_s);
-		printf("failed to create socket: %s\n", errno_s);
+		kore_log(LOG_ERR, "socket(): %s", errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
 	if (!kore_connection_nonblock(l->fd, 1)) {
 		kore_free(l);
 		freeaddrinfo(results);
-		printf("failed to make socket non blocking: %s\n", errno_s);
+		kore_log(LOG_ERR, "kore_connection_nonblock(): %s", errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
-	on = 1;
-	if (setsockopt(l->fd, SOL_SOCKET,
-	    SO_REUSEADDR, (const char *)&on, sizeof(on)) == -1) {
+	if (!kore_sockopt(l->fd, SOL_SOCKET, SO_REUSEADDR)) {
 		close(l->fd);
 		kore_free(l);
 		freeaddrinfo(results);
-		kore_debug("setsockopt(): %s", errno_s);
-		printf("failed to set SO_REUSEADDR: %s\n", errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -324,8 +331,7 @@ kore_server_bind(const char *ip, const char *port, const char *ccb)
 		close(l->fd);
 		kore_free(l);
 		freeaddrinfo(results);
-		kore_debug("bind(): %s", errno_s);
-		printf("failed to bind to %s port %s: %s\n", ip, port, errno_s);
+		kore_log(LOG_ERR, "bind(): %s", errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -334,15 +340,13 @@ kore_server_bind(const char *ip, const char *port, const char *ccb)
 	if (listen(l->fd, kore_socket_backlog) == -1) {
 		close(l->fd);
 		kore_free(l);
-		kore_debug("listen(): %s", errno_s);
-		printf("failed to listen on socket: %s\n", errno_s);
+		kore_log(LOG_ERR, "listen(): %s", errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
 	if (ccb != NULL) {
-		*(void **)&(l->connect) = kore_module_getsym(ccb);
-		if (l->connect == NULL) {
-			printf("no such callback: '%s'\n", ccb);
+		if ((l->connect = kore_runtime_getcall(ccb)) == NULL) {
+			kore_log(LOG_ERR, "no such callback: '%s'", ccb);
 			close(l->fd);
 			kore_free(l);
 			return (KORE_RESULT_ERROR);
@@ -360,6 +364,20 @@ kore_server_bind(const char *ip, const char *port, const char *ccb)
 #else
 		kore_log(LOG_NOTICE, "running on http://%s:%s", ip, port);
 #endif
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+int
+kore_sockopt(int fd, int what, int opt)
+{
+	int		on;
+
+	on = 1;
+	if (setsockopt(fd, what, opt, (const char *)&on, sizeof(on)) == -1) {
+		kore_log(LOG_ERR, "setsockopt(): %s", errno_s);
+		return (KORE_RESULT_ERROR);
 	}
 
 	return (KORE_RESULT_OK);
@@ -398,15 +416,17 @@ kore_server_sslstart(void)
 static void
 kore_server_start(void)
 {
-	u_int32_t	tmp;
-	int		quit;
+	u_int32_t			tmp;
+	int				quit;
+#if !defined(KORE_SINGLE_BINARY)
+	struct kore_runtime_call	*rcall;
+#endif
 
 	if (foreground == 0 && daemon(1, 1) == -1)
 		fatal("cannot daemon(): %s", errno_s);
 
 	kore_pid = getpid();
-	if (!foreground)
-		kore_write_kore_pid();
+	kore_write_kore_pid();
 
 	kore_log(LOG_NOTICE, "%s is starting up", __progname);
 #if defined(KORE_USE_PGSQL)
@@ -417,6 +437,16 @@ kore_server_start(void)
 #endif
 #if defined(KORE_USE_JSONRPC)
 	kore_log(LOG_NOTICE, "jsonrpc built-in enabled");
+#endif
+#if defined(KORE_USE_PYTHON)
+	kore_log(LOG_NOTICE, "python built-in enabled");
+#endif
+#if !defined(KORE_SINGLE_BINARY)
+	rcall = kore_runtime_getcall("kore_parent_configure");
+	if (rcall != NULL) {
+		kore_runtime_execute(rcall);
+		kore_free(rcall);
+	}
 #endif
 
 	kore_platform_proctitle("kore [parent]");
@@ -438,10 +468,8 @@ kore_server_start(void)
 		if (sig_recv != 0) {
 			switch (sig_recv) {
 			case SIGHUP:
-#if !defined(KORE_SINGLE_BINARY)
 				kore_worker_dispatch_signal(sig_recv);
 				kore_module_reload(0);
-#endif
 				break;
 			case SIGINT:
 			case SIGQUIT:
@@ -450,8 +478,6 @@ kore_server_start(void)
 				kore_worker_dispatch_signal(sig_recv);
 				continue;
 			default:
-				kore_log(LOG_NOTICE,
-				    "no action taken for signal %d", sig_recv);
 				break;
 			}
 

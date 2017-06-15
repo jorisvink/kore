@@ -28,6 +28,7 @@
 
 int	init(int);
 int	page(struct http_request *);
+int	page_shutdown(struct http_request *req);
 void	received_message(struct kore_msg *, const void *);
 
 /* Initialization callback. */
@@ -69,6 +70,20 @@ page(struct http_request *req)
 
 	/* Now send something to worker number #2 only. */
 	kore_msg_send(2, MY_MESSAGE_ID, "hello number 2", 14);
+
+	http_response(req, 200, NULL, 0);
+	return (KORE_RESULT_OK);
+}
+
+/*
+ * Page request which will send a message to the parent
+ * requesting process shutdown.
+ */
+int
+page_shutdown(struct http_request *req)
+{
+	/* Send shutdown request to parent. */
+	kore_msg_send(KORE_MSG_PARENT, KORE_MSG_SHUTDOWN, "1", 1);
 
 	http_response(req, 200, NULL, 0);
 	return (KORE_RESULT_OK);

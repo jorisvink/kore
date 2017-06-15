@@ -535,10 +535,10 @@ kore_text_trim(char *string, size_t len)
 		return (string);
 
 	end = (string + len) - 1;
-	while (isspace(*string) && string < end)
+	while (isspace(*(unsigned char *)string) && string < end)
 		string++;
 
-	while (isspace(*end) && end > string)
+	while (isspace(*(unsigned char *)end) && end > string)
 		*(end)-- = '\0';
 
 	return (string);
@@ -555,7 +555,7 @@ kore_read_line(FILE *fp, char *in, size_t len)
 	p = in;
 	in[strcspn(in, "\n")] = '\0';
 
-	while (isspace(*p))
+	while (isspace(*(unsigned char *)p))
 		p++;
 
 	if (p[0] == '#' || p[0] == '\0') {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2016 Joris Vink <joris@coders.se>
+ * Copyright (c) 2013-2017 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -16,16 +16,22 @@
 
 #include <sys/param.h>
 
+#include <sys/socket.h>
+#include <netinet/in.h>
+
 #include <ctype.h>
+#include <fcntl.h>
 #include <inttypes.h>
+#include <time.h>
 #include <stdio.h>
 #include <string.h>
 
-#include <fcntl.h>
-#include <unistd.h>
-
 #include "kore.h"
 #include "http.h"
+
+#if defined(KORE_USE_PYTHON)
+#include "python_api.h"
+#endif
 
 #if defined(KORE_USE_PGSQL)
 #include "pgsql.h"
@@ -36,13 +42,13 @@
 #endif
 
 static int	http_body_recv(struct netbuf *);
-static int	http_body_rewind(struct http_request *);
 static void	http_error_response(struct connection *, int);
-static void	http_argument_add(struct http_request *, const char *, char *);
+static void	http_write_response_cookie(struct http_cookie *);
+static void	http_argument_add(struct http_request *, char *, char *);
 static void	http_response_normal(struct http_request *,
 		    struct connection *, int, const void *, size_t);
 static void	multipart_add_field(struct http_request *, struct kore_buf *,
-		    const char *, const char *, const int);
+		    char *, const char *, const int);
 static void	multipart_file_add(struct http_request *, struct kore_buf *,
 		    const char *, const char *, const char *, const int);
 static int	multipart_find_data(struct kore_buf *, struct kore_buf *,
@@ -52,12 +58,14 @@ static int	multipart_parse_headers(struct http_request *,
 		    const char *, const int);
 
 static struct kore_buf			*header_buf;
+static struct kore_buf			*ckhdr_buf;
 static char				http_version[32];
 static u_int16_t			http_version_len;
 static TAILQ_HEAD(, http_request)	http_requests;
 static TAILQ_HEAD(, http_request)	http_requests_sleeping;
 static struct kore_pool			http_request_pool;
 static struct kore_pool			http_header_pool;
+static struct kore_pool			http_cookie_pool;
 static struct kore_pool			http_host_pool;
 static struct kore_pool			http_path_pool;
 static struct kore_pool			http_body_path;
@@ -67,7 +75,7 @@ u_int32_t	http_request_limit = HTTP_REQUEST_LIMIT;
 u_int64_t	http_hsts_enable = HTTP_HSTS_ENABLE;
 u_int16_t	http_header_max = HTTP_HEADER_MAX_LEN;
 u_int16_t	http_keepalive_time = HTTP_KEEPALIVE_TIME;
-u_int64_t	http_body_max = HTTP_BODY_MAX_LEN;
+size_t		http_body_max = HTTP_BODY_MAX_LEN;
 u_int64_t	http_body_disk_offload = HTTP_BODY_DISK_OFFLOAD;
 char		*http_body_disk_path = HTTP_BODY_DISK_PATH;
 
@@ -79,7 +87,8 @@ http_init(void)
 	TAILQ_INIT(&http_requests);
 	TAILQ_INIT(&http_requests_sleeping);
 
-	header_buf = kore_buf_alloc(1024);
+	header_buf = kore_buf_alloc(HTTP_HEADER_BUFSIZE);
+	ckhdr_buf = kore_buf_alloc(HTTP_COOKIE_BUFSIZE);
 
 	l = snprintf(http_version, sizeof(http_version),
 	    "server: kore (%d.%d.%d-%s)\r\n", KORE_VERSION_MAJOR,
@@ -94,6 +103,8 @@ http_init(void)
 	    sizeof(struct http_request), prealloc);
 	kore_pool_init(&http_header_pool, "http_header_pool",
 	    sizeof(struct http_header), prealloc * HTTP_REQ_HEADER_MAX);
+	kore_pool_init(&http_cookie_pool, "http_cookie_pool",
+		sizeof(struct http_cookie), prealloc * HTTP_MAX_COOKIES);
 
 	kore_pool_init(&http_host_pool,
 	    "http_host_pool", KORE_DOMAINNAME_LEN, prealloc);
@@ -111,6 +122,11 @@ http_cleanup(void)
 		header_buf = NULL;
 	}
 
+	if (ckhdr_buf != NULL) {
+		kore_buf_free(ckhdr_buf);
+		ckhdr_buf = NULL;
+	}
+
 	kore_pool_cleanup(&http_request_pool);
 	kore_pool_cleanup(&http_header_pool);
 	kore_pool_cleanup(&http_host_pool);
@@ -118,14 +134,27 @@ http_cleanup(void)
 	kore_pool_cleanup(&http_body_path);
 }
 
+void
+http_server_version(const char *version)
+{
+	int		l;
+
+	l = snprintf(http_version, sizeof(http_version),
+	    "server: %s\r\n", version);
+	if (l == -1 || (size_t)l >= sizeof(http_version))
+		fatal("http_server_version(): http_version buffer too small");
+
+	http_version_len = l;
+}
+
 int
 http_request_new(struct connection *c, const char *host,
     const char *method, const char *path, const char *version,
     struct http_request **out)
 {
-	char				*p;
 	struct http_request		*req;
 	struct kore_module_handle	*hdlr;
+	char				*p, *hp;
 	int				m, flags;
 	size_t				hostlen, pathlen, qsoff;
 
@@ -133,7 +162,7 @@ http_request_new(struct connection *c, const char *host,
 	    method, path, version);
 
 	if ((hostlen = strlen(host)) >= KORE_DOMAINNAME_LEN - 1) {
-		http_error_response(c, 500);
+		http_error_response(c, 400);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -154,10 +183,35 @@ http_request_new(struct connection *c, const char *host,
 		qsoff = 0;
 	}
 
+	hp = NULL;
+
+	switch (c->addrtype) {
+	case AF_INET6:
+		if (*host == '[') {
+			if ((hp = strrchr(host, ']')) == NULL) {
+				http_error_response(c, 400);
+				return (KORE_RESULT_ERROR);
+			}
+			hp++;
+			if (*hp == ':')
+				*hp = '\0';
+			else
+				hp = NULL;
+		}
+		break;
+	default:
+		if ((hp = strrchr(host, ':')) != NULL)
+			*hp = '\0';
+		break;
+	}
+
 	if ((hdlr = kore_module_handler_find(host, path)) == NULL) {
 		http_error_response(c, 404);
 		return (KORE_RESULT_ERROR);
 	}
+
+	if (hp != NULL)
+		*hp = ':';
 
 	if (p != NULL)
 		*p = '?';
@@ -176,6 +230,9 @@ http_request_new(struct connection *c, const char *host,
 		flags = HTTP_REQUEST_EXPECT_BODY;
 	} else if (!strcasecmp(method, "head")) {
 		m = HTTP_METHOD_HEAD;
+		flags = HTTP_REQUEST_COMPLETE;
+	} else if (!strcasecmp(method, "options")) {
+		m = HTTP_METHOD_OPTIONS;
 		flags = HTTP_REQUEST_COMPLETE;
 	} else {
 		http_error_response(c, 400);
@@ -201,8 +258,9 @@ http_request_new(struct connection *c, const char *host,
 	req->http_body_offset = 0;
 	req->http_body_path = NULL;
 
-	if ((p = strrchr(host, ':')) != NULL)
-		*p = '\0';
+#if defined(KORE_USE_PYTHON)
+	req->py_coro = NULL;
+#endif
 
 	req->host = kore_pool_get(&http_host_pool);
 	memcpy(req->host, host, hostlen);
@@ -221,6 +279,8 @@ http_request_new(struct connection *c, const char *host,
 
 	TAILQ_INIT(&(req->resp_headers));
 	TAILQ_INIT(&(req->req_headers));
+	TAILQ_INIT(&(req->resp_cookies));
+	TAILQ_INIT(&(req->req_cookies));
 	TAILQ_INIT(&(req->arguments));
 	TAILQ_INIT(&(req->files));
 
@@ -298,7 +358,7 @@ http_process(void)
 void
 http_process_request(struct http_request *req)
 {
-	int		r, (*cb)(struct http_request *);
+	int		r;
 
 	kore_debug("http_process_request: %p->%p (%s)",
 	    req->owner, req, req->path);
@@ -314,10 +374,7 @@ http_process_request(struct http_request *req)
 
 	switch (r) {
 	case KORE_RESULT_OK:
-		*(void **)&(cb) = req->hdlr->addr;
-		worker->active_hdlr = req->hdlr;
-		r = cb(req);
-		worker->active_hdlr = NULL;
+		r = kore_runtime_http_request(req->hdlr->rcall, req);
 		break;
 	case KORE_RESULT_RETRY:
 		break;
@@ -382,6 +439,7 @@ http_request_free(struct http_request *req)
 	struct http_file	*f, *fnext;
 	struct http_arg		*q, *qnext;
 	struct http_header	*hdr, *next;
+	struct http_cookie	*ck, *cknext;
 
 #if defined(KORE_USE_TASKS)
 	pending_tasks = 0;
@@ -400,14 +458,14 @@ http_request_free(struct http_request *req)
 	}
 #endif
 
+#if defined(KORE_USE_PYTHON)
+	Py_XDECREF(req->py_coro);
+#endif
 #if defined(KORE_USE_PGSQL)
 	while (!LIST_EMPTY(&(req->pgsqls))) {
 		pgsql = LIST_FIRST(&(req->pgsqls));
 		kore_pgsql_cleanup(pgsql);
 	}
-
-	if (req->flags & HTTP_REQUEST_PGSQL_QUEUE)
-		kore_pgsql_queue_remove(req);
 #endif
 
 	kore_debug("http_request_free: %p->%p", req->owner, req);
@@ -419,7 +477,8 @@ http_request_free(struct http_request *req)
 	req->path = NULL;
 
 	TAILQ_REMOVE(&http_requests, req, list);
-	TAILQ_REMOVE(&(req->owner->http_requests), req, olist);
+	if (req->owner != NULL)
+		TAILQ_REMOVE(&(req->owner->http_requests), req, olist);
 
 	for (hdr = TAILQ_FIRST(&(req->resp_headers)); hdr != NULL; hdr = next) {
 		next = TAILQ_NEXT(hdr, list);
@@ -439,13 +498,32 @@ http_request_free(struct http_request *req)
 		kore_pool_put(&http_header_pool, hdr);
 	}
 
+	for (ck = TAILQ_FIRST(&(req->resp_cookies)); ck != NULL; ck = cknext) {
+		cknext = TAILQ_NEXT(ck, list);
+
+		TAILQ_REMOVE(&(req->resp_cookies), ck, list);
+		kore_free(ck->name);
+		kore_free(ck->value);
+		kore_free(ck->path);
+		kore_free(ck->domain);
+		kore_pool_put(&http_cookie_pool, ck);
+	}
+
+	for (ck = TAILQ_FIRST(&(req->req_cookies)); ck != NULL; ck = cknext) {
+		cknext = TAILQ_NEXT(ck, list);
+
+		TAILQ_REMOVE(&(req->req_cookies), ck, list);
+		kore_free(ck->name);
+		kore_free(ck->value);
+		kore_pool_put(&http_cookie_pool, ck);
+	}
+
 	for (q = TAILQ_FIRST(&(req->arguments)); q != NULL; q = qnext) {
 		qnext = TAILQ_NEXT(q, list);
 
 		TAILQ_REMOVE(&(req->arguments), q, list);
 		kore_free(q->name);
-		if (q->s_value != NULL)
-			kore_free(q->s_value);
+		kore_free(q->s_value);
 		kore_free(q);
 	}
 
@@ -465,7 +543,7 @@ http_request_free(struct http_request *req)
 		(void)close(req->http_body_fd);
 
 	if (req->http_body_path != NULL) {
-		if (unlink(req->http_body_path) == -1) {
+		if (unlink(req->http_body_path) == -1 && errno != ENOENT) {
 			kore_log(LOG_NOTICE, "failed to unlink %s: %s",
 			    req->http_body_path, errno_s);
 		}
@@ -481,9 +559,36 @@ http_request_free(struct http_request *req)
 }
 
 void
+http_serveable(struct http_request *req, const void *data, size_t len,
+    const char *etag, const char *type)
+{
+	char		*match;
+
+	if (req->method != HTTP_METHOD_GET) {
+		http_response_header(req, "allow", "get");
+		http_response(req, HTTP_STATUS_BAD_REQUEST, NULL, 0);
+		return;
+	}
+
+	if (http_request_header(req, "if-none-match", &match)) {
+		if (!strcmp(match, etag)) {
+			http_response(req, HTTP_STATUS_NOT_MODIFIED, NULL, 0);
+			return;
+		}
+	}
+
+	http_response_header(req, "etag", etag);
+	http_response_header(req, "content-type", type);
+	http_response(req, HTTP_STATUS_OK, data, len);
+}
+
+void
 http_response(struct http_request *req, int status, const void *d, size_t l)
 {
 	kore_debug("http_response(%p, %d, %p, %zu)", req, status, d, l);
+
+	if (req->owner == NULL)
+		return;
 
 	req->status = status;
 
@@ -503,6 +608,9 @@ http_response_stream(struct http_request *req, int status, void *base,
     size_t len, int (*cb)(struct netbuf *), void *arg)
 {
 	struct netbuf		*nb;
+
+	if (req->owner == NULL)
+		return;
 
 	req->status = status;
 
@@ -533,6 +641,26 @@ http_request_header(struct http_request *req, const char *header, char **out)
 		}
 	}
 
+	if (!strcasecmp(header, "host")) {
+		*out = req->host;
+		return (KORE_RESULT_OK);
+	}
+
+	return (KORE_RESULT_ERROR);
+}
+
+int
+http_request_cookie(struct http_request *req, const char *cookie, char **out)
+{
+	struct http_cookie	*ck;
+
+	TAILQ_FOREACH(ck, &(req->req_cookies), list) {
+		if (!strcasecmp(ck->name, cookie)) {
+			*out = ck->value;
+			return (KORE_RESULT_OK);
+		}
+	}
+
 	return (KORE_RESULT_ERROR);
 }
 
@@ -546,7 +674,7 @@ http_header_recv(struct netbuf *nb)
 	u_int64_t		bytes_left;
 	u_int8_t		*end_headers;
 	int			h, i, v, skip, l;
-	char			*request[4], *host[3], *hbuf;
+	char			*request[4], *host, *hbuf;
 	char			*p, *headers[HTTP_REQ_HEADER_MAX];
 	struct connection	*c = (struct connection *)nb->owner;
 
@@ -582,34 +710,34 @@ http_header_recv(struct netbuf *nb)
 	}
 
 	skip = 0;
-	host[0] = NULL;
+	host = NULL;
 	for (i = 0; i < h; i++) {
 		if (strncasecmp(headers[i], "host", 4))
 			continue;
 
-		v = kore_split_string(headers[i], ":", host, 3);
-		if (v != 2) {
+		if ((host = strchr(headers[i], ':')) == NULL) {
 			http_error_response(c, 400);
 			return (KORE_RESULT_OK);
 		}
 
-		if ((host[1] - host[0]) != 5 ||
-		    strncasecmp(host[0], "host", 4) || host[1] == '\0') {
+		*(host)++ = '\0';
+
+		if (*host == '\0') {
 			http_error_response(c, 400);
 			return (KORE_RESULT_OK);
 		}
 
-		host[1]++;
+		host++;
 		skip = i;
 		break;
 	}
 
-	if (host[0] == NULL) {
+	if (host == NULL) {
 		http_error_response(c, 400);
 		return (KORE_RESULT_OK);
 	}
 
-	if (!http_request_new(c, host[1],
+	if (!http_request_new(c, host,
 	    request[0], request[1], request[2], &req))
 		return (KORE_RESULT_OK);
 
@@ -665,7 +793,7 @@ http_header_recv(struct netbuf *nb)
 		}
 
 		if (req->content_length > http_body_max) {
-			kore_log(LOG_NOTICE, "body too large (%ld > %ld)",
+			kore_log(LOG_NOTICE, "body too large (%zu > %zu)",
 			    req->content_length, http_body_max);
 			req->flags |= HTTP_REQUEST_DELETE;
 			http_error_response(req->owner, 413);
@@ -857,7 +985,7 @@ http_file_read(struct http_file *file, void *buf, size_t len)
 
 	off = file->position + file->offset;
 	toread = MIN(len, (file->length - file->offset));
-	if (toread <= 0)
+	if (toread == 0)
 		return (0);
 
 	if (file->req->http_body_fd != -1) {
@@ -898,6 +1026,66 @@ void
 http_file_rewind(struct http_file *file)
 {
 	file->offset = 0;
+}
+
+void
+http_response_cookie(struct http_request *req, const char *name,
+    const char *val, const char *path, time_t expires, u_int32_t maxage,
+    struct http_cookie **out)
+{
+	struct http_cookie	*ck;
+
+	if (name == NULL || val == NULL)
+		fatal("http_response_cookie: invalid parameters");
+
+	ck = kore_pool_get(&http_cookie_pool);
+
+	ck->maxage = maxage;
+	ck->expires = expires;
+	ck->name = kore_strdup(name);
+	ck->value = kore_strdup(val);
+	ck->domain = kore_strdup(req->host);
+	ck->flags = HTTP_COOKIE_HTTPONLY | HTTP_COOKIE_SECURE;
+
+	if (path != NULL)
+		ck->path = kore_strdup(path);
+	else
+		ck->path = NULL;
+
+	TAILQ_INSERT_TAIL(&(req->resp_cookies), ck, list);
+
+	if (out != NULL)
+		*out = ck;
+}
+
+void
+http_populate_cookies(struct http_request *req)
+{
+	struct http_cookie	*ck;
+	int			 i, v, n;
+	char			*c, *header, *pair[3];
+	char			*cookies[HTTP_MAX_COOKIES];
+
+	if (!http_request_header(req, "cookie", &c))
+		return;
+
+	header = kore_strdup(c);
+	v = kore_split_string(header, ";", cookies, HTTP_MAX_COOKIES);
+	for (i = 0; i < v; i++) {
+		for (c = cookies[i]; isspace(*(unsigned char *)c); c++)
+			;
+
+		n = kore_split_string(c, "=", pair, 3);
+		if (n != 2)
+			continue;
+
+		ck = kore_pool_get(&http_cookie_pool);
+		ck->name = kore_strdup(pair[0]);
+		ck->value = kore_strdup(pair[1]);
+		TAILQ_INSERT_TAIL(&(req->req_cookies), ck, list);
+	}
+
+	kore_free(header);
 }
 
 void
@@ -1014,6 +1202,25 @@ cleanup:
 	kore_buf_free(out);
 }
 
+int
+http_body_rewind(struct http_request *req)
+{
+	if (req->http_body_fd != -1) {
+		if (lseek(req->http_body_fd, 0, SEEK_SET) == -1) {
+			kore_log(LOG_ERR, "lseek(%s) failed: %s",
+			    req->http_body_path, errno_s);
+			return (KORE_RESULT_ERROR);
+		}
+	} else {
+		kore_buf_reset(req->http_body);
+	}
+
+	req->http_body_offset = 0;
+	req->http_body_length = req->content_length;
+
+	return (KORE_RESULT_OK);
+}
+
 ssize_t
 http_body_read(struct http_request *req, void *out, size_t len)
 {
@@ -1021,7 +1228,7 @@ http_body_read(struct http_request *req, void *out, size_t len)
 	size_t		toread;
 
 	toread = MIN(req->http_body_length, len);
-	if (toread <= 0)
+	if (toread == 0)
 		return (0);
 
 	if (req->http_body_fd != -1) {
@@ -1091,6 +1298,39 @@ http_state_run(struct http_state *states, u_int8_t elm,
 	kore_debug("http_state_run(%p): done", req);
 
 	return (KORE_RESULT_OK);
+}
+
+int
+http_state_exists(struct http_request *req)
+{
+	return (req->hdlr_extra != NULL);
+}
+
+void *
+http_state_create(struct http_request *req, size_t len)
+{
+	if (req->hdlr_extra != NULL) {
+		if (req->state_len != len)
+			fatal("http_state_create: state already set");
+	} else {
+		req->state_len = len;
+		req->hdlr_extra = kore_calloc(1, len);
+	}
+
+	return (req->hdlr_extra);
+}
+
+void *
+http_state_get(struct http_request *req)
+{
+	return (req->hdlr_extra);
+}
+
+void
+http_state_cleanup(struct http_request *req)
+{
+	kore_free(req->hdlr_extra);
+	req->hdlr_extra = NULL;
 }
 
 static int
@@ -1182,7 +1422,7 @@ multipart_parse_headers(struct http_request *req, struct kore_buf *in,
 		if (strcasecmp(args[0], "content-disposition"))
 			continue;
 
-		for (d = args[1]; isspace(*d); d++)
+		for (d = args[1]; isspace(*(unsigned char *)d); d++)
 			;
 
 		c = kore_split_string(d, ";", opt, 5);
@@ -1206,7 +1446,7 @@ multipart_parse_headers(struct http_request *req, struct kore_buf *in,
 			continue;
 		}
 
-		for (d = opt[2]; isspace(*d); d++)
+		for (d = opt[2]; isspace(*(unsigned char *)d); d++)
 			;
 
 		if (!strncasecmp(d, "filename=", 9)) {
@@ -1234,7 +1474,7 @@ multipart_parse_headers(struct http_request *req, struct kore_buf *in,
 
 static void
 multipart_add_field(struct http_request *req, struct kore_buf *in,
-    const char *name, const char *boundary, const int blen)
+    char *name, const char *boundary, const int blen)
 {
 	struct kore_buf		*data;
 	char			*string;
@@ -1264,7 +1504,7 @@ multipart_file_add(struct http_request *req, struct kore_buf *in,
 	struct http_file	*f;
 	size_t			position, len;
 
-	position= req->http_body_offset - in->offset;
+	position = req->http_body_offset - in->offset;
 	if (!multipart_find_data(in, NULL, &len, req, boundary, blen))
 		return;
 
@@ -1284,14 +1524,17 @@ multipart_file_add(struct http_request *req, struct kore_buf *in,
 }
 
 static void
-http_argument_add(struct http_request *req, const char *name, char *value)
+http_argument_add(struct http_request *req, char *name, char *value)
 {
 	struct http_arg			*q;
 	struct kore_handler_params	*p;
 
+	http_argument_urldecode(name);
+
 	TAILQ_FOREACH(p, &(req->hdlr->params), list) {
 		if (p->method != req->method)
 			continue;
+
 		if (strcmp(p->name, name))
 			continue;
 
@@ -1353,22 +1596,6 @@ http_body_recv(struct netbuf *nb)
 	return (KORE_RESULT_OK);
 }
 
-static int
-http_body_rewind(struct http_request *req)
-{
-	if (req->http_body_fd != -1) {
-		if (lseek(req->http_body_fd, 0, SEEK_SET) == -1) {
-			kore_log(LOG_ERR, "lseek(%s) failed: %s",
-			    req->http_body_path, errno_s);
-			return (KORE_RESULT_ERROR);
-		}
-	} else {
-		kore_buf_reset(req->http_body);
-	}
-
-	return (KORE_RESULT_OK);
-}
-
 static void
 http_error_response(struct connection *c, int status)
 {
@@ -1388,11 +1615,12 @@ static void
 http_response_normal(struct http_request *req, struct connection *c,
     int status, const void *d, size_t len)
 {
+	struct http_cookie	*ck;
 	struct http_header	*hdr;
 	char			*conn;
 	int			connection_close;
 
-	header_buf->offset = 0;
+	kore_buf_reset(header_buf);
 
 	kore_buf_appendf(header_buf, "HTTP/1.1 %d %s\r\n",
 	    status, http_status_text(status));
@@ -1432,6 +1660,9 @@ http_response_normal(struct http_request *req, struct connection *c,
 	}
 
 	if (req != NULL) {
+		TAILQ_FOREACH(ck, &(req->resp_cookies), list)
+			http_write_response_cookie(ck);
+
 		TAILQ_FOREACH(hdr, &(req->resp_headers), list) {
 			kore_buf_appendf(header_buf, "%s: %s\r\n",
 			    hdr->header, hdr->value);
@@ -1457,6 +1688,47 @@ http_response_normal(struct http_request *req, struct connection *c,
 
 	if (!(c->flags & CONN_CLOSE_EMPTY))
 		net_recv_reset(c, http_header_max, http_header_recv);
+}
+
+static void
+http_write_response_cookie(struct http_cookie *ck)
+{
+	struct tm		tm;
+	char			expires[HTTP_DATE_MAXSIZE];
+
+	kore_buf_reset(ckhdr_buf);
+	kore_buf_appendf(ckhdr_buf, "%s=%s", ck->name, ck->value);
+
+	if (ck->path != NULL)
+		kore_buf_appendf(ckhdr_buf, "; Path=%s", ck->path);
+	if (ck->domain != NULL)
+		kore_buf_appendf(ckhdr_buf, "; Domain=%s", ck->domain);
+
+	if (ck->expires > 0) {
+		if (gmtime_r(&ck->expires, &tm) == NULL) {
+			kore_log(LOG_ERR, "gmtime_r(): %s", errno_s);
+			return;
+		}
+
+		if (strftime(expires, sizeof(expires),
+		    "%a, %d %b %y %H:%M:%S GMT", &tm) == 0) {
+			kore_log(LOG_ERR, "strftime(): %s", errno_s);
+			return;
+		}
+
+		kore_buf_appendf(ckhdr_buf, "; Expires=%s", expires);
+	}
+
+	if (ck->maxage > 0)
+		kore_buf_appendf(ckhdr_buf, "; Max-Age=%u", ck->maxage);
+
+	if (ck->flags & HTTP_COOKIE_HTTPONLY)
+		kore_buf_appendf(ckhdr_buf, "; HttpOnly");
+	if (ck->flags & HTTP_COOKIE_SECURE)
+		kore_buf_appendf(ckhdr_buf, "; Secure");
+
+	kore_buf_appendf(header_buf, "set-cookie: %s\r\n",
+	    kore_buf_stringify(ckhdr_buf, NULL));
 }
 
 const char *
@@ -1613,6 +1885,9 @@ http_method_text(int method)
 		break;
 	case HTTP_METHOD_HEAD:
 		r = "HEAD";
+		break;
+	case HTTP_METHOD_OPTIONS:
+		r = "OPTIONS";
 		break;
 	default:
 		r = "";

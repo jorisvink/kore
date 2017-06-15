@@ -1,0 +1,60 @@
+<!DOCTYPE>
+<html>
+<head>
+<script>
+var socket = null;
+var sent = 0;
+var recv = 0;
+var length = 65536;
+
+function open(evt) {
+	var msg = "";
+	var alphabet = "abcdefghijklmnopqrstuvwxyz";
+
+	for (i = 0; i < length; i++)
+		msg += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
+
+	message(msg);
+}
+
+function message(msg) {
+	socket.send(msg);
+	sent = sent + 1;
+	update();
+}
+
+function update() {
+	var cnt = document.getElementById("counter");
+
+	cnt.innerHTML = "Recv: " + recv + " Sent: " + sent;
+}
+
+function onmessage(evt) {
+	recv = recv + 1;
+	update();
+
+	message(evt.data);
+}
+
+function connect() {
+	socket = new WebSocket("wss://127.0.0.1:8888/ws");
+
+	socket.onopen = function(evt) { open(evt) };
+	socket.onclose = function(evt) { alert("closed"); };
+	socket.onmessage = function(evt) { onmessage(evt) };
+	socket.onerror = function(evt) { alert("onerror"); };
+}
+</script>
+</head>
+
+<body>
+
+<form action="/" onsubmit="connect(); return false;">
+<input type="submit" value="connect">
+</form>
+
+<div id="counter">
+</div>
+
+</body>
+</html>

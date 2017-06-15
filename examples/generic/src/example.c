@@ -27,9 +27,6 @@
 
 int		example_load(int);
 
-int		serve_style_css(struct http_request *);
-int		serve_index(struct http_request *);
-int		serve_intro(struct http_request *);
 int		serve_b64test(struct http_request *);
 int		serve_file_upload(struct http_request *);
 int		serve_validator(struct http_request *);
@@ -58,6 +55,9 @@ example_load(int state)
 	switch (state) {
 	case KORE_MODULE_LOAD:
 		kore_log(LOG_NOTICE, "module loading");
+
+		/* Set server version */
+		http_server_version("Server/0.1");
 		break;
 	case KORE_MODULE_UNLOAD:
 		kore_log(LOG_NOTICE, "module unloading");
@@ -66,50 +66,6 @@ example_load(int state)
 		kore_log(LOG_NOTICE, "state %d unknown!", state);
 		break;
 	}
-
-	return (KORE_RESULT_OK);
-}
-
-int
-serve_style_css(struct http_request *req)
-{
-	char		*date;
-	time_t		tstamp;
-
-	tstamp = 0;
-	if (http_request_header(req, "if-modified-since", &date)) {
-		tstamp = kore_date_to_time(date);
-		kore_debug("header was present with %ld", tstamp);
-	}
-
-	if (tstamp != 0 && tstamp <= asset_mtime_style_css) {
-		http_response(req, 304, NULL, 0);
-	} else {
-		date = kore_time_to_date(asset_mtime_style_css);
-		if (date != NULL)
-			http_response_header(req, "last-modified", date);
-
-		http_response_header(req, "content-type", "text/css");
-		http_response(req, 200, asset_style_css, asset_len_style_css);
-	}
-
-	return (KORE_RESULT_OK);
-}
-
-int
-serve_index(struct http_request *req)
-{
-	http_response_header(req, "content-type", "text/html");
-	http_response(req, 200, asset_index_html, asset_len_index_html);
-
-	return (KORE_RESULT_OK);
-}
-
-int
-serve_intro(struct http_request *req)
-{
-	http_response_header(req, "content-type", "image/jpg");
-	http_response(req, 200, asset_intro_jpg, asset_len_intro_jpg);
 
 	return (KORE_RESULT_OK);
 }
@@ -308,17 +264,6 @@ serve_private(struct http_request *req)
 	http_response_header(req, "content-type", "text/html");
 	http_response_header(req, "set-cookie", "session_id=test123");
 	http_response(req, 200, asset_private_html, asset_len_private_html);
-
-	return (KORE_RESULT_OK);
-}
-
-int
-serve_private_test(struct http_request *req)
-{
-	http_response_header(req, "content-type", "text/html");
-
-	http_response(req, 200, asset_private_test_html,
-	    asset_len_private_test_html);
 
 	return (KORE_RESULT_OK);
 }

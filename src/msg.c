@@ -34,6 +34,7 @@ static int		msg_recv_packet(struct netbuf *);
 static int		msg_recv_data(struct netbuf *);
 static void		msg_disconnected_parent(struct connection *);
 static void		msg_disconnected_worker(struct connection *);
+static void		msg_type_shutdown(struct kore_msg *msg, const void *data);
 
 #if !defined(KORE_NO_HTTP)
 static void		msg_type_accesslog(struct kore_msg *, const void *);
@@ -56,6 +57,8 @@ kore_msg_parent_init(void)
 		kw = kore_worker_data(i);
 		kore_msg_parent_add(kw);
 	}
+
+	kore_msg_register(KORE_MSG_SHUTDOWN, msg_type_shutdown);
 
 #if !defined(KORE_NO_HTTP)
 	kore_msg_register(KORE_MSG_ACCESSLOG, msg_type_accesslog);
@@ -139,7 +142,9 @@ kore_msg_send(u_int16_t dst, u_int8_t id, const void *data, u_int32_t len)
 	m.src = worker->id;
 
 	net_send_queue(worker->msg[1], &m, sizeof(m));
-	net_send_queue(worker->msg[1], data, len);
+	if (data != NULL && len > 0)
+		net_send_queue(worker->msg[1], data, len);
+
 	net_send_flush(worker->msg[1]);
 }
 
@@ -148,8 +153,12 @@ msg_recv_packet(struct netbuf *nb)
 {
 	struct kore_msg		*msg = (struct kore_msg *)nb->buf;
 
-	net_recv_expand(nb->owner, msg->length, msg_recv_data);
-	return (KORE_RESULT_OK);
+	if (msg->length > 0) {
+		net_recv_expand(nb->owner, msg->length, msg_recv_data);
+		return (KORE_RESULT_OK);
+	}
+
+	return (msg_recv_data(nb));
 }
 
 static int
@@ -166,7 +175,10 @@ msg_recv_data(struct netbuf *nb)
 		if (worker != NULL && msg->dst != worker->id)
 			fatal("received message for incorrect worker");
 
-		type->cb(msg, nb->buf + sizeof(*msg));
+		if (msg->length > 0)
+			type->cb(msg, nb->buf + sizeof(*msg));
+		else
+			type->cb(msg, NULL);
 	}
 
 	if (worker == NULL && type == NULL) {
@@ -205,6 +217,13 @@ static void
 msg_disconnected_worker(struct connection *c)
 {
 	c->hdlr_extra = NULL;
+}
+
+static void
+msg_type_shutdown(struct kore_msg *msg, const void *data)
+{
+	kore_log(LOG_NOTICE, "worker requested shutdown");
+	kore_signal(SIGQUIT);
 }
 
 #if !defined(KORE_NO_HTTP)

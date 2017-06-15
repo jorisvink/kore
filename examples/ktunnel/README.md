@@ -5,12 +5,12 @@ anything-over-HTTPS tunnel.
 
 Build:
 ```
-	# kore build
+	# kodev build
 ```
 
 Run:
 ```
-	# kore run
+	# kodev run
 ```
 
 Test:

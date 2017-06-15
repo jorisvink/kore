@@ -93,8 +93,8 @@ video_stream(struct http_request *req)
 		return (KORE_RESULT_OK);
 	}
 
-	kore_log(LOG_NOTICE, "%p: opened %s (%s) for streaming (%ld ref:%d)",
-	    req->owner, v->path, ctype, v->size, v->ref);
+	kore_log(LOG_NOTICE, "%p: opened %s (%s) for streaming (%lld ref:%d)",
+	    (void *)req->owner, v->path, ctype, v->size, v->ref);
 
 	if (http_request_header(req, "range", &header)) {
 		if ((bytes = strchr(header, '=')) == NULL) {
@@ -148,8 +148,8 @@ video_stream(struct http_request *req)
 			return (KORE_RESULT_OK);
 		}
 
-		kore_log(LOG_NOTICE, "%p: %s sending: %ld-%ld/%ld",
-		    req->owner, v->path, start, end - 1, v->size);
+		kore_log(LOG_NOTICE, "%p: %s sending: %lld-%lld/%lld",
+		    (void *)req->owner, v->path, start, end - 1, v->size);
 		http_response_header(req, "content-range", rb);
 	} else {
 		start = 0;
@@ -261,8 +261,8 @@ video_stream_finish(struct netbuf *nb)
 	struct video	*v = nb->extra;
 
 	v->ref--;
-	kore_log(LOG_NOTICE, "%p: video stream %s done (%d/%d ref:%d)",
-	    nb->owner, v->path, nb->s_off, nb->b_len, v->ref);
+	kore_log(LOG_NOTICE, "%p: video stream %s done (%zu/%zu ref:%d)",
+	    (void *)nb->owner, v->path, nb->s_off, nb->b_len, v->ref);
 
 	if (v->ref == 0)
 		video_unmap(v);

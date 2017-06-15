@@ -2,7 +2,7 @@ This example demonstrates SSE (Server Side Events) in Kore.
 
 Run:
 ```
-	$ kore run
+	$ kodev run
 ```
 
 Test (run different times to see the events broadcast):

@@ -19,6 +19,9 @@
 #ifndef __H_HTTP_H
 #define __H_HTTP_H
 
+#include <sys/types.h>
+#include <sys/queue.h>
+
 #if defined(__cplusplus)
 extern "C" {
 #endif
@@ -32,6 +35,10 @@ extern "C" {
 #define HTTP_REQ_HEADER_MAX	25
 #define HTTP_MAX_QUERY_ARGS	20
 #define HTTP_MAX_COOKIES	10
+#define HTTP_MAX_COOKIENAME	255
+#define HTTP_HEADER_BUFSIZE	1024
+#define HTTP_COOKIE_BUFSIZE	1024
+#define HTTP_DATE_MAXSIZE	255
 #define HTTP_REQUEST_LIMIT	1000
 #define HTTP_BODY_DISK_PATH	"tmp_files"
 #define HTTP_BODY_DISK_OFFLOAD	0
@@ -58,6 +65,21 @@ struct http_header {
 	char			*value;
 
 	TAILQ_ENTRY(http_header)	list;
+};
+
+#define HTTP_COOKIE_HTTPONLY	0x0001
+#define HTTP_COOKIE_SECURE	0x0002
+
+struct http_cookie {
+	char				*name;
+	char				*value;
+	char				*path;
+	char				*domain;
+	u_int32_t			maxage;
+	time_t				expires;
+	u_int16_t			flags;
+
+	TAILQ_ENTRY(http_cookie)	list;
 };
 
 struct http_arg {
@@ -149,15 +171,17 @@ struct http_file {
 #define HTTP_METHOD_PUT		2
 #define HTTP_METHOD_DELETE	3
 #define HTTP_METHOD_HEAD	4
+#define HTTP_METHOD_OPTIONS	5
 
 #define HTTP_REQUEST_COMPLETE		0x0001
 #define HTTP_REQUEST_DELETE		0x0002
 #define HTTP_REQUEST_SLEEPING		0x0004
-#define HTTP_REQUEST_PGSQL_QUEUE	0x0010
 #define HTTP_REQUEST_EXPECT_BODY	0x0020
 #define HTTP_REQUEST_RETAIN_EXTRA	0x0040
 #define HTTP_REQUEST_NO_CONTENT_LENGTH	0x0080
 #define HTTP_REQUEST_AUTHED		0x0100
+
+#define HTTP_VALIDATOR_IS_REQUEST	0x8000
 
 struct kore_task;
 
@@ -180,12 +204,19 @@ struct http_request {
 	size_t				http_body_offset;
 	size_t				content_length;
 	void				*hdlr_extra;
+	size_t				state_len;
 	char				*query_string;
 	struct kore_module_handle	*hdlr;
+
+#if defined(KORE_USE_PYTHON)
+	void				*py_coro;
+#endif
 
 	LIST_HEAD(, kore_task)		tasks;
 	LIST_HEAD(, kore_pgsql)		pgsqls;
 
+	TAILQ_HEAD(, http_cookie)	req_cookies;
+	TAILQ_HEAD(, http_cookie)	resp_cookies;
 	TAILQ_HEAD(, http_header)	req_headers;
 	TAILQ_HEAD(, http_header)	resp_headers;
 	TAILQ_HEAD(, http_arg)		arguments;
@@ -201,7 +232,7 @@ struct http_state {
 
 extern int		http_request_count;
 extern u_int16_t	http_header_max;
-extern u_int64_t	http_body_max;
+extern size_t		http_body_max;
 extern u_int64_t	http_hsts_enable;
 extern u_int16_t	http_keepalive_time;
 extern u_int32_t	http_request_limit;
@@ -212,6 +243,7 @@ void		kore_accesslog(struct http_request *);
 
 void		http_init(void);
 void		http_cleanup(void);
+void 		http_server_version(const char *);
 void		http_process(void);
 const char	*http_status_text(int);
 const char	*http_method_text(int);
@@ -220,8 +252,11 @@ void		http_request_free(struct http_request *);
 void		http_request_sleep(struct http_request *);
 void		http_request_wakeup(struct http_request *);
 void		http_process_request(struct http_request *);
+int		http_body_rewind(struct http_request *);
 ssize_t		http_body_read(struct http_request *, void *, size_t);
 void		http_response(struct http_request *, int, const void *, size_t);
+void		http_serveable(struct http_request *, const void *,
+		    size_t, const char *, const char *);
 void		http_response_stream(struct http_request *, int, void *,
 		    size_t, int (*cb)(struct netbuf *), void *);
 int		http_request_header(struct http_request *,
@@ -233,12 +268,23 @@ int		http_request_new(struct connection *, const char *,
 		    struct http_request **);
 int		http_state_run(struct http_state *, u_int8_t,
 		    struct http_request *);
+int	 	http_request_cookie(struct http_request *,
+		    const char *, char **);
+void		http_response_cookie(struct http_request *, const char *,
+		    const char *, const char *, time_t, u_int32_t,
+		    struct http_cookie **);
+
+void		*http_state_get(struct http_request *);
+int		http_state_exists(struct http_request *);
+void		http_state_cleanup(struct http_request *);
+void		*http_state_create(struct http_request *, size_t);
 
 int		http_argument_urldecode(char *);
 int		http_header_recv(struct netbuf *);
 void		http_populate_get(struct http_request *);
 void		http_populate_post(struct http_request *);
 void		http_populate_multipart_form(struct http_request *);
+void		http_populate_cookies(struct http_request *);
 int		http_argument_get(struct http_request *,
 		    const char *, void **, void *, int);
 

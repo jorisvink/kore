@@ -10,5 +10,5 @@ Tons of comments inside on how everything works.
 
 Run:
 ```
-	# kore run
+	# kodev run
 ```

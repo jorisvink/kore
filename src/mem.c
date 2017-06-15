@@ -69,6 +69,16 @@ kore_mem_init(void)
 	}
 }
 
+void
+kore_mem_cleanup(void)
+{
+	int		i;
+
+	for (i = 0; i < KORE_MEM_BLOCKS; i++) {
+		kore_pool_cleanup(&blocks[i].pool);
+	}
+}
+
 void *
 kore_malloc(size_t len)
 {
@@ -78,7 +88,7 @@ kore_malloc(size_t len)
 	size_t			mlen, idx, *plen;
 
 	if (len == 0)
-		fatal("kore_malloc(): zero size");
+		len = 8;
 
 	if (len <= KORE_MEM_BLOCK_SIZE_MAX) {
 		idx = memblock_index(len);
@@ -105,12 +115,11 @@ kore_realloc(void *ptr, size_t len)
 	struct meminfo		*mem;
 	void			*nptr;
 
-	if (len == 0)
-		fatal("kore_realloc(): zero size");
-
 	if (ptr == NULL) {
 		nptr = kore_malloc(len);
 	} else {
+		if (len == KORE_MEMSIZE(ptr))
+			return (ptr);
 		mem = KORE_MEMINFO(ptr);
 		if (mem->magic != KORE_MEM_MAGIC)
 			fatal("kore_realloc(): magic boundary not found");
@@ -126,12 +135,17 @@ kore_realloc(void *ptr, size_t len)
 void *
 kore_calloc(size_t memb, size_t len)
 {
-	if (memb == 0 || len == 0)
-		fatal("kore_calloc(): zero size");
+	void		*ptr;
+	size_t		total;
+
 	if (SIZE_MAX / memb < len)
 		fatal("kore_calloc(): memb * len > SIZE_MAX");
 
-	return (kore_malloc(memb * len));
+	total = memb * len;
+	ptr = kore_malloc(total);
+	memset(ptr, 0, total);
+
+	return (ptr);
 }
 
 void

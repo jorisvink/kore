@@ -66,6 +66,8 @@ extern int daemon(int, int);
 #define KORE_TLS_VERSION_1_0	1
 #define KORE_TLS_VERSION_BOTH	2
 
+#define KORE_RESEED_TIME	(1800 * 1000)
+
 #define errno_s			strerror(errno)
 #define ssl_errno_s		ERR_error_string(ERR_get_error(), NULL)
 
@@ -128,7 +130,7 @@ TAILQ_HEAD(netbuf_head, netbuf);
 #define KORE_TYPE_TASK		4
 
 #define CONN_STATE_UNKNOWN		0
-#define CONN_STATE_SSL_SHAKE		1
+#define CONN_STATE_TLS_SHAKE		1
 #define CONN_STATE_ESTABLISHED		2
 #define CONN_STATE_DISCONNECTING	3
 
@@ -143,6 +145,7 @@ TAILQ_HEAD(netbuf_head, netbuf);
 #define CONN_IDLE_TIMER_ACT	0x10
 #define CONN_READ_BLOCK		0x20
 #define CONN_CLOSE_EMPTY	0x40
+#define CONN_WS_CLOSE_SENT	0x80
 
 #define KORE_IDLE_TIMER_MAX	20000
 
@@ -151,7 +154,7 @@ TAILQ_HEAD(netbuf_head, netbuf);
 #define WEBSOCKET_OP_BINARY	0x02
 #define WEBSOCKET_OP_CLOSE	0x08
 #define WEBSOCKET_OP_PING	0x09
-#define WEBSOCKET_OP_PONG	0x10
+#define WEBSOCKET_OP_PONG	0x0a
 
 #define WEBSOCKET_BROADCAST_LOCAL	1
 #define WEBSOCKET_BROADCAST_GLOBAL	2
@@ -177,8 +180,8 @@ struct connection {
 
 	int			(*handle)(struct connection *);
 	void			(*disconnect)(struct connection *);
-	int			(*read)(struct connection *, int *);
-	int			(*write)(struct connection *, int, int *);
+	int			(*read)(struct connection *, size_t *);
+	int			(*write)(struct connection *, size_t, size_t *);
 
 	u_int8_t		addrtype;
 	union {
@@ -196,7 +199,9 @@ struct connection {
 	struct netbuf		*rnb;
 
 #if !defined(KORE_NO_HTTP)
-	void				*wscbs;
+	struct kore_runtime_call	*ws_connect;
+	struct kore_runtime_call	*ws_message;
+	struct kore_runtime_call	*ws_disconnect;
 	TAILQ_HEAD(, http_request)	http_requests;
 #endif
 
@@ -207,11 +212,36 @@ TAILQ_HEAD(connection_list, connection);
 extern struct connection_list	connections;
 extern struct connection_list	disconnected;
 
+#define KORE_RUNTIME_NATIVE	0
+#define KORE_RUNTIME_PYTHON	1
+
+struct kore_runtime {
+	int	type;
+#if !defined(KORE_NO_HTTP)
+	int	(*http_request)(void *, struct http_request *);
+	int	(*validator)(void *, struct http_request *, void *);
+	void	(*wsconnect)(void *, struct connection *);
+	void	(*wsdisconnect)(void *, struct connection *);
+	void	(*wsmessage)(void *, struct connection *,
+		    u_int8_t, const void *, size_t);
+#endif
+	void	(*execute)(void *);
+	int	(*onload)(void *, int);
+	void	(*connect)(void *, struct connection *);
+};
+
+struct kore_runtime_call {
+	void			*addr;
+	struct kore_runtime	*runtime;
+};
+
+extern struct kore_runtime	kore_native_runtime;
+
 struct listener {
-	u_int8_t		type;
-	u_int8_t		addrtype;
-	int			fd;
-	void			(*connect)(struct connection *);
+	u_int8_t			type;
+	u_int8_t			addrtype;
+	int				fd;
+	struct kore_runtime_call	*connect;
 
 	union {
 		struct sockaddr_in	ipv4;
@@ -250,32 +280,48 @@ struct kore_auth {
 #define HANDLER_TYPE_STATIC	1
 #define HANDLER_TYPE_DYNAMIC	2
 
-#endif
+#endif /* !KORE_NO_HTTP */
 
 #define KORE_MODULE_LOAD	1
 #define KORE_MODULE_UNLOAD	2
 
-struct kore_module {
-	void			*handle;
-	char			*path;
-	char			*onload;
-	int			(*ocb)(int);
+#define KORE_MODULE_NATIVE	0
+#define KORE_MODULE_PYTHON	1
 
-	time_t			mtime;
+struct kore_module;
+
+struct kore_module_functions {
+	void			(*free)(struct kore_module *);
+	void			(*reload)(struct kore_module *);
+	int			(*callback)(struct kore_module *, int);
+	void			(*load)(struct kore_module *, const char *);
+	void			*(*getsym)(struct kore_module *, const char *);
+};
+
+struct kore_module {
+	void				*handle;
+	char				*path;
+	char				*onload;
+	int				type;
+	time_t				mtime;
+	struct kore_runtime_call	*ocb;
+
+	struct kore_module_functions	*fun;
+	struct kore_runtime		*runtime;
 
 	TAILQ_ENTRY(kore_module)	list;
 };
 
 struct kore_module_handle {
-	char			*path;
-	char			*func;
-	void			*addr;
-	int			type;
-	int			errors;
-	regex_t			rctx;
-	struct kore_domain	*dom;
+	char				*path;
+	char				*func;
+	int				type;
+	int				errors;
+	regex_t				rctx;
+	struct kore_domain		*dom;
+	struct kore_runtime_call	*rcall;
 #if !defined(KORE_NO_HTTP)
-	struct kore_auth	*auth;
+	struct kore_auth			*auth;
 	TAILQ_HEAD(, kore_handler_params)	params;
 #endif
 	TAILQ_ENTRY(kore_module_handle)		list;
@@ -313,15 +359,15 @@ TAILQ_HEAD(kore_domain_h, kore_domain);
 #define KORE_VALIDATOR_TYPE_FUNCTION	2
 
 struct kore_validator {
-	u_int8_t		type;
-	char			*name;
-	char			*arg;
-	regex_t			rctx;
-	int			(*func)(struct http_request *, char *);
+	u_int8_t			type;
+	char				*name;
+	char				*arg;
+	regex_t				rctx;
+	struct kore_runtime_call	*rcall;
 
 	TAILQ_ENTRY(kore_validator)	list;
 };
-#endif
+#endif /* !KORE_NO_HTTP */
 
 #define KORE_BUF_OWNER_API	0x0001
 
@@ -356,13 +402,6 @@ struct kore_pool {
 	LIST_HEAD(, kore_pool_entry)	freelist;
 };
 
-struct kore_wscbs {
-	void		(*connect)(struct connection *);
-	void		(*message)(struct connection *, u_int8_t,
-			    void *, size_t);
-	void		(*disconnect)(struct connection *);
-};
-
 struct kore_timer {
 	u_int64_t	nextrun;
 	u_int64_t	interval;
@@ -380,6 +419,9 @@ struct kore_timer {
 #define KORE_MSG_WEBSOCKET	2
 #define KORE_MSG_KEYMGR_REQ	3
 #define KORE_MSG_KEYMGR_RESP	4
+#define KORE_MSG_SHUTDOWN	5
+#define KORE_MSG_ENTROPY_REQ	6
+#define KORE_MSG_ENTROPY_RESP	7
 
 /* Predefined message targets. */
 #define KORE_MSG_PARENT		1000
@@ -419,6 +461,7 @@ extern int	tls_version;
 
 #if !defined(KORE_NO_TLS)
 extern DH	*tls_dhparam;
+extern char	*rand_file;
 #endif
 
 extern u_int8_t			nlisteners;
@@ -438,9 +481,6 @@ extern struct kore_worker	*worker;
 extern struct kore_domain_h	domains;
 extern struct kore_domain	*primary_dom;
 extern struct kore_pool		nb_pool;
-
-void		kore_cli_usage(int);
-int		kore_cli_main(int, char **);
 
 void		kore_signal(int);
 void		kore_worker_wait(int);
@@ -484,6 +524,7 @@ void		kore_timer_remove(struct kore_timer *);
 struct kore_timer	*kore_timer_add(void (*cb)(void *, u_int64_t),
 			    u_int64_t, void *, int);
 
+int		kore_sockopt(int, int, int);
 void		kore_listener_cleanup(void);
 int		kore_server_bind(const char *, const char *, const char *);
 #if !defined(KORE_NO_TLS)
@@ -516,6 +557,7 @@ void		*kore_calloc(size_t, size_t);
 void		*kore_realloc(void *, size_t);
 void		kore_free(void *);
 void		kore_mem_init(void);
+void		kore_mem_cleanup(void);
 
 void		*kore_pool_get(struct kore_pool *);
 void		kore_pool_put(struct kore_pool *, void *);
@@ -526,7 +568,8 @@ void		kore_pool_cleanup(struct kore_pool *);
 time_t		kore_date_to_time(char *);
 char		*kore_time_to_date(time_t);
 char		*kore_strdup(const char *);
-void		kore_log(int, const char *, ...);
+void		kore_log(int, const char *, ...)
+		    __attribute__((format (printf, 2, 3)));
 u_int64_t	kore_strtonum64(const char *, int, int *);
 size_t		kore_strlcpy(char *, const char *, const size_t);
 void		kore_server_disconnect(struct connection *);
@@ -542,7 +585,7 @@ char		*kore_read_line(FILE *, char *, size_t);
 
 #if !defined(KORE_NO_HTTP)
 void		kore_websocket_handshake(struct http_request *,
-		    struct kore_wscbs *);
+		    const char *, const char *, const char *);
 void		kore_websocket_send(struct connection *,
 		    u_int8_t, const void *, size_t);
 void		kore_websocket_broadcast(struct connection *,
@@ -568,15 +611,32 @@ void		kore_module_reload(int);
 void		kore_module_onload(void);
 int		kore_module_loaded(void);
 void		kore_domain_closelogs(void);
-void		*kore_module_getsym(const char *);
+void		*kore_module_getsym(const char *, struct kore_runtime **);
 void		kore_domain_load_crl(void);
 void		kore_domain_keymgr_init(void);
-void		kore_module_load(const char *, const char *);
-void		kore_domain_sslstart(struct kore_domain *);
+void		kore_domain_tlsinit(struct kore_domain *);
+void		kore_module_load(const char *, const char *, int);
 void		kore_domain_callback(void (*cb)(struct kore_domain *));
 int		kore_module_handler_new(const char *, const char *,
 		    const char *, const char *, int);
 void		kore_module_handler_free(struct kore_module_handle *);
+
+struct kore_runtime_call	*kore_runtime_getcall(const char *);
+
+void	kore_runtime_execute(struct kore_runtime_call *);
+int	kore_runtime_onload(struct kore_runtime_call *, int);
+void	kore_runtime_connect(struct kore_runtime_call *, struct connection *);
+#if !defined(KORE_NO_HTTP)
+int	kore_runtime_http_request(struct kore_runtime_call *,
+	    struct http_request *);
+int	kore_runtime_validator(struct kore_runtime_call *,
+	    struct http_request *, void *);
+void	kore_runtime_wsconnect(struct kore_runtime_call *, struct connection *);
+void	kore_runtime_wsdisconnect(struct kore_runtime_call *,
+	    struct connection *);
+void	kore_runtime_wsmessage(struct kore_runtime_call *,
+	    struct connection *, u_int8_t, const void *, size_t);
+#endif
 
 struct kore_domain		*kore_domain_lookup(const char *);
 struct kore_module_handle	*kore_module_handler_find(const char *,
@@ -607,10 +667,10 @@ void		net_cleanup(void);
 int		net_send(struct connection *);
 int		net_send_flush(struct connection *);
 int		net_recv_flush(struct connection *);
-int		net_read(struct connection *, int *);
-int		net_read_ssl(struct connection *, int *);
-int		net_write(struct connection *, int, int *);
-int		net_write_ssl(struct connection *, int, int *);
+int		net_read(struct connection *, size_t *);
+int		net_read_tls(struct connection *, size_t *);
+int		net_write(struct connection *, size_t, size_t *);
+int		net_write_tls(struct connection *, size_t, size_t *);
 void		net_recv_reset(struct connection *, size_t,
 		    int (*cb)(struct netbuf *));
 void		net_remove_netbuf(struct netbuf_head *, struct netbuf *);
@@ -638,9 +698,8 @@ void	kore_buf_replace_string(struct kore_buf *, char *, void *, size_t);
 void	kore_keymgr_run(void);
 void	kore_keymgr_cleanup(void);
 
-#if defined(KORE_SINGLE_BINARY)
-void	kore_onload(void);
-#endif
+void	kore_parent_configure(void);
+void	kore_worker_configure(void);
 
 #if defined(__cplusplus)
 }

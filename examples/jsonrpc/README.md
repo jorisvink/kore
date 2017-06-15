@@ -12,7 +12,7 @@ activated.
 
 Run:
 ```
-	$ kore run
+	$ kodev run
 ```
 
 Test:

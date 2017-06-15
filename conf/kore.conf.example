@@ -55,6 +55,19 @@ workers		4
 # Store the pid of the main process in this file.
 #pidfile	kore.pid
 
+# If TLS is enabled you can specify a file where Kore will read
+# initial entropy from and save entropy towards when exiting.
+#
+# Note that if you enable this you must provide the first iteration
+# of this file by generating 1024 cryptographically safe random bytes
+# and writing them to the file specified.
+#
+# Kore will refuse to start if the specified file does not exist,
+# is of the wrong size or cannot be opened in anyway.
+#
+# NOTE: This file location must be inside your chrooted environment.
+#rand_file	random.data
+
 # HTTP specific settings.
 #	http_header_max		Maximum size of HTTP headers (in bytes).
 #
@@ -103,6 +116,9 @@ workers		4
 # An additional parameter can be specified as the "onload" function
 # which Kore will call when the module is loaded/reloaded.
 load contrib/examples/generic/example.module	example_load
+
+# Load a python file (if built with PYTHON=1)
+#python_import src/index.py example_load
 
 # Validators
 #	validator	name	type	regex|function

@@ -8,7 +8,7 @@ link to other libraries.
 
 Run:
 ```
-	$ kore run
+	$ kodev run
 ```
 
 Test:

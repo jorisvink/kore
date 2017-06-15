@@ -14,6 +14,11 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+/*
+ * XXX - Lots of OPENSSL ifdefs here for 1.0.2 and 1.1.0 release lines.
+ * The idea is to only support 1.1.0 down the line and remove the 1.0.2 goo.
+ */
+
 #include <sys/param.h>
 
 #if !defined(KORE_NO_TLS)
@@ -28,6 +33,10 @@
 #include <fnmatch.h>
 
 #include "kore.h"
+
+#if !defined(KORE_NO_HTTP)
+#include "http.h"
+#endif
 
 #define SSL_SESSION_ID		"kore_ssl_sessionid"
 
@@ -59,12 +68,14 @@ static int	keymgr_rsa_privenc(int, const unsigned char *,
 static ECDSA_SIG	*keymgr_ecdsa_sign(const unsigned char *, int,
 			    const BIGNUM *, const BIGNUM *, EC_KEY *);
 
+#if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
+static RSA_METHOD	*keymgr_rsa_meth = NULL;
+static EC_KEY_METHOD	*keymgr_ec_meth = NULL;
+#else
 #if !defined(LIBRESSL_VERSION_TEXT)
 /*
  * Run own ecdsa_method data structure as OpenSSL has this in ecs_locl.h
  * and does not export this on systems.
- *
- * XXX - OpenSSL is merging ECDSA functionality into EC in 1.1.0.
  */
 struct ecdsa_method {
 	const char	*name;
@@ -105,12 +116,32 @@ static RSA_METHOD	keymgr_rsa = {
 	NULL
 };
 
-#endif
+#endif /* OPENSSL_VERSION_NUMBER */
+#endif /* KORE_NO_TLS */
 
 void
 kore_domain_init(void)
 {
 	TAILQ_INIT(&domains);
+
+#if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
+	if (keymgr_rsa_meth == NULL) {
+		if ((keymgr_rsa_meth = RSA_meth_new("kore RSA keymgr method",
+		    RSA_METHOD_FLAG_NO_CHECK)) == NULL)
+			fatal("failed to allocate RSA method");
+	}
+
+	RSA_meth_set_init(keymgr_rsa_meth, keymgr_rsa_init);
+	RSA_meth_set_finish(keymgr_rsa_meth, keymgr_rsa_finish);
+	RSA_meth_set_priv_enc(keymgr_rsa_meth, keymgr_rsa_privenc);
+
+	if (keymgr_ec_meth == NULL) {
+		if ((keymgr_ec_meth = EC_KEY_METHOD_new(NULL)) == NULL)
+			fatal("failed to allocate EC KEY method");
+	}
+
+	EC_KEY_METHOD_set_sign(keymgr_ec_meth, NULL, NULL, keymgr_ecdsa_sign);
+#endif
 }
 
 void
@@ -122,6 +153,18 @@ kore_domain_cleanup(void)
 		TAILQ_REMOVE(&domains, dom, list);
 		kore_domain_free(dom);
 	}
+
+#if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
+	if (keymgr_rsa_meth != NULL) {
+		RSA_meth_free(keymgr_rsa_meth);
+		keymgr_rsa_meth = NULL;
+	}
+
+	if (keymgr_ec_meth != NULL) {
+		EC_KEY_METHOD_free(keymgr_ec_meth);
+		keymgr_ec_meth = NULL;
+	}
+#endif
 }
 
 int
@@ -194,7 +237,7 @@ kore_domain_free(struct kore_domain *dom)
 }
 
 void
-kore_domain_sslstart(struct kore_domain *dom)
+kore_domain_tlsinit(struct kore_domain *dom)
 {
 #if !defined(KORE_NO_TLS)
 	BIO			*in;
@@ -206,11 +249,15 @@ kore_domain_sslstart(struct kore_domain *dom)
 	X509_STORE		*store;
 	const SSL_METHOD	*method;
 #if !defined(OPENSSL_NO_EC)
-	EC_KEY		*ecdh;
+	EC_KEY			*ecdh;
 #endif
 
 	kore_debug("kore_domain_sslstart(%s)", dom->domain);
 
+#if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
+	if ((method = TLS_method()) == NULL)
+		fatal("TLS_method(): %s", ssl_errno_s);
+#else
 	switch (tls_version) {
 	case KORE_TLS_VERSION_1_2:
 		method = TLSv1_2_server_method();
@@ -225,16 +272,40 @@ kore_domain_sslstart(struct kore_domain *dom)
 		fatal("unknown tls_version: %d", tls_version);
 		return;
 	}
+#endif
 
-	dom->ssl_ctx = SSL_CTX_new(method);
-	if (dom->ssl_ctx == NULL)
-		fatal("kore_domain_sslstart(): SSL_ctx_new(): %s", ssl_errno_s);
+	if ((dom->ssl_ctx = SSL_CTX_new(method)) == NULL)
+		fatal("SSL_ctx_new(): %s", ssl_errno_s);
+
+#if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
+	if (!SSL_CTX_set_min_proto_version(dom->ssl_ctx, TLS1_VERSION))
+		fatal("SSL_CTX_set_min_proto_version: %s", ssl_errno_s);
+	if (!SSL_CTX_set_max_proto_version(dom->ssl_ctx, TLS1_2_VERSION))
+		fatal("SSL_CTX_set_max_proto_version: %s", ssl_errno_s);
+
+	switch (tls_version) {
+	case KORE_TLS_VERSION_1_2:
+		if (!SSL_CTX_set_min_proto_version(dom->ssl_ctx,
+		    TLS1_2_VERSION))
+			fatal("SSL_CTX_set_min_proto_version: %s", ssl_errno_s);
+		break;
+	case KORE_TLS_VERSION_1_0:
+		if (!SSL_CTX_set_max_proto_version(dom->ssl_ctx, TLS1_VERSION))
+			fatal("SSL_CTX_set_min_proto_version: %s", ssl_errno_s);
+		break;
+	case KORE_TLS_VERSION_BOTH:
+		break;
+	default:
+		fatal("unknown tls_version: %d", tls_version);
+		return;
+	}
+#endif
 	if (!SSL_CTX_use_certificate_chain_file(dom->ssl_ctx, dom->certfile)) {
 		fatal("SSL_CTX_use_certificate_chain_file(%s): %s",
 		    dom->certfile, ssl_errno_s);
 	}
 
-	if ((in = BIO_new(BIO_s_file_internal())) == NULL)
+	if ((in = BIO_new(BIO_s_file())) == NULL)
 		fatal("BIO_new: %s", ssl_errno_s);
 	if (BIO_read_filename(in, dom->certfile) <= 0)
 		fatal("BIO_read_filename: %s", ssl_errno_s);
@@ -251,13 +322,22 @@ kore_domain_sslstart(struct kore_domain *dom)
 		if ((rsa = EVP_PKEY_get1_RSA(pkey)) == NULL)
 			fatal("no RSA public key present");
 		RSA_set_app_data(rsa, dom);
+#if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
+		RSA_set_method(rsa, keymgr_rsa_meth);
+#else
 		RSA_set_method(rsa, &keymgr_rsa);
+#endif
 		break;
 	case EVP_PKEY_EC:
 		if ((eckey = EVP_PKEY_get1_EC_KEY(pkey)) == NULL)
 			fatal("no EC public key present");
+#if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
+		EC_KEY_set_ex_data(eckey, 0, dom);
+		EC_KEY_set_method(eckey, keymgr_ec_meth);
+#else
 		ECDSA_set_ex_data(eckey, 0, dom);
 		ECDSA_set_method(eckey, &keymgr_ecdsa);
+#endif
 		break;
 	default:
 		fatal("unknown public key in certificate");
@@ -281,6 +361,7 @@ kore_domain_sslstart(struct kore_domain *dom)
 	SSL_CTX_set_tmp_ecdh(dom->ssl_ctx, ecdh);
 	EC_KEY_free(ecdh);
 
+	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_SINGLE_ECDH_USE);
 	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_COMPRESSION);
 
 	if (dom->cafile != NULL) {
@@ -314,7 +395,9 @@ kore_domain_sslstart(struct kore_domain *dom)
 	 * from its OpenSSL in base so we don't need to care about it.
 	 */
 #if !defined(LIBRESSL_VERSION_TEXT)
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
 	dom->ssl_ctx->freelist_max_len = 0;
+#endif
 #endif
 	SSL_CTX_set_mode(dom->ssl_ctx, SSL_MODE_ENABLE_PARTIAL_WRITE);
 
@@ -351,6 +434,8 @@ kore_domain_lookup(const char *domain)
 	struct kore_domain	*dom;
 
 	TAILQ_FOREACH(dom, &domains, list) {
+		if (!strcmp(dom->domain, domain))
+			return (dom);
 		if (!fnmatch(dom->domain, domain, FNM_CASEFOLD))
 			return (dom);
 	}
@@ -429,16 +514,27 @@ keymgr_init(void)
 	if ((meth = RSA_get_default_method()) == NULL)
 		fatal("failed to obtain RSA method");
 
+#if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
+	RSA_meth_set_pub_enc(keymgr_rsa_meth, RSA_meth_get_pub_enc(meth));
+	RSA_meth_set_pub_dec(keymgr_rsa_meth, RSA_meth_get_pub_dec(meth));
+	RSA_meth_set_bn_mod_exp(keymgr_rsa_meth, RSA_meth_get_bn_mod_exp(meth));
+#else
 	keymgr_rsa.rsa_pub_enc = meth->rsa_pub_enc;
 	keymgr_rsa.rsa_pub_dec = meth->rsa_pub_dec;
 	keymgr_rsa.bn_mod_exp = meth->bn_mod_exp;
+#endif
 }
 
 static int
 keymgr_rsa_init(RSA *rsa)
 {
 	if (rsa != NULL) {
+#if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
+		RSA_set_flags(rsa, RSA_flags(rsa) |
+		    RSA_FLAG_EXT_PKEY | RSA_METHOD_FLAG_NO_CHECK);
+#else
 		rsa->flags |= RSA_FLAG_EXT_PKEY | RSA_METHOD_FLAG_NO_CHECK;
+#endif
 		return (1);
 	}
 
@@ -515,8 +611,13 @@ keymgr_ecdsa_sign(const unsigned char *dgst, int dgst_len,
 	if (len > sizeof(keymgr_buf))
 		fatal("keymgr_buf too small");
 
+#if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
+	if ((dom = EC_KEY_get_ex_data(eckey, 0)) == NULL)
+		fatal("EC_KEY has no domain");
+#else
 	if ((dom = ECDSA_get_ex_data(eckey, 0)) == NULL)
 		fatal("EC_KEY has no domain");
+#endif
 
 	memset(keymgr_buf, 0, sizeof(keymgr_buf));
 
@@ -550,6 +651,9 @@ keymgr_await_data(void)
 	int			ret;
 	struct pollfd		pfd[1];
 	u_int64_t		start, cur;
+#if !defined(KORE_NO_HTTP)
+	int			process_requests;
+#endif
 
 	/*
 	 * We need to wait until the keymgr responds to us, so keep doing
@@ -559,10 +663,15 @@ keymgr_await_data(void)
 	 * This means other internal messages can still be delivered by
 	 * this worker process to the appropriate callbacks but we do not
 	 * drop out until we've either received an answer from the keymgr
-	 * or until the timeout has been reached.
+	 * or until the timeout has been reached (1 second currently).
 	 *
-	 * It will however block any other I/O and request handling on
-	 * this worker until either of the above criteria is met.
+	 * If we end up waiting for the keymgr process we will call
+	 * http_process (if not built with NOHTTP=1) to further existing
+	 * requests so those do not block too much.
+	 *
+	 * This means that all incoming data will stop being processed
+	 * while existing requests will get processed until we return
+	 * from this call.
 	 */
 	start = kore_time_ms();
 	kore_platform_disable_read(worker->msg[1]->fd);
@@ -570,7 +679,17 @@ keymgr_await_data(void)
 	keymgr_response = 0;
 	memset(keymgr_buf, 0, sizeof(keymgr_buf));
 
+#if !defined(KORE_NO_HTTP)
+	process_requests = 0;
+#endif
+
 	for (;;) {
+#if !defined(KORE_NO_HTTP)
+		if (process_requests) {
+			http_process();
+			process_requests = 0;
+		}
+#endif
 		pfd[0].fd = worker->msg[1]->fd;
 		pfd[0].events = POLLIN;
 		pfd[0].revents = 0;
@@ -586,8 +705,13 @@ keymgr_await_data(void)
 		if ((cur - start) > 1000)
 			break;
 
-		if (ret == 0)
+		if (ret == 0) {
+#if !defined(KORE_NO_HTTP)
+			/* No activity on channel, process HTTP requests. */
+			process_requests = 1;
+#endif
 			continue;
+		}
 
 		if (pfd[0].revents & (POLLERR | POLLHUP))
 			break;
@@ -600,6 +724,13 @@ keymgr_await_data(void)
 
 		if (keymgr_response)
 			break;
+
+#if !defined(KORE_NO_HTTP)
+		/* If we've spent 100ms already, process HTTP requests. */
+		if ((cur - start) > 100) {
+			process_requests = 1;
+		}
+#endif
 	}
 }
 

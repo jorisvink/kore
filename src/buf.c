@@ -82,14 +82,17 @@ void
 kore_buf_appendv(struct kore_buf *buf, const char *fmt, va_list args)
 {
 	int		l;
+	va_list		copy;
 	char		*b, sb[BUFSIZ];
+
+	va_copy(copy, args);
 
 	l = vsnprintf(sb, sizeof(sb), fmt, args);
 	if (l == -1)
 		fatal("kore_buf_appendv(): vsnprintf error");
 
 	if ((size_t)l >= sizeof(sb)) {
-		l = vasprintf(&b, fmt, args);
+		l = vasprintf(&b, fmt, copy);
 		if (l == -1)
 			fatal("kore_buf_appendv(): error or truncation");
 	} else {
@@ -99,6 +102,8 @@ kore_buf_appendv(struct kore_buf *buf, const char *fmt, va_list args)
 	kore_buf_append(buf, b, l);
 	if (b != sb)
 		free(b);
+
+	va_end(copy);
 }
 
 void

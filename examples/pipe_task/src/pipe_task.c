@@ -46,13 +46,6 @@ void		websocket_message(struct connection *,
 int		pipe_reader(struct kore_task *);
 void		pipe_data_available(struct kore_task *);
 
-/* Websocket callbacks. */
-struct kore_wscbs wscbs = {
-	websocket_connect,
-	websocket_message,
-	websocket_disconnect
-};
-
 /* Our pipe reader. */
 struct kore_task	pipe_task;
 
@@ -65,7 +58,7 @@ init(int state)
 		return (KORE_RESULT_ERROR);
 
 	/* Only do this on a dedicated worker. */
-	if (worker->id != 0)
+	if (worker->id != 1)
 		return (KORE_RESULT_OK);
 
 	/* Create our task. */
@@ -115,7 +108,8 @@ page(struct http_request *req)
 int
 page_ws_connect(struct http_request *req)
 {
-	kore_websocket_handshake(req, &wscbs);
+	kore_websocket_handshake(req, "websocket_connect",
+	    "websocket_message", "websocket_disconnect");
 	return (KORE_RESULT_OK);
 }
 
@@ -134,6 +128,8 @@ pipe_reader(struct kore_task *t)
 
 	fd = -1;
 
+	kore_log(LOG_INFO, "pipe_reader starting");
+
 	/* Just run forever. */
 	for (;;) {
 		/* Attempt to open the pipe if needed. */
@@ -142,7 +138,7 @@ pipe_reader(struct kore_task *t)
 
 			if ((fd = open("/tmp/pipe", O_RDONLY)) == -1) {
 				kore_log(LOG_NOTICE, "failed to open pipe");
-				sleep(10);
+				sleep(1);
 				continue;
 			}
 
@@ -196,7 +192,8 @@ pipe_data_available(struct kore_task *t)
 		kore_log(LOG_WARNING, "truncated data from task");
 
 	/* Broadcast it to all connected websocket clients. */
-	kore_log(LOG_NOTICE, "got %d bytes from task", len);
+	kore_log(LOG_NOTICE, "got %zu bytes from task", len);
+
 	kore_websocket_broadcast(NULL, WEBSOCKET_OP_TEXT,
 	    buf, len, WEBSOCKET_BROADCAST_GLOBAL);
 }

@@ -4,7 +4,7 @@ Note that this example only works if Kore was built with NOHTTP=1.
 
 Run:
 ```
-	$ kore run
+	$ kodev run
 ```
 
 Test:

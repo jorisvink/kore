@@ -73,7 +73,9 @@ kore_connection_new(void *owner)
 	c->idle_timer.length = KORE_IDLE_TIMER_MAX;
 
 #if !defined(KORE_NO_HTTP)
-	c->wscbs = NULL;
+	c->ws_connect = NULL;
+	c->ws_message = NULL;
+	c->ws_disconnect = NULL;
 	TAILQ_INIT(&(c->http_requests));
 #endif
 
@@ -86,7 +88,7 @@ int
 kore_connection_accept(struct listener *listener, struct connection **out)
 {
 	struct connection	*c;
-	struct sockaddr		*sin;
+	struct sockaddr		*s;
 	socklen_t		len;
 
 	kore_debug("kore_connection_accept(%p)", listener);
@@ -97,13 +99,13 @@ kore_connection_accept(struct listener *listener, struct connection **out)
 	c->addrtype = listener->addrtype;
 	if (c->addrtype == AF_INET) {
 		len = sizeof(struct sockaddr_in);
-		sin = (struct sockaddr *)&(c->addr.ipv4);
+		s = (struct sockaddr *)&(c->addr.ipv4);
 	} else {
 		len = sizeof(struct sockaddr_in6);
-		sin = (struct sockaddr *)&(c->addr.ipv6);
+		s = (struct sockaddr *)&(c->addr.ipv6);
 	}
 
-	if ((c->fd = accept(listener->fd, sin, &len)) == -1) {
+	if ((c->fd = accept(listener->fd, s, &len)) == -1) {
 		kore_pool_put(&connection_pool, c);
 		kore_debug("accept(): %s", errno_s);
 		return (KORE_RESULT_ERROR);
@@ -119,16 +121,16 @@ kore_connection_accept(struct listener *listener, struct connection **out)
 	TAILQ_INSERT_TAIL(&connections, c, list);
 
 #if !defined(KORE_NO_TLS)
-	c->state = CONN_STATE_SSL_SHAKE;
-	c->write = net_write_ssl;
-	c->read = net_read_ssl;
+	c->state = CONN_STATE_TLS_SHAKE;
+	c->write = net_write_tls;
+	c->read = net_read_tls;
 #else
 	c->state = CONN_STATE_ESTABLISHED;
 	c->write = net_write;
 	c->read = net_read;
 
 	if (listener->connect != NULL) {
-		listener->connect(c);
+		kore_runtime_connect(listener->connect, c);
 	} else {
 #if !defined(KORE_NO_HTTP)
 		c->proto = CONN_PROTO_HTTP;
@@ -211,7 +213,7 @@ kore_connection_handle(struct connection *c)
 
 	switch (c->state) {
 #if !defined(KORE_NO_TLS)
-	case CONN_STATE_SSL_SHAKE:
+	case CONN_STATE_TLS_SHAKE:
 		if (c->ssl == NULL) {
 			c->ssl = SSL_new(primary_dom->ssl_ctx);
 			if (c->ssl == NULL) {
@@ -224,6 +226,7 @@ kore_connection_handle(struct connection *c)
 			SSL_set_app_data(c->ssl, c);
 		}
 
+		ERR_clear_error();
 		r = SSL_accept(c->ssl);
 		if (r <= 0) {
 			r = SSL_get_error(c->ssl, r);
@@ -264,7 +267,7 @@ kore_connection_handle(struct connection *c)
 		if (c->owner != NULL) {
 			listener = (struct listener *)c->owner;
 			if (listener->connect != NULL) {
-				listener->connect(c);
+				kore_runtime_connect(listener->connect, c);
 				return (KORE_RESULT_OK);
 			}
 		}
@@ -332,12 +335,18 @@ kore_connection_remove(struct connection *c)
 		kore_free(c->hdlr_extra);
 
 #if !defined(KORE_NO_HTTP)
-	for (req = TAILQ_FIRST(&(c->http_requests)); req != NULL; req = rnext) {
+	for (req = TAILQ_FIRST(&(c->http_requests));
+	    req != NULL; req = rnext) {
 		rnext = TAILQ_NEXT(req, olist);
 		TAILQ_REMOVE(&(c->http_requests), req, olist);
+		req->owner = NULL;
 		req->flags |= HTTP_REQUEST_DELETE;
 		http_request_wakeup(req);
 	}
+
+	kore_free(c->ws_connect);
+	kore_free(c->ws_message);
+	kore_free(c->ws_disconnect);
 #endif
 
 	for (nb = TAILQ_FIRST(&(c->send_queue)); nb != NULL; nb = next) {
@@ -409,9 +418,7 @@ kore_connection_nonblock(int fd, int nodelay)
 	}
 
 	if (nodelay) {
-		flags = 1;
-		if (setsockopt(fd, IPPROTO_TCP,
-		    TCP_NODELAY, (char *)&flags, sizeof(flags)) == -1) {
+		if (!kore_sockopt(fd, IPPROTO_TCP, TCP_NODELAY)) {
 			kore_log(LOG_NOTICE,
 			    "failed to set TCP_NODELAY on %d", fd);
 		}
