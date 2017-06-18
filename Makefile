@@ -62,7 +62,7 @@ ifneq ("$(PGSQL)", "")
 	S_SRC+=src/pgsql.c
 	LDFLAGS+=-L$(shell pg_config --libdir) -lpq
 	CFLAGS+=-I$(shell pg_config --includedir) -DKORE_USE_PGSQL \
-	    -DPGSQL_INCLUDE_PATH="\"$(shell pg_config --includedir)\""
+	    -DPGSQL_INCLUDE_PATH="$(shell pg_config --includedir)"
 	FEATURES+=-DKORE_USE_PGSQL
 	FEATURES_INC+=-I$(shell pg_config --includedir)
 endif
