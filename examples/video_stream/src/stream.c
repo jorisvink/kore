@@ -104,7 +104,7 @@ video_stream(struct http_request *req)
 		}
 
 		bytes++;
-		n = kore_split_string(bytes, "-", range, 2);
+		n = kore_split_string(bytes, "-", range, 3);
 		if (n == 0) {
 			v->ref--;
 			http_response(req, 416, NULL, 0);
