@@ -14,9 +14,9 @@ Features
 * Supports HTTP/1.1
 * Websocket support
 * Privseps by default
+* TLS enabled by default
 * Lightweight background tasks
 * Built-in parameter validation
-* Only HTTPS connections allowed
 * Built-in asynchronous PostgreSQL support
 * Built-in support for page handlers in Python
 * Private keys isolated in separate process (RSA and ECDSA)
