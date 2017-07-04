@@ -1601,6 +1601,8 @@ http_error_response(struct connection *c, int status)
 {
 	kore_debug("http_error_response(%p, %d)", c, status);
 
+	c->flags |= CONN_CLOSE_EMPTY;
+
 	switch (c->proto) {
 	case CONN_PROTO_HTTP:
 		http_response_normal(NULL, c, status, NULL, 0);
@@ -1643,7 +1645,7 @@ http_response_normal(struct http_request *req, struct connection *c,
 	}
 
 	/* Note that req CAN be NULL. */
-	if (req != NULL && req->owner->proto != CONN_PROTO_WEBSOCKET) {
+	if (req == NULL || req->owner->proto != CONN_PROTO_WEBSOCKET) {
 		if (http_keepalive_time && connection_close == 0) {
 			kore_buf_appendf(header_buf,
 			    "connection: keep-alive\r\n");
