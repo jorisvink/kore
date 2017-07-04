@@ -1609,6 +1609,9 @@ http_error_response(struct connection *c, int status)
 		fatal("http_error_response() bad proto %d", c->proto);
 		/* NOTREACHED. */
 	}
+
+	if (!net_send_flush(c))
+		kore_connection_disconnect(c);
 }
 
 static void
