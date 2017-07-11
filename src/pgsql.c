@@ -744,10 +744,14 @@ pgsql_cancel(struct kore_pgsql *pgsql)
 static void
 pgsql_rollback_state(struct kore_pgsql *pgsql, void *arg)
 {
+	struct pgsql_conn	*conn;
+
 	switch (pgsql->state) {
 	case KORE_PGSQL_STATE_ERROR:
+		conn = pgsql->conn;
 		kore_pgsql_logerror(pgsql);
 		kore_pgsql_cleanup(pgsql);
+		pgsql_conn_cleanup(conn);
 		break;
 	case KORE_PGSQL_STATE_COMPLETE:
 		kore_pgsql_cleanup(pgsql);
