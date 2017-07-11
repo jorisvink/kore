@@ -43,6 +43,8 @@ struct pgsql_conn {
 struct pgsql_db {
 	char			*name;
 	char			*conn_string;
+	u_int16_t		pgsql_conn_max;
+	u_int16_t		pgsql_conn_count;
 
 	LIST_ENTRY(pgsql_db)	rlist;
 };
