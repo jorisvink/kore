@@ -467,7 +467,6 @@ rescan:
 				kore_pgsql_cleanup(rollback);
 				kore_free(rollback);
 				pgsql_conn_cleanup(conn);
-				return (NULL);
 			}
 
 			goto rescan;
