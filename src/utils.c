@@ -377,68 +377,67 @@ kore_time_ms(void)
 }
 
 int
-kore_base64_encode(u_int8_t *data, size_t len, char **out)
+kore_base64_encode(const void *data, size_t len, char **out)
 {
-	u_int32_t		b;
-	struct kore_buf		*res;
-	size_t			plen, idx;
-	u_int8_t		n, *pdata;
-	int			i, padding;
+	u_int8_t		n;
+	size_t			nb;
+	const u_int8_t		*ptr;
+	u_int32_t		bytes;
+	struct kore_buf		result;
 
-	if ((len % 3) != 0) {
-		padding = 3 - (len % 3);
-		plen = len + padding;
-		if (plen < len)
-			fatal("plen wrapped");
+	ptr = data;
+	kore_buf_init(&result, (len / 3) * 4);
 
-		pdata = kore_malloc(plen);
-		memcpy(pdata, data, len);
-		memset(pdata + len, 0, padding);
-	} else {
-		plen = len;
-		padding = 0;
-		pdata = data;
-	}
-
-	res = kore_buf_alloc(plen);
-
-	i = 2;
-	b = 0;
-	for (idx = 0; idx < plen; idx++) {
-		b |= (pdata[idx] << (i * 8));
-		if (i-- == 0) {
-			for (i = 3; i >= 0; i--) {
-				n = (b >> (6 * i)) & 0x3f;
-				if (n >= sizeof(b64table)) {
-					kore_debug("unable to encode %d", n);
-					kore_buf_free(res);
-					return (KORE_RESULT_ERROR);
-				}
-
-				if (idx >= len && i < padding)
-					break;
-
-				kore_buf_append(res, &(b64table[n]), 1);
-			}
-
-			b = 0;
-			i = 2;
+	while (len > 0) {
+		if (len > 2) {
+			nb = 3;
+			bytes = *ptr++ << 16;
+			bytes |= *ptr++ << 8;
+			bytes |= *ptr++;
+		} else if (len > 1) {
+			nb = 2;
+			bytes = *ptr++ << 16;
+			bytes |= *ptr++ << 8;
+		} else if (len == 1) {
+			nb = 1;
+			bytes = *ptr++ << 16;
+		} else {
+			kore_buf_cleanup(&result);
+			return (KORE_RESULT_ERROR);
 		}
+
+		n = (bytes >> 18) & 0x3f;
+		kore_buf_append(&result, &(b64table[n]), 1);
+		n = (bytes >> 12) & 0x3f;
+		kore_buf_append(&result, &(b64table[n]), 1);
+		if (nb > 1) {
+			n = (bytes >> 6) & 0x3f;
+			kore_buf_append(&result, &(b64table[n]), 1);
+			if (nb > 2) {
+				n = bytes & 0x3f;
+				kore_buf_append(&result, &(b64table[n]), 1);
+			}
+		}
+
+		len -= nb;
 	}
 
-	for (i = 0; i < padding; i++)
-		kore_buf_append(res, (u_int8_t *)"=", 1);
+	switch (nb) {
+	case 1:
+		kore_buf_appendf(&result, "==");
+		break;
+	case 2:
+		kore_buf_appendf(&result, "=");
+		break;
+	case 3:
+		break;
+	default:
+		kore_buf_cleanup(&result);
+		return (KORE_RESULT_ERROR);
+	}
 
-	if (pdata != data)
-		kore_free(pdata);
-
-	pdata = kore_buf_release(res, &plen);
-	if ((plen + 1) < plen)
-		fatal("plen wrapped");
-
-	*out = kore_malloc(plen + 1);
-	(void)kore_strlcpy(*out, (char *)pdata, plen + 1);
-	kore_free(pdata);
+	/* result.data gets taken over so no need to cleanup result. */
+	*out = kore_buf_stringify(&result, NULL);
 
 	return (KORE_RESULT_OK);
 }
