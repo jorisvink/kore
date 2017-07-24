@@ -385,6 +385,7 @@ kore_base64_encode(const void *data, size_t len, char **out)
 	u_int32_t		bytes;
 	struct kore_buf		result;
 
+	nb = 0;
 	ptr = data;
 	kore_buf_init(&result, (len / 3) * 4);
 
