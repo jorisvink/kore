@@ -1739,7 +1739,7 @@ http_write_response_cookie(struct http_cookie *ck)
 const char *
 http_status_text(int status)
 {
-	char		*r;
+	const char	*r;
 
 	switch (status) {
 	case HTTP_STATUS_CONTINUE:
