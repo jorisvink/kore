@@ -289,7 +289,8 @@ kore_pgsql_register(const char *dbname, const char *connstring)
 
 	pgsqldb = kore_malloc(sizeof(*pgsqldb));
 	pgsqldb->name = kore_strdup(dbname);
-	pgsqldb->pgsql_conn_max = pgsql_conn_max;
+	pgsqldb->conn_count = 0;
+	pgsqldb->conn_max = pgsql_conn_max;
 	pgsqldb->conn_string = kore_strdup(connstring);
 	LIST_INSERT_HEAD(&pgsql_db_conn_strings, pgsqldb, rlist);
 
@@ -474,7 +475,8 @@ rescan:
 	}
 
 	if (conn == NULL) {
-		if (db->pgsql_conn_count >= db->pgsql_conn_max) {
+		if (db->conn_max != 0 &&
+		    db->conn_count >= db->conn_max) {
 			if (pgsql->flags & KORE_PGSQL_ASYNC) {
 				pgsql_queue_add(pgsql);
 			} else {
@@ -593,7 +595,7 @@ pgsql_conn_create(struct kore_pgsql *pgsql, struct pgsql_db *db)
 	if (db == NULL || db->conn_string == NULL)
 		fatal("pgsql_conn_create: no connection string");
 
-	db->pgsql_conn_count++;
+	db->conn_count++;
 
 	conn = kore_malloc(sizeof(*conn));
 	conn->job = NULL;
@@ -681,7 +683,7 @@ pgsql_conn_cleanup(struct pgsql_conn *conn)
 
 	LIST_FOREACH(pgsqldb, &pgsql_db_conn_strings, rlist) {
 		if (strcmp(pgsqldb->name, conn->name)) {
-			pgsqldb->pgsql_conn_count--;
+			pgsqldb->conn_count--;
 			break;
 		}
 	}
