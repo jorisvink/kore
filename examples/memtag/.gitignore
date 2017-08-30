@@ -1,0 +1,6 @@
+*.o
+.flavor
+.objs
+memtag.so
+assets.h
+cert
