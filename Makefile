@@ -115,7 +115,7 @@ $(KODEV):
 
 $(KORE): $(OBJDIR) $(S_OBJS)
 	$(CC) $(S_OBJS) $(LDFLAGS) -o $(KORE)
-	@echo $(FEATURES) > kore.features
+	@echo $(FEATURES) $(FEATURES_INC) > kore.features
 
 objects: $(OBJDIR) $(S_OBJS)
 	@echo $(LDFLAGS) > $(OBJDIR)/ldflags
