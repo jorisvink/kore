@@ -104,6 +104,7 @@ kore_module_load(const char *path, const char *onload, int type)
 	TAILQ_INSERT_TAIL(&modules, module, list);
 
 	if (onload != NULL) {
+		module->onload = kore_strdup(onload);
 		module->ocb = kore_malloc(sizeof(*module->ocb));
 		module->ocb->runtime = module->runtime;
 		module->ocb->addr = module->fun->getsym(module, onload);
