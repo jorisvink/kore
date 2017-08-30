@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2016 Joris Vink <joris@coders.se>
+ * Copyright (c) 2013-2017 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -32,7 +32,10 @@
 #define KORE_MEMINFO(x)		\
 	(struct meminfo *)((u_int8_t *)x + KORE_MEMSIZE(x))
 
+#define KORE_MEM_TAGGED		0x0001
+
 struct meminfo {
+	u_int16_t		flags;
 	u_int16_t		magic;
 };
 
@@ -40,8 +43,16 @@ struct memblock {
 	struct kore_pool	pool;
 };
 
+struct tag {
+	void			*ptr;
+	u_int32_t		id;
+	TAILQ_ENTRY(tag)	list;
+};
+
 static size_t			memblock_index(size_t);
 
+static TAILQ_HEAD(, tag)	tags;
+static struct kore_pool		tag_pool;
 static struct memblock		blocks[KORE_MEM_BLOCKS];
 
 void
@@ -52,6 +63,8 @@ kore_mem_init(void)
 	u_int32_t	size, elm, mlen;
 
 	size = 8;
+	TAILQ_INIT(&tags);
+	kore_pool_init(&tag_pool, "tag_pool", sizeof(struct tag), 100);
 
 	for (i = 0; i < KORE_MEM_BLOCKS; i++) {
 		len = snprintf(name, sizeof(name), "block-%u", size);
@@ -104,6 +117,7 @@ kore_malloc(size_t len)
 	addr = (u_int8_t *)ptr + sizeof(size_t);
 
 	mem = KORE_MEMINFO(addr);
+	mem->flags = 0;
 	mem->magic = KORE_MEM_MAGIC;
 
 	return (addr);
@@ -162,6 +176,11 @@ kore_free(void *ptr)
 	if (mem->magic != KORE_MEM_MAGIC)
 		fatal("kore_free(): magic boundary not found");
 
+	if (mem->flags & KORE_MEM_TAGGED) {
+		kore_mem_untag(ptr);
+		mem->flags &= ~KORE_MEM_TAGGED;
+	}
+
 	len = KORE_MEMSIZE(ptr);
 	addr = (u_int8_t *)ptr - sizeof(size_t);
 
@@ -184,6 +203,65 @@ kore_strdup(const char *str)
 	(void)kore_strlcpy(nstr, str, len);
 
 	return (nstr);
+}
+
+void *
+kore_malloc_tagged(size_t len, u_int32_t tag)
+{
+	void		*ptr;
+
+	ptr = kore_malloc(len);
+	kore_mem_tag(ptr, tag);
+
+	return (ptr);
+}
+
+void
+kore_mem_tag(void *ptr, u_int32_t id)
+{
+	struct tag		*tag;
+	struct meminfo		*mem;
+
+	if (kore_mem_lookup(id) != NULL)
+		fatal("kore_mem_tag: tag %u taken", id);
+
+	mem = KORE_MEMINFO(ptr);
+	if (mem->magic != KORE_MEM_MAGIC)
+		fatal("kore_mem_tag: magic boundary not found");
+	mem->flags |= KORE_MEM_TAGGED;
+
+	tag = kore_pool_get(&tag_pool);
+	tag->id = id;
+	tag->ptr = ptr;
+
+	TAILQ_INSERT_TAIL(&tags, tag, list);
+}
+
+void
+kore_mem_untag(void *ptr)
+{
+	struct tag		*tag;
+
+	TAILQ_FOREACH(tag, &tags, list) {
+		if (tag->ptr == ptr) {
+			TAILQ_REMOVE(&tags, tag, list);
+			kore_pool_put(&tag_pool, tag);
+			break;
+		}
+	}
+}
+
+void *
+kore_mem_lookup(u_int32_t id)
+{
+	struct tag		*tag;
+
+	TAILQ_FOREACH(tag, &tags, list) {
+		if (tag->id == id)
+			return (tag->ptr);
+	}
+
+	return (NULL);
 }
 
 static size_t
