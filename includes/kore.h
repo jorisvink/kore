@@ -625,6 +625,9 @@ int		kore_module_handler_new(const char *, const char *,
 		    const char *, const char *, int);
 void		kore_module_handler_free(struct kore_module_handle *);
 
+void		kore_runtime_init(void);
+void		kore_runtime_reload(void);
+void		kore_runtime_cleanup(void);
 struct kore_runtime_call	*kore_runtime_getcall(const char *);
 
 void	kore_runtime_execute(struct kore_runtime_call *);
@@ -648,7 +651,6 @@ struct kore_module_handle	*kore_module_handler_find(const char *,
 
 #if !defined(KORE_NO_HTTP)
 void		kore_validator_init(void);
-void		kore_validator_reload(void);
 int		kore_validator_add(const char *, u_int8_t, const char *);
 int		kore_validator_run(struct http_request *, const char *, char *);
 int		kore_validator_check(struct http_request *,

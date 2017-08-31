@@ -104,22 +104,6 @@ kore_validator_check(struct http_request *req, struct kore_validator *val,
 	return (r);
 }
 
-void
-kore_validator_reload(void)
-{
-	struct kore_validator		*val;
-
-	TAILQ_FOREACH(val, &validators, list) {
-		if (val->type != KORE_VALIDATOR_TYPE_FUNCTION)
-			continue;
-
-		kore_free(val->rcall);
-		val->rcall = kore_runtime_getcall(val->arg);
-		if (val->rcall == NULL)
-			fatal("no function for validator %s found", val->arg);
-	}
-}
-
 struct kore_validator *
 kore_validator_lookup(const char *name)
 {
