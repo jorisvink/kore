@@ -1135,7 +1135,7 @@ http_populate_get(struct http_request *req)
 	int		i, v;
 	char		*query, *args[HTTP_MAX_QUERY_ARGS], *val[3];
 
-	if (req->method != HTTP_METHOD_GET || req->query_string == NULL)
+	if (req->query_string == NULL)
 		return;
 
 	query = kore_strdup(req->query_string);
