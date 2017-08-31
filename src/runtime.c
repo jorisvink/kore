@@ -51,60 +51,12 @@ struct kore_runtime kore_native_runtime = {
 	.execute = native_runtime_execute
 };
 
-struct symbol {
-	char				*name;
-	struct kore_runtime_call	*rcall;
-	TAILQ_ENTRY(symbol)		list;
-};
-
-static TAILQ_HEAD(, symbol)		resolved_symbols;
-
-void
-kore_runtime_init(void)
-{
-	TAILQ_INIT(&resolved_symbols);
-}
-
-void
-kore_runtime_cleanup(void)
-{
-	struct symbol		*sym;
-
-	while ((sym = TAILQ_FIRST(&resolved_symbols)) != NULL) {
-		TAILQ_REMOVE(&resolved_symbols, sym, list);
-		kore_free(sym->name);
-		kore_free(sym);
-	}
-}
-
-void
-kore_runtime_reload(void)
-{
-	void			*ptr;
-	struct symbol		*sym;
-	struct kore_runtime	*runtime;
-
-	TAILQ_FOREACH(sym, &resolved_symbols, list) {
-		ptr = kore_module_getsym(sym->name, &runtime);
-		if (ptr == NULL)
-			fatal("required symbol '%s' not found", sym->name);
-		sym->rcall->runtime = runtime;
-		sym->rcall->addr = ptr;
-	}
-}
-
 struct kore_runtime_call *
 kore_runtime_getcall(const char *symbol)
 {
 	void				*ptr;
-	struct symbol			*sym;
 	struct kore_runtime_call	*rcall;
 	struct kore_runtime		*runtime;
-
-	TAILQ_FOREACH(sym, &resolved_symbols, list) {
-		if (!strcmp(sym->name, symbol))
-			return (sym->rcall);
-	}
 
 	ptr = kore_module_getsym(symbol, &runtime);
 	if (ptr == NULL)
@@ -113,11 +65,6 @@ kore_runtime_getcall(const char *symbol)
 	rcall = kore_malloc(sizeof(*rcall));
 	rcall->addr = ptr;
 	rcall->runtime = runtime;
-
-	sym = kore_malloc(sizeof(*sym));
-	sym->name = kore_strdup(symbol);
-	sym->rcall = rcall;
-	TAILQ_INSERT_TAIL(&resolved_symbols, sym, list);
 
 	return (rcall);
 }

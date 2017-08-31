@@ -166,10 +166,9 @@ main(int argc, char *argv[])
 	argv += optind;
 
 	kore_mem_init();
-	kore_runtime_init();
 
 	if (argc > 0)
-		fatal("did you mean to run `kodev` instead?");
+		fatal("did you mean to run `kodev´ instead?");
 
 	kore_pid = getpid();
 	nlisteners = 0;
@@ -236,7 +235,6 @@ main(int argc, char *argv[])
 	kore_python_cleanup();
 #endif
 
-	kore_runtime_cleanup();
 	kore_mem_cleanup();
 
 	return (0);

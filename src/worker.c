@@ -446,9 +446,7 @@ kore_worker_entry(struct kore_worker *kw)
 
 	kore_debug("worker %d shutting down", kw->id);
 
-	kore_runtime_cleanup();
 	kore_mem_cleanup();
-
 	exit(0);
 }
 
