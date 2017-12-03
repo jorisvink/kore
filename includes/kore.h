@@ -202,6 +202,7 @@ struct connection {
 	struct kore_runtime_call	*ws_connect;
 	struct kore_runtime_call	*ws_message;
 	struct kore_runtime_call	*ws_disconnect;
+	struct kore_buf			*data;
 	TAILQ_HEAD(, http_request)	http_requests;
 #endif
 
