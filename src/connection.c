@@ -76,6 +76,7 @@ kore_connection_new(void *owner)
 	c->ws_connect = NULL;
 	c->ws_message = NULL;
 	c->ws_disconnect = NULL;
+	c->data = NULL;
 	TAILQ_INIT(&(c->http_requests));
 #endif
 
