@@ -138,12 +138,16 @@ void
 kore_websocket_send(struct connection *c, u_int8_t op, const void *data,
     size_t len)
 {
-	struct kore_buf		*frame;
+	struct kore_buf		frame;
 
-	frame = kore_buf_alloc(len);
-	websocket_frame_build(frame, op, data, len);
-	net_send_queue(c, frame->data, frame->offset);
-	kore_buf_free(frame);
+	kore_buf_init(&frame, len);
+
+	websocket_frame_build(&frame, op, data, len);
+	net_send_stream(c, frame.data, frame.offset, NULL, NULL);
+
+	/* net_send_stream() takes over the buffer data pointer. */
+	frame.data = NULL;
+	kore_buf_cleanup(&frame);
 
 	net_send_flush(c);
 }
