@@ -236,7 +236,7 @@ http_request_new(struct connection *c, const char *host,
 		flags = HTTP_REQUEST_COMPLETE;
 	} else if (!strcasecmp(method, "patch")) {
 		m = HTTP_METHOD_PATCH;
-		flags = HTTP_REQUEST_COMPLETE;
+		flags = HTTP_REQUEST_EXPECT_BODY;
 	} else {
 		http_error_response(c, 400);
 		return (KORE_RESULT_ERROR);

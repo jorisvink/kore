@@ -760,6 +760,8 @@ configure_params(char *options)
 		current_method = HTTP_METHOD_DELETE;
 	} else if (!strcasecmp(argv[0], "head")) {
 		current_method = HTTP_METHOD_HEAD;
+	} else if (!strcasecmp(argv[0], "patch")) {
+		current_method = HTTP_METHOD_PATCH;
 	} else {
 		printf("unknown method: %s in params block for %s\n",
 		    argv[0], argv[1]);
