@@ -1156,7 +1156,7 @@ void
 http_populate_multipart_form(struct http_request *req)
 {
 	int			h, blen;
-	struct kore_buf		*in, *out;
+	struct kore_buf		in, out;
 	char			*type, *val, *args[3];
 	char			boundary[HTTP_BOUNDARY_MAX];
 
@@ -1181,28 +1181,28 @@ http_populate_multipart_form(struct http_request *req)
 	if (blen == -1 || (size_t)blen >= sizeof(boundary))
 		return;
 
-	in = kore_buf_alloc(128);
-	out = kore_buf_alloc(128);
+	kore_buf_init(&in, 128);
+	kore_buf_init(&out, 128);
 
-	if (!multipart_find_data(in, NULL, NULL, req, boundary, blen))
+	if (!multipart_find_data(&in, NULL, NULL, req, boundary, blen))
 		goto cleanup;
 
 	for (;;) {
-		if (!multipart_find_data(in, NULL, NULL, req, "\r\n", 2))
+		if (!multipart_find_data(&in, NULL, NULL, req, "\r\n", 2))
 			break;
-		if (in->offset < 4 && req->http_body_length == 0)
+		if (in.offset < 4 && req->http_body_length == 0)
 			break;
-		if (!multipart_find_data(in, out, NULL, req, "\r\n\r\n", 4))
+		if (!multipart_find_data(&in, &out, NULL, req, "\r\n\r\n", 4))
 			break;
-		if (!multipart_parse_headers(req, in, out, boundary, blen))
+		if (!multipart_parse_headers(req, &in, &out, boundary, blen))
 			break;
 
-		kore_buf_reset(out);
+		kore_buf_reset(&out);
 	}
 
 cleanup:
-	kore_buf_free(in);
-	kore_buf_free(out);
+	kore_buf_cleanup(&in);
+	kore_buf_cleanup(&out);
 }
 
 int
