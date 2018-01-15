@@ -279,6 +279,7 @@ struct kore_auth {
 
 #define HANDLER_TYPE_STATIC	1
 #define HANDLER_TYPE_DYNAMIC	2
+#define HANDLER_TYPE_DEFAULT	3
 
 #endif /* !KORE_NO_HTTP */
 
@@ -347,6 +348,7 @@ struct kore_domain {
 	char					*certkey;
 	SSL_CTX					*ssl_ctx;
 #endif
+	struct kore_module_handle		*default_handler; 
 	TAILQ_HEAD(, kore_module_handle)	handlers;
 	TAILQ_ENTRY(kore_domain)		list;
 };
@@ -621,7 +623,10 @@ void		kore_domain_keymgr_init(void);
 void		kore_domain_tlsinit(struct kore_domain *);
 void		kore_module_load(const char *, const char *, int);
 void		kore_domain_callback(void (*cb)(struct kore_domain *));
-int		kore_module_handler_new(const char *, const char *,
+struct kore_module_handle
+		*kore_module_handler_new(const char *, const char *,
+		    const char *, const char *, int);
+int		kore_module_install_handler(const char *, const char *,
 		    const char *, const char *, int);
 void		kore_module_handler_free(struct kore_module_handle *);
 

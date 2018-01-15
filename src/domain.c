@@ -186,6 +186,7 @@ kore_domain_new(char *domain)
 	dom->certfile = NULL;
 	dom->crlfile = NULL;
 #endif
+	dom->default_handler = NULL;
 	dom->domain = kore_strdup(domain);
 	TAILQ_INIT(&(dom->handlers));
 	TAILQ_INSERT_TAIL(&domains, dom, list);
@@ -227,6 +228,8 @@ kore_domain_free(struct kore_domain *dom)
 #endif
 
 #if !defined(KORE_NO_HTTP)
+	if (dom->default_handler != NULL)
+		kore_module_handler_free(dom->default_handler);
 	/* Drop all handlers associated with this domain */
 	while ((hdlr = TAILQ_FIRST(&(dom->handlers))) != NULL) {
 		TAILQ_REMOVE(&(dom->handlers), hdlr, list);

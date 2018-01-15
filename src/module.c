@@ -207,7 +207,7 @@ kore_module_loaded(void)
 }
 
 #if !defined(KORE_NO_HTTP)
-int
+struct kore_module_handle *
 kore_module_handler_new(const char *path, const char *domain,
     const char *func, const char *auth, int type)
 {
@@ -219,7 +219,7 @@ kore_module_handler_new(const char *path, const char *domain,
 	    domain, func, auth, type);
 
 	if ((dom = kore_domain_lookup(domain)) == NULL)
-		return (KORE_RESULT_ERROR);
+		return (NULL);
 
 	if (auth != NULL) {
 		if ((ap = kore_auth_lookup(auth)) == NULL)
@@ -241,7 +241,7 @@ kore_module_handler_new(const char *path, const char *domain,
 	if ((hdlr->rcall = kore_runtime_getcall(func)) == NULL) {
 		kore_module_handler_free(hdlr);
 		kore_log(LOG_ERR, "function '%s' not found", func);
-		return (KORE_RESULT_ERROR);
+		return (NULL);
 	}
 
 	if (hdlr->type == HANDLER_TYPE_DYNAMIC) {
@@ -249,11 +249,22 @@ kore_module_handler_new(const char *path, const char *domain,
 		    REG_EXTENDED | REG_NOSUB)) {
 			kore_module_handler_free(hdlr);
 			kore_debug("regcomp() on %s failed", path);
-			return (KORE_RESULT_ERROR);
+			return (NULL);
 		}
 	}
+	return hdlr;
 
-	TAILQ_INSERT_TAIL(&(dom->handlers), hdlr, list);
+}
+
+int
+kore_module_install_handler(const char *path, const char *domain,
+    const char *func, const char *auth, int type)
+{
+	struct kore_module_handle *hdlr = kore_module_handler_new(path, domain, func, auth, type);
+	if (hdlr == NULL) {
+		return (KORE_RESULT_ERROR);
+	}
+	TAILQ_INSERT_TAIL(&(hdlr->dom->handlers), hdlr, list);
 	return (KORE_RESULT_OK);
 }
 
@@ -302,7 +313,7 @@ kore_module_handler_find(const char *domain, const char *path)
 		}
 	}
 
-	return (NULL);
+	return (dom->default_handler);
 }
 #endif /* !KORE_NO_HTTP */
 

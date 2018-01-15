@@ -76,6 +76,7 @@ static int		configure_client_certificates(char *);
 #if !defined(KORE_NO_HTTP)
 static int		configure_handler(int, char *);
 static int		configure_static_handler(char *);
+static int		configure_default_handler(char *);
 static int		configure_dynamic_handler(char *);
 static int		configure_accesslog(char *);
 static int		configure_http_header_max(char *);
@@ -143,6 +144,7 @@ static struct {
 #endif
 #if !defined(KORE_NO_HTTP)
 	{ "static",			configure_static_handler },
+	{ "default",			configure_default_handler },
 	{ "dynamic",			configure_dynamic_handler },
 	{ "accesslog",			configure_accesslog },
 	{ "http_header_max",		configure_http_header_max },
@@ -548,6 +550,41 @@ configure_dynamic_handler(char *options)
 }
 
 static int
+configure_default_handler(char *options)
+{
+	char		*argv[2];
+	struct kore_module_handle * hdlr;
+
+	if (current_domain == NULL) {
+		printf("default handler not specified in domain context\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (current_domain->default_handler != NULL) {
+		printf("default handler already install for domain\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	kore_split_string(options, " ", argv, 2);
+
+	if (argv[0] == NULL) {
+		printf("missing parameter for default handler\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	hdlr = kore_module_handler_new("", current_domain->domain, argv[0],
+		NULL, HANDLER_TYPE_DEFAULT);
+
+	if (hdlr == NULL) {
+		printf("unable to create a new handler\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	current_domain->default_handler = hdlr;
+	return (KORE_RESULT_OK);
+}
+
+static int
 configure_handler(int type, char *options)
 {
 	char		*argv[4];
@@ -564,7 +601,7 @@ configure_handler(int type, char *options)
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (!kore_module_handler_new(argv[0],
+	if (!kore_module_install_handler(argv[0],
 	    current_domain->domain, argv[1], argv[2], type)) {
 		printf("cannot create handler for %s\n", argv[0]);
 		return (KORE_RESULT_ERROR);
