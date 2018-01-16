@@ -255,8 +255,11 @@ LIST_HEAD(listener_head, listener);
 
 #if !defined(KORE_NO_HTTP)
 
+#define KORE_PARAMS_QUERY_STRING	0x0001
+
 struct kore_handler_params {
 	char			*name;
+	int			flags;
 	u_int8_t		method;
 	struct kore_validator	*validator;
 

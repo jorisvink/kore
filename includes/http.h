@@ -26,6 +26,9 @@
 extern "C" {
 #endif
 
+/* Keep the http_populate_get symbol around. */
+#define http_populate_get	http_populate_qs
+
 #define HTTP_KEEPALIVE_TIME	20
 #define HTTP_HSTS_ENABLE	31536000
 #define HTTP_HEADER_MAX_LEN	4096
@@ -282,7 +285,7 @@ void		*http_state_create(struct http_request *, size_t);
 
 int		http_argument_urldecode(char *);
 int		http_header_recv(struct netbuf *);
-void		http_populate_get(struct http_request *);
+void		http_populate_qs(struct http_request *);
 void		http_populate_post(struct http_request *);
 void		http_populate_multipart_form(struct http_request *);
 void		http_populate_cookies(struct http_request *);

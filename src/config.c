@@ -178,6 +178,7 @@ char					*config_file = NULL;
 
 #if !defined(KORE_NO_HTTP)
 static u_int8_t				current_method = 0;
+static int				current_flags = 0;
 static struct kore_auth			*current_auth = NULL;
 static struct kore_module_handle	*current_handler = NULL;
 #endif
@@ -240,6 +241,8 @@ kore_parse_config_file(const char *fpath)
 #if !defined(KORE_NO_HTTP)
 		if (!strcmp(p, "}") && current_handler != NULL) {
 			lineno++;
+			current_flags = 0;
+			current_method = 0;
 			current_handler = NULL;
 			continue;
 		}
@@ -734,7 +737,7 @@ static int
 configure_params(char *options)
 {
 	struct kore_module_handle	*hdlr;
-	char				*argv[3];
+	char				*method, *argv[3];
 
 	if (current_domain == NULL) {
 		printf("params not used in domain context\n");
@@ -750,21 +753,36 @@ configure_params(char *options)
 	if (argv[1] == NULL)
 		return (KORE_RESULT_ERROR);
 
-	if (!strcasecmp(argv[0], "post")) {
+	if ((method = strchr(argv[0], ':')) != NULL) {
+		*(method)++ = '\0';
+		if (!strcasecmp(argv[0], "qs")) {
+			current_flags = KORE_PARAMS_QUERY_STRING;
+		} else {
+			printf("unknown prefix '%s' for '%s'\n",
+			    argv[0], argv[1]);
+			return (KORE_RESULT_ERROR);
+		}
+	} else {
+		method = argv[0];
+	}
+
+	if (!strcasecmp(method, "post")) {
 		current_method = HTTP_METHOD_POST;
-	} else if (!strcasecmp(argv[0], "get")) {
+	} else if (!strcasecmp(method, "get")) {
 		current_method = HTTP_METHOD_GET;
-	} else if (!strcasecmp(argv[0], "put")) {
+		/* Let params get /foo {} imply qs:get automatically. */
+		current_flags |= KORE_PARAMS_QUERY_STRING;
+	} else if (!strcasecmp(method, "put")) {
 		current_method = HTTP_METHOD_PUT;
-	} else if (!strcasecmp(argv[0], "delete")) {
+	} else if (!strcasecmp(method, "delete")) {
 		current_method = HTTP_METHOD_DELETE;
-	} else if (!strcasecmp(argv[0], "head")) {
+	} else if (!strcasecmp(method, "head")) {
 		current_method = HTTP_METHOD_HEAD;
-	} else if (!strcasecmp(argv[0], "patch")) {
+	} else if (!strcasecmp(method, "patch")) {
 		current_method = HTTP_METHOD_PATCH;
 	} else {
 		printf("unknown method: %s in params block for %s\n",
-		    argv[0], argv[1]);
+		    method, argv[1]);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -806,6 +824,7 @@ configure_validate(char *options)
 
 	p = kore_malloc(sizeof(*p));
 	p->validator = val;
+	p->flags = current_flags;
 	p->method = current_method;
 	p->name = kore_strdup(argv[0]);
 

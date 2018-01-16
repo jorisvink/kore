@@ -44,7 +44,7 @@
 static int	http_body_recv(struct netbuf *);
 static void	http_error_response(struct connection *, int);
 static void	http_write_response_cookie(struct http_cookie *);
-static void	http_argument_add(struct http_request *, char *, char *);
+static void	http_argument_add(struct http_request *, char *, char *, int);
 static void	http_response_normal(struct http_request *,
 		    struct connection *, int, const void *, size_t);
 static void	multipart_add_field(struct http_request *, struct kore_buf *,
@@ -1124,7 +1124,7 @@ http_populate_post(struct http_request *req)
 	for (i = 0; i < v; i++) {
 		kore_split_string(args[i], "=", val, 3);
 		if (val[0] != NULL && val[1] != NULL)
-			http_argument_add(req, val[0], val[1]);
+			http_argument_add(req, val[0], val[1], 0);
 	}
 
 out:
@@ -1133,12 +1133,12 @@ out:
 }
 
 void
-http_populate_get(struct http_request *req)
+http_populate_qs(struct http_request *req)
 {
 	int		i, v;
 	char		*query, *args[HTTP_MAX_QUERY_ARGS], *val[3];
 
-	if (req->method != HTTP_METHOD_GET || req->query_string == NULL)
+	if (req->query_string == NULL)
 		return;
 
 	query = kore_strdup(req->query_string);
@@ -1146,7 +1146,7 @@ http_populate_get(struct http_request *req)
 	for (i = 0; i < v; i++) {
 		kore_split_string(args[i], "=", val, 3);
 		if (val[0] != NULL && val[1] != NULL)
-			http_argument_add(req, val[0], val[1]);
+			http_argument_add(req, val[0], val[1], 1);
 	}
 
 	kore_free(query);
@@ -1496,7 +1496,7 @@ multipart_add_field(struct http_request *req, struct kore_buf *in,
 
 	data->offset -= 2;
 	string = kore_buf_stringify(data, NULL);
-	http_argument_add(req, name, string);
+	http_argument_add(req, name, string, 0);
 	kore_buf_free(data);
 }
 
@@ -1527,7 +1527,7 @@ multipart_file_add(struct http_request *req, struct kore_buf *in,
 }
 
 static void
-http_argument_add(struct http_request *req, char *name, char *value)
+http_argument_add(struct http_request *req, char *name, char *value, int qs)
 {
 	struct http_arg			*q;
 	struct kore_handler_params	*p;
@@ -1535,6 +1535,11 @@ http_argument_add(struct http_request *req, char *name, char *value)
 	http_argument_urldecode(name);
 
 	TAILQ_FOREACH(p, &(req->hdlr->params), list) {
+		if (qs == 1 && !(p->flags & KORE_PARAMS_QUERY_STRING))
+			continue;
+		if (qs == 0 && (p->flags & KORE_PARAMS_QUERY_STRING))
+			continue;
+
 		if (p->method != req->method)
 			continue;
 

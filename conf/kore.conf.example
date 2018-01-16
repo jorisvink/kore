@@ -246,6 +246,16 @@ domain localhost {
 		validate	arg1		v_example
 		validate	id		v_number
 	}
+
+	# Configure a params block for allowed parameters in the
+	# querystring when performing a POST against /params-test.
+	# You do this by prefixing the method with the qs: marker.
+	# In the param blocks below we allow the parameter "post_id"
+	# in the querystring validated by v_number when a POST is
+	# done against the supplied URL.
+	params qs:post /params-test {
+		validate	post_id		v_number
+	}
 }
 
 #domain domain.com {
