@@ -18,7 +18,7 @@ Features
 * Lightweight background tasks
 * Built-in parameter validation
 * Built-in asynchronous PostgreSQL support
-* Built-in support for page handlers in Python
+* Optional support for page handlers in Python
 * Private keys isolated in separate process (RSA and ECDSA)
 * Default sane TLS ciphersuites (PFS in all major browsers)
 * Modules can be reloaded on-the-fly, even while serving content
