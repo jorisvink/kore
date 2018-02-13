@@ -70,7 +70,7 @@ static struct kore_pool			http_host_pool;
 static struct kore_pool			http_path_pool;
 static struct kore_pool			http_body_path;
 
-int		http_request_count = 0;
+u_int32_t	http_request_count = 0;
 u_int32_t	http_request_limit = HTTP_REQUEST_LIMIT;
 u_int64_t	http_hsts_enable = HTTP_HSTS_ENABLE;
 u_int16_t	http_header_max = HTTP_HEADER_MAX_LEN;
@@ -100,7 +100,7 @@ http_init(void)
 
 	prealloc = MIN((worker_max_connections / 10), 1000);
 	kore_pool_init(&http_request_pool, "http_request_pool",
-	    sizeof(struct http_request), prealloc);
+	    sizeof(struct http_request), http_request_limit);
 	kore_pool_init(&http_header_pool, "http_header_pool",
 	    sizeof(struct http_header), prealloc * HTTP_REQ_HEADER_MAX);
 	kore_pool_init(&http_cookie_pool, "http_cookie_pool",
@@ -160,6 +160,11 @@ http_request_new(struct connection *c, const char *host,
 
 	kore_debug("http_request_new(%p, %s, %s, %s, %s)", c, host,
 	    method, path, version);
+
+	if (http_request_count >= http_request_limit) {
+		http_error_response(c, 503);
+		return (KORE_RESULT_ERROR);
+	}
 
 	if ((hostlen = strlen(host)) >= KORE_DOMAINNAME_LEN - 1) {
 		http_error_response(c, 400);

@@ -58,7 +58,7 @@
 #define WAIT_ANY		(-1)
 #endif
 
-#define WORKER_LOCK_TIMEOUT	500
+#define WORKER_LOCK_TIMEOUT	100
 
 #define WORKER(id)						\
 	(struct kore_worker *)((u_int8_t *)kore_workers +	\
@@ -383,8 +383,8 @@ kore_worker_entry(struct kore_worker *kw)
 
 		now = kore_time_ms();
 		netwait = kore_timer_run(now);
-		if (netwait > 100)
-			netwait = 100;
+		if (netwait > 10)
+			netwait = 10;
 
 #if !defined(KORE_NO_TLS)
 		if ((now - last_seed) > KORE_RESEED_TIME) {
@@ -558,6 +558,11 @@ kore_worker_acceptlock_obtain(void)
 
 	if (worker_active_connections >= worker_max_connections)
 		return (0);
+
+#if !defined(KORE_NO_HTTP)
+	if (http_request_count >= http_request_limit)
+		return (0);
+#endif
 
 	r = 0;
 	if (worker_trylock()) {

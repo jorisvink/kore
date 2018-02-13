@@ -234,12 +234,12 @@ struct http_state {
 	int			(*cb)(struct http_request *);
 };
 
-extern int		http_request_count;
 extern u_int16_t	http_header_max;
 extern size_t		http_body_max;
 extern u_int64_t	http_hsts_enable;
 extern u_int16_t	http_keepalive_time;
 extern u_int32_t	http_request_limit;
+extern u_int32_t	http_request_count;
 extern u_int64_t	http_body_disk_offload;
 extern char		*http_body_disk_path;
 
