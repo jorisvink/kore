@@ -41,6 +41,7 @@ struct pgsql_job {
 #define PGSQL_CONN_MAX		2
 #define PGSQL_CONN_FREE		0x01
 #define PGSQL_LIST_INSERTED	0x0100
+#define PGSQL_QUEUE_LIMIT	1000
 
 static void	pgsql_queue_wakeup(void);
 static void	pgsql_cancel(struct kore_pgsql *);
@@ -64,7 +65,9 @@ static TAILQ_HEAD(, pgsql_conn)		pgsql_conn_free;
 static TAILQ_HEAD(, pgsql_wait)		pgsql_wait_queue;
 static LIST_HEAD(, pgsql_db)		pgsql_db_conn_strings;
 
-u_int16_t				pgsql_conn_max = PGSQL_CONN_MAX;
+u_int32_t	pgsql_queue_count = 0;
+u_int16_t	pgsql_conn_max = PGSQL_CONN_MAX;
+u_int32_t	pgsql_queue_limit = PGSQL_QUEUE_LIMIT;
 
 void
 kore_pgsql_sys_init(void)
@@ -76,7 +79,7 @@ kore_pgsql_sys_init(void)
 	kore_pool_init(&pgsql_job_pool, "pgsql_job_pool",
 	    sizeof(struct pgsql_job), 100);
 	kore_pool_init(&pgsql_wait_pool, "pgsql_wait_pool",
-	    sizeof(struct pgsql_wait), 100);
+	    sizeof(struct pgsql_wait), pgsql_queue_limit);
 }
 
 void
@@ -477,7 +480,8 @@ rescan:
 	if (conn == NULL) {
 		if (db->conn_max != 0 &&
 		    db->conn_count >= db->conn_max) {
-			if (pgsql->flags & KORE_PGSQL_ASYNC) {
+			if ((pgsql->flags & KORE_PGSQL_ASYNC) &&
+			    pgsql_queue_count < pgsql_queue_limit) {
 				pgsql_queue_add(pgsql);
 			} else {
 				pgsql_set_error(pgsql,
@@ -540,6 +544,8 @@ pgsql_queue_add(struct kore_pgsql *pgsql)
 
 	pgw = kore_pool_get(&pgsql_wait_pool);
 	pgw->pgsql = pgsql;
+
+	pgsql_queue_count++;
 	TAILQ_INSERT_TAIL(&pgsql_wait_queue, pgw, list);
 }
 
@@ -553,6 +559,7 @@ pgsql_queue_remove(struct kore_pgsql *pgsql)
 		if (pgw->pgsql != pgsql)
 			continue;
 
+		pgsql_queue_count--;
 		TAILQ_REMOVE(&pgsql_wait_queue, pgw, list);
 		kore_pool_put(&pgsql_wait_pool, pgw);
 		return;

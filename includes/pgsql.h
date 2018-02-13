@@ -64,6 +64,7 @@ struct kore_pgsql {
 };
 
 extern u_int16_t	pgsql_conn_max;
+extern u_int32_t	pgsql_queue_limit;
 
 void	kore_pgsql_sys_init(void);
 void	kore_pgsql_sys_cleanup(void);

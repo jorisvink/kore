@@ -99,6 +99,7 @@ static int		configure_websocket_timeout(char *);
 
 #if defined(KORE_USE_PGSQL)
 static int		configure_pgsql_conn_max(char *);
+static int		configure_pgsql_queue_limit(char *);
 #endif
 
 #if defined(KORE_USE_TASKS)
@@ -165,6 +166,7 @@ static struct {
 #endif
 #if defined(KORE_USE_PGSQL)
 	{ "pgsql_conn_max",		configure_pgsql_conn_max },
+	{ "pgsql_queue_limit",		configure_pgsql_queue_limit },
 #endif
 #if defined(KORE_USE_TASKS)
 	{ "task_threads",		configure_task_threads },
@@ -1095,6 +1097,20 @@ configure_pgsql_conn_max(char *option)
 	pgsql_conn_max = kore_strtonum(option, 10, 0, USHRT_MAX, &err);
 	if (err != KORE_RESULT_OK) {
 		printf("bad value for pgsql_conn_max: %s\n", option);
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_pgsql_queue_limit(char *option)
+{
+	int		err;
+
+	pgsql_queue_limit = kore_strtonum(option, 10, 0, UINT_MAX, &err);
+	if (err != KORE_RESULT_OK) {
+		printf("bad value for pgsql_queue_limit: %s\n", option);
 		return (KORE_RESULT_ERROR);
 	}
 
