@@ -544,7 +544,6 @@ pgsql_queue_add(struct kore_pgsql *pgsql)
 
 	pgsql_queue_count++;
 	TAILQ_INSERT_TAIL(&pgsql_wait_queue, pgw, list);
-	pgsql_queue_count++;
 }
 
 static void
@@ -575,6 +574,7 @@ pgsql_queue_wakeup(void)
 #if !defined(KORE_NO_HTTP)
 		if (pgw->pgsql->req != NULL) {
 			if (pgw->pgsql->req->flags & HTTP_REQUEST_DELETE) {
+				pgsql_queue_count--;
 				TAILQ_REMOVE(&pgsql_wait_queue, pgw, list);
 				kore_pool_put(&pgsql_wait_pool, pgw);
 				continue;
@@ -586,9 +586,9 @@ pgsql_queue_wakeup(void)
 		if (pgw->pgsql->cb != NULL)
 			pgw->pgsql->cb(pgw->pgsql, pgw->pgsql->arg);
 
+		pgsql_queue_count--;
 		TAILQ_REMOVE(&pgsql_wait_queue, pgw, list);
 		kore_pool_put(&pgsql_wait_pool, pgw);
-		pgsql_queue_count--;
 		return;
 	}
 }
