@@ -62,10 +62,8 @@ kore_pool_cleanup(struct kore_pool *pool)
 	pool->elen = 0;
 	pool->slen = 0;
 
-	if (pool->name != NULL) {
-		free(pool->name);
-		pool->name = NULL;
-	}
+	free(pool->name);
+	pool->name = NULL;
 
 	pool_region_destroy(pool);
 }

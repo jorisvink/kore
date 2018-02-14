@@ -80,7 +80,7 @@ kore_validator_run(struct http_request *req, const char *name, char *data)
 
 int
 kore_validator_check(struct http_request *req, struct kore_validator *val,
-    void *data)
+    const void *data)
 {
 	int		r;
 

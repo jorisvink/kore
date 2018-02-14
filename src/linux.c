@@ -64,6 +64,11 @@ kore_platform_worker_setcpu(struct kore_worker *kw)
 void
 kore_platform_event_init(void)
 {
+	if (efd != -1)
+		close(efd);
+	if (events != NULL)
+		kore_free(events);
+
 	if ((efd = epoll_create(10000)) == -1)
 		fatal("epoll_create(): %s", errno_s);
 
@@ -147,10 +152,8 @@ kore_platform_event_wait(u_int64_t timer)
 				    r >= worker_accept_threshold)
 					break;
 
-				if (!kore_connection_accept(l, &c)) {
-					r = 1;
+				if (!kore_connection_accept(l, &c))
 					break;
-				}
 
 				if (c == NULL)
 					break;

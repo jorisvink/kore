@@ -33,7 +33,11 @@ struct kore_pool		nb_pool;
 void
 net_init(void)
 {
-	kore_pool_init(&nb_pool, "nb_pool", sizeof(struct netbuf), 1000);
+	u_int32_t	elm;
+
+	/* Add some overhead so we don't roll over for internal items. */
+	elm = worker_max_connections + 10;
+	kore_pool_init(&nb_pool, "nb_pool", sizeof(struct netbuf), elm);
 }
 
 void
@@ -86,8 +90,7 @@ net_send_queue(struct connection *c, const void *data, size_t len)
 		nb->m_len = nb->b_len;
 
 	nb->buf = kore_malloc(nb->m_len);
-	if (len > 0)
-		memcpy(nb->buf, d, nb->b_len);
+	memcpy(nb->buf, d, nb->b_len);
 
 	TAILQ_INSERT_TAIL(&(c->send_queue), nb, list);
 }
@@ -120,14 +123,11 @@ net_recv_reset(struct connection *c, size_t len, int (*cb)(struct netbuf *))
 {
 	kore_debug("net_recv_reset(): %p %zu", c, len);
 
-	if (c->rnb->type != NETBUF_RECV)
-		fatal("net_recv_reset(): wrong netbuf type");
-
 	c->rnb->cb = cb;
 	c->rnb->s_off = 0;
 	c->rnb->b_len = len;
 
-	if (c->rnb->b_len <= c->rnb->m_len &&
+	if (c->rnb->buf != NULL && c->rnb->b_len <= c->rnb->m_len &&
 	    c->rnb->m_len < (NETBUF_SEND_PAYLOAD_MAX / 2))
 		return;
 
@@ -143,7 +143,7 @@ net_recv_queue(struct connection *c, size_t len, int flags,
 	kore_debug("net_recv_queue(): %p %zu %d", c, len, flags);
 
 	if (c->rnb != NULL)
-		fatal("net_recv_queue(): called incorrectly for %p", c);
+		fatal("net_recv_queue(): called incorrectly");
 
 	c->rnb = kore_pool_get(&nb_pool);
 	c->rnb->cb = cb;
@@ -161,9 +161,6 @@ void
 net_recv_expand(struct connection *c, size_t len, int (*cb)(struct netbuf *))
 {
 	kore_debug("net_recv_expand(): %p %d", c, len);
-
-	if (c->rnb->type != NETBUF_RECV)
-		fatal("net_recv_expand(): wrong netbuf type");
 
 	c->rnb->cb = cb;
 	c->rnb->b_len += len;
@@ -210,8 +207,9 @@ net_send_flush(struct connection *c)
 			return (KORE_RESULT_ERROR);
 	}
 
-	if ((c->flags & CONN_CLOSE_EMPTY) && TAILQ_EMPTY(&(c->send_queue)))
+	if ((c->flags & CONN_CLOSE_EMPTY) && TAILQ_EMPTY(&(c->send_queue))) {
 		kore_connection_disconnect(c);
+	}
 
 	return (KORE_RESULT_OK);
 }

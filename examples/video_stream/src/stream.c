@@ -38,7 +38,6 @@ struct video {
 };
 
 int		init(int);
-int		serve_page(struct http_request *);
 int		video_stream(struct http_request *);
 
 static void	video_unmap(struct video *);
@@ -61,22 +60,13 @@ init(int state)
 }
 
 int
-serve_page(struct http_request *req)
-{
-	http_response_header(req, "content-type", "text/html");
-	http_response_stream(req, 200, asset_video_html,
-	    asset_len_video_html, NULL, NULL);
-
-	return (KORE_RESULT_OK);
-}
-
-int
 video_stream(struct http_request *req)
 {
 	struct video	*v;
+	const char	*header;
 	off_t		start, end;
 	int		n, err, status;
-	char		*header, *bytes, *range[3], rb[128], *ext, ctype[32];
+	char		*bytes, *range[3], rb[128], *ext, ctype[32];
 
 	if (!video_open(req, &v))
 		return (KORE_RESULT_OK);

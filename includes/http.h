@@ -197,10 +197,11 @@ struct http_request {
 	u_int64_t			start;
 	u_int64_t			end;
 	u_int64_t			total;
-	char				*host;
-	char				*path;
-	char				*agent;
+	const char			*path;
+	const char			*host;
+	const char			*agent;
 	struct connection		*owner;
+	u_int8_t			*headers;
 	struct kore_buf			*http_body;
 	int				http_body_fd;
 	char				*http_body_path;
@@ -264,12 +265,9 @@ void		http_serveable(struct http_request *, const void *,
 void		http_response_stream(struct http_request *, int, void *,
 		    size_t, int (*cb)(struct netbuf *), void *);
 int		http_request_header(struct http_request *,
-		    const char *, char **);
+		    const char *, const char **);
 void		http_response_header(struct http_request *,
 		    const char *, const char *);
-int		http_request_new(struct connection *, const char *,
-		    const char *, const char *, const char *,
-		    struct http_request **);
 int		http_state_run(struct http_state *, u_int8_t,
 		    struct http_request *);
 int	 	http_request_cookie(struct http_request *,

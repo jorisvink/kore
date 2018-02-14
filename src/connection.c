@@ -19,6 +19,7 @@
 
 #include <netinet/tcp.h>
 
+#include <inttypes.h>
 #include <fcntl.h>
 
 #include "kore.h"
@@ -31,11 +32,16 @@ struct connection_list		disconnected;
 void
 kore_connection_init(void)
 {
+	u_int32_t	elm;
+
 	TAILQ_INIT(&connections);
 	TAILQ_INIT(&disconnected);
 
+	/* Add some overhead so we don't rollover for internal items. */
+	elm = worker_max_connections + 10;
+
 	kore_pool_init(&connection_pool, "connection_pool",
-	    sizeof(struct connection), worker_max_connections);
+	    sizeof(struct connection), elm);
 }
 
 void
@@ -150,13 +156,12 @@ kore_connection_accept(struct listener *listener, struct connection **out)
 }
 
 void
-kore_connection_check_timeout(void)
+kore_connection_check_timeout(u_int64_t now)
 {
-	struct connection	*c;
-	u_int64_t		now;
+	struct connection	*c, *next;
 
-	now = kore_time_ms();
-	TAILQ_FOREACH(c, &connections, list) {
+	for (c = TAILQ_FIRST(&connections); c != NULL; c = next) {
+		next = TAILQ_NEXT(c, list);
 		if (c->proto == CONN_PROTO_MSG)
 			continue;
 		if (!(c->flags & CONN_IDLE_TIMER_ACT))
@@ -374,9 +379,13 @@ kore_connection_check_idletimer(u_int64_t now, struct connection *c)
 {
 	u_int64_t	d;
 
-	d = now - c->idle_timer.start;
+	if (now > c->idle_timer.start)
+		d = now - c->idle_timer.start;
+	else
+		d = 0;
+
 	if (d >= c->idle_timer.length) {
-		kore_debug("%p idle for %d ms, expiring", c, d);
+		kore_debug("%p idle for %" PRIu64 " ms, expiring", c, d);
 		kore_connection_disconnect(c);
 	}
 }

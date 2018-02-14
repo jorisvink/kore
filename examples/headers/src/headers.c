@@ -6,7 +6,7 @@ int		page(struct http_request *);
 int
 page(struct http_request *req)
 {
-	char		*custom;
+	const char		*custom;
 
 	/*
 	 * We'll lookup if the X-Custom-Header is given in the request.

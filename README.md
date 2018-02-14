@@ -2,28 +2,30 @@ About
 -----
 [![Build Status](https://travis-ci.org/jorisvink/kore.svg?branch=master)](https://travis-ci.org/jorisvink/kore)
 
-Kore (https://kore.io) is an easy to use web application framework for
+Kore (https://kore.io) is an easy to use web application platform for
 writing scalable web APIs in C. Its main goals are security, scalability
 and allowing rapid development and deployment of such APIs.
 
 Because of this Kore is an ideal candidate for building robust, scalable and secure web things.
 
-Features
---------
+Key Features
+------------
 * Supports SNI
 * Supports HTTP/1.1
 * Websocket support
 * Privseps by default
 * TLS enabled by default
-* Lightweight background tasks
+* Optional background tasks
 * Built-in parameter validation
-* Built-in asynchronous PostgreSQL support
+* Optional asynchronous PostgreSQL support
 * Optional support for page handlers in Python
 * Private keys isolated in separate process (RSA and ECDSA)
 * Default sane TLS ciphersuites (PFS in all major browsers)
 * Modules can be reloaded on-the-fly, even while serving content
 * Event driven (epoll/kqueue) architecture with per CPU worker processes
 * Build your web application as a precompiled dynamic library or single binary
+
+And loads more.
 
 License
 -------
@@ -32,20 +34,21 @@ License
 Documentation
 --------------
 [Read the documentation](https://jorisvink.gitbooks.io/kore-doc/content/)
+This documentation is severly outdated at this time.
 
 Platforms supported
 -------------------
 * Linux
 * OpenBSD
 * FreeBSD
-* OSX
+* MacOS
 
 Building Kore
 -------------
 Grab the [latest release](https://github.com/jorisvink/kore/releases/tag/2.0.0-release)  tarball or clone the repository.
 
 Requirements
-* openssl (1.0.2k or 1.1.0e)
+* openssl (1.0.2k+ or 1.1.0e+)
   (note: this requirement drops away when building with NOTLS=1 NOHTTP=1)
   (note: libressl should work as a replacement)
 

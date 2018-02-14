@@ -169,7 +169,7 @@ sse_disconnect(struct connection *c)
 int
 check_header(struct http_request *req, const char *name, const char *value)
 {
-	char		*hdr;
+	const char		*hdr;
 
 	if (!http_request_header(req, name, &hdr)) {
 		http_response(req, 400, NULL, 0);

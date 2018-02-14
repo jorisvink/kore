@@ -65,7 +65,7 @@ kore_timer_run(u_int64_t now)
 	struct kore_timer	*timer, *t;
 	u_int64_t		next_timer;
 
-	next_timer = 100;
+	next_timer = 1000;
 
 	while ((timer = TAILQ_FIRST(&kore_timers)) != NULL) {
 		if (timer->nextrun > now) {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014 Joris Vink <joris@coders.se>
+ * Copyright (c) 2014-2018 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -54,7 +54,8 @@ kore_websocket_handshake(struct http_request *req, const char *onconnect,
 {
 	SHA_CTX			sctx;
 	struct kore_buf		*buf;
-	char			*key, *base64, *version;
+	char			*base64;
+	const char		*key, *version;
 	u_int8_t		digest[SHA_DIGEST_LENGTH];
 
 	if (!http_request_header(req, "sec-websocket-key", &key)) {
@@ -141,7 +142,6 @@ kore_websocket_send(struct connection *c, u_int8_t op, const void *data,
 	struct kore_buf		frame;
 
 	kore_buf_init(&frame, len);
-
 	websocket_frame_build(&frame, op, data, len);
 	net_send_stream(c, frame.data, frame.offset, NULL, NULL);
 
@@ -213,7 +213,8 @@ websocket_frame_build(struct kore_buf *frame, u_int8_t op, const void *data,
 		}
 	}
 
-	kore_buf_append(frame, data, len);
+	if (data != NULL && len > 0)
+		kore_buf_append(frame, data, len);
 }
 
 static int
@@ -279,7 +280,6 @@ websocket_recv_frame(struct netbuf *nb)
 	u_int8_t		op, moff, extra;
 
 	c = nb->owner;
-
 	op = nb->buf[0] & WEBSOCKET_OPCODE_MASK;
 	len = WEBSOCKET_FRAME_LENGTH(nb->buf[1]);
 

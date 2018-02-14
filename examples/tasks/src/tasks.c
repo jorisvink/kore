@@ -172,7 +172,7 @@ int
 run_curl(struct kore_task *t)
 {
 	struct kore_buf		*b;
-	u_int32_t		len;
+	size_t			len;
 	CURLcode		res;
 	u_int8_t		*data;
 	CURL			*curl;

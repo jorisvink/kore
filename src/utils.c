@@ -47,6 +47,7 @@ static struct {
 
 static char b64table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
+#if defined(KORE_DEBUG)
 void
 kore_debug_internal(char *file, int line, const char *fmt, ...)
 {
@@ -59,6 +60,7 @@ kore_debug_internal(char *file, int line, const char *fmt, ...)
 
 	printf("[%d] %s:%d - %s\n", kore_pid, file, line, buf);
 }
+#endif
 
 void
 kore_log_init(void)
@@ -368,12 +370,11 @@ kore_time_to_date(time_t now)
 u_int64_t
 kore_time_ms(void)
 {
-	struct timeval		tv;
+	struct timespec		ts;
 
-	if (gettimeofday(&tv, NULL) == -1)
-		return (0);
+	(void)clock_gettime(CLOCK_MONOTONIC, &ts);
 
-	return (tv.tv_sec * 1000 + (tv.tv_usec / 1000));
+	return ((u_int64_t)(ts.tv_sec * 1000 + (ts.tv_nsec / 1000000)));
 }
 
 int

@@ -31,8 +31,8 @@
 static TAILQ_HEAD(, kore_module)	modules;
 
 static void	native_free(struct kore_module *);
+static void	native_load(struct kore_module *);
 static void	native_reload(struct kore_module *);
-static void	native_load(struct kore_module *, const char *);
 static void	*native_getsym(struct kore_module *, const char *);
 
 struct kore_module_functions kore_native_module = {
@@ -100,7 +100,7 @@ kore_module_load(const char *path, const char *onload, int type)
 		fatal("kore_module_load: unknown type %d", type);
 	}
 
-	module->fun->load(module, onload);
+	module->fun->load(module);
 	TAILQ_INSERT_TAIL(&modules, module, list);
 
 	if (onload != NULL) {
@@ -346,11 +346,11 @@ native_reload(struct kore_module *module)
 {
 	if (dlclose(module->handle))
 		fatal("cannot close existing module: %s", dlerror());
-	module->fun->load(module, module->onload);
+	module->fun->load(module);
 }
 
 static void
-native_load(struct kore_module *module, const char *onload)
+native_load(struct kore_module *module)
 {
 	module->handle = dlopen(module->path, RTLD_NOW | RTLD_GLOBAL);
 	if (module->handle == NULL)

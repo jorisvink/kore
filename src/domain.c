@@ -51,10 +51,9 @@ DH				*tls_dhparam = NULL;
 int				tls_version = KORE_TLS_VERSION_1_2;
 #endif
 
-static void	domain_load_crl(struct kore_domain *);
-
 #if !defined(KORE_NO_TLS)
 static int	domain_x509_verify(int, X509_STORE_CTX *);
+static void	domain_load_crl(struct kore_domain *);
 
 static void	keymgr_init(void);
 static void	keymgr_await_data(void);
@@ -458,10 +457,12 @@ kore_domain_closelogs(void)
 void
 kore_domain_load_crl(void)
 {
+#if !defined(KORE_NO_TLS)
 	struct kore_domain	*dom;
 
 	TAILQ_FOREACH(dom, &domains, list)
 		domain_load_crl(dom);
+#endif
 }
 
 void
@@ -473,13 +474,11 @@ kore_domain_keymgr_init(void)
 #endif
 }
 
+#if !defined(KORE_NO_TLS)
 static void
 domain_load_crl(struct kore_domain *dom)
 {
-#if !defined(KORE_NO_TLS)
 	X509_STORE		*store;
-
-	ERR_clear_error();
 
 	if (dom->cafile == NULL)
 		return;
@@ -489,6 +488,7 @@ domain_load_crl(struct kore_domain *dom)
 		return;
 	}
 
+	ERR_clear_error();
 	if ((store = SSL_CTX_get_cert_store(dom->ssl_ctx)) == NULL) {
 		kore_log(LOG_ERR, "SSL_CTX_get_cert_store(): %s", ssl_errno_s);
 		return;
@@ -502,8 +502,8 @@ domain_load_crl(struct kore_domain *dom)
 
 	X509_STORE_set_flags(store,
 	    X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
-#endif
 }
+#endif
 
 #if !defined(KORE_NO_TLS)
 static void

@@ -64,7 +64,7 @@ kore_buf_free(struct kore_buf *buf)
 }
 
 void
-kore_buf_append(struct kore_buf *buf, const void *d, size_t len)
+kore_buf_append(struct kore_buf *buf, const void *data, size_t len)
 {
 	if ((buf->offset + len) < len)
 		fatal("overflow in kore_buf_append");
@@ -74,7 +74,7 @@ kore_buf_append(struct kore_buf *buf, const void *d, size_t len)
 		buf->data = kore_realloc(buf->data, buf->length);
 	}
 
-	memcpy((buf->data + buf->offset), d, len);
+	memcpy((buf->data + buf->offset), data, len);
 	buf->offset += len;
 }
 

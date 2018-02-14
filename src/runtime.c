@@ -31,7 +31,8 @@ static int	native_runtime_onload(void *, int);
 static void	native_runtime_connect(void *, struct connection *);
 #if !defined(KORE_NO_HTTP)
 static int	native_runtime_http_request(void *, struct http_request *);
-static int	native_runtime_validator(void *, struct http_request *, void *);
+static int	native_runtime_validator(void *, struct http_request *,
+		    const void *);
 
 static void	native_runtime_wsmessage(void *, struct connection *, u_int8_t,
 		    const void *, size_t);
@@ -97,7 +98,7 @@ kore_runtime_http_request(struct kore_runtime_call *rcall,
 
 int
 kore_runtime_validator(struct kore_runtime_call *rcall,
-    struct http_request *req, void *data)
+    struct http_request *req, const void *data)
 {
 	return (rcall->runtime->validator(rcall->addr, req, data));
 }
@@ -160,9 +161,9 @@ native_runtime_http_request(void *addr, struct http_request *req)
 }
 
 static int
-native_runtime_validator(void *addr, struct http_request *req, void *data)
+native_runtime_validator(void *addr, struct http_request *req, const void *data)
 {
-	int		(*cb)(struct http_request *, void *);
+	int		(*cb)(struct http_request *, const void *);
 
 	*(void **)&(cb) = addr;
 	return (cb(req, data));

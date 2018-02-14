@@ -106,14 +106,15 @@ kore_auth_run(struct http_request *req, struct kore_auth *auth)
 static int
 kore_auth_cookie(struct http_request *req, struct kore_auth *auth)
 {
+	const char	*hdr;
 	int		i, v;
 	size_t		len, slen;
 	char		*value, *c, *cookie, *cookies[HTTP_MAX_COOKIES];
 
-	if (!http_request_header(req, "cookie", &c))
+	if (!http_request_header(req, "cookie", &hdr))
 		return (KORE_RESULT_ERROR);
 
-	cookie = kore_strdup(c);
+	cookie = kore_strdup(hdr);
 
 	slen = strlen(auth->value);
 	v = kore_split_string(cookie, ";", cookies, HTTP_MAX_COOKIES);
@@ -146,7 +147,7 @@ kore_auth_cookie(struct http_request *req, struct kore_auth *auth)
 static int
 kore_auth_header(struct http_request *req, struct kore_auth *auth)
 {
-	char		*header;
+	const char	*header;
 
 	if (!http_request_header(req, auth->value, &header))
 		return (KORE_RESULT_ERROR);

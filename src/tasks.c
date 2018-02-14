@@ -157,7 +157,6 @@ void
 kore_task_finish(struct kore_task *t)
 {
 	kore_debug("kore_task_finished: %p (%d)", t, t->result);
-
 	pthread_rwlock_wrlock(&(t->lock));
 
 	if (t->fds[1] != -1) {
@@ -174,6 +173,7 @@ kore_task_channel_write(struct kore_task *t, void *data, u_int32_t len)
 	int		fd;
 
 	kore_debug("kore_task_channel_write: %p <- %p (%ld)", t, data, len);
+
 	THREAD_FD_ASSIGN(t->thread->tid, fd, t->fds[1], t->fds[0]);
 	task_channel_write(fd, &len, sizeof(len));
 	task_channel_write(fd, data, len);

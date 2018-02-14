@@ -147,7 +147,7 @@ TAILQ_HEAD(netbuf_head, netbuf);
 #define CONN_CLOSE_EMPTY	0x40
 #define CONN_WS_CLOSE_SENT	0x80
 
-#define KORE_IDLE_TIMER_MAX	20000
+#define KORE_IDLE_TIMER_MAX	5000
 
 #define WEBSOCKET_OP_CONT	0x00
 #define WEBSOCKET_OP_TEXT	0x01
@@ -219,7 +219,7 @@ struct kore_runtime {
 	int	type;
 #if !defined(KORE_NO_HTTP)
 	int	(*http_request)(void *, struct http_request *);
-	int	(*validator)(void *, struct http_request *, void *);
+	int	(*validator)(void *, struct http_request *, const void *);
 	void	(*wsconnect)(void *, struct connection *);
 	void	(*wsdisconnect)(void *, struct connection *);
 	void	(*wsmessage)(void *, struct connection *,
@@ -297,7 +297,7 @@ struct kore_module_functions {
 	void			(*free)(struct kore_module *);
 	void			(*reload)(struct kore_module *);
 	int			(*callback)(struct kore_module *, int);
-	void			(*load)(struct kore_module *, const char *);
+	void			(*load)(struct kore_module *);
 	void			*(*getsym)(struct kore_module *, const char *);
 };
 
@@ -337,6 +337,7 @@ struct kore_worker {
 	int				pipe[2];
 	struct connection		*msg[2];
 	u_int8_t			has_lock;
+	u_int64_t			time_locked;
 	struct kore_module_handle	*active_hdlr;
 };
 
@@ -539,8 +540,8 @@ void			kore_connection_init(void);
 void			kore_connection_cleanup(void);
 void			kore_connection_prune(int);
 struct connection	*kore_connection_new(void *);
-void			kore_connection_check_timeout(void);
 int			kore_connection_nonblock(int, int);
+void			kore_connection_check_timeout(u_int64_t);
 int			kore_connection_handle(struct connection *);
 void			kore_connection_remove(struct connection *);
 void			kore_connection_disconnect(struct connection *);
@@ -637,7 +638,7 @@ void	kore_runtime_connect(struct kore_runtime_call *, struct connection *);
 int	kore_runtime_http_request(struct kore_runtime_call *,
 	    struct http_request *);
 int	kore_runtime_validator(struct kore_runtime_call *,
-	    struct http_request *, void *);
+	    struct http_request *, const void *);
 void	kore_runtime_wsconnect(struct kore_runtime_call *, struct connection *);
 void	kore_runtime_wsdisconnect(struct kore_runtime_call *,
 	    struct connection *);
@@ -655,7 +656,7 @@ void		kore_validator_reload(void);
 int		kore_validator_add(const char *, u_int8_t, const char *);
 int		kore_validator_run(struct http_request *, const char *, char *);
 int		kore_validator_check(struct http_request *,
-		    struct kore_validator *, void *);
+		    struct kore_validator *, const void *);
 struct kore_validator	*kore_validator_lookup(const char *);
 #endif
 

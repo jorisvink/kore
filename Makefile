@@ -20,7 +20,7 @@ FEATURES_INC=
 CFLAGS+=-Wall -Werror -Wstrict-prototypes -Wmissing-prototypes
 CFLAGS+=-Wmissing-declarations -Wshadow -Wpointer-arith -Wcast-qual
 CFLAGS+=-Wsign-compare -Iincludes -std=c99 -pedantic
-CFLAGS+=-DPREFIX='"$(PREFIX)"'
+CFLAGS+=-DPREFIX='"$(PREFIX)"' -fstack-protector-all
 LDFLAGS=-rdynamic -lssl -lcrypto
 
 ifneq ("$(KORE_SINGLE_BINARY)", "")
@@ -37,7 +37,7 @@ endif
 ifneq ("$(NOOPT)", "")
 	CFLAGS+=-O0
 else
-	CFLAGS+=-O2
+	CFLAGS+=-O3
 endif
 
 ifneq ("$(NOHTTP)", "")
@@ -95,7 +95,7 @@ ifeq ("$(OSNAME)", "darwin")
 	LDFLAGS+=-L/opt/local/lib -L/usr/local/opt/openssl/lib
 	S_SRC+=src/bsd.c
 else ifeq ("$(OSNAME)", "linux")
-	CFLAGS+=-D_GNU_SOURCE=1
+	CFLAGS+=-D_GNU_SOURCE=1 -D_FORTIFY_SOURCE=2
 	LDFLAGS+=-ldl
 	S_SRC+=src/linux.c
 else

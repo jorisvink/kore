@@ -272,9 +272,7 @@ kore_pgsql_query_params(struct kore_pgsql *pgsql,
 	va_list		args;
 
 	va_start(args, count);
-
 	ret = kore_pgsql_v_query_params(pgsql, query, result, count, args);
-
 	va_end(args);
 
 	return (ret);
@@ -374,7 +372,6 @@ void
 kore_pgsql_cleanup(struct kore_pgsql *pgsql)
 {
 	kore_debug("kore_pgsql_cleanup(%p)", pgsql);
-
 	pgsql_queue_remove(pgsql);
 
 	if (pgsql->result != NULL)
@@ -547,6 +544,7 @@ pgsql_queue_add(struct kore_pgsql *pgsql)
 
 	pgsql_queue_count++;
 	TAILQ_INSERT_TAIL(&pgsql_wait_queue, pgw, list);
+	pgsql_queue_count++;
 }
 
 static void
@@ -590,6 +588,7 @@ pgsql_queue_wakeup(void)
 
 		TAILQ_REMOVE(&pgsql_wait_queue, pgw, list);
 		kore_pool_put(&pgsql_wait_pool, pgw);
+		pgsql_queue_count--;
 		return;
 	}
 }
@@ -668,7 +667,6 @@ pgsql_conn_cleanup(struct pgsql_conn *conn)
 	struct pgsql_db		*pgsqldb;
 
 	kore_debug("pgsql_conn_cleanup(): %p", conn);
-
 	if (conn->flags & PGSQL_CONN_FREE)
 		TAILQ_REMOVE(&pgsql_conn_free, conn, list);
 

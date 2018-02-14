@@ -36,7 +36,7 @@ static PyObject		*pyconnection_alloc(struct connection *);
 static PyObject		*python_callable(PyObject *, const char *);
 
 static PyObject		*pyhttp_file_alloc(struct http_file *);
-static PyObject		*pyhttp_request_alloc(struct http_request *);
+static PyObject		*pyhttp_request_alloc(const struct http_request *);
 
 #if defined(KORE_USE_PGSQL)
 static PyObject		*pykore_pgsql_alloc(struct http_request *,
@@ -49,16 +49,17 @@ static void	python_push_integer(PyObject *, const char *, long);
 static void	python_push_type(const char *, PyObject *, PyTypeObject *);
 
 static int	python_runtime_http_request(void *, struct http_request *);
-static int	python_runtime_validator(void *, struct http_request *, void *);
+static int	python_runtime_validator(void *, struct http_request *,
+		    const void *);
 static void	python_runtime_wsmessage(void *, struct connection *,
 		    u_int8_t, const void *, size_t);
 static void	python_runtime_execute(void *);
 static int	python_runtime_onload(void *, int);
 static void	python_runtime_connect(void *, struct connection *);
 
+static void	python_module_load(struct kore_module *);
 static void	python_module_free(struct kore_module *);
 static void	python_module_reload(struct kore_module *);
-static void	python_module_load(struct kore_module *, const char *);
 static void	*python_module_getsym(struct kore_module *, const char *);
 
 static void	*python_malloc(void *, size_t);
@@ -211,7 +212,6 @@ python_module_reload(struct kore_module *module)
 	PyObject	*handle;
 
 	PyErr_Clear();
-
 	if ((handle = PyImport_ReloadModule(module->handle)) == NULL) {
 		python_log_error("python_module_reload");
 		return;
@@ -222,7 +222,7 @@ python_module_reload(struct kore_module *module)
 }
 
 static void
-python_module_load(struct kore_module *module, const char *onload)
+python_module_load(struct kore_module *module)
 {
 	module->handle = python_import(module->path);
 	if (module->handle == NULL)
@@ -322,7 +322,7 @@ python_runtime_http_request(void *addr, struct http_request *req)
 }
 
 static int
-python_runtime_validator(void *addr, struct http_request *req, void *data)
+python_runtime_validator(void *addr, struct http_request *req, const void *data)
 {
 	int		ret;
 	PyObject	*pyret, *pyreq, *args, *callable, *arg;
@@ -729,15 +729,23 @@ pyconnection_get_addr(struct pyconnection *pyc, void *closure)
 }
 
 static PyObject *
-pyhttp_request_alloc(struct http_request *req)
+pyhttp_request_alloc(const struct http_request *req)
 {
-	struct pyhttp_request		*pyreq;
+	union { const void *cp; void *p; }	ptr;
+	struct pyhttp_request			*pyreq;
 
 	pyreq = PyObject_New(struct pyhttp_request, &pyhttp_request_type);
 	if (pyreq == NULL)
 		return (NULL);
 
-	pyreq->req = req;
+	/*
+	 * Hack around all http apis taking a non-const pointer and us having
+	 * a const pointer for the req data structure. This is because we
+	 * could potentially be called from a validator where the argument
+	 * is a http_request pointer.
+	 */
+	ptr.cp = req;
+	pyreq->req = ptr.p;
 	pyreq->data = NULL;
 
 	return ((PyObject *)pyreq);
@@ -798,7 +806,7 @@ pyhttp_response_header(struct pyhttp_request *pyreq, PyObject *args)
 static PyObject *
 pyhttp_request_header(struct pyhttp_request *pyreq, PyObject *args)
 {
-	char			*value;
+	const char		*value;
 	const char		*header;
 	PyObject		*result;
 

@@ -228,6 +228,7 @@ kore_parse_config_file(const char *fpath)
 	if ((fp = fopen(fpath, "r")) == NULL)
 		fatal("configuration given cannot be opened: %s", fpath);
 #else
+	(void)fpath;
 	fp = config_file_write();
 #endif
 
@@ -305,6 +306,7 @@ static int
 configure_include(char *path)
 {
 	kore_parse_config_file(path);
+
 	return (KORE_RESULT_OK);
 }
 

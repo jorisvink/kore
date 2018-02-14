@@ -36,7 +36,7 @@
 #endif
 
 static int			kfd = -1;
-static struct kevent		*events;
+static struct kevent		*events = NULL;
 static u_int32_t		event_count = 0;
 
 void
@@ -70,7 +70,6 @@ kore_platform_worker_setcpu(struct kore_worker *kw)
 	    -1, sizeof(cpuset), &cpuset) == -1) {
 		fatal("failed: %s", errno_s);
 	}
-
 #endif /* __FreeBSD_version */
 }
 
@@ -78,6 +77,11 @@ void
 kore_platform_event_init(void)
 {
 	struct listener		*l;
+
+	if (kfd != -1)
+		close(kfd);
+	if (events != NULL)
+		kore_free(events);
 
 	if ((kfd = kqueue()) == -1)
 		fatal("kqueue(): %s", errno_s);
@@ -172,10 +176,8 @@ kore_platform_event_wait(u_int64_t timer)
 				    r >= worker_accept_threshold)
 					break;
 
-				if (!kore_connection_accept(l, &c)) {
-					r = 1;
+				if (!kore_connection_accept(l, &c))
 					break;
-				}
 
 				if (c == NULL)
 					break;
