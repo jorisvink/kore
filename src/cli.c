@@ -924,6 +924,11 @@ cli_build_asset(char *fpath, struct dirent *dp)
 	bopt = cli_buildopt_default();
 	name = cli_strdup(dp->d_name);
 
+	/* Ignore hidden files and some editor files */
+	if (name[0] == '.' || strrchr(name, '~') || strrchr(name, '#')) {
+		return;
+	}
+
 	/* Grab the extension as we're using it in the symbol name. */
 	if ((ext = strrchr(name, '.')) == NULL)
 		fatal("couldn't find ext in %s", name);
