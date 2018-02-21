@@ -70,8 +70,6 @@ static TAILQ_HEAD(, http_request)	http_requests_sleeping;
 static struct kore_pool			http_request_pool;
 static struct kore_pool			http_header_pool;
 static struct kore_pool			http_cookie_pool;
-static struct kore_pool			http_host_pool;
-static struct kore_pool			http_path_pool;
 static struct kore_pool			http_body_path;
 
 u_int32_t	http_request_count = 0;
@@ -110,10 +108,6 @@ http_init(void)
 	kore_pool_init(&http_cookie_pool, "http_cookie_pool",
 		sizeof(struct http_cookie), prealloc * HTTP_MAX_COOKIES);
 
-	kore_pool_init(&http_host_pool,
-	    "http_host_pool", KORE_DOMAINNAME_LEN, prealloc);
-	kore_pool_init(&http_path_pool,
-	    "http_path_pool", HTTP_URI_LEN, prealloc);
 	kore_pool_init(&http_body_path,
 	    "http_body_path", HTTP_BODY_PATH_MAX, prealloc);
 }
