@@ -586,7 +586,7 @@ void		kore_strip_chars(char *, const char, char **);
 int		kore_snprintf(char *, size_t, int *, const char *, ...);
 long long	kore_strtonum(const char *, int, long long, long long, int *);
 int		kore_base64_encode(const void *, size_t, char **);
-int		kore_base64_decode(char *, u_int8_t **, size_t *);
+int		kore_base64_decode(const char *, u_int8_t **, size_t *);
 void		*kore_mem_find(void *, size_t, void *, size_t);
 char		*kore_text_trim(char *, size_t);
 char		*kore_read_line(FILE *, char *, size_t);

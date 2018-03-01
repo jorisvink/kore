@@ -445,7 +445,7 @@ kore_base64_encode(const void *data, size_t len, char **out)
 }
 
 int
-kore_base64_decode(char *in, u_int8_t **out, size_t *olen)
+kore_base64_decode(const char *in, u_int8_t **out, size_t *olen)
 {
 	int			i, c;
 	struct kore_buf		*res;
