@@ -147,6 +147,12 @@ kore_python_cleanup(void)
 	}
 }
 
+void
+kore_python_path(const char *path)
+{
+	python_append_path(path);
+}
+
 static void *
 python_malloc(void *ctx, size_t len)
 {

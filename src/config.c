@@ -107,6 +107,7 @@ static int		configure_task_threads(char *);
 #endif
 
 #if defined(KORE_USE_PYTHON)
+static int		configure_python_path(char *);
 static int		configure_python_import(char *);
 #endif
 
@@ -121,6 +122,7 @@ static struct {
 	{ "bind",			configure_bind },
 	{ "load",			configure_load },
 #if defined(KORE_USE_PYTHON)
+	{ "python_path",		configure_python_path },
 	{ "python_import",		configure_python_import },
 #endif
 	{ "domain",			configure_domain },
@@ -1137,6 +1139,14 @@ configure_task_threads(char *option)
 #endif
 
 #if defined(KORE_USE_PYTHON)
+static int
+configure_python_path(char *path)
+{
+	kore_python_path(path);
+
+	return (KORE_RESULT_OK);
+}
+
 static int
 configure_python_import(char *module)
 {
