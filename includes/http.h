@@ -43,6 +43,7 @@ extern "C" {
 #define HTTP_COOKIE_BUFSIZE	1024
 #define HTTP_DATE_MAXSIZE	255
 #define HTTP_REQUEST_LIMIT	1000
+#define HTTP_REQUEST_MS		10
 #define HTTP_BODY_DISK_PATH	"tmp_files"
 #define HTTP_BODY_DISK_OFFLOAD	0
 #define HTTP_BODY_PATH_MAX	256
@@ -194,6 +195,7 @@ struct http_request {
 	u_int8_t			fsm_state;
 	u_int16_t			flags;
 	u_int16_t			status;
+	u_int64_t			ms;
 	u_int64_t			start;
 	u_int64_t			end;
 	u_int64_t			total;
@@ -235,8 +237,9 @@ struct http_state {
 	int			(*cb)(struct http_request *);
 };
 
-extern u_int16_t	http_header_max;
 extern size_t		http_body_max;
+extern u_int16_t	http_header_max;
+extern u_int32_t	http_request_ms;
 extern u_int64_t	http_hsts_enable;
 extern u_int16_t	http_keepalive_time;
 extern u_int32_t	http_request_limit;

@@ -73,6 +73,7 @@ static struct kore_pool			http_cookie_pool;
 static struct kore_pool			http_body_path;
 
 u_int32_t	http_request_count = 0;
+u_int32_t	http_request_ms = HTTP_REQUEST_MS;
 u_int32_t	http_request_limit = HTTP_REQUEST_LIMIT;
 u_int64_t	http_hsts_enable = HTTP_HSTS_ENABLE;
 u_int16_t	http_header_max = HTTP_HEADER_MAX_LEN;
@@ -170,12 +171,13 @@ http_request_wakeup(struct http_request *req)
 void
 http_process(void)
 {
-	u_int32_t			count;
+	u_int64_t			total;
 	struct http_request		*req, *next;
 
-	count = 0;
+	total = 0;
+
 	for (req = TAILQ_FIRST(&http_requests); req != NULL; req = next) {
-		if (count >= http_request_limit)
+		if (total >= http_request_ms)
 			break;
 
 		next = TAILQ_NEXT(req, list);
@@ -191,8 +193,8 @@ http_process(void)
 		if (!(req->flags & HTTP_REQUEST_COMPLETE))
 			continue;
 
-		count++;
 		http_process_request(req);
+		total += req->ms;
 	}
 }
 
@@ -230,7 +232,8 @@ http_process_request(struct http_request *req)
 		fatal("kore_auth() returned unknown %d", r);
 	}
 	req->end = kore_time_ms();
-	req->total += req->end - req->start;
+	req->ms = req->end - req->start;
+	req->total += req->ms;
 
 	switch (r) {
 	case KORE_RESULT_OK:

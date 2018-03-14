@@ -82,6 +82,7 @@ static int		configure_http_header_max(char *);
 static int		configure_http_body_max(char *);
 static int		configure_http_hsts_enable(char *);
 static int		configure_http_keepalive_time(char *);
+static int		configure_http_request_ms(char *);
 static int		configure_http_request_limit(char *);
 static int		configure_http_body_disk_offload(char *);
 static int		configure_http_body_disk_path(char *);
@@ -152,6 +153,7 @@ static struct {
 	{ "http_body_max",		configure_http_body_max },
 	{ "http_hsts_enable",		configure_http_hsts_enable },
 	{ "http_keepalive_time",	configure_http_keepalive_time },
+	{ "http_request_ms",		configure_http_request_ms },
 	{ "http_request_limit",		configure_http_request_limit },
 	{ "http_body_disk_offload",	configure_http_body_disk_offload },
 	{ "http_body_disk_path",	configure_http_body_disk_path },
@@ -681,6 +683,20 @@ configure_http_keepalive_time(char *option)
 	http_keepalive_time = kore_strtonum(option, 10, 0, USHRT_MAX, &err);
 	if (err != KORE_RESULT_OK) {
 		printf("bad http_keepalive_time value: %s\n", option);
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_http_request_ms(char *option)
+{
+	int		err;
+
+	http_request_ms = kore_strtonum(option, 10, 0, UINT_MAX, &err);
+	if (err != KORE_RESULT_OK) {
+		printf("bad http_request_ms value: %s\n", option);
 		return (KORE_RESULT_ERROR);
 	}
 
