@@ -166,6 +166,8 @@ kore_connection_check_timeout(u_int64_t now)
 			continue;
 		if (!(c->flags & CONN_IDLE_TIMER_ACT))
 			continue;
+		if (!TAILQ_EMPTY(&c->http_requests))
+			continue;
 		kore_connection_check_idletimer(now, c);
 	}
 }
