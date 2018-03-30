@@ -690,8 +690,8 @@ cli_info(int argc, char **argv)
 	    (bopt->single_binary) ? "binary" : "dso");
 
 	if (bopt->single_binary) {
-		printf("kore source  \t %s\n", bopt->kore_source);
 		printf("kore features\t %s\n", bopt->kore_flavor);
+		printf("kore source  \t %s\n", bopt->kore_source);
 	} else {
 		cli_kore_features(bopt, &features, &len);
 		printf("kore binary  \t %s/bin/kore\n", PREFIX);
