@@ -1691,7 +1691,12 @@ cli_build_flags_common(struct buildopt *bopt, struct cli_buf *buf)
 	char		*data;
 
 	cli_buf_appendf(buf, "-fPIC -Isrc -Isrc/includes ");
-	cli_buf_appendf(buf, "-I%s/include ", PREFIX);
+
+	if (bopt->single_binary == 0)
+		cli_buf_appendf(buf, "-I%s/include ", PREFIX);
+	else
+		cli_buf_appendf(buf, "-I%s/include ", bopt->kore_source);
+
 #if defined(__MACH__)
 	/* Add default openssl include path from homebrew / ports under OSX. */
 	cli_buf_appendf(buf, "-I/opt/local/include ");
