@@ -130,7 +130,7 @@ install: $(KORE) $(KODEV)
 	mkdir -p $(INSTALL_DIR)
 	install -m 555 $(KORE) $(INSTALL_DIR)/$(KORE)
 	install -m 644 kore.features $(SHARE_DIR)/features
-	install -m 644 includes/*.h $(INCLUDE_DIR)
+	install -m 644 include/kore/*.h $(INCLUDE_DIR)
 	$(MAKE) -C kodev install
 
 uninstall:
