@@ -19,7 +19,7 @@ FEATURES_INC=
 
 CFLAGS+=-Wall -Werror -Wstrict-prototypes -Wmissing-prototypes
 CFLAGS+=-Wmissing-declarations -Wshadow -Wpointer-arith -Wcast-qual
-CFLAGS+=-Wsign-compare -Iincludes -std=c99 -pedantic
+CFLAGS+=-Wsign-compare -Iinclude/kore -std=c99 -pedantic
 CFLAGS+=-DPREFIX='"$(PREFIX)"' -fstack-protector-all
 LDFLAGS=-rdynamic -lssl -lcrypto
 
