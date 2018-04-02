@@ -62,11 +62,8 @@ static void	kore_server_sslstart(void);
 static void
 usage(void)
 {
-#if !defined(KORE_SINGLE_BINARY)
-	fprintf(stderr, "Usage: kore [options]\n");
-#else
 	fprintf(stderr, "Usage: %s [options]\n", __progname);
-#endif
+
 	fprintf(stderr, "\n");
 	fprintf(stderr, "Available options:\n");
 #if !defined(KORE_SINGLE_BINARY)
@@ -79,9 +76,14 @@ usage(void)
 	fprintf(stderr, "\t-h\tthis help text\n");
 	fprintf(stderr, "\t-n\tdo not chroot\n");
 	fprintf(stderr, "\t-r\tdo not drop privileges\n");
-	fprintf(stderr, "\t-v\tdisplay kore build information\n");
+	fprintf(stderr, "\t-v\tdisplay %s build information\n", __progname);
 
+#if !defined(KORE_SINGLE_BINARY)
 	fprintf(stderr, "\nFind more information on https://kore.io\n");
+#else
+	fprintf(stderr, "\nBuilt using https://kore.io\n");
+#endif
+
 	exit(1);
 }
 
