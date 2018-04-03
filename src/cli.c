@@ -948,6 +948,7 @@ cli_build_asset(char *fpath, struct dirent *dp)
 	/* If this file was empty, skip it. */
 	if (st.st_size == 0) {
 		printf("skipping empty asset %s\n", name);
+		free(name);
 		return;
 	}
 
