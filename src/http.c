@@ -694,8 +694,6 @@ http_header_recv(struct netbuf *nb)
 				http_error_response(req->owner, 500);
 				return (KORE_RESULT_OK);
 			}
-		} else {
-			http_error_response(req->owner, 500);
 		}
 	}
 
