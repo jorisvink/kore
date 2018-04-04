@@ -147,7 +147,7 @@ pool_region_create(struct kore_pool *pool, size_t elms)
 	reg->length = elms * pool->slen;
 	reg->start = mmap(NULL, reg->length, PROT_READ | PROT_WRITE,
 	    MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
-	if (reg->start == NULL)
+	if (reg->start == MAP_FAILED)
 		fatal("mmap: %s", errno_s);
 
 	p = (u_int8_t *)reg->start;
