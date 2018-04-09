@@ -29,6 +29,7 @@
 static void	native_runtime_execute(void *);
 static int	native_runtime_onload(void *, int);
 static void	native_runtime_connect(void *, struct connection *);
+static void	native_runtime_configure(void *, int, char **);
 #if !defined(KORE_NO_HTTP)
 static int	native_runtime_http_request(void *, struct http_request *);
 static int	native_runtime_validator(void *, struct http_request *,
@@ -49,7 +50,8 @@ struct kore_runtime kore_native_runtime = {
 #endif
 	.onload = native_runtime_onload,
 	.connect = native_runtime_connect,
-	.execute = native_runtime_execute
+	.execute = native_runtime_execute,
+	.configure = native_runtime_configure
 };
 
 struct kore_runtime_call *
@@ -74,6 +76,12 @@ void
 kore_runtime_execute(struct kore_runtime_call *rcall)
 {
 	rcall->runtime->execute(rcall->addr);
+}
+
+void
+kore_runtime_configure(struct kore_runtime_call *rcall, int argc, char **argv)
+{
+	rcall->runtime->configure(rcall->addr, argc, argv);
 }
 
 int
@@ -130,6 +138,15 @@ native_runtime_execute(void *addr)
 
 	*(void **)&(cb) = addr;
 	cb();
+}
+
+static void
+native_runtime_configure(void *addr, int argc, char **argv)
+{
+	void	(*cb)(int, char **);
+
+	*(void **)&(cb) = addr;
+	cb(argc, argv);
 }
 
 static void

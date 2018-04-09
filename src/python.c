@@ -55,6 +55,7 @@ static void	python_runtime_wsmessage(void *, struct connection *,
 		    u_int8_t, const void *, size_t);
 static void	python_runtime_execute(void *);
 static int	python_runtime_onload(void *, int);
+static void	python_runtime_configure(void *, int, char **);
 static void	python_runtime_connect(void *, struct connection *);
 
 static void	python_module_load(struct kore_module *);
@@ -83,7 +84,8 @@ struct kore_runtime kore_python_runtime = {
 	.wsdisconnect = python_runtime_connect,
 	.onload = python_runtime_onload,
 	.connect = python_runtime_connect,
-	.execute = python_runtime_execute
+	.execute = python_runtime_execute,
+	.configure = python_runtime_configure
 };
 
 static struct {
@@ -435,6 +437,37 @@ python_runtime_execute(void *addr)
 	if (pyret == NULL) {
 		python_log_error("python_runtime_execute");
 		fatal("failed to execute python call");
+	}
+
+	Py_DECREF(pyret);
+}
+
+static void
+python_runtime_configure(void *addr, int argc, char **argv)
+{
+	int		i;
+	PyObject	*callable, *args, *pyret, *pyarg;
+
+	callable = (PyObject *)addr;
+
+	if ((args = PyTuple_New(argc)) == NULL)
+		fatal("python_runtime_configure: PyTuple_New failed");
+
+	for (i = 0; i < argc; i++) {
+		if ((pyarg = PyUnicode_FromString(argv[i])) == NULL)
+			fatal("python_runtime_configure: PyUnicode_FromString");
+
+		if (PyTuple_SetItem(args, i, pyarg) != 0)
+			fatal("python_runtime_configure: PyTuple_SetItem");
+	}
+
+	PyErr_Clear();
+	pyret = PyObject_Call(callable, args, NULL);
+	Py_DECREF(args);
+
+	if (pyret == NULL) {
+		python_log_error("python_runtime_configure");
+		fatal("failed to call configure method: wrong args?");
 	}
 
 	Py_DECREF(pyret);

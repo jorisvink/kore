@@ -228,6 +228,7 @@ struct kore_runtime {
 	void	(*execute)(void *);
 	int	(*onload)(void *, int);
 	void	(*connect)(void *, struct connection *);
+	void	(*configure)(void *, int, char **);
 };
 
 struct kore_runtime_call {
@@ -557,6 +558,7 @@ void		kore_log_init(void);
 
 void		*kore_malloc(size_t);
 void		kore_parse_config(void);
+void		kore_parse_config_file(FILE *);
 void		*kore_calloc(size_t, size_t);
 void		*kore_realloc(void *, size_t);
 void		kore_free(void *);
@@ -633,6 +635,7 @@ struct kore_runtime_call	*kore_runtime_getcall(const char *);
 
 void	kore_runtime_execute(struct kore_runtime_call *);
 int	kore_runtime_onload(struct kore_runtime_call *, int);
+void	kore_runtime_configure(struct kore_runtime_call *, int, char **);
 void	kore_runtime_connect(struct kore_runtime_call *, struct connection *);
 #if !defined(KORE_NO_HTTP)
 int	kore_runtime_http_request(struct kore_runtime_call *,
@@ -706,8 +709,8 @@ void	kore_buf_replace_string(struct kore_buf *, char *, void *, size_t);
 void	kore_keymgr_run(void);
 void	kore_keymgr_cleanup(void);
 
-void	kore_parent_configure(void);
 void	kore_worker_configure(void);
+void	kore_parent_configure(int, char **);
 
 #if defined(__cplusplus)
 }

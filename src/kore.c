@@ -169,8 +169,10 @@ main(int argc, char *argv[])
 
 	kore_mem_init();
 
+#if !defined(KORE_SINGLE_BINARY)
 	if (argc > 0)
 		fatal("did you mean to run `kodev´ instead?");
+#endif
 
 	kore_pid = getpid();
 	nlisteners = 0;
@@ -191,16 +193,18 @@ main(int argc, char *argv[])
 #if !defined(KORE_SINGLE_BINARY)
 	if (config_file == NULL)
 		usage();
+	kore_parse_config();
 #else
 	kore_module_load(NULL, NULL, KORE_MODULE_NATIVE);
+	kore_parse_config();
+
 	rcall = kore_runtime_getcall("kore_parent_configure");
 	if (rcall != NULL) {
-		kore_runtime_execute(rcall);
+		kore_runtime_configure(rcall, argc, argv);
 		kore_free(rcall);
 	}
 #endif
 
-	kore_parse_config();
 	kore_platform_init();
 
 #if !defined(KORE_NO_HTTP)

@@ -113,7 +113,6 @@ static int		configure_python_import(char *);
 #endif
 
 static void		domain_tls_init(void);
-static void		kore_parse_config_file(const char *);
 
 static struct {
 	const char		*name;
@@ -195,11 +194,16 @@ static struct kore_domain		*current_domain = NULL;
 void
 kore_parse_config(void)
 {
+	FILE		*fp;
+
 #if !defined(KORE_SINGLE_BINARY)
-	kore_parse_config_file(config_file);
+	if ((fp = fopen(config_file, "r")) == NULL)
+		fatal("configuration given cannot be opened: %s", config_file);
 #else
-	kore_parse_config_file(NULL);
+	fp = config_file_write();
 #endif
+
+	kore_parse_config_file(fp);
 
 	if (!kore_module_loaded())
 		fatal("no application module was loaded");
@@ -221,22 +225,11 @@ kore_parse_config(void)
 	}
 }
 
-static void
-kore_parse_config_file(const char *fpath)
+void
+kore_parse_config_file(FILE *fp)
 {
-	FILE		*fp;
 	int		i, lineno;
 	char		buf[BUFSIZ], *p, *t;
-
-#if !defined(KORE_SINGLE_BINARY)
-	if ((fp = fopen(fpath, "r")) == NULL)
-		fatal("configuration given cannot be opened: %s", fpath);
-#else
-	(void)fpath;
-	fp = config_file_write();
-#endif
-
-	kore_debug("parsing configuration file '%s'", fpath);
 
 	lineno = 1;
 	while ((p = kore_read_line(fp, buf, sizeof(buf))) != NULL) {
@@ -309,7 +302,12 @@ kore_parse_config_file(const char *fpath)
 static int
 configure_include(char *path)
 {
-	kore_parse_config_file(path);
+	FILE		*fp;
+
+	if ((fp = fopen(path, "r")) == NULL)
+		fatal("failed to open include '%s'", path);
+
+	kore_parse_config_file(fp);
 
 	return (KORE_RESULT_OK);
 }
