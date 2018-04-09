@@ -48,10 +48,9 @@ kore_parent_configure(int argc, char **argv)
 
 	kore_module_load(argv[0], NULL, KORE_MODULE_PYTHON);
 
-	/* kore_parse_config_file() will call fclose(). */
-
 	if (chdir(argv[0]) == -1)
 		fatal("chdir(%s): %s", argv[0], errno_s);
 
+	/* kore_parse_config_file() will call fclose(). */
 	kore_parse_config_file(fp);
 }
