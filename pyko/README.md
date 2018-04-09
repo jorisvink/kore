@@ -21,7 +21,7 @@ App layout
 Your python application directory must have the following layout:
 
 ```
-	app/
+	python_app/
 		kore.conf	<- actual kore configuration
 		__init__.py	<- usual python init stuff
 ```
