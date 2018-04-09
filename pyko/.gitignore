@@ -1,0 +1,6 @@
+*.o
+.flavor
+.objs
+pyko.so
+assets.h
+cert
