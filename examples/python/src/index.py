@@ -76,7 +76,7 @@ def page(req):
 	xframe = req.request_header("xframe")
 	if xframe != None:
 		kore.log(kore.LOG_INFO, "xframe header present: '%s'" % xframe)
-	if req.method == kore.METHOD_POST:
+	if req.method == kore.HTTP_METHOD_POST:
 		try:
 			length, body = req.body_read(1024)
 			kore.log(kore.LOG_INFO, "POST and got %d bytes! (%s)" %
@@ -102,7 +102,7 @@ def page(req):
 # Handler that parses the incoming body as JSON and dumps out some things.
 #
 def json_parse(req):
-	if req.method != kore.METHOD_PUT:
+	if req.method != kore.HTTP_METHOD_PUT:
 		req.response(400, b'')
 	else:
 		data = json.loads(req.body)

@@ -24,7 +24,7 @@ import kore
 #
 def upload(req):
 	# We only allow POST's.
-	if req.method is not kore.METHOD_POST:
+	if req.method is not kore.HTTP_METHOD_POST:
 		req.response_header("allow", "post")
 		req.response(400, b'')
 		return
