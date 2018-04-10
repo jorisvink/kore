@@ -78,11 +78,8 @@ kore_pool_get(struct kore_pool *pool)
 	pool_lock(pool);
 #endif
 
-	if (LIST_EMPTY(&(pool->freelist))) {
-		kore_log(LOG_NOTICE, "pool %s is exhausted (%zu/%zu)",
-		    pool->name, pool->inuse, pool->elms);
+	if (LIST_EMPTY(&(pool->freelist)))
 		pool_region_create(pool, pool->elms);
-	}
 
 	entry = LIST_FIRST(&(pool->freelist));
 	if (entry->state != POOL_ELEMENT_FREE)
