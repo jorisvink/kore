@@ -345,7 +345,12 @@ static const char *pyko_init_data =
 	"if port is None:\n"
 	"\tport = '8888'\n"
 	"\n"
-	"kore.listen(ip, port, '')\n";
+	"kore.listen(ip, port, '')\n"
+	"\n"
+	"def kore_worker_configure():\n"
+	"\tconninfo = os.getenv('PYKO_CONNINFO')\n"
+	"\tif conninfo is not None:\n"
+	"\t\tkore.register_database('appdb', conninfo)\n";
 
 static const char *pyko_handlers_data =
 	"import kore\n"
