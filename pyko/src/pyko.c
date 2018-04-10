@@ -57,7 +57,7 @@ kore_parent_configure(int argc, char **argv)
 		fatal("failed to create configuration path");
 
 	if ((fp = fopen(config, "r")) == NULL)
-		fatal("failed to open configuration '%s'", config);
+		fatal("cannot open configuration '%s': %s", config, errno_s);
 
 	kore_python_path(module);
 	kore_module_load(module, NULL, KORE_MODULE_PYTHON);
