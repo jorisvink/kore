@@ -23,7 +23,17 @@ Your python application directory must have the following layout:
 ```
 	python_app/
 		kore.conf	<- actual kore configuration
-		__init__.py	<- usual python init stuff
+		__init__.py	<- module initialization (binds, worker setup)
+		handlers.py	<- handler code
+```
+
+You can easily use the kodev tool from kore to create an application
+skeleton that gets you going:
+
+```
+	$ kodev create -p myapp
+	$ cd myapp
+	$ pyko -frn
 ```
 
 Usage
@@ -37,3 +47,5 @@ Usage
 	-n = skip chroot
 	-r = skip privilege drop
 ```
+
+You can run pyko from inside the module directory directly as well.
