@@ -65,6 +65,6 @@ kore_parent_configure(int argc, char **argv)
 	if (chdir(module) == -1)
 		fatal("chdir(%s): %s", module, errno_s);
 
-	/* kore_parse_config_file() will call fclose(). */
 	kore_parse_config_file(fp);
+	(void)fclose(fp);
 }

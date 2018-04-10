@@ -204,6 +204,7 @@ kore_parse_config(void)
 #endif
 
 	kore_parse_config_file(fp);
+	(void)fclose(fp);
 
 	if (!kore_module_loaded())
 		fatal("no application module was loaded");
@@ -295,8 +296,6 @@ kore_parse_config_file(FILE *fp)
 			printf("ignoring \"%s\" on line %d\n", p, lineno);
 		lineno++;
 	}
-
-	fclose(fp);
 }
 
 static int
@@ -308,6 +307,7 @@ configure_include(char *path)
 		fatal("failed to open include '%s'", path);
 
 	kore_parse_config_file(fp);
+	(void)fclose(fp);
 
 	return (KORE_RESULT_OK);
 }
