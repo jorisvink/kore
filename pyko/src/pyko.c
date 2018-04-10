@@ -18,6 +18,7 @@
 #include <sys/stat.h>
 
 #include <kore/kore.h>
+#include <kore/python_api.h>
 
 #include <stdio.h>
 #include <limits.h>
@@ -58,6 +59,7 @@ kore_parent_configure(int argc, char **argv)
 	if ((fp = fopen(config, "r")) == NULL)
 		fatal("failed to open configuration '%s'", config);
 
+	kore_python_path(module);
 	kore_module_load(module, NULL, KORE_MODULE_PYTHON);
 
 	if (chdir(module) == -1)
