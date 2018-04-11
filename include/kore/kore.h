@@ -596,6 +596,7 @@ char		*kore_read_line(FILE *, char *, size_t);
 #if !defined(KORE_NO_HTTP)
 void		kore_websocket_handshake(struct http_request *,
 		    const char *, const char *, const char *);
+int		kore_websocket_send_clean(struct netbuf *nb );	
 void		kore_websocket_send(struct connection *,
 		    u_int8_t, const void *, size_t);
 void		kore_websocket_broadcast(struct connection *,
