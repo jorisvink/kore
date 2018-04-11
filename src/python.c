@@ -601,10 +601,8 @@ python_kore_pgsql_register(PyObject *self, PyObject *args)
 {
 	const char	*db, *conninfo;
 
-	if (!PyArg_ParseTuple(args, "ss", &db, &conninfo)) {
-		PyErr_SetString(PyExc_TypeError, "invalid parameters");
+	if (!PyArg_ParseTuple(args, "ss", &db, &conninfo))
 		return (NULL);
-	}
 
 	(void)kore_pgsql_register(db, conninfo);
 
@@ -618,10 +616,8 @@ python_kore_log(PyObject *self, PyObject *args)
 	int		prio;
 	const char	*message;
 
-	if (!PyArg_ParseTuple(args, "is", &prio, &message)) {
-		PyErr_SetString(PyExc_TypeError, "invalid parameters");
+	if (!PyArg_ParseTuple(args, "is", &prio, &message))
 		return (NULL);
-	}
 
 	kore_log(prio, "%s", message);
 
@@ -633,10 +629,8 @@ python_kore_listen(PyObject *self, PyObject *args)
 {
 	const char	*ip, *port, *ccb;
 
-	if (!PyArg_ParseTuple(args, "sss", &ip, &port, &ccb)) {
-		PyErr_SetString(PyExc_TypeError, "invalid parameters");
+	if (!PyArg_ParseTuple(args, "sss", &ip, &port, &ccb))
 		return (NULL);
-	}
 
 	if (!strcmp(ccb, ""))
 		ccb = NULL;
@@ -813,10 +807,8 @@ pyhttp_response(struct pyhttp_request *pyreq, PyObject *args)
 
 	len = -1;
 
-	if (!PyArg_ParseTuple(args, "iy#", &status, &body, &len)) {
-		PyErr_SetString(PyExc_TypeError, "invalid parameters");
+	if (!PyArg_ParseTuple(args, "iy#", &status, &body, &len))
 		return (NULL);
-	}
 
 	if (len < 0) {
 		PyErr_SetString(PyExc_TypeError, "invalid length");
@@ -833,10 +825,8 @@ pyhttp_response_header(struct pyhttp_request *pyreq, PyObject *args)
 {
 	const char		*header, *value;
 
-	if (!PyArg_ParseTuple(args, "ss", &header, &value)) {
-		PyErr_SetString(PyExc_TypeError, "invalid parameters");
+	if (!PyArg_ParseTuple(args, "ss", &header, &value))
 		return (NULL);
-	}
 
 	http_response_header(pyreq->req, header, value);
 
@@ -850,10 +840,8 @@ pyhttp_request_header(struct pyhttp_request *pyreq, PyObject *args)
 	const char		*header;
 	PyObject		*result;
 
-	if (!PyArg_ParseTuple(args, "s", &header)) {
-		PyErr_SetString(PyExc_TypeError, "invalid parameters");
+	if (!PyArg_ParseTuple(args, "s", &header))
 		return (NULL);
-	}
 
 	if (!http_request_header(pyreq->req, header, &value)) {
 		Py_RETURN_NONE;
@@ -938,10 +926,8 @@ pyhttp_argument(struct pyhttp_request *pyreq, PyObject *args)
 	PyObject	*value;
 	char		*string;
 
-	if (!PyArg_ParseTuple(args, "s", &name)) {
-		PyErr_SetString(PyExc_TypeError, "invalid parameters");
+	if (!PyArg_ParseTuple(args, "s", &name))
 		return (NULL);
-	}
 
 	if (!http_argument_get_string(pyreq->req, name, &string)) {
 		Py_RETURN_NONE;
@@ -960,10 +946,8 @@ pyhttp_cookie(struct pyhttp_request *pyreq, PyObject *args)
 	PyObject	*value;
 	char		*string;
 
-	if (!PyArg_ParseTuple(args, "s", &name)) {
-		PyErr_SetString(PyExc_TypeError, "invalid parameters");
+	if (!PyArg_ParseTuple(args, "s", &name))
 		return (NULL);
-	}
 
 	if (!http_request_cookie(pyreq->req, name, &string)) {
 		Py_RETURN_NONE;
@@ -982,10 +966,8 @@ pyhttp_file_lookup(struct pyhttp_request *pyreq, PyObject *args)
 	struct http_file	*file;
 	PyObject		*pyfile;
 
-	if (!PyArg_ParseTuple(args, "s", &name)) {
-		PyErr_SetString(PyExc_TypeError, "invalid parameters");
+	if (!PyArg_ParseTuple(args, "s", &name))
 		return (NULL);
-	}
 
 	if ((file = http_file_lookup(pyreq->req, name)) == NULL) {
 		Py_RETURN_NONE;
@@ -1040,10 +1022,8 @@ pyhttp_websocket_handshake(struct pyhttp_request *pyreq, PyObject *args)
 {
 	const char	*onconnect, *onmsg, *ondisconnect;
 
-	if (!PyArg_ParseTuple(args, "sss", &onconnect, &onmsg, &ondisconnect)) {
-		PyErr_SetString(PyExc_TypeError, "invalid parameters");
+	if (!PyArg_ParseTuple(args, "sss", &onconnect, &onmsg, &ondisconnect))
 		return (NULL);
-	}
 
 	kore_websocket_handshake(pyreq->req, onconnect, onmsg, ondisconnect);
 
@@ -1063,10 +1043,8 @@ pyconnection_websocket_send(struct pyconnection *pyc, PyObject *args)
 
 	len = -1;
 
-	if (!PyArg_ParseTuple(args, "iy#", &op, &data, &len)) {
-		PyErr_SetString(PyExc_TypeError, "invalid parameters");
+	if (!PyArg_ParseTuple(args, "iy#", &op, &data, &len))
 		return (NULL);
-	}
 
 	if (len < 0) {
 		PyErr_SetString(PyExc_TypeError, "invalid length");
@@ -1099,10 +1077,8 @@ python_websocket_broadcast(PyObject *self, PyObject *args)
 	len = -1;
 
 	if (!PyArg_ParseTuple(args, "Oiy#i", &pysrc, &op, &data, &len,
-	    &broadcast)) {
-		PyErr_SetString(PyExc_TypeError, "invalid parameters");
+	    &broadcast))
 		return (NULL);
-	}
 
 	if (len < 0) {
 		PyErr_SetString(PyExc_TypeError, "invalid length");
@@ -1451,10 +1427,8 @@ pyhttp_pgsql(struct pyhttp_request *pyreq, PyObject *args)
 	PyObject			*obj;
 	const char			*db, *query;
 
-	if (!PyArg_ParseTuple(args, "ss", &db, &query)) {
-		PyErr_SetString(PyExc_TypeError, "invalid parameters");
+	if (!PyArg_ParseTuple(args, "ss", &db, &query))
 		return (NULL);
-	}
 
 	if ((obj = pykore_pgsql_alloc(pyreq->req, db, query)) == NULL)
 		return (PyErr_NoMemory());
