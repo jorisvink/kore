@@ -313,7 +313,8 @@ python_runtime_http_request(void *addr, struct http_request *req)
 
 	if (pyret == NULL) {
 		python_log_error("python_runtime_http_request");
-		fatal("failed to execute python call");
+		http_response(req, HTTP_STATUS_INTERNAL_ERROR, NULL, 0);
+		return (KORE_RESULT_OK);
 	}
 
 	if (PyCoro_CheckExact(pyret)) {
