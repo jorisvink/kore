@@ -1664,7 +1664,7 @@ http_response_normal(struct http_request *req, struct connection *c,
 		    http_hsts_enable);
 	}
 
-	if (req != NULL) {
+	if (req != NULL && req->status < HTTP_STATUS_INTERNAL_ERROR) {
 		TAILQ_FOREACH(ck, &(req->resp_cookies), list)
 			http_write_response_cookie(ck);
 
