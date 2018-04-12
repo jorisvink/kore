@@ -559,7 +559,14 @@ kore_worker_acceptlock_release(u_int64_t now)
 	if (worker->has_lock != 1)
 		return (0);
 
-
+	if (worker_active_connections < worker_max_connections) {
+#if !defined(KORE_NO_HTTP)
+		if (http_request_count < http_request_limit)
+			return (0);
+#else
+		return (0);
+#endif
+	}
 
 #if defined(WORKER_DEBUG)
 	kore_log(LOG_DEBUG, "worker busy, releasing lock");
