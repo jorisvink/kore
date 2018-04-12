@@ -136,7 +136,7 @@ kore_websocket_handshake(struct http_request *req, const char *onconnect,
 }
 
 int
-kore_websocket_send_clean(struct netbuf *nb )
+kore_websocket_send_clean(struct netbuf *nb)
 {
   	kore_free(nb->buf);
   	return 0;
