@@ -34,8 +34,7 @@
 #include "python_api.h"
 #endif
 
-volatile sig_atomic_t			sig_recv;
-
+volatile sig_atomic_t	sig_recv;
 struct listener_head	listeners;
 u_int8_t		nlisteners;
 pid_t			kore_pid = -1;
