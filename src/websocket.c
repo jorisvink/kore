@@ -138,8 +138,8 @@ kore_websocket_handshake(struct http_request *req, const char *onconnect,
 int
 kore_websocket_send_clean(struct netbuf *nb)
 {
-  	kore_free(nb->buf);
-  	return 0;
+	kore_free(nb->buf);
+	return 0;
 }
 
 void
@@ -150,7 +150,8 @@ kore_websocket_send(struct connection *c, u_int8_t op, const void *data,
 
 	kore_buf_init(&frame, len);
 	websocket_frame_build(&frame, op, data, len);
-	net_send_stream(c, frame.data, frame.offset, kore_websocket_send_clean, NULL);
+	net_send_stream(c, frame.data, frame.offset,
+	    kore_websocket_send_clean, NULL);
 
 	/* net_send_stream() takes over the buffer data pointer. */
 	frame.data = NULL;
