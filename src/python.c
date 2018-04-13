@@ -627,15 +627,12 @@ python_kore_log(PyObject *self, PyObject *args)
 static PyObject *
 python_kore_listen(PyObject *self, PyObject *args)
 {
-	const char	*ip, *port, *ccb;
+	const char	*ip, *port;
 
-	if (!PyArg_ParseTuple(args, "sss", &ip, &port, &ccb))
+	if (!PyArg_ParseTuple(args, "ss", &ip, &port))
 		return (NULL);
 
-	if (!strcmp(ccb, ""))
-		ccb = NULL;
-
-	if (!kore_server_bind(ip, port, ccb)) {
+	if (!kore_server_bind(ip, port, NULL)) {
 		PyErr_SetString(PyExc_RuntimeError, "failed to listen");
 		return (NULL);
 	}
