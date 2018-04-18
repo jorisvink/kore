@@ -683,9 +683,12 @@ cli_build(int argc, char **argv)
 
 	free(assets_header);
 
-	if (!cli_dir_exists("cert")) {
-		cli_mkdir("cert", 0700);
-		cli_generate_certs();
+	if (bopt->kore_flavor == NULL ||
+	    !strstr(bopt->kore_flavor, "NOTLS=1")) {
+		if (!cli_dir_exists("cert")) {
+			cli_mkdir("cert", 0700);
+			cli_generate_certs();
+		}
 	}
 
 	if (bopt->single_binary) {
