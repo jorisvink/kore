@@ -2,5 +2,6 @@
   "name": "kore",
   "version": "2.0.0-release",
   "description": "An easy to use, scalable and secure web application framework for writing web APIs in C.",
-  "repo": "https://github.com/jorisvink/kore"
+  "repo": "https://github.com/jorisvink/kore",
+  "install": "make && make install"
 }
