@@ -9,6 +9,8 @@ INSTALL_DIR=$(PREFIX)/bin
 SHARE_DIR=$(PREFIX)/share/kore
 INCLUDE_DIR=$(PREFIX)/include/kore
 
+export PREFIX
+
 S_SRC=	src/kore.c src/buf.c src/config.c src/connection.c \
 	src/domain.c src/mem.c src/msg.c src/module.c src/net.c \
 	src/pool.c src/runtime.c src/timer.c src/utils.c src/worker.c \
