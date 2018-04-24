@@ -872,6 +872,7 @@ http_response_cookie(struct http_request *req, const char *name,
     const char *val, const char *path, time_t expires, u_int32_t maxage,
     struct http_cookie **out)
 {
+	char			*p;
 	struct http_cookie	*ck;
 
 	if (name == NULL || val == NULL)
@@ -885,6 +886,9 @@ http_response_cookie(struct http_request *req, const char *name,
 	ck->value = kore_strdup(val);
 	ck->domain = kore_strdup(req->host);
 	ck->flags = HTTP_COOKIE_HTTPONLY | HTTP_COOKIE_SECURE;
+
+	if ((p = strrchr(ck->domain, ':')) != NULL)
+		*p = '\0';
 
 	if (path != NULL)
 		ck->path = kore_strdup(path);
