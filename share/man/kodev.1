@@ -19,16 +19,18 @@ projects may be managed using the following OPTIONS;
 .RS
 Create a new application skeleton with the name that is passed to it. This will
 create a new directory with all the files required to begin hacking about.
-This will also generate a self-signed certificate \fIunless\fR \fBkore\fR was
-built with \fBNOTLS=1\fR. Note this certificate should not be used for
-production.
+This will also generate a self-signed certificate \fIunless\fR single\-binary
+is enabled in the
+.BR conf/build.conf
+and \fBNOTLS=1\fR is set in the active flavour. Note that this certificate
+should not be used for production.
 .RE
 
 .BR build
 .RS
 Build the application. The properties of this build are read from
 .BR conf/build.conf
-and the semantics of which are discussed in \fBCONFIGURATION FILES\fR
+and the semantics of which are discussed in \fBCONFIGURATION FILES\fR.
 .RE
 
 .BR run
@@ -36,14 +38,20 @@ and the semantics of which are discussed in \fBCONFIGURATION FILES\fR
 Run an application (\-fnr implied). The current directory is the path of the
 project to be run. This will read from the \fBconf/app.conf\fR discussed in
 \fBCONFIGURATION FILES\fR unless otherwise specified. This will build the
-application\-\-if necessary\-\-and start it in the foregound. \fB^C\fR
-will stop the process.
+application\(emif necessary\(emand start it in the foregound. \fB^C\fR
+will stop the process. By default, \fBkore\fR binds to port 8888 on
+.BR localhost
+and again, this behaviour may be configured in your
+.BR conf/app.conf .
+If the single\-binary mode is turned on, then that binary will be run as
+opposed to the default
+.BR $PREFIX/bin/kore .
 .RE
 
 .BR reload
 .RS
-Reload the application (SIGHUP sent). Reads the application run configuration
-which would be read in a normal run on a reload.
+Reload the application (SIGHUP sent). This in turn triggers a reload of all the
+currently loaded modules.
 .RE
 
 .BR info
@@ -85,7 +93,7 @@ and
 .BR kore_flavour
 and update the \fBldflags\fR to include the appropriate libraries you intend
 to link the binary with. You may also set custom \fBcflags\fR either global to
-the flavours or per flavour configurations. 
+the flavours or per flavour configurations.
 
 When a \fBcreate [app]\fR is called, kodev will also create an \fBapp.conf\fR
 where 'app' is the name of the project. This configuration describes to Kore
