@@ -8,56 +8,41 @@ kodev \- Kore project management tool
 
 .SH DESCRIPTION
 This documentation describes the application management tools for building and
-running a kore project. For information regarding the technical interface and
+running a Kore project. For information regarding the technical interface and
 C bindings, look to
-.BR KORE(3)
+.BR kore(3)
 where these functions and structures are described.
-.BR kore
+.BR Kore
 projects may be managed using the following OPTIONS;
 
 .BR create
 .RS
 Create a new application skeleton with the name that is passed to it. This will
-create a new directory with all the files required to begin hacking about.
-This will also generate a self-signed certificate \fIunless\fR single\-binary
-is enabled in the
-.BR conf/build.conf
-and \fBNOTLS=1\fR is set in the active flavour. Note that this certificate
-should not be used for production.
+create a new directory with all the files required to begin hacking. See the
+\fBGENERATED FILES\fR section for more information.
 .RE
 
 .BR build
 .RS
-Build the application. The properties of this build are read from
-.BR conf/build.conf
-and the semantics of which are discussed in \fBCONFIGURATION FILES\fR.
+Build the application. See the \fBBUILDING\fR section for more information.
 .RE
 
 .BR run
 .RS
-Run an application (\-fnr implied). The current directory is the path of the
-project to be run. This will read from the \fBconf/app.conf\fR discussed in
-\fBCONFIGURATION FILES\fR unless otherwise specified. This will build the
-application\(emif necessary\(emand start it in the foregound. \fB^C\fR
-will stop the process. By default, \fBkore\fR binds to port 8888 on
-.BR localhost
-and again, this behaviour may be configured in your
-.BR conf/app.conf .
-If the single\-binary mode is turned on, then that binary will be run as
-opposed to the default
-.BR $PREFIX/bin/kore .
+Start the application in the foreground. See the \fBRUNNING\fR section for
+more information.
 .RE
 
 .BR reload
 .RS
-Reload the application (SIGHUP sent). This in turn triggers a reload of all the
-currently loaded modules.
+Reload the application. This is a shortcut to sending SIGHUP to the parent
+process (see kore_pid).
 .RE
 
 .BR info
 .RS
-Show info on kore on this system. Namely; active flavour, output type, kore
-features, kore source and kore binary.
+Show information about the application configuration. Namely; active flavor,
+output type, Kore features, Kore source and Kore binary.
 .RE
 
 .BR clean
@@ -65,9 +50,9 @@ features, kore source and kore binary.
 Cleanup the build files.
 .RE
 
-.BR flavour
+.BR flavor
 .RS
-Switch between build flavours with the argument being the new flavour.
+Switch between build flavors with the argument being the new flavor.
 .RE
 
 .BR help
@@ -78,123 +63,216 @@ Show the help synopsis.
 .BR \-p
 .RS
 Option used in conjunction with \fBcreate\fR to generate an application for use
-with
+with the
 .BR pyko
+Kore framework.
 .RE
 
-.SH CONFIGURATION FILES
-When one calls a \fBbuild\fR on the application, it will read the
-.BR conf/build.conf.
-This defines attributes of the build such as whether you wish to produce a
-single binary instead of a dynamic library. If you choose to do so, also
-ensure to set
-.BR kore_source
-and
-.BR kore_flavour
-and update the \fBldflags\fR to include the appropriate libraries you intend
-to link the binary with. You may also set custom \fBcflags\fR either global to
-the flavours or per flavour configurations.
+.SH GENERATED FILES
+Executing the
+.BR create
+command will generate several new files under the directory matching the
+application name specified.
 
-When a \fBcreate [app]\fR is called, kodev will also create an \fBapp.conf\fR
-where 'app' is the name of the project. This configuration describes to Kore
-what modules to load, how validators work, what page handlers to map and which
-functions and more. The specifics of which are discussed below;
+These files are:
+
 .RS
+.BR conf/build.conf
+.RS
+The build configuration.
+.RE
 
-.BR socket_backlog
-Maximum length to queue pending connections. See \fBlisten(\fR2\fB)\fR
+.BR conf/app.conf
+.RS
+The Kore application configuration.
+.RE
 
-.BR bind
-Bind to a given IP address and port number.
+.BR src/app.c
+.RS
+The initial placeholder source code.
+.RE
 
-.BR chroot
-The path to which the worker processes will \fBchroot()\fR into.
+.BR cert/server.pem
+.RS
+The self-signed auto-generated x509 certificate.
+.RE
 
-.BR runas
-The username the worker process inherit privileges from.
+.BR cert/key.pem
+.RS
+The key matching the self-signed x509 certificate.
+.RE
 
-.BR workers
-The number of worker processes to spawn and keep alive. Default is 1.
+.BR dh2048.pem
+.RS
+The 2048-bit DH parameters used by TLS.
+.RE
+.RE
 
-.BR worker_max_connections
-The number of active connections each worker will accept. Default is 250.
+If you specify the
+.BR -p
+flag the generated files will be for use with
+.BR pyko
+instead.
 
-.BR worker_rlimit_nofiles
-Limit of maximum open files per worker.
+Those files are:
 
-.BR worker_accept_threshold
-Limit the number of new connections a worker can accept in a single event loop.
-Per default, \fBkore\fR will accept as many new connections it can until the
-\fBworker_max_connections\fR. Default is 'disabled'.
+.RS
+.BR kore.conf
+.RS
+The Kore application configuration.
+.RE
+.RE
 
-.BR worker_set_affinity
-Workers bind themselves to a single CPU by default. To disable this behaviour,
-set this option to 0.
+.RS
+.BR handlers.py
+.RS
+The initial placeholder python page handler.
+.RE
+.RE
 
-.BR pidfile
-Store the pid of the parent process in the file passed to this. Default is
-none.
+.RS
+.BR __init__.py
+.RS
+The python initialization code. Sets up the kore listener, etc.
+.RE
+.RE
 
-.BR http_header_max
-Maximum size of HTTP headers (argument in bytes). Default is 4096.
+.RS
+.BR cert/server.pem
+.RS
+The self-signed auto-generated x509 certificate.
+.RE
+.RE
 
-.BR http_body_max
-Maximum size of an HTTP body (argument in bytes). Default is 1024000.
-Note that if it is set to 0, this disallows requests with a body all together.
+.RS
+.BR cert/key.pem
+.RS
+The key matching the self-signed x509 certificate.
+.RE
+.RE
 
-.BR http_body_disk_offload
-Number of bytes after which \fBkore\fR will use a temporary file to hold the
-HTTP body, instead of holding it in memory. If this is set to 0, no disk
-offloading will be done. This is turned off by default; 'disabled'.
+.RS
+.BR dh2048.pem
+.RS
+The 2048-bit DH parameters used by TLS.
+.RE
+.RE
 
-.BR http_body_disk_path
-Path where \fBkore\fR will store any temporary HTTP body files. The default
-is \fItmp_files\fR.
 
-.BR http_keepalive_time
-Maximum number of seconds and HTTP connection may be kept open by a browser.
-The default is 20 seconds, set to 0 to turn off keep-alive entirely.
+.SH BUILDING
+Executing the
+.BR build
+command will build your application. How this happens is instructed by
+the
+.BR conf/build.conf
+configuration file. This file supports the following directives:
 
-.BR http_hsts_enable
-If not 0, this is the age of the HSTS header that is included in all responses.
-The default is 31536000 seconds.
+.RS
+.BR single_binary
+[yes|no]
+.RS
+If set to \fByes\fR the build system will produce a single binary containing
+both your application code and the Kore code allowing you to distribute
+your application more easily.
 
-.BR http_request_limit
-The number of HTTP requests \fBkore\fR workers will process in one loop.
-The default is 'disabled'.
+If set to \fBno\fR the build system will produce a standard dynamicly
+linked library that will be loaded into Kore at runtime.
+.RE
+.RE
 
-.BR websocket_timeout
-The number of seconds a websocket connection is kept open without traffic.
-The default here is 120 seconds.
+.RS
+.BR kore_source
+[path]
+.RS
+Must be set to point to the a Kore source code directory. Used only if
+.BR single_binary
+option is set to \fByes\fR.
 
-.BR task_threads
-The number of OS threads to use for background tasks. The default here is
-\(emvery conservatively\(em2.
+.BR Example:
+kore_source=/home/joris/src/kore
+.RE
+.RE
+.RE
 
-.BR tls_version
-The TLS versions allowed, by default this is set to \fIonly\fR TLSv1.2.
+.RS
+.BR kore_flavor
+[build options]
+.RS
+Defines the build arguments for building Kore. Used only if
+.BR single_binary
+option is set to \fByes\fR.
 
-.BR tls_cipher
-The  server TLS ciphersuites that are permitted. The default is a very
-sane set of ciphersuites preferring AEAD ciphers and ephemeral key exchanges
-over static RSA.
+.BR Example:
+kore_flavor=NOTLS=1
+.RE
+.RE
 
-.BR tls_dhparam
-The DH parameters to load (\fBrequired\fR). The default is dh2048.pem
+.RS
+.BR cflags
+.RS
+Standard
+.BR CFLAGS
+used when compiling the application source code.
+.RE
+.RE
 
+.RS
+.BR ldflags
+.RS
+Standard
+.BR LDFLAGS
+used when linking the application source code.
+.RE
+.RE
+
+Note that the
+.BR build
+command obeys the environment variables
+.BR CC
+and
+.BR CXX
+
+.SH RUNNING
+Executing the
+.BR run
+command will start your application in the foreground.
+
+What binary it executes depends
+on whether or not the
+.BR single_binary
+flag was set in build configuration. If the
+.BR single_binary
+flag was enabled the
+.BR run
+command will execute the binary produced by the build system. If the
+.BR single_binary
+flag was not enabled the
+.BR run
+command will execute the
+.BR $PREFIX/bin/kore
+binary.
+In both cases the
+.BR run
+command will pass the \fB\-fnr\fR command line options to the binary.
 .RE
 
 .SH EXAMPLES
-Changing flavour of the build;
+Changing flavor of the build;
 
 .RS
-kodev flavor osx
+$ kodev flavor osx
 .RE
 
 Creating a new application 'app' with \fBpyko\fR support;
 
 .RS
-kodev create \-p app
+$ kodev create \-p app
+.RE
+
+Building your application;
+
+.RS
+$ kodev build
 .RE
 
 .SH REPORTING BUGS, CONTRIBUTING && MORE
@@ -205,7 +283,7 @@ More information can be found at
 .BR <https://kore.io/>
 
 .SH AUTHOR
-.BR kore
+.BR Kore
 developed by Joris Vink
 .BR <joris@coders.se>
 
