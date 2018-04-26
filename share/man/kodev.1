@@ -98,9 +98,91 @@ the flavours or per flavour configurations.
 When a \fBcreate [app]\fR is called, kodev will also create an \fBapp.conf\fR
 where 'app' is the name of the project. This configuration describes to Kore
 what modules to load, how validators work, what page handlers to map and which
-functions and more. Technical documentation regarding the specifics of this
-may be found in
-.BR KORE(3)
+functions and more. The specifics of which are discussed below;
+.RS
+
+.BR socket_backlog
+Maximum length to queue pending connections. See \fBlisten(\fR2\fB)\fR
+
+.BR bind
+Bind to a given IP address and port number.
+
+.BR chroot
+The path to which the worker processes will \fBchroot()\fR into.
+
+.BR runas
+The username the worker process inherit privileges from.
+
+.BR workers
+The number of worker processes to spawn and keep alive. Default is 1.
+
+.BR worker_max_connections
+The number of active connections each worker will accept. Default is 250.
+
+.BR worker_rlimit_nofiles
+Limit of maximum open files per worker.
+
+.BR worker_accept_threshold
+Limit the number of new connections a worker can accept in a single event loop.
+Per default, \fBkore\fR will accept as many new connections it can until the
+\fBworker_max_connections\fR. Default is 'disabled'.
+
+.BR worker_set_affinity
+Workers bind themselves to a single CPU by default. To disable this behaviour,
+set this option to 0.
+
+.BR pidfile
+Store the pid of the parent process in the file passed to this. Default is
+none.
+
+.BR http_header_max
+Maximum size of HTTP headers (argument in bytes). Default is 4096.
+
+.BR http_body_max
+Maximum size of an HTTP body (argument in bytes). Default is 1024000.
+Note that if it is set to 0, this disallows requests with a body all together.
+
+.BR http_body_disk_offload
+Number of bytes after which \fBkore\fR will use a temporary file to hold the
+HTTP body, instead of holding it in memory. If this is set to 0, no disk
+offloading will be done. This is turned off by default; 'disabled'.
+
+.BR http_body_disk_path
+Path where \fBkore\fR will store any temporary HTTP body files. The default
+is \fItmp_files\fR.
+
+.BR http_keepalive_time
+Maximum number of seconds and HTTP connection may be kept open by a browser.
+The default is 20 seconds, set to 0 to turn off keep-alive entirely.
+
+.BR http_hsts_enable
+If not 0, this is the age of the HSTS header that is included in all responses.
+The default is 31536000 seconds.
+
+.BR http_request_limit
+The number of HTTP requests \fBkore\fR workers will process in one loop.
+The default is 'disabled'.
+
+.BR websocket_timeout
+The number of seconds a websocket connection is kept open without traffic.
+The default here is 120 seconds.
+
+.BR task_threads
+The number of OS threads to use for background tasks. The default here is
+\(emvery conservatively\(em2.
+
+.BR tls_version
+The TLS versions allowed, by default this is set to \fIonly\fR TLSv1.2.
+
+.BR tls_cipher
+The  server TLS ciphersuites that are permitted. The default is a very
+sane set of ciphersuites preferring AEAD ciphers and ephemeral key exchanges
+over static RSA.
+
+.BR tls_dhparam
+The DH parameters to load (\fBrequired\fR). The default is dh2048.pem
+
+.RE
 
 .SH EXAMPLES
 Changing flavour of the build;
