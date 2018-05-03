@@ -1553,6 +1553,7 @@ static void
 cli_buildopt_parse(const char *path)
 {
 	FILE			*fp;
+	const char		*env;
 	struct buildopt		*bopt;
 	char			buf[BUFSIZ], *p, *t;
 
@@ -1613,6 +1614,12 @@ parse_option:
 	}
 
 	fclose(fp);
+
+	if ((env = getenv("KORE_SOURCE")) != NULL)
+		cli_buildopt_kore_source(NULL, env);
+
+	if ((env = getenv("KORE_FLAVOR")) != NULL)
+		cli_buildopt_kore_flavor(NULL, env);
 }
 
 static struct buildopt *
