@@ -1,11 +1,15 @@
 #include <kore/kore.h>
 #include <kore/http.h>
 
+#include <float.h>
+
 int		page(struct http_request *);
 
 int
 page(struct http_request *req)
 {
+	float			fl;
+	double			dbl;
 	int16_t			s16;
 	u_int16_t		u16;
 	int32_t			s32;
@@ -39,6 +43,12 @@ page(struct http_request *req)
 
 	if (http_argument_get_uint64(req, "id", &u64))
 		kore_buf_appendf(buf, "uint64\t%lu\n", u64);
+
+	if (http_argument_get_float(req, "id", &fl))
+		kore_buf_appendf(buf, "float\t%g\n", fl);
+
+	if (http_argument_get_double(req, "id", &dbl))
+		kore_buf_appendf(buf, "double\t%g\n", dbl);
 
 	data = kore_buf_release(buf, &len);
 	http_response(req, 200, data, len);

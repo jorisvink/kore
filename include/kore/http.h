@@ -58,6 +58,8 @@ extern "C" {
 #define HTTP_ARG_TYPE_STRING	6
 #define HTTP_ARG_TYPE_INT64	7
 #define HTTP_ARG_TYPE_UINT64	8
+#define HTTP_ARG_TYPE_FLOAT	9
+#define HTTP_ARG_TYPE_DOUBLE	10
 
 #define HTTP_STATE_ERROR	0
 #define HTTP_STATE_CONTINUE	1
@@ -103,6 +105,16 @@ struct http_arg {
 		int err;						\
 		type nval;						\
 		nval = (type)kore_strtonum64(q->s_value, sign, &err);	\
+		if (err != KORE_RESULT_OK)				\
+			return (KORE_RESULT_ERROR);			\
+		COPY_ARG_TYPE(nval, type);				\
+	} while (0)
+
+#define COPY_ARG_DOUBLE(min, max, type)					\
+	do {								\
+		int err;						\
+		type nval;						\
+		nval = kore_strtodouble(q->s_value, min, max, &err);	\
 		if (err != KORE_RESULT_OK)				\
 			return (KORE_RESULT_ERROR);			\
 		COPY_ARG_TYPE(nval, type);				\
@@ -159,6 +171,11 @@ struct http_arg {
 #define http_argument_get_int64(r, n, o)				\
 	http_argument_type(r, n, NULL, o, HTTP_ARG_TYPE_INT64)
 
+#define http_argument_get_float(r, n, o)				\
+	http_argument_type(r, n, NULL, o, HTTP_ARG_TYPE_FLOAT)
+
+#define http_argument_get_double(r, n, o)				\
+	http_argument_type(r, n, NULL, o, HTTP_ARG_TYPE_DOUBLE)
 
 struct http_file {
 	char			*name;

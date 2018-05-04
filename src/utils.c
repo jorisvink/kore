@@ -225,6 +225,38 @@ kore_strtonum64(const char *str, int sign, int *err)
 	return ((sign) ? (u_int64_t)ll : l);
 }
 
+double
+kore_strtodouble(const char *str, long double min, long double max, int *err)
+{
+	double		d;
+	char		*ep;
+
+	if (min > max) {
+		*err = KORE_RESULT_ERROR;
+		return (0);
+	}
+
+	errno = 0;
+	d = strtod(str, &ep);
+	if (d == 0 || errno == ERANGE || str == ep || *ep != '\0') {
+		*err = KORE_RESULT_ERROR;
+		return (0);
+	}
+
+	if (d < min) {
+		*err = KORE_RESULT_ERROR;
+		return (0);
+	}
+
+	if (d > max) {
+		*err = KORE_RESULT_ERROR;
+		return (0);
+	}
+
+	*err = KORE_RESULT_OK;
+	return (d);
+}
+
 int
 kore_split_string(char *input, const char *delim, char **out, size_t ele)
 {
