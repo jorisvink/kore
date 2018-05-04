@@ -1,8 +1,6 @@
 #include <kore/kore.h>
 #include <kore/http.h>
 
-#include <float.h>
-
 int		page(struct http_request *);
 
 int
