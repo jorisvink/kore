@@ -217,16 +217,7 @@ main(int argc, char *argv[])
 	}
 #endif
 
-	sig_recv = 0;
-	signal(SIGHUP, kore_signal);
-	signal(SIGQUIT, kore_signal);
-	signal(SIGTERM, kore_signal);
-
-	if (foreground)
-		signal(SIGINT, kore_signal);
-	else
-		signal(SIGINT, SIG_IGN);
-
+	kore_signal_setup();
 	kore_server_start();
 
 	kore_log(LOG_NOTICE, "server shutting down");
@@ -386,6 +377,33 @@ kore_sockopt(int fd, int what, int opt)
 	}
 
 	return (KORE_RESULT_OK);
+}
+
+void
+kore_signal_setup(void)
+{
+	struct sigaction	sa;
+
+	sig_recv = 0;
+	memset(&sa, 0, sizeof(sa));
+	sa.sa_handler = kore_signal;
+
+	if (sigfillset(&sa.sa_mask) == -1)
+		fatal("sigfillset: %s", errno_s);
+
+	if (sigaction(SIGHUP, &sa, NULL) == -1)
+		fatal("sigaction: %s", errno_s);
+	if (sigaction(SIGQUIT, &sa, NULL) == -1)
+		fatal("sigaction: %s", errno_s);
+	if (sigaction(SIGTERM, &sa, NULL) == -1)
+		fatal("sigaction: %s", errno_s);
+
+	if (foreground) {
+		if (sigaction(SIGINT, &sa, NULL) == -1)
+			fatal("sigaction: %s", errno_s);
+	} else {
+		(void)signal(SIGINT, SIG_IGN);
+	}
 }
 
 void
