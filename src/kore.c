@@ -46,6 +46,7 @@ int			skip_chroot = 0;
 char			*chroot_path = NULL;
 int			skip_runas = 0;
 char			*runas_user = NULL;
+char			*runkeymgras_user = NULL;
 u_int32_t		kore_socket_backlog = 5000;
 char			*kore_pidfile = KORE_PIDFILE_DEFAULT;
 char			*kore_tls_cipher_list = KORE_DEFAULT_CIPHER_LIST;
@@ -221,6 +222,7 @@ main(int argc, char *argv[])
 	signal(SIGHUP, kore_signal);
 	signal(SIGQUIT, kore_signal);
 	signal(SIGTERM, kore_signal);
+	signal(SIGUSR1, kore_signal);
 
 	if (foreground)
 		signal(SIGINT, kore_signal);
@@ -482,6 +484,9 @@ kore_server_start(void)
 				quit = 1;
 				kore_worker_dispatch_signal(sig_recv);
 				continue;
+			case SIGUSR1:
+				kore_worker_dispatch_signal(SIGUSR1);
+				break;
 			default:
 				break;
 			}

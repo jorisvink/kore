@@ -55,6 +55,7 @@ static int		configure_bind(char *);
 static int		configure_domain(char *);
 static int		configure_chroot(char *);
 static int		configure_runas(char *);
+static int		configure_runkeymgras(char *);
 static int		configure_workers(char *);
 static int		configure_pidfile(char *);
 static int		configure_rlimit_nofiles(char *);
@@ -128,6 +129,7 @@ static struct {
 	{ "domain",			configure_domain },
 	{ "chroot",			configure_chroot },
 	{ "runas",			configure_runas },
+	{ "runkeymgras",		configure_runkeymgras },
 	{ "workers",			configure_workers },
 	{ "worker_max_connections",	configure_max_connections },
 	{ "worker_rlimit_nofiles",	configure_rlimit_nofiles },
@@ -1001,6 +1003,16 @@ configure_runas(char *user)
 	if (runas_user != NULL)
 		kore_free(runas_user);
 	runas_user = kore_strdup(user);
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_runkeymgras(char *user)
+{
+	if (runkeymgras_user != NULL)
+		kore_free(runkeymgras_user);
+	runkeymgras_user = kore_strdup(user);
 
 	return (KORE_RESULT_OK);
 }

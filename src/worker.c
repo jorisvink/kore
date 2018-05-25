@@ -219,22 +219,24 @@ kore_worker_dispatch_signal(int sig)
 }
 
 void
-kore_worker_privdrop(void)
+kore_worker_privdrop(int id)
 {
 	rlim_t			fd;
 	struct rlimit		rl;
 	struct passwd		*pw = NULL;
+	char			*user;
 
 	/* Must happen before chroot. */
 	if (skip_runas == 0) {
-		pw = getpwnam(runas_user);
+		user = id == KORE_WORKER_KEYMGR ? runkeymgras_user : runas_user;
+		pw = getpwnam(user);
 		if (pw == NULL) {
 			fatal("cannot getpwnam(\"%s\") runas user: %s",
-			    runas_user, errno_s);
+			    user, errno_s);
 		}
 	}
 
-	if (skip_chroot == 0) {
+	if ((skip_chroot == 0) && (id != KORE_WORKER_KEYMGR)) {
 		if (chroot(chroot_path) == -1) {
 			fatal("cannot chroot(\"%s\"): %s",
 			    chroot_path, errno_s);
@@ -318,7 +320,7 @@ kore_worker_entry(struct kore_worker *kw)
 	}
 #endif
 
-	kore_worker_privdrop();
+	kore_worker_privdrop(kw->id);
 
 	net_init();
 #if !defined(KORE_NO_HTTP)
@@ -375,6 +377,12 @@ kore_worker_entry(struct kore_worker *kw)
 			case SIGINT:
 			case SIGTERM:
 				quit = 1;
+				break;
+			case SIGUSR1:
+				kore_domain_reload_certificates();
+				kore_domain_load_crl();
+				kore_domain_keymgr_init();
+				last_seed = 0;
 				break;
 			default:
 				break;
