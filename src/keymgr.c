@@ -78,7 +78,7 @@ kore_keymgr_run(void)
 	kore_listener_cleanup();
 	kore_module_cleanup();
 
-	kore_worker_privdrop(KORE_WORKER_KEYMGR);
+	kore_worker_privdrop();
 
 	kore_domain_callback(kore_domain_tlsinit);
 	kore_domain_callback(keymgr_load_privatekey);
