@@ -241,6 +241,7 @@ kore_domain_free(struct kore_domain *dom)
 static void
 load_certificate(struct kore_domain *dom)
 {
+#if !defined(KORE_NO_TLS)
 	BIO			*in;
 	RSA			*rsa;
 	X509			*x509;
@@ -350,7 +351,7 @@ load_certificate(struct kore_domain *dom)
 
 	SSL_CTX_set_info_callback(dom->ssl_ctx, kore_tls_info_callback);
 	SSL_CTX_set_tlsext_servername_callback(dom->ssl_ctx, kore_tls_sni_cb);
-
+#endif
 }
 
 void
@@ -773,11 +774,8 @@ domain_x509_verify(int ok, X509_STORE_CTX *ctx)
 void
 kore_domain_reload_certificates(void)
 {
-	static struct kore_domain	*dom;
-
-	TAILQ_FOREACH(dom, &domains, list) {
-		load_certificate(dom);
-	}
-
+#if !defined(KORE_NO_TLS)
+	kore_domain_callback(load_certificate);
+#endif
 }
 #endif

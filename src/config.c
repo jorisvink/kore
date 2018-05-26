@@ -54,8 +54,9 @@ static int		configure_include(char *);
 static int		configure_bind(char *);
 static int		configure_domain(char *);
 static int		configure_chroot(char *);
+static int		configure_keymgr_chroot(char *);
 static int		configure_runas(char *);
-static int		configure_runkeymgras(char *);
+static int		configure_keymgr_runas(char *);
 static int		configure_workers(char *);
 static int		configure_pidfile(char *);
 static int		configure_rlimit_nofiles(char *);
@@ -113,8 +114,6 @@ static int		configure_python_path(char *);
 static int		configure_python_import(char *);
 #endif
 
-static void		domain_tls_init(void);
-
 static struct {
 	const char		*name;
 	int			(*configure)(char *);
@@ -128,8 +127,9 @@ static struct {
 #endif
 	{ "domain",			configure_domain },
 	{ "chroot",			configure_chroot },
+	{ "keymgr_chroot",		configure_keymgr_chroot },
 	{ "runas",			configure_runas },
-	{ "runkeymgras",		configure_runkeymgras },
+	{ "keymgr_runas",		configure_keymgr_runas },
 	{ "workers",			configure_workers },
 	{ "worker_max_connections",	configure_max_connections },
 	{ "worker_rlimit_nofiles",	configure_rlimit_nofiles },
@@ -211,7 +211,7 @@ kore_parse_config(void)
 	if (!kore_module_loaded())
 		fatal("no application module was loaded");
 
-	if (skip_chroot != 1 && chroot_path == NULL) {
+	if (skip_chroot != 1 && (chroot_path == NULL || keymgr_chroot_path == NULL)) {
 		fatal("missing a chroot path");
 	}
 
@@ -219,7 +219,7 @@ kore_parse_config(void)
 		fatal("cannot chroot, use -n to skip it");
 	}
 
-	if (skip_runas != 1 && runas_user == NULL) {
+	if (skip_runas != 1 && (runas_user == NULL || keymgr_runas_user == NULL)) {
 		fatal("missing runas user, use -r to skip it");
 	}
 
@@ -263,7 +263,7 @@ kore_parse_config_file(FILE *fp)
 #endif
 
 		if (!strcmp(p, "}") && current_domain != NULL)
-			domain_tls_init();
+			current_domain = NULL;
 
 		if (!strcmp(p, "}")) {
 			lineno++;
@@ -998,6 +998,16 @@ configure_chroot(char *path)
 }
 
 static int
+configure_keymgr_chroot(char *path)
+{
+	if (keymgr_chroot_path != NULL)
+		kore_free(keymgr_chroot_path);
+	keymgr_chroot_path = kore_strdup(path);
+
+	return (KORE_RESULT_OK);
+}
+
+static int
 configure_runas(char *user)
 {
 	if (runas_user != NULL)
@@ -1008,11 +1018,11 @@ configure_runas(char *user)
 }
 
 static int
-configure_runkeymgras(char *user)
+configure_keymgr_runas(char *user)
 {
-	if (runkeymgras_user != NULL)
-		kore_free(runkeymgras_user);
-	runkeymgras_user = kore_strdup(user);
+	if (keymgr_runas_user != NULL)
+		kore_free(keymgr_runas_user);
+	keymgr_runas_user = kore_strdup(user);
 
 	return (KORE_RESULT_OK);
 }
@@ -1109,13 +1119,6 @@ configure_socket_backlog(char *option)
 	}
 
 	return (KORE_RESULT_OK);
-}
-
-static void
-domain_tls_init(void)
-{
-	kore_domain_tlsinit(current_domain);
-	current_domain = NULL;
 }
 
 #if defined(KORE_USE_PGSQL)

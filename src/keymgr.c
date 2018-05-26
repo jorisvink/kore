@@ -78,9 +78,10 @@ kore_keymgr_run(void)
 	kore_listener_cleanup();
 	kore_module_cleanup();
 
-	kore_domain_callback(keymgr_load_privatekey);
 	kore_worker_privdrop(KORE_WORKER_KEYMGR);
 
+	kore_domain_callback(kore_domain_tlsinit);
+	kore_domain_callback(keymgr_load_privatekey);
 	net_init();
 	kore_connection_init();
 	kore_platform_event_init();
@@ -106,12 +107,10 @@ kore_keymgr_run(void)
 			case SIGTERM:
 				quit = 1;
 				break;
-			case SIGUSR1: {
-					struct kore_domain  *dom;
-					TAILQ_FOREACH(dom, &domains, list) {
-						keymgr_load_privatekey(dom);
-					}
-				}
+			case SIGUSR1:
+				kore_keymgr_cleanup();
+				TAILQ_INIT(&keys);
+				kore_domain_callback(keymgr_load_privatekey);
 				break;
 			default:
 				break;
