@@ -351,6 +351,7 @@ struct kore_domain {
 	char					*certfile;
 	char					*certkey;
 	SSL_CTX					*ssl_ctx;
+	int					x509_verify_depth;
 #endif
 	TAILQ_HEAD(, kore_module_handle)	handlers;
 	TAILQ_ENTRY(kore_domain)		list;

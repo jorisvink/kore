@@ -70,6 +70,7 @@ static int		configure_certkey(char *);
 static int		configure_tls_version(char *);
 static int		configure_tls_cipher(char *);
 static int		configure_tls_dhparam(char *);
+static int		configure_client_verify_depth(char *);
 static int		configure_client_certificates(char *);
 #endif
 
@@ -143,6 +144,7 @@ static struct {
 	{ "certfile",			configure_certfile },
 	{ "certkey",			configure_certkey },
 	{ "client_certificates",	configure_client_certificates },
+	{ "client_verify_depth",	configure_client_verify_depth },
 #endif
 #if !defined(KORE_NO_HTTP)
 	{ "static",			configure_static_handler },
@@ -430,6 +432,27 @@ configure_tls_dhparam(char *path)
 		printf("PEM_read_bio_DHparams(): %s\n", ssl_errno_s);
 		return (KORE_RESULT_ERROR);
 	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_client_verify_depth(char *value)
+{
+	int	err, depth;
+
+	if (current_domain == NULL) {
+		printf("client_verify_depth not specified in domain context\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	depth = kore_strtonum(value, 10, 0, INT_MAX, &err);
+	if (err != KORE_RESULT_OK) {
+		printf("bad client_verify_depth value: %s\n", value);
+		return (KORE_RESULT_ERROR);
+	}
+
+	current_domain->x509_verify_depth = depth;
 
 	return (KORE_RESULT_OK);
 }

@@ -184,6 +184,7 @@ kore_domain_new(char *domain)
 	dom->ssl_ctx = NULL;
 	dom->certfile = NULL;
 	dom->crlfile = NULL;
+	dom->x509_verify_depth = 1;
 #endif
 	dom->domain = kore_strdup(domain);
 	TAILQ_INIT(&(dom->handlers));
@@ -245,7 +246,6 @@ kore_domain_tlsinit(struct kore_domain *dom)
 	EVP_PKEY		*pkey;
 	STACK_OF(X509_NAME)	*certs;
 	EC_KEY			*eckey;
-	X509_STORE		*store;
 	const SSL_METHOD	*method;
 #if !defined(OPENSSL_NO_EC)
 	EC_KEY			*ecdh;
@@ -370,15 +370,10 @@ kore_domain_tlsinit(struct kore_domain *dom)
 		}
 
 		SSL_CTX_load_verify_locations(dom->ssl_ctx, dom->cafile, NULL);
-		SSL_CTX_set_verify_depth(dom->ssl_ctx, 1);
+		SSL_CTX_set_verify_depth(dom->ssl_ctx, dom->x509_verify_depth);
 		SSL_CTX_set_client_CA_list(dom->ssl_ctx, certs);
 		SSL_CTX_set_verify(dom->ssl_ctx, SSL_VERIFY_PEER |
-		    SSL_VERIFY_FAIL_IF_NO_PEER_CERT, NULL);
-
-		if ((store = SSL_CTX_get_cert_store(dom->ssl_ctx)) == NULL)
-			fatal("SSL_CTX_get_cert_store(): %s", ssl_errno_s);
-
-		X509_STORE_set_verify_cb(store, domain_x509_verify);
+		    SSL_VERIFY_FAIL_IF_NO_PEER_CERT, domain_x509_verify);
 	}
 
 	SSL_CTX_set_session_id_context(dom->ssl_ctx,
@@ -469,7 +464,8 @@ domain_load_crl(struct kore_domain *dom)
 		return;
 
 	if (dom->crlfile == NULL) {
-		kore_log(LOG_WARNING, "WARNING: Running without CRL");
+		kore_log(LOG_WARNING, "WARNING: no CRL configured for '%s'",
+		    dom->domain);
 		return;
 	}
 
