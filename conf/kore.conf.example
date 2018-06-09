@@ -201,6 +201,9 @@ authentication auth_example {
 #	client_certificates [CA] [optional CRL]
 #		- Require client certificates to be sent for the given
 #		  CA with an optional CRL file.
+#	client_verify_depth [depth]
+#		- Configure the depth for x509 chain validation.
+#		  By default 1.
 #
 # Handlers
 #
@@ -268,6 +271,7 @@ domain localhost {
 #	certkey			cert/other/server.key
 #	accesslog		/var/log/other_kore_access.log
 #	client_certificates	cert/other/ca.crt
+#	client_verify_depth	1
 
 #	static		/css/style.css		serve_style_css
 #	static		/			serve_index
