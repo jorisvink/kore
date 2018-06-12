@@ -89,6 +89,11 @@ ifneq ("$(PYTHON)", "")
 	FEATURES_INC+=$(shell python3-config --includes)
 endif
 
+ifneq ("$(SANITIZE)", "")
+	CFLAGS+=-fsanitize=$(SANITIZE)
+	LDFLAGS+=-fsanitize=$(SANITIZE)
+endif
+
 OSNAME=$(shell uname -s | sed -e 's/[-_].*//g' | tr A-Z a-z)
 ifeq ("$(OSNAME)", "darwin")
 	CFLAGS+=-I/opt/local/include/ -I/usr/local/opt/openssl/include
