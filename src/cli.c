@@ -420,8 +420,10 @@ main(int argc, char **argv)
 
 	for (i = 0; cmds[i].name != NULL; i++) {
 		if (!strcmp(argv[0], cmds[i].name)) {
-			argc--;
-			argv++;
+			if (strcmp(argv[0], "create")) {
+				argc--;
+				argv++;
+			}
 			command = &cmds[i];
 			cmds[i].cb(argc, argv);
 			break;
@@ -464,7 +466,6 @@ cli_create(int argc, char **argv)
 	int			i, ch, pyko;
 
 	pyko = 0;
-	optind = 0;
 
 	while ((ch = getopt(argc, argv, "hp")) != -1) {
 		switch (ch) {
