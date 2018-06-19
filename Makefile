@@ -6,6 +6,7 @@ OBJDIR?=obj
 KORE=kore
 KODEV=kodev/kodev
 INSTALL_DIR=$(PREFIX)/bin
+MAN_DIR=$(PREFIX)/share/man
 SHARE_DIR=$(PREFIX)/share/kore
 INCLUDE_DIR=$(PREFIX)/include/kore
 
@@ -133,6 +134,8 @@ install: $(KORE) $(KODEV)
 	mkdir -p $(SHARE_DIR)
 	mkdir -p $(INCLUDE_DIR)
 	mkdir -p $(INSTALL_DIR)
+	mkdir -p $(MAN_DIR)/man1
+	install -m 644 share/man/kodev.1 $(MAN_DIR)/man1/kodev.1
 	install -m 555 $(KORE) $(INSTALL_DIR)/$(KORE)
 	install -m 644 kore.features $(SHARE_DIR)/features
 	install -m 644 include/kore/*.h $(INCLUDE_DIR)
