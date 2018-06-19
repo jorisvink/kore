@@ -34,8 +34,6 @@ License
 Documentation
 --------------
 [Read the documentation](https://jorisvink.gitbooks.io/kore-doc/content/)
-This documentation is severly outdated at this time as it was written for the
-2.0.0 release in 2016. I'm working on updating it for the next release.
 
 Platforms supported
 -------------------
