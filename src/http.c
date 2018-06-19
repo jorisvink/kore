@@ -95,8 +95,7 @@ http_init(void)
 	ckhdr_buf = kore_buf_alloc(HTTP_COOKIE_BUFSIZE);
 
 	l = snprintf(http_version, sizeof(http_version),
-	    "server: kore (%d.%d.%d-%s)\r\n", KORE_VERSION_MAJOR,
-	    KORE_VERSION_MINOR, KORE_VERSION_PATCH, KORE_VERSION_STATE);
+	    "server: kore (%s)\r\n", kore_version);
 	if (l == -1 || (size_t)l >= sizeof(http_version))
 		fatal("http_init(): http_version buffer too small");
 

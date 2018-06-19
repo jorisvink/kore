@@ -57,11 +57,6 @@ extern int daemon(int, int);
 #define KORE_RESULT_OK		1
 #define KORE_RESULT_RETRY	2
 
-#define KORE_VERSION_MAJOR	3
-#define KORE_VERSION_MINOR	0
-#define KORE_VERSION_PATCH	0
-#define KORE_VERSION_STATE	"devel"
-
 #define KORE_TLS_VERSION_1_2	0
 #define KORE_TLS_VERSION_1_0	1
 #define KORE_TLS_VERSION_BOTH	2
@@ -473,6 +468,7 @@ extern char	*rand_file;
 extern u_int8_t			nlisteners;
 extern u_int16_t		cpu_count;
 extern u_int8_t			worker_count;
+extern const char		*kore_version;
 extern u_int8_t			worker_set_affinity;
 extern u_int32_t		worker_rlimit_nofiles;
 extern u_int32_t		worker_max_connections;

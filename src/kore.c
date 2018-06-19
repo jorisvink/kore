@@ -89,8 +89,7 @@ usage(void)
 static void
 version(void)
 {
-	printf("%d.%d.%d-%s ", KORE_VERSION_MAJOR, KORE_VERSION_MINOR,
-	    KORE_VERSION_PATCH, KORE_VERSION_STATE);
+	printf("%s ", kore_version);
 #if defined(KORE_NO_TLS)
 	printf("no-tls ");
 #endif

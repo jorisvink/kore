@@ -1,6 +1,6 @@
 # Kore Makefile
 
-CC?=gcc
+CC?=cc
 PREFIX?=/usr/local
 OBJDIR?=obj
 KORE=kore
@@ -10,10 +10,12 @@ MAN_DIR=$(PREFIX)/share/man
 SHARE_DIR=$(PREFIX)/share/kore
 INCLUDE_DIR=$(PREFIX)/include/kore
 
+VERSION=src/version.c
+
 S_SRC=	src/kore.c src/buf.c src/config.c src/connection.c \
 	src/domain.c src/mem.c src/msg.c src/module.c src/net.c \
 	src/pool.c src/runtime.c src/timer.c src/utils.c src/worker.c \
-	src/keymgr.c
+	src/keymgr.c $(VERSION)
 
 FEATURES=
 FEATURES_INC=
@@ -114,7 +116,22 @@ endif
 
 S_OBJS=	$(S_SRC:src/%.c=$(OBJDIR)/%.o)
 
-all: $(KORE) $(KODEV)
+all: $(VERSION) $(KORE) $(KODEV)
+
+$(VERSION): force
+	@if [ -d .git ]; then \
+		GIT_REVISION=`git rev-parse --short=8 HEAD`; \
+		GIT_BRANCH=`git rev-parse --abbrev-ref HEAD`; \
+		rm -f $(VERSION); \
+		printf "const char *kore_version = \"%s-%s\";\n" \
+		    $$GIT_BRANCH $$GIT_REVISION > $(VERSION); \
+	elif [ -f RELEASE ]; then \
+		printf "const char *kore_version = \"%s\";\n" \
+		    `cat RELEASE` > $(VERSION); \
+	else \
+		echo "No version information found (no .git or RELEASE)"; \
+		exit 1; \
+	fi
 
 $(KODEV):
 	$(MAKE) -C kodev
@@ -151,8 +168,9 @@ $(OBJDIR)/%.o: src/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
+	rm -f $(VERSION); \
 	find . -type f -name \*.o -exec rm {} \;
 	rm -rf $(KORE) $(OBJDIR) kore.features
 	$(MAKE) -C kodev clean
 
-.PHONY: all clean
+.PHONY: all clean force
