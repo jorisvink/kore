@@ -168,7 +168,7 @@ $(OBJDIR)/%.o: src/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(VERSION); \
+	rm -f $(VERSION)
 	find . -type f -name \*.o -exec rm {} \;
 	rm -rf $(KORE) $(OBJDIR) kore.features
 	$(MAKE) -C kodev clean
