@@ -64,7 +64,7 @@ static struct http_request	*http_request_new(struct connection *,
 
 static struct kore_buf			*header_buf;
 static struct kore_buf			*ckhdr_buf;
-static char				http_version[32];
+static char				http_version[64];
 static u_int16_t			http_version_len;
 static TAILQ_HEAD(, http_request)	http_requests;
 static TAILQ_HEAD(, http_request)	http_requests_sleeping;
