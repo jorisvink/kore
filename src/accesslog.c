@@ -115,7 +115,7 @@ kore_accesslog_write(const void *data, u_int32_t len)
 	    logpacket.length, logpacket.agent);
 	if (l == -1) {
 		kore_log(LOG_WARNING,
-		    "kore_accesslog_write(): asprintf() == -1");
+		    "kore_accesslog_write(): asprintf(): %s", errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
