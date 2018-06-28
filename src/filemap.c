@@ -149,8 +149,6 @@ filemap_serve(struct http_request *req, struct filemap_entry *map)
 	index = 0;
 
 lookup:
-	printf("path: %s\n", fpath);
-
 	if ((ref = kore_fileref_get(fpath)) == NULL) {
 		if ((fd = open(fpath, O_RDONLY | O_NOFOLLOW)) == -1) {
 			switch (errno) {
