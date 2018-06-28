@@ -237,6 +237,10 @@ domain localhost {
 	# Page handlers with authentication.
 	static		/private/test	serve_private_test	auth_example
 
+	# Allow access to files from the directory static_files via
+	# the /files/ URI.
+	filemap		static_files		/files/
+
 	# Configure /params-test POST to only accept the following parameters.
 	# They are automatically tested against the validator listed.
 	# If the validator would fail Kore will automatically remove the

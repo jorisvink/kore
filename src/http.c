@@ -42,6 +42,25 @@
 #include "tasks.h"
 #endif
 
+static struct {
+	const char	*ext;
+	const char	*type;
+} builtin_media[] = {
+	{ "gif",	"image/gif" },
+	{ "png",	"image/png" },
+	{ "jpeg",	"image/jpeg" },
+	{ "jpg",	"image/jpeg" },
+	{ "zip",	"application/zip" },
+	{ "pdf",	"application/pdf" },
+	{ "json",	"application/json" },
+	{ "js",		"application/javascript" },
+	{ "htm",	"text/html" },
+	{ "txt",	"text/plain" },
+	{ "css",	"text/css" },
+	{ "html",	"text/html" },
+	{ NULL,		NULL },
+};
+
 static int	http_body_recv(struct netbuf *);
 static void	http_error_response(struct connection *, int);
 static void	http_write_response_cookie(struct http_cookie *);
@@ -68,6 +87,7 @@ static char				http_version[64];
 static u_int16_t			http_version_len;
 static TAILQ_HEAD(, http_request)	http_requests;
 static TAILQ_HEAD(, http_request)	http_requests_sleeping;
+static LIST_HEAD(, http_media_type)	http_media_types;
 static struct kore_pool			http_request_pool;
 static struct kore_pool			http_header_pool;
 static struct kore_pool			http_cookie_pool;
@@ -84,9 +104,15 @@ u_int64_t	http_body_disk_offload = HTTP_BODY_DISK_OFFLOAD;
 char		*http_body_disk_path = HTTP_BODY_DISK_PATH;
 
 void
+http_parent_init(void)
+{
+	LIST_INIT(&http_media_types);
+}
+
+void
 http_init(void)
 {
-	int		prealloc, l;
+	int		prealloc, l, i;
 
 	TAILQ_INIT(&http_requests);
 	TAILQ_INIT(&http_requests_sleeping);
@@ -111,6 +137,14 @@ http_init(void)
 
 	kore_pool_init(&http_body_path,
 	    "http_body_path", HTTP_BODY_PATH_MAX, prealloc);
+
+	for (i = 0; builtin_media[i].ext != NULL; i++) {
+		if (!http_media_register(builtin_media[i].ext,
+		    builtin_media[i].type)) {
+			fatal("duplicate media type for %s",
+			    builtin_media[i].ext);
+		}
+	}
 }
 
 void
@@ -461,6 +495,35 @@ http_response_stream(struct http_request *req, int status, void *base,
 		net_send_stream(req->owner, base, len, cb, &nb);
 		nb->extra = arg;
 	}
+}
+
+void
+http_response_fileref(struct http_request *req, int status,
+    struct kore_fileref *ref)
+{
+	const char	*media_type;
+
+	if (req->owner == NULL)
+		return;
+
+	media_type = http_media_type(ref->path);
+	if (media_type != NULL)
+		http_response_header(req, "content-type", media_type);
+
+	req->status = status;
+	switch (req->owner->proto) {
+	case CONN_PROTO_HTTP:
+		http_response_normal(req, req->owner, status, NULL, ref->size);
+		break;
+	default:
+		fatal("http_response_fd() bad proto %d", req->owner->proto);
+		/* NOTREACHED. */
+	}
+
+	if (req->method != HTTP_METHOD_HEAD)
+		net_send_fileref(req->owner, ref);
+	else
+		kore_fileref_release(ref);
 }
 
 int
@@ -1913,4 +1976,44 @@ http_method_text(int method)
 	}
 
 	return (r);
+}
+
+int
+http_media_register(const char *ext, const char *type)
+{
+	struct http_media_type	*media;
+
+	LIST_FOREACH(media, &http_media_types, list) {
+		if (!strcasecmp(media->ext, ext))
+			return (KORE_RESULT_ERROR);
+	}
+
+	media = kore_calloc(1, sizeof(*media));
+	media->ext = kore_strdup(ext);
+	media->type = kore_strdup(type);
+
+	LIST_INSERT_HEAD(&http_media_types, media, list);
+
+	return (KORE_RESULT_OK);
+}
+
+const char *
+http_media_type(const char *path)
+{
+	const char		*p;
+	struct http_media_type	*media;
+
+	if ((p = strrchr(path, '.')) == NULL)
+		return (NULL);
+
+	p++;
+	if (*p == '\0')
+		return (NULL);
+
+	LIST_FOREACH(media, &http_media_types, list) {
+		if (!strcasecmp(media->ext, p))
+			return (media->type);
+	}
+
+	return (NULL);
 }

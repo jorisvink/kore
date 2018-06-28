@@ -360,13 +360,8 @@ kore_connection_remove(struct connection *c)
 
 	for (nb = TAILQ_FIRST(&(c->send_queue)); nb != NULL; nb = next) {
 		next = TAILQ_NEXT(nb, list);
-		TAILQ_REMOVE(&(c->send_queue), nb, list);
-		if (!(nb->flags & NETBUF_IS_STREAM)) {
-			kore_free(nb->buf);
-		} else if (nb->cb != NULL) {
-			(void)nb->cb(nb);
-		}
-		kore_pool_put(&nb_pool, nb);
+		nb->flags &= ~NETBUF_MUST_RESEND;
+		net_remove_netbuf(&(c->send_queue), nb);
 	}
 
 	if (c->rnb != NULL) {

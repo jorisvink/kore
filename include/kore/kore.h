@@ -53,6 +53,12 @@ extern "C" {
 extern int daemon(int, int);
 #endif
 
+#if !defined(KORE_NO_SENDFILE) && defined(KORE_NO_TLS)
+#if defined(__MACH__) || defined(__FreeBSD_version) || defined(__linux__)
+#define KORE_USE_PLATFORM_SENDFILE	1
+#endif
+#endif
+
 #define KORE_RESULT_ERROR	0
 #define KORE_RESULT_OK		1
 #define KORE_RESULT_RETRY	2
@@ -81,6 +87,7 @@ extern int daemon(int, int);
 #define NETBUF_RECV			0
 #define NETBUF_SEND			1
 #define NETBUF_SEND_PAYLOAD_MAX		8192
+#define SENDFILE_PAYLOAD_MAX		(1024 * 1024 * 10)
 
 #define NETBUF_LAST_CHAIN		0
 #define NETBUF_BEFORE_CHAIN		1
@@ -89,6 +96,7 @@ extern int daemon(int, int);
 #define NETBUF_FORCE_REMOVE	0x02
 #define NETBUF_MUST_RESEND	0x04
 #define NETBUF_IS_STREAM	0x10
+#define NETBUF_IS_FILEREF	0x20
 
 #define X509_GET_CN(c, o, l)					\
 	X509_NAME_get_text_by_NID(X509_get_subject_name(c),	\
@@ -101,6 +109,19 @@ extern int daemon(int, int);
 struct http_request;
 #endif
 
+struct kore_fileref {
+	int				cnt;
+	off_t				size;
+	char				*path;
+	u_int64_t			expiration;
+#if !defined(KORE_USE_PLATFORM_SENDFILE)
+	void				*base;
+#else
+	int				fd;
+#endif
+	TAILQ_ENTRY(kore_fileref)	list;
+};
+
 struct netbuf {
 	u_int8_t		*buf;
 	size_t			s_off;
@@ -109,8 +130,13 @@ struct netbuf {
 	u_int8_t		type;
 	u_int8_t		flags;
 
-	void			*owner;
+	struct kore_fileref	*file_ref;
+#if defined(KORE_USE_PLATFORM_SENDFILE)
+	off_t			fd_off;
+	off_t			fd_len;
+#endif
 
+	void			*owner;
 	void			*extra;
 	int			(*cb)(struct netbuf *);
 
@@ -510,6 +536,10 @@ void		kore_platform_schedule_write(int, void *);
 void		kore_platform_event_schedule(int, int, int, void *);
 void		kore_platform_worker_setcpu(struct kore_worker *);
 
+#if defined(KORE_USE_PLATFORM_SENDFILE)
+int		kore_platform_sendfile(struct connection *, struct netbuf *);
+#endif
+
 void		kore_accesslog_init(void);
 void		kore_accesslog_worker_init(void);
 int		kore_accesslog_write(const void *, u_int32_t);
@@ -611,6 +641,15 @@ void		kore_msg_send(u_int16_t, u_int8_t, const void *, u_int32_t);
 int		kore_msg_register(u_int8_t,
 		    void (*cb)(struct kore_msg *, const void *));
 
+void		kore_filemap_init(void);
+int		kore_filemap_create(struct kore_domain *, const char *,
+		    const char *);
+
+void			kore_fileref_init(void);
+struct kore_fileref	*kore_fileref_get(const char *);
+struct kore_fileref	*kore_fileref_create(const char *, int, off_t);
+void			kore_fileref_release(struct kore_fileref *);
+
 void		kore_domain_init(void);
 void		kore_domain_cleanup(void);
 int		kore_domain_new(char *);
@@ -675,6 +714,7 @@ void		net_write64(u_int8_t *, u_int64_t);
 
 void		net_init(void);
 void		net_cleanup(void);
+struct netbuf	*net_netbuf_get(void);
 int		net_send(struct connection *);
 int		net_send_flush(struct connection *);
 int		net_recv_flush(struct connection *);
@@ -692,6 +732,7 @@ void		net_recv_expand(struct connection *c, size_t,
 void		net_send_queue(struct connection *, const void *, size_t);
 void		net_send_stream(struct connection *, void *,
 		    size_t, int (*cb)(struct netbuf *), struct netbuf **);
+void		net_send_fileref(struct connection *, struct kore_fileref *);
 
 void		kore_buf_free(struct kore_buf *);
 struct kore_buf	*kore_buf_alloc(size_t);
