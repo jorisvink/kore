@@ -106,7 +106,7 @@ kore_accesslog_write(const void *data, u_int32_t len)
 		(void)kore_strlcpy(addr, "-", sizeof(addr));
 
 	time(&now);
-	tm = gmtime(&now);
+	tm = localtime(&now);
 	(void)strftime(tbuf, sizeof(tbuf), "%d/%b/%Y:%H:%M:%S %z", tm);
 
 	l = asprintf(&buf,
