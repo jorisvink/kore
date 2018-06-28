@@ -853,9 +853,12 @@ http_argument_urldecode(char *arg)
 		h[3] = *(p + 2);
 		h[4] = '\0';
 
-		v = kore_strtonum(h, 16, 0x20, 0x7e, &err);
+		v = kore_strtonum(h, 16, 0x0, 0xff, &err);
 		if (err != KORE_RESULT_OK)
 			return (err);
+
+		if (v <= 0x1f || v == 0x7f || (v >= 0x80 && v <= 0x9f))
+			return (KORE_RESULT_ERROR);
 
 		*in++ = (char)v;
 		p += 3;
