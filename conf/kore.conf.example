@@ -68,6 +68,11 @@ workers		4
 # NOTE: This file location must be inside your chrooted environment.
 #rand_file	random.data
 
+# Filemap settings
+#	filemap_index	Name of the file to be used as the directory
+#				index for a filemap.
+#filemap_index index.html
+
 # HTTP specific settings.
 #	http_header_max		Maximum size of HTTP headers (in bytes).
 #

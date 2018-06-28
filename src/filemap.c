@@ -42,6 +42,8 @@ static void	filemap_serve(struct http_request *, struct filemap_entry *);
 
 static TAILQ_HEAD(, filemap_entry)	maps;
 
+char	*kore_filemap_index = NULL;
+
 void
 kore_filemap_init(void)
 {
@@ -124,7 +126,7 @@ filemap_serve(struct http_request *req, struct filemap_entry *map)
 {
 	struct stat		st;
 	struct kore_fileref	*ref;
-	int			len, fd;
+	int			len, fd, index;
 	char			fpath[MAXPATHLEN];
 
 	len = snprintf(fpath, sizeof(fpath), "%s/%s", map->ondisk,
@@ -143,6 +145,11 @@ filemap_serve(struct http_request *req, struct filemap_entry *map)
 		http_response(req, HTTP_STATUS_NOT_FOUND, NULL, 0);
 		return;
 	}
+
+	index = 0;
+
+lookup:
+	printf("path: %s\n", fpath);
 
 	if ((ref = kore_fileref_get(fpath)) == NULL) {
 		if ((fd = open(fpath, O_RDONLY | O_NOFOLLOW)) == -1) {
@@ -176,13 +183,27 @@ filemap_serve(struct http_request *req, struct filemap_entry *map)
 			}
 
 			/* kore_fileref_create() takes ownership of the fd. */
-			ref = kore_fileref_create(fpath, fd, st.st_size);
+			ref = kore_fileref_create(fpath, fd,
+			    st.st_size, st.st_mtime);
 			if (ref == NULL) {
 				http_response(req,
 				    HTTP_STATUS_INTERNAL_ERROR, NULL, 0);
 			} else {
 				fd = -1;
 			}
+		} else if (S_ISDIR(st.st_mode) && index == 0) {
+			len = snprintf(fpath, sizeof(fpath),
+			    "%s/%s%s", map->ondisk,
+			    req->path + map->root_len,
+			    kore_filemap_index != NULL ?
+			    kore_filemap_index : "index.html");
+			if (len == -1 || (size_t)len >= sizeof(fpath)) {
+				http_response(req,
+				    HTTP_STATUS_INTERNAL_ERROR, NULL, 0);
+				return;
+			}
+			index++;
+			goto lookup;
 		} else {
 			http_response(req, HTTP_STATUS_NOT_FOUND, NULL, 0);
 		}

@@ -109,15 +109,18 @@ extern int daemon(int, int);
 struct http_request;
 #endif
 
+#define KORE_FILEREF_SOFT_REMOVED	0x1000
+
 struct kore_fileref {
+	int				fd;
 	int				cnt;
+	int				flags;
 	off_t				size;
 	char				*path;
+	time_t				mtime;
 	u_int64_t			expiration;
 #if !defined(KORE_USE_PLATFORM_SENDFILE)
 	void				*base;
-#else
-	int				fd;
 #endif
 	TAILQ_ENTRY(kore_fileref)	list;
 };
@@ -641,13 +644,16 @@ void		kore_msg_send(u_int16_t, u_int8_t, const void *, u_int32_t);
 int		kore_msg_register(u_int8_t,
 		    void (*cb)(struct kore_msg *, const void *));
 
+#if !defined(KORE_NO_HTTP)
 void		kore_filemap_init(void);
 int		kore_filemap_create(struct kore_domain *, const char *,
 		    const char *);
+extern char	*kore_filemap_index;
+#endif
 
 void			kore_fileref_init(void);
 struct kore_fileref	*kore_fileref_get(const char *);
-struct kore_fileref	*kore_fileref_create(const char *, int, off_t);
+struct kore_fileref	*kore_fileref_create(const char *, int, off_t, time_t);
 void			kore_fileref_release(struct kore_fileref *);
 
 void		kore_domain_init(void);

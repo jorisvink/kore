@@ -28,6 +28,7 @@
 /* cached filerefs expire after 30 seconds of inactivity. */
 #define FILEREF_EXPIRATION		(1000 * 30)
 
+static void	fileref_soft_remove(struct kore_fileref *);
 static void	fileref_expiration_check(void *, u_int64_t);
 
 static TAILQ_HEAD(, kore_fileref)	refs;
@@ -42,7 +43,7 @@ kore_fileref_init(void)
 }
 
 struct kore_fileref *
-kore_fileref_create(const char *path, int fd, off_t size)
+kore_fileref_create(const char *path, int fd, off_t size, time_t mtime)
 {
 	struct kore_fileref	*ref;
 
@@ -52,7 +53,10 @@ kore_fileref_create(const char *path, int fd, off_t size)
 	ref = kore_pool_get(&ref_pool);
 
 	ref->cnt = 1;
+	ref->fd = fd;
+	ref->flags = 0;
 	ref->size = size;
+	ref->mtime = mtime;
 	ref->path = kore_strdup(path);
 
 #if !defined(KORE_USE_PLATFORM_SENDFILE)
@@ -64,9 +68,6 @@ kore_fileref_create(const char *path, int fd, off_t size)
 		fatal("net_send_file: mmap failed: %s", errno_s);
 	if (madvise(ref->base, (size_t)size, MADV_SEQUENTIAL) == -1)
 		fatal("net_send_file: madvise: %s", errno_s);
-	close(fd);
-#else
-	ref->fd = fd;
 #endif
 
 #if defined(FILEREF_DEBUG)
@@ -85,10 +86,23 @@ kore_fileref_create(const char *path, int fd, off_t size)
 struct kore_fileref *
 kore_fileref_get(const char *path)
 {
+	struct stat		st;
 	struct kore_fileref	*ref;
 
 	TAILQ_FOREACH(ref, &refs, list) {
 		if (!strcmp(ref->path, path)) {
+			if (stat(ref->path, &st) == -1) {
+				kore_log(LOG_ERR, "stat(%s): %s",
+				    ref->path, errno_s);
+				fileref_soft_remove(ref);
+				return (NULL);
+			}
+
+			if (st.st_mtime != ref->mtime) {
+				fileref_soft_remove(ref);
+				return (NULL);
+			}
+
 			ref->cnt++;
 #if defined(FILEREF_DEBUG)
 			kore_log(LOG_DEBUG, "ref:%p cnt:%d",
@@ -127,6 +141,23 @@ kore_fileref_release(struct kore_fileref *ref)
 }
 
 static void
+fileref_soft_remove(struct kore_fileref *ref)
+{
+	TAILQ_REMOVE(&refs, ref, list);
+	ref->flags |= KORE_FILEREF_SOFT_REMOVED;
+
+	if (ref->cnt == 0) {
+		close(ref->fd);
+		kore_free(ref->path);
+
+#if !defined(KORE_USE_PLATFORM_SENDFILE)
+		(void)munmap(ref->base, ref->size);
+#endif
+		kore_pool_put(&ref_pool, ref);
+	}
+}
+
+static void
 fileref_expiration_check(void *arg, u_int64_t now)
 {
 	struct kore_fileref	*ref, *next;
@@ -143,12 +174,14 @@ fileref_expiration_check(void *arg, u_int64_t now)
 #if defined(FILEREF_DEBUG)
 		kore_log(LOG_DEBUG, "ref:%p expired, removing", (void *)ref);
 #endif
-		TAILQ_REMOVE(&refs, ref, list);
+
+		if (!(ref->flags & KORE_FILEREF_SOFT_REMOVED))
+			TAILQ_REMOVE(&refs, ref, list);
+
+		close(ref->fd);
 		kore_free(ref->path);
 
-#if defined(KORE_USE_PLATFORM_SENDFILE)
-		close(ref->fd);
-#else
+#if !defined(KORE_USE_PLATFORM_SENDFILE)
 		(void)munmap(ref->base, ref->size);
 #endif
 		kore_pool_put(&ref_pool, ref);
