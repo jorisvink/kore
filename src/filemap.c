@@ -134,6 +134,16 @@ filemap_serve(struct http_request *req, struct filemap_entry *map)
 		return;
 	}
 
+	if (!http_argument_urldecode(fpath)) {
+		http_response(req, HTTP_STATUS_BAD_REQUEST, NULL, 0);
+		return;
+	}
+
+	if (strstr(fpath, "..")) {
+		http_response(req, HTTP_STATUS_NOT_FOUND, NULL, 0);
+		return;
+	}
+
 	if ((ref = kore_fileref_get(fpath)) == NULL) {
 		if ((fd = open(fpath, O_RDONLY | O_NOFOLLOW)) == -1) {
 			switch (errno) {
