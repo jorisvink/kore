@@ -19,6 +19,10 @@
 #include <sys/types.h>
 #include <sys/mman.h>
 
+#if !defined(__MACH__) && !defined(__linux__)
+#include <sys/stdint.h>
+#endif
+
 #include "kore.h"
 
 /* cached filerefs expire after 30 seconds of inactivity. */

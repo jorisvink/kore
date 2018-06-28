@@ -24,7 +24,6 @@
 #define be64toh(x)	OSSwapBigToHostInt64(x)
 #else
 #include <sys/endian.h>
-#include <sys/stdint.h>
 #endif
 
 #include "kore.h"
