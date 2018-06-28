@@ -25,9 +25,7 @@
 struct kore_log_packet {
 	u_int8_t	method;
 	int		status;
-	u_int16_t	time_req;
-	u_int16_t	worker_id;
-	u_int16_t	worker_cpu;
+	size_t		length;
 	u_int8_t	addrtype;
 	u_int8_t	addr[sizeof(struct in6_addr)];
 	char		host[KORE_DOMAINNAME_LEN];
@@ -54,11 +52,12 @@ kore_accesslog_write(const void *data, u_int32_t len)
 {
 	int			l;
 	time_t			now;
+	struct tm		*tm;
 	ssize_t			sent;
 	struct kore_domain	*dom;
 	struct kore_log_packet	logpacket;
-	char			addr[INET6_ADDRSTRLEN];
-	char			*method, *buf, *tbuf, *cn;
+	char			*method, *buf, *cn;
+	char			addr[INET6_ADDRSTRLEN], tbuf[128];
 
 	if (len != sizeof(struct kore_log_packet))
 		return (KORE_RESULT_ERROR);
@@ -96,7 +95,7 @@ kore_accesslog_write(const void *data, u_int32_t len)
 		break;
 	}
 
-	cn = "none";
+	cn = "-";
 #if !defined(KORE_NO_TLS)
 	if (logpacket.cn[0] != '\0')
 		cn = logpacket.cn;
@@ -104,13 +103,16 @@ kore_accesslog_write(const void *data, u_int32_t len)
 
 	if (inet_ntop(logpacket.addrtype, &(logpacket.addr),
 	    addr, sizeof(addr)) == NULL)
-		(void)kore_strlcpy(addr, "unknown", sizeof(addr));
+		(void)kore_strlcpy(addr, "-", sizeof(addr));
 
 	time(&now);
-	tbuf = kore_time_to_date(now);
-	l = asprintf(&buf, "[%s] %s %d %s %s (w#%d) (%dms) (%s) (%s)\n",
-	    tbuf, addr, logpacket.status, method, logpacket.path,
-	    logpacket.worker_id, logpacket.time_req, cn, logpacket.agent);
+	tm = gmtime(&now);
+	(void)strftime(tbuf, sizeof(tbuf), "%d/%b/%Y:%H:%M:%S %z", tm);
+
+	l = asprintf(&buf,
+	    "%s - %s [%s] \"%s %s HTTP/1.1\" %d %zu \"-\" \"%s\"\n",
+	    addr, cn, tbuf, method, logpacket.path, logpacket.status,
+	    logpacket.length, logpacket.agent);
 	if (l == -1) {
 		kore_log(LOG_WARNING,
 		    "kore_accesslog_write(): asprintf() == -1");
@@ -126,7 +128,7 @@ kore_accesslog_write(const void *data, u_int32_t len)
 	}
 
 	if (sent != l)
-		kore_log(LOG_NOTICE, "accesslog: %s", buf);
+		kore_log(LOG_WARNING, "kore_accesslog_write(): short write");
 
 	free(buf);
 	return (KORE_RESULT_OK);
@@ -150,9 +152,7 @@ kore_accesslog(struct http_request *req)
 
 	logpacket.status = req->status;
 	logpacket.method = req->method;
-	logpacket.worker_id = worker->id;
-	logpacket.worker_cpu = worker->cpu;
-	logpacket.time_req = req->total;
+	logpacket.length = req->content_length;
 
 	if (kore_strlcpy(logpacket.host,
 	    req->host, sizeof(logpacket.host)) >= sizeof(logpacket.host))
@@ -167,7 +167,7 @@ kore_accesslog(struct http_request *req)
 		    sizeof(logpacket.agent)) >= sizeof(logpacket.agent))
 			kore_log(LOG_NOTICE, "kore_accesslog: agent truncated");
 	} else {
-		(void)kore_strlcpy(logpacket.agent, "unknown",
+		(void)kore_strlcpy(logpacket.agent, "-",
 		    sizeof(logpacket.agent));
 	}
 

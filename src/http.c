@@ -1766,6 +1766,9 @@ http_response_normal(struct http_request *req, struct connection *c,
 
 	if (!(c->flags & CONN_CLOSE_EMPTY))
 		net_recv_reset(c, http_header_max, http_header_recv);
+
+	if (req != NULL)
+		req->content_length = len;
 }
 
 static void
