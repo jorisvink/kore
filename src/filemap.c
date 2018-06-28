@@ -89,6 +89,13 @@ filemap_resolve(struct http_request *req)
 	size_t			best_len;
 	struct filemap_entry	*entry, *best;
 
+	if (req->method != HTTP_METHOD_GET &&
+	    req->method != HTTP_METHOD_HEAD) {
+		http_response_header(req, "allow", "get, head");
+		http_response(req, HTTP_STATUS_BAD_REQUEST, NULL, 0);
+		return (KORE_RESULT_OK);
+	}
+
 	best = NULL;
 	best_len = 0;
 
