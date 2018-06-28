@@ -239,7 +239,7 @@ domain localhost {
 
 	# Allow access to files from the directory static_files via
 	# the /files/ URI.
-	filemap		static_files		/files/
+	filemap		/files/			static_files
 
 	# Configure /params-test POST to only accept the following parameters.
 	# They are automatically tested against the validator listed.
