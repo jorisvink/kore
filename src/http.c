@@ -685,6 +685,10 @@ http_header_recv(struct netbuf *nb)
 		if (req->agent == NULL &&
 		    !strcasecmp(hdr->header, "user-agent"))
 			req->agent = hdr->value;
+
+		if (req->referer == NULL &&
+		    !strcasecmp(hdr->header, "referer"))
+			req->referer = hdr->value;
 	}
 
 	if (req->flags & HTTP_REQUEST_EXPECT_BODY) {

@@ -35,6 +35,7 @@ extern "C" {
 #define HTTP_BODY_MAX_LEN	1024000
 #define HTTP_URI_LEN		2000
 #define HTTP_USERAGENT_LEN	256
+#define HTTP_REFERER_LEN	256
 #define HTTP_REQ_HEADER_MAX	25
 #define HTTP_MAX_QUERY_ARGS	20
 #define HTTP_MAX_COOKIES	10
@@ -219,6 +220,7 @@ struct http_request {
 	const char			*path;
 	const char			*host;
 	const char			*agent;
+	const char			*referer;
 	struct connection		*owner;
 	u_int8_t			*headers;
 	struct kore_buf			*http_body;

@@ -31,6 +31,7 @@ struct kore_log_packet {
 	char		host[KORE_DOMAINNAME_LEN];
 	char		path[HTTP_URI_LEN];
 	char		agent[HTTP_USERAGENT_LEN];
+	char		referer[HTTP_REFERER_LEN];
 #if !defined(KORE_NO_TLS)
 	char		cn[X509_CN_LENGTH];
 #endif
@@ -110,9 +111,9 @@ kore_accesslog_write(const void *data, u_int32_t len)
 	(void)strftime(tbuf, sizeof(tbuf), "%d/%b/%Y:%H:%M:%S %z", tm);
 
 	l = asprintf(&buf,
-	    "%s - %s [%s] \"%s %s HTTP/1.1\" %d %zu \"-\" \"%s\"\n",
+	    "%s - %s [%s] \"%s %s HTTP/1.1\" %d %zu \"%s\" \"%s\"\n",
 	    addr, cn, tbuf, method, logpacket.path, logpacket.status,
-	    logpacket.length, logpacket.agent);
+	    logpacket.length, logpacket.referer, logpacket.agent);
 	if (l == -1) {
 		kore_log(LOG_WARNING,
 		    "kore_accesslog_write(): asprintf(): %s", errno_s);
@@ -169,6 +170,17 @@ kore_accesslog(struct http_request *req)
 	} else {
 		(void)kore_strlcpy(logpacket.agent, "-",
 		    sizeof(logpacket.agent));
+	}
+
+	if (req->referer != NULL) {
+		if (kore_strlcpy(logpacket.referer, req->referer,
+		    sizeof(logpacket.referer)) >= sizeof(logpacket.referer)) {
+			kore_log(LOG_NOTICE,
+			    "kore_accesslog: referer truncated");
+		}
+	} else {
+		(void)kore_strlcpy(logpacket.referer, "-",
+		    sizeof(logpacket.referer));
 	}
 
 #if !defined(KORE_NO_TLS)
