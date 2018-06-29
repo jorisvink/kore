@@ -501,7 +501,10 @@ void
 http_response_fileref(struct http_request *req, int status,
     struct kore_fileref *ref)
 {
-	const char	*media_type;
+	struct tm	*tm;
+	time_t		mtime;
+	char		tbuf[128];
+	const char	*media_type, *modified;
 
 	if (req->owner == NULL)
 		return;
@@ -509,6 +512,22 @@ http_response_fileref(struct http_request *req, int status,
 	media_type = http_media_type(ref->path);
 	if (media_type != NULL)
 		http_response_header(req, "content-type", media_type);
+
+	if (http_request_header(req, "if-modified-since", &modified)) {
+		mtime = kore_date_to_time(modified);
+		if (mtime == ref->mtime) {
+			kore_fileref_release(ref);
+			http_response(req, HTTP_STATUS_NOT_MODIFIED, NULL, 0);
+			return;
+		}
+	}
+
+	if ((tm = gmtime(&ref->mtime)) != NULL) {
+		if (strftime(tbuf, sizeof(tbuf),
+		    "%a, %d %b %Y %H:%M:%S GMT", tm) > 0) {
+			http_response_header(req, "last-modified", tbuf);
+		}
+	}
 
 	req->status = status;
 	switch (req->owner->proto) {
