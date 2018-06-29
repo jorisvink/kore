@@ -283,7 +283,8 @@ kore_platform_sendfile(struct connection *c, struct netbuf *nb)
 	smin = nb->fd_len - nb->fd_off;
 	len = MIN(SENDFILE_PAYLOAD_MAX, smin);
 
-	if ((sent = sendfile(c->fd, nb->file_ref->fd, NULL, len)) == -1) {
+	sent = sendfile(c->fd, nb->file_ref->fd, &nb->fd_off, len);
+	if (sent == -1) {
 		if (errno == EAGAIN) {
 			c->flags &= ~CONN_WRITE_POSSIBLE;
 			return (KORE_RESULT_OK);
@@ -294,8 +295,6 @@ kore_platform_sendfile(struct connection *c, struct netbuf *nb)
 
 		return (KORE_RESULT_ERROR);
 	}
-
-	nb->fd_off += (size_t)sent;
 
 	if (sent == 0 || nb->fd_off == nb->fd_len) {
 		net_remove_netbuf(&(c->send_queue), nb);
