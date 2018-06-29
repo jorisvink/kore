@@ -112,7 +112,6 @@ struct http_request;
 #define KORE_FILEREF_SOFT_REMOVED	0x1000
 
 struct kore_fileref {
-	int				fd;
 	int				cnt;
 	int				flags;
 	off_t				size;
@@ -121,6 +120,8 @@ struct kore_fileref {
 	u_int64_t			expiration;
 #if !defined(KORE_USE_PLATFORM_SENDFILE)
 	void				*base;
+#else
+	int				fd;
 #endif
 	TAILQ_ENTRY(kore_fileref)	list;
 };

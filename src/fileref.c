@@ -28,6 +28,7 @@
 /* cached filerefs expire after 30 seconds of inactivity. */
 #define FILEREF_EXPIRATION		(1000 * 30)
 
+static void	fileref_drop(struct kore_fileref *);
 static void	fileref_soft_remove(struct kore_fileref *);
 static void	fileref_expiration_check(void *, u_int64_t);
 
@@ -53,7 +54,6 @@ kore_fileref_create(const char *path, int fd, off_t size, time_t mtime)
 	ref = kore_pool_get(&ref_pool);
 
 	ref->cnt = 1;
-	ref->fd = fd;
 	ref->flags = 0;
 	ref->size = size;
 	ref->mtime = mtime;
@@ -68,6 +68,9 @@ kore_fileref_create(const char *path, int fd, off_t size, time_t mtime)
 		fatal("net_send_file: mmap failed: %s", errno_s);
 	if (madvise(ref->base, (size_t)size, MADV_SEQUENTIAL) == -1)
 		fatal("net_send_file: madvise: %s", errno_s);
+	close(fd);
+#else
+	ref->fd = fd;
 #endif
 
 #if defined(FILEREF_DEBUG)
@@ -132,29 +135,28 @@ kore_fileref_release(struct kore_fileref *ref)
 	}
 
 	if (ref->cnt == 0) {
-#if defined(FILEREF_DEBUG)
-		kore_log(LOG_DEBUG, "ref:%p scheduling for removal",
-		    (void *)ref);
-#endif
-		ref->expiration = kore_time_ms() + FILEREF_EXPIRATION;
+		if (ref->flags & KORE_FILEREF_SOFT_REMOVED)
+			fileref_drop(ref);
+		else
+			ref->expiration = kore_time_ms() + FILEREF_EXPIRATION;
 	}
 }
 
 static void
 fileref_soft_remove(struct kore_fileref *ref)
 {
+	if (ref->flags & KORE_FILEREF_SOFT_REMOVED)
+		fatal("fileref_soft_remove: %p already removed", (void *)ref);
+
+#if defined(FILEREF_DEBUG)
+	kore_log(LOG_DEBUG, "ref:%p softremoved", (void *)ref);
+#endif
+
 	TAILQ_REMOVE(&refs, ref, list);
 	ref->flags |= KORE_FILEREF_SOFT_REMOVED;
 
-	if (ref->cnt == 0) {
-		close(ref->fd);
-		kore_free(ref->path);
-
-#if !defined(KORE_USE_PLATFORM_SENDFILE)
-		(void)munmap(ref->base, ref->size);
-#endif
-		kore_pool_put(&ref_pool, ref);
-	}
+	if (ref->cnt == 0)
+		fileref_drop(ref);
 }
 
 static void
@@ -175,15 +177,26 @@ fileref_expiration_check(void *arg, u_int64_t now)
 		kore_log(LOG_DEBUG, "ref:%p expired, removing", (void *)ref);
 #endif
 
-		if (!(ref->flags & KORE_FILEREF_SOFT_REMOVED))
-			TAILQ_REMOVE(&refs, ref, list);
+		fileref_drop(ref);
+	}
+}
 
-		close(ref->fd);
-		kore_free(ref->path);
+static void
+fileref_drop(struct kore_fileref *ref)
+{
+#if defined(FILEREF_DEBUG)
+	kore_log(LOG_DEBUG, "ref:%p dropped", (void *)ref);
+#endif
+
+	if (!(ref->flags & KORE_FILEREF_SOFT_REMOVED))
+		TAILQ_REMOVE(&refs, ref, list);
+
+	kore_free(ref->path);
 
 #if !defined(KORE_USE_PLATFORM_SENDFILE)
-		(void)munmap(ref->base, ref->size);
+	(void)munmap(ref->base, ref->size);
+#else
+	close(ref->fd);
 #endif
-		kore_pool_put(&ref_pool, ref);
-	}
+	kore_pool_put(&ref_pool, ref);
 }
