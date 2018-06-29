@@ -607,9 +607,9 @@ void		kore_pool_init(struct kore_pool *, const char *,
 		    size_t, size_t);
 void		kore_pool_cleanup(struct kore_pool *);
 
-time_t		kore_date_to_time(char *);
 char		*kore_time_to_date(time_t);
 char		*kore_strdup(const char *);
+time_t		kore_date_to_time(const char *);
 void		kore_log(int, const char *, ...)
 		    __attribute__((format (printf, 2, 3)));
 u_int64_t	kore_strtonum64(const char *, int, int *);
