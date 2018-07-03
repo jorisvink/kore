@@ -35,6 +35,7 @@ extern "C" {
 #define HTTP_BODY_MAX_LEN	1024000
 #define HTTP_URI_LEN		2000
 #define HTTP_USERAGENT_LEN	256
+#define HTTP_REFERER_LEN	256
 #define HTTP_REQ_HEADER_MAX	25
 #define HTTP_MAX_QUERY_ARGS	20
 #define HTTP_MAX_COOKIES	10
@@ -219,6 +220,7 @@ struct http_request {
 	const char			*path;
 	const char			*host;
 	const char			*agent;
+	const char			*referer;
 	struct connection		*owner;
 	u_int8_t			*headers;
 	struct kore_buf			*http_body;
@@ -254,6 +256,12 @@ struct http_state {
 	int			(*cb)(struct http_request *);
 };
 
+struct http_media_type {
+	char				*ext;
+	char				*type;
+	LIST_ENTRY(http_media_type)	list;
+};
+
 extern size_t		http_body_max;
 extern u_int16_t	http_header_max;
 extern u_int32_t	http_request_ms;
@@ -267,6 +275,7 @@ extern char		*http_body_disk_path;
 void		kore_accesslog(struct http_request *);
 
 void		http_init(void);
+void		http_parent_init(void);
 void		http_cleanup(void);
 void 		http_server_version(const char *);
 void		http_process(void);
@@ -278,8 +287,11 @@ void		http_request_sleep(struct http_request *);
 void		http_request_wakeup(struct http_request *);
 void		http_process_request(struct http_request *);
 int		http_body_rewind(struct http_request *);
+int		http_media_register(const char *, const char *);
 ssize_t		http_body_read(struct http_request *, void *, size_t);
 void		http_response(struct http_request *, int, const void *, size_t);
+void		http_response_fileref(struct http_request *, int,
+		    struct kore_fileref *);
 void		http_serveable(struct http_request *, const void *,
 		    size_t, const char *, const char *);
 void		http_response_stream(struct http_request *, int, void *,
@@ -296,6 +308,7 @@ void		http_response_cookie(struct http_request *, const char *,
 		    const char *, const char *, time_t, u_int32_t,
 		    struct http_cookie **);
 
+const char	*http_media_type(const char *);
 void		*http_state_get(struct http_request *);
 int		http_state_exists(struct http_request *);
 void		http_state_cleanup(struct http_request *);

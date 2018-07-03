@@ -118,9 +118,7 @@ version(void)
 int
 main(int argc, char *argv[])
 {
-#if defined(KORE_SINGLE_BINARY)
 	struct kore_runtime_call	*rcall;
-#endif
 	int				ch, flags;
 
 	flags = 0;
@@ -181,8 +179,10 @@ main(int argc, char *argv[])
 	kore_python_init();
 #endif
 #if !defined(KORE_NO_HTTP)
+	http_parent_init();
 	kore_auth_init();
 	kore_validator_init();
+	kore_filemap_init();
 #endif
 	kore_domain_init();
 	kore_module_init();
@@ -191,8 +191,7 @@ main(int argc, char *argv[])
 #if !defined(KORE_SINGLE_BINARY)
 	if (config_file == NULL)
 		usage();
-	kore_parse_config();
-#else
+#endif
 	kore_module_load(NULL, NULL, KORE_MODULE_NATIVE);
 	kore_parse_config();
 
@@ -201,7 +200,6 @@ main(int argc, char *argv[])
 		kore_runtime_configure(rcall, argc, argv);
 		kore_free(rcall);
 	}
-#endif
 
 	kore_platform_init();
 
@@ -403,6 +401,8 @@ kore_signal_setup(void)
 	} else {
 		(void)signal(SIGINT, SIG_IGN);
 	}
+
+	(void)signal(SIGPIPE, SIG_IGN);
 }
 
 void

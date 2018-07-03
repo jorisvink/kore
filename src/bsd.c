@@ -17,6 +17,8 @@
 #include <sys/param.h>
 #include <sys/event.h>
 #include <sys/sysctl.h>
+#include <sys/socket.h>
+#include <sys/uio.h>
 
 #if defined(__FreeBSD_version)
 #include <sys/cpuset.h>
@@ -276,3 +278,45 @@ kore_platform_proctitle(char *title)
 	setproctitle("%s", title);
 #endif
 }
+
+#if defined(KORE_USE_PLATFORM_SENDFILE)
+int
+kore_platform_sendfile(struct connection *c, struct netbuf *nb)
+{
+	int		ret;
+	off_t		len, smin;
+
+	smin = nb->fd_len - nb->fd_off;
+	len = MIN(SENDFILE_PAYLOAD_MAX, smin);
+
+#if defined(__MACH__)
+	ret = sendfile(nb->file_ref->fd, c->fd, nb->fd_off, &len, NULL, 0);
+#else
+	ret = sendfile(nb->file_ref->fd, c->fd, nb->fd_off, len, NULL, &len, 0);
+#endif
+
+	if (ret == -1) {
+		if (errno == EAGAIN) {
+			nb->fd_off += len;
+			c->flags &= ~CONN_WRITE_POSSIBLE;
+			return (KORE_RESULT_OK);
+		}
+
+		if (errno == EINTR) {
+			nb->fd_off += len;
+			return (KORE_RESULT_OK);
+		}
+
+		return (KORE_RESULT_ERROR);
+	}
+
+	nb->fd_off += len;
+
+	if (len == 0 || nb->fd_off == nb->fd_len) {
+		net_remove_netbuf(&(c->send_queue), nb);
+		c->snb = NULL;
+	}
+
+	return (KORE_RESULT_OK);
+}
+#endif

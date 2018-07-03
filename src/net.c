@@ -47,6 +47,33 @@ net_cleanup(void)
 	kore_pool_cleanup(&nb_pool);
 }
 
+struct netbuf *
+net_netbuf_get(void)
+{
+	struct netbuf	*nb;
+
+	nb = kore_pool_get(&nb_pool);
+
+	nb->cb = NULL;
+	nb->buf = NULL;
+	nb->owner = NULL;
+	nb->extra = NULL;
+	nb->file_ref = NULL;
+
+	nb->type = 0;
+	nb->s_off = 0;
+	nb->b_len = 0;
+	nb->m_len = 0;
+	nb->flags = 0;
+
+#if defined(KORE_USE_PLATFORM_SENDFILE)
+	nb->fd_off = -1;
+	nb->fd_len = -1;
+#endif
+
+	return (nb);
+}
+
 void
 net_send_queue(struct connection *c, const void *data, size_t len)
 {
@@ -76,11 +103,9 @@ net_send_queue(struct connection *c, const void *data, size_t len)
 		}
 	}
 
-	nb = kore_pool_get(&nb_pool);
-	nb->flags = 0;
-	nb->cb = NULL;
+	nb = net_netbuf_get();
+
 	nb->owner = c;
-	nb->s_off = 0;
 	nb->b_len = len;
 	nb->type = NETBUF_SEND;
 
@@ -103,10 +128,9 @@ net_send_stream(struct connection *c, void *data, size_t len,
 
 	kore_debug("net_send_stream(%p, %p, %zu)", c, data, len);
 
-	nb = kore_pool_get(&nb_pool);
+	nb = net_netbuf_get();
 	nb->cb = cb;
 	nb->owner = c;
-	nb->s_off = 0;
 	nb->buf = data;
 	nb->b_len = len;
 	nb->m_len = nb->b_len;
@@ -116,6 +140,30 @@ net_send_stream(struct connection *c, void *data, size_t len,
 	TAILQ_INSERT_TAIL(&(c->send_queue), nb, list);
 	if (out != NULL)
 		*out = nb;
+}
+
+void
+net_send_fileref(struct connection *c, struct kore_fileref *ref)
+{
+	struct netbuf		*nb;
+
+	nb = net_netbuf_get();
+	nb->owner = c;
+	nb->file_ref = ref;
+	nb->type = NETBUF_SEND;
+	nb->flags = NETBUF_IS_FILEREF;
+
+#if defined(KORE_USE_PLATFORM_SENDFILE)
+	nb->fd_off = 0;
+	nb->fd_len = ref->size;
+#else
+	nb->buf = ref->base;
+	nb->b_len = ref->size;
+	nb->m_len = nb->b_len;
+	nb->flags |= NETBUF_IS_STREAM;
+#endif
+
+	TAILQ_INSERT_TAIL(&(c->send_queue), nb, list);
 }
 
 void
@@ -145,13 +193,11 @@ net_recv_queue(struct connection *c, size_t len, int flags,
 	if (c->rnb != NULL)
 		fatal("net_recv_queue(): called incorrectly");
 
-	c->rnb = kore_pool_get(&nb_pool);
+	c->rnb = net_netbuf_get();
 	c->rnb->cb = cb;
 	c->rnb->owner = c;
-	c->rnb->s_off = 0;
 	c->rnb->b_len = len;
 	c->rnb->m_len = len;
-	c->rnb->extra = NULL;
 	c->rnb->flags = flags;
 	c->rnb->type = NETBUF_RECV;
 	c->rnb->buf = kore_malloc(c->rnb->b_len);
@@ -174,6 +220,14 @@ net_send(struct connection *c)
 	size_t		r, len, smin;
 
 	c->snb = TAILQ_FIRST(&(c->send_queue));
+
+#if defined(KORE_USE_PLATFORM_SENDFILE)
+	if ((c->snb->flags & NETBUF_IS_FILEREF) &&
+	    !(c->snb->flags & NETBUF_IS_STREAM)) {
+		return (kore_platform_sendfile(c, c->snb));
+	}
+#endif
+
 	if (c->snb->b_len != 0) {
 		smin = c->snb->b_len - c->snb->s_off;
 		len = MIN(NETBUF_SEND_PAYLOAD_MAX, smin);
@@ -261,6 +315,9 @@ net_remove_netbuf(struct netbuf_head *list, struct netbuf *nb)
 	} else if (nb->cb != NULL) {
 		(void)nb->cb(nb);
 	}
+
+	if (nb->flags & NETBUF_IS_FILEREF)
+		kore_fileref_release(nb->file_ref);
 
 	TAILQ_REMOVE(list, nb, list);
 	kore_pool_put(&nb_pool, nb);

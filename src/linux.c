@@ -14,8 +14,10 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <sys/param.h>
 #include <sys/epoll.h>
 #include <sys/prctl.h>
+#include <sys/sendfile.h>
 
 #include <sched.h>
 
@@ -269,3 +271,36 @@ kore_platform_proctitle(char *title)
 		kore_debug("prctl(): %s", errno_s);
 	}
 }
+
+#if defined(KORE_USE_PLATFORM_SENDFILE)
+int
+kore_platform_sendfile(struct connection *c, struct netbuf *nb)
+{
+	size_t		len;
+	ssize_t		sent;
+	off_t		smin;
+
+	smin = nb->fd_len - nb->fd_off;
+	len = MIN(SENDFILE_PAYLOAD_MAX, smin);
+
+	sent = sendfile(c->fd, nb->file_ref->fd, &nb->fd_off, len);
+	if (sent == -1) {
+		if (errno == EAGAIN) {
+			c->flags &= ~CONN_WRITE_POSSIBLE;
+			return (KORE_RESULT_OK);
+		}
+
+		if (errno == EINTR)
+			return (KORE_RESULT_OK);
+
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (sent == 0 || nb->fd_off == nb->fd_len) {
+		net_remove_netbuf(&(c->send_queue), nb);
+		c->snb = NULL;
+	}
+
+	return (KORE_RESULT_OK);
+}
+#endif

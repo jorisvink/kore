@@ -317,6 +317,7 @@ kore_worker_entry(struct kore_worker *kw)
 	kore_accesslog_worker_init();
 #endif
 	kore_timer_init();
+	kore_fileref_init();
 	kore_connection_init();
 	kore_domain_load_crl();
 	kore_domain_keymgr_init();
