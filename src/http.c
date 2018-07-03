@@ -1033,10 +1033,15 @@ http_populate_post(struct http_request *req)
 	ssize_t			ret;
 	int			i, v;
 	struct kore_buf		*body;
+	const char		*content;
 	char			data[BUFSIZ];
 	char			*args[HTTP_MAX_QUERY_ARGS], *val[3], *string;
 
 	if (req->method != HTTP_METHOD_POST)
+		return;
+
+	if (!http_request_header(req, "content-type", &content) ||
+	    strcasecmp(content, "application/x-www-form-urlencoded"))
 		return;
 
 	if (req->http_body != NULL) {
