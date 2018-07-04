@@ -103,6 +103,9 @@ filemap_resolve(struct http_request *req)
 	best_len = 0;
 
 	TAILQ_FOREACH(entry, &maps, list) {
+		if (entry->domain != req->hdlr->dom)
+			continue;
+
 		if (!strncmp(entry->root, req->path, entry->root_len)) {
 			if (best == NULL || entry->root_len > best_len) {
 				best = entry;
