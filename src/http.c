@@ -1386,6 +1386,7 @@ http_request_new(struct connection *c, const char *host,
 	req->method = m;
 	req->hdlr = hdlr;
 	req->agent = NULL;
+	req->referer = NULL;
 	req->flags = flags;
 	req->fsm_state = 0;
 	req->http_body = NULL;
