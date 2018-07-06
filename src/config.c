@@ -82,6 +82,7 @@ static int		configure_dynamic_handler(char *);
 static int		configure_accesslog(char *);
 static int		configure_http_header_max(char *);
 static int		configure_http_body_max(char *);
+static int		configure_filemap_ext(char *);
 static int		configure_filemap_index(char *);
 static int		configure_http_media_type(char *);
 static int		configure_http_hsts_enable(char *);
@@ -151,6 +152,7 @@ static struct {
 #endif
 #if !defined(KORE_NO_HTTP)
 	{ "filemap",			configure_filemap },
+	{ "filemap_ext",		configure_filemap_ext },
 	{ "filemap_index",		configure_filemap_index },
 	{ "static",			configure_static_handler },
 	{ "dynamic",			configure_dynamic_handler },
@@ -657,6 +659,15 @@ configure_accesslog(char *path)
 		printf("accesslog open(%s): %s\n", path, errno_s);
 		return (KORE_RESULT_ERROR);
 	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_filemap_ext(char *ext)
+{
+	kore_free(kore_filemap_ext);
+	kore_filemap_ext = kore_strdup(ext);
 
 	return (KORE_RESULT_OK);
 }

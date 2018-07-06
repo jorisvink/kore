@@ -649,6 +649,7 @@ int		kore_msg_register(u_int8_t,
 void		kore_filemap_init(void);
 int		kore_filemap_create(struct kore_domain *, const char *,
 		    const char *);
+extern char	*kore_filemap_ext;
 extern char	*kore_filemap_index;
 #endif
 

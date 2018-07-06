@@ -42,6 +42,7 @@ static void	filemap_serve(struct http_request *, struct filemap_entry *);
 
 static TAILQ_HEAD(, filemap_entry)	maps;
 
+char	*kore_filemap_ext = NULL;
 char	*kore_filemap_index = NULL;
 
 void
@@ -102,6 +103,9 @@ filemap_resolve(struct http_request *req)
 	best_len = 0;
 
 	TAILQ_FOREACH(entry, &maps, list) {
+		if (entry->domain != req->hdlr->dom)
+			continue;
+
 		if (!strncmp(entry->root, req->path, entry->root_len)) {
 			if (best == NULL || entry->root_len > best_len) {
 				best = entry;
@@ -126,11 +130,13 @@ filemap_serve(struct http_request *req, struct filemap_entry *map)
 {
 	struct stat		st;
 	struct kore_fileref	*ref;
+	const char		*path;
 	int			len, fd, index;
 	char			fpath[MAXPATHLEN];
 
-	len = snprintf(fpath, sizeof(fpath), "%s/%s", map->ondisk,
-	    req->path + map->root_len);
+	path = req->path + map->root_len;
+
+	len = snprintf(fpath, sizeof(fpath), "%s/%s", map->ondisk, path);
 	if (len == -1 || (size_t)len >= sizeof(fpath)) {
 		http_response(req, HTTP_STATUS_INTERNAL_ERROR, NULL, 0);
 		return;
@@ -153,7 +159,22 @@ lookup:
 		if ((fd = open(fpath, O_RDONLY | O_NOFOLLOW)) == -1) {
 			switch (errno) {
 			case ENOENT:
-				req->status = HTTP_STATUS_NOT_FOUND;
+				if (index || kore_filemap_ext == NULL) {
+					req->status = HTTP_STATUS_NOT_FOUND;
+				} else {
+					len = snprintf(fpath, sizeof(fpath),
+					    "%s/%s%s", map->ondisk, path,
+					    kore_filemap_ext);
+					if (len == -1 ||
+					    (size_t)len >= sizeof(fpath)) {
+						http_response(req,
+						    HTTP_STATUS_INTERNAL_ERROR,
+						    NULL, 0);
+						return;
+					}
+					index++;
+					goto lookup;
+				}
 				break;
 			case EPERM:
 			case EACCES:
@@ -191,8 +212,7 @@ lookup:
 			}
 		} else if (S_ISDIR(st.st_mode) && index == 0) {
 			len = snprintf(fpath, sizeof(fpath),
-			    "%s/%s%s", map->ondisk,
-			    req->path + map->root_len,
+			    "%s/%s%s", map->ondisk, path,
 			    kore_filemap_index != NULL ?
 			    kore_filemap_index : "index.html");
 			if (len == -1 || (size_t)len >= sizeof(fpath)) {

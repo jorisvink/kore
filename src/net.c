@@ -419,7 +419,7 @@ net_write(struct connection *c, size_t len, size_t *written)
 	ssize_t		r;
 
 	r = write(c->fd, (c->snb->buf + c->snb->s_off), len);
-	if (r <= -1) {
+	if (r == -1) {
 		switch (errno) {
 		case EINTR:
 			*written = 0;
@@ -445,7 +445,7 @@ net_read(struct connection *c, size_t *bytes)
 
 	r = read(c->fd, (c->rnb->buf + c->rnb->s_off),
 	    (c->rnb->b_len - c->rnb->s_off));
-	if (r <= 0) {
+	if (r == -1) {
 		switch (errno) {
 		case EINTR:
 			*bytes = 0;
@@ -457,6 +457,12 @@ net_read(struct connection *c, size_t *bytes)
 			kore_debug("read(): %s", errno_s);
 			return (KORE_RESULT_ERROR);
 		}
+	}
+
+	if (r == 0) {
+		kore_connection_disconnect(c);
+		c->flags &= ~CONN_READ_POSSIBLE;
+		return (KORE_RESULT_OK);
 	}
 
 	*bytes = (size_t)r;
