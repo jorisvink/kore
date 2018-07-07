@@ -249,7 +249,6 @@ load_certificate(struct kore_domain *dom)
 	EVP_PKEY		*pkey;
 	STACK_OF(X509_NAME)	*certs;
 	EC_KEY			*eckey;
-	X509_STORE		*store;
 #if !defined(OPENSSL_NO_EC)
 	EC_KEY			*ecdh;
 #endif
