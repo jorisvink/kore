@@ -167,7 +167,7 @@ main(int argc, char *argv[])
 
 #if !defined(KORE_SINGLE_BINARY)
 	if (argc > 0)
-		fatal("did you mean to run `kodev´ instead?");
+		fatal("did you mean to run `kodev' instead?");
 #endif
 
 	kore_pid = getpid();
