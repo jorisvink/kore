@@ -53,14 +53,15 @@ extern "C" {
 extern int daemon(int, int);
 #endif
 
+#if !defined(KORE_NO_SENDFILE) && defined(KORE_NO_TLS)
+#if defined(__MACH__) || defined(__FreeBSD_version) || defined(__linux__)
+#define KORE_USE_PLATFORM_SENDFILE	1
+#endif
+#endif
+
 #define KORE_RESULT_ERROR	0
 #define KORE_RESULT_OK		1
 #define KORE_RESULT_RETRY	2
-
-#define KORE_VERSION_MAJOR	3
-#define KORE_VERSION_MINOR	0
-#define KORE_VERSION_PATCH	0
-#define KORE_VERSION_STATE	"devel"
 
 #define KORE_TLS_VERSION_1_2	0
 #define KORE_TLS_VERSION_1_0	1
@@ -86,6 +87,7 @@ extern int daemon(int, int);
 #define NETBUF_RECV			0
 #define NETBUF_SEND			1
 #define NETBUF_SEND_PAYLOAD_MAX		8192
+#define SENDFILE_PAYLOAD_MAX		(1024 * 1024 * 10)
 
 #define NETBUF_LAST_CHAIN		0
 #define NETBUF_BEFORE_CHAIN		1
@@ -94,6 +96,7 @@ extern int daemon(int, int);
 #define NETBUF_FORCE_REMOVE	0x02
 #define NETBUF_MUST_RESEND	0x04
 #define NETBUF_IS_STREAM	0x10
+#define NETBUF_IS_FILEREF	0x20
 
 #define X509_GET_CN(c, o, l)					\
 	X509_NAME_get_text_by_NID(X509_get_subject_name(c),	\
@@ -106,6 +109,23 @@ extern int daemon(int, int);
 struct http_request;
 #endif
 
+#define KORE_FILEREF_SOFT_REMOVED	0x1000
+
+struct kore_fileref {
+	int				cnt;
+	int				flags;
+	off_t				size;
+	char				*path;
+	time_t				mtime;
+	u_int64_t			expiration;
+#if !defined(KORE_USE_PLATFORM_SENDFILE)
+	void				*base;
+#else
+	int				fd;
+#endif
+	TAILQ_ENTRY(kore_fileref)	list;
+};
+
 struct netbuf {
 	u_int8_t		*buf;
 	size_t			s_off;
@@ -114,8 +134,13 @@ struct netbuf {
 	u_int8_t		type;
 	u_int8_t		flags;
 
-	void			*owner;
+	struct kore_fileref	*file_ref;
+#if defined(KORE_USE_PLATFORM_SENDFILE)
+	off_t			fd_off;
+	off_t			fd_len;
+#endif
 
+	void			*owner;
 	void			*extra;
 	int			(*cb)(struct netbuf *);
 
@@ -351,6 +376,7 @@ struct kore_domain {
 	char					*certfile;
 	char					*certkey;
 	SSL_CTX					*ssl_ctx;
+	int					x509_verify_depth;
 #endif
 	TAILQ_HEAD(, kore_module_handle)	handlers;
 	TAILQ_ENTRY(kore_domain)		list;
@@ -474,6 +500,7 @@ extern char	*rand_file;
 extern u_int8_t			nlisteners;
 extern u_int16_t		cpu_count;
 extern u_int8_t			worker_count;
+extern const char		*kore_version;
 extern u_int8_t			worker_set_affinity;
 extern u_int32_t		worker_rlimit_nofiles;
 extern u_int32_t		worker_max_connections;
@@ -490,6 +517,7 @@ extern struct kore_domain	*primary_dom;
 extern struct kore_pool		nb_pool;
 
 void		kore_signal(int);
+void		kore_signal_setup(void);
 void		kore_worker_wait(int);
 void		kore_worker_init(void);
 void		kore_worker_shutdown(void);
@@ -513,6 +541,10 @@ void		kore_platform_schedule_read(int, void *);
 void		kore_platform_schedule_write(int, void *);
 void		kore_platform_event_schedule(int, int, int, void *);
 void		kore_platform_worker_setcpu(struct kore_worker *);
+
+#if defined(KORE_USE_PLATFORM_SENDFILE)
+int		kore_platform_sendfile(struct connection *, struct netbuf *);
+#endif
 
 void		kore_accesslog_init(void);
 void		kore_accesslog_worker_init(void);
@@ -577,9 +609,9 @@ void		kore_pool_init(struct kore_pool *, const char *,
 		    size_t, size_t);
 void		kore_pool_cleanup(struct kore_pool *);
 
-time_t		kore_date_to_time(char *);
 char		*kore_time_to_date(time_t);
 char		*kore_strdup(const char *);
+time_t		kore_date_to_time(const char *);
 void		kore_log(int, const char *, ...)
 		    __attribute__((format (printf, 2, 3)));
 u_int64_t	kore_strtonum64(const char *, int, int *);
@@ -614,6 +646,19 @@ void		kore_msg_parent_remove(struct kore_worker *);
 void		kore_msg_send(u_int16_t, u_int8_t, const void *, u_int32_t);
 int		kore_msg_register(u_int8_t,
 		    void (*cb)(struct kore_msg *, const void *));
+
+#if !defined(KORE_NO_HTTP)
+void		kore_filemap_init(void);
+int		kore_filemap_create(struct kore_domain *, const char *,
+		    const char *);
+extern char	*kore_filemap_ext;
+extern char	*kore_filemap_index;
+#endif
+
+void			kore_fileref_init(void);
+struct kore_fileref	*kore_fileref_get(const char *);
+struct kore_fileref	*kore_fileref_create(const char *, int, off_t, time_t);
+void			kore_fileref_release(struct kore_fileref *);
 
 void		kore_domain_init(void);
 void		kore_domain_cleanup(void);
@@ -680,6 +725,7 @@ void		net_write64(u_int8_t *, u_int64_t);
 
 void		net_init(void);
 void		net_cleanup(void);
+struct netbuf	*net_netbuf_get(void);
 int		net_send(struct connection *);
 int		net_send_flush(struct connection *);
 int		net_recv_flush(struct connection *);
@@ -697,6 +743,7 @@ void		net_recv_expand(struct connection *c, size_t,
 void		net_send_queue(struct connection *, const void *, size_t);
 void		net_send_stream(struct connection *, void *,
 		    size_t, int (*cb)(struct netbuf *), struct netbuf **);
+void		net_send_fileref(struct connection *, struct kore_fileref *);
 
 void		kore_buf_free(struct kore_buf *);
 struct kore_buf	*kore_buf_alloc(size_t);

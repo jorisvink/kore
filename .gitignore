@@ -9,3 +9,4 @@ obj
 .lvimrc
 kodev/kodev
 kore.features
+src/version.c

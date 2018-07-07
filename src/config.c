@@ -72,16 +72,21 @@ static int		configure_certkey(char *);
 static int		configure_tls_version(char *);
 static int		configure_tls_cipher(char *);
 static int		configure_tls_dhparam(char *);
+static int		configure_client_verify_depth(char *);
 static int		configure_client_certificates(char *);
 #endif
 
 #if !defined(KORE_NO_HTTP)
+static int		configure_filemap(char *);
 static int		configure_handler(int, char *);
 static int		configure_static_handler(char *);
 static int		configure_dynamic_handler(char *);
 static int		configure_accesslog(char *);
 static int		configure_http_header_max(char *);
 static int		configure_http_body_max(char *);
+static int		configure_filemap_ext(char *);
+static int		configure_filemap_index(char *);
+static int		configure_http_media_type(char *);
 static int		configure_http_hsts_enable(char *);
 static int		configure_http_keepalive_time(char *);
 static int		configure_http_request_ms(char *);
@@ -145,11 +150,16 @@ static struct {
 	{ "certfile",			configure_certfile },
 	{ "certkey",			configure_certkey },
 	{ "client_certificates",	configure_client_certificates },
+	{ "client_verify_depth",	configure_client_verify_depth },
 #endif
 #if !defined(KORE_NO_HTTP)
+	{ "filemap",			configure_filemap },
+	{ "filemap_ext",		configure_filemap_ext },
+	{ "filemap_index",		configure_filemap_index },
 	{ "static",			configure_static_handler },
 	{ "dynamic",			configure_dynamic_handler },
 	{ "accesslog",			configure_accesslog },
+	{ "http_media_type",		configure_http_media_type },
 	{ "http_header_max",		configure_http_header_max },
 	{ "http_body_max",		configure_http_body_max },
 	{ "http_hsts_enable",		configure_http_hsts_enable },
@@ -437,6 +447,27 @@ configure_tls_dhparam(char *path)
 }
 
 static int
+configure_client_verify_depth(char *value)
+{
+	int	err, depth;
+
+	if (current_domain == NULL) {
+		printf("client_verify_depth not specified in domain context\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	depth = kore_strtonum(value, 10, 0, INT_MAX, &err);
+	if (err != KORE_RESULT_OK) {
+		printf("bad client_verify_depth value: %s\n", value);
+		return (KORE_RESULT_ERROR);
+	}
+
+	current_domain->x509_verify_depth = depth;
+
+	return (KORE_RESULT_OK);
+}
+
+static int
 configure_client_certificates(char *options)
 {
 	char		*argv[3];
@@ -585,6 +616,31 @@ configure_handler(int type, char *options)
 }
 
 static int
+configure_filemap(char *options)
+{
+	char		*argv[3];
+
+	if (current_domain == NULL) {
+		printf("filemap outside of domain context\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	kore_split_string(options, " ", argv, 3);
+
+	if (argv[0] == NULL || argv[1] == NULL) {
+		printf("missing parameters for filemap\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (!kore_filemap_create(current_domain, argv[1], argv[0])) {
+		printf("cannot create filemap for %s\n", argv[1]);
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
 configure_accesslog(char *path)
 {
 	if (current_domain == NULL) {
@@ -603,6 +659,54 @@ configure_accesslog(char *path)
 	    S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 	if (current_domain->accesslog == -1) {
 		printf("accesslog open(%s): %s\n", path, errno_s);
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_filemap_ext(char *ext)
+{
+	kore_free(kore_filemap_ext);
+	kore_filemap_ext = kore_strdup(ext);
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_filemap_index(char *index)
+{
+	kore_free(kore_filemap_index);
+	kore_filemap_index = kore_strdup(index);
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_http_media_type(char *type)
+{
+	int		i;
+	char		*extensions, *ext[10];
+
+	extensions = strchr(type, ' ');
+	if (extensions == NULL) {
+		printf("bad http_media_type value: %s\n", type);
+		return (KORE_RESULT_ERROR);
+	}
+
+	*(extensions)++ = '\0';
+
+	kore_split_string(extensions, " \t", ext, 10);
+	for (i = 0; ext[i] != NULL; i++) {
+		if (!http_media_register(ext[i], type)) {
+			printf("duplicate extension found: %s\n", ext[i]);
+			return (KORE_RESULT_ERROR);
+		}
+	}
+
+	if (i == 0) {
+		printf("missing extensions in: %s\n", type);
 		return (KORE_RESULT_ERROR);
 	}
 

@@ -373,9 +373,9 @@ static const char *gitignore = "*.o\n.flavor\n.objs\n%s.so\nassets.h\ncert\n";
 static int			s_fd = -1;
 static char			*appl = NULL;
 static int			run_after = 0;
-static char			*compiler_c = "gcc";
-static char			*compiler_cpp = "g++";
-static char			*compiler_ld = "gcc";
+static char			*compiler_c = "cc";
+static char			*compiler_cpp = "c++";
+static char			*compiler_ld = "cc";
 static struct mime_list		mime_types;
 static struct cfile_list	source_files;
 static struct buildopt_list	build_options;
@@ -420,8 +420,10 @@ main(int argc, char **argv)
 
 	for (i = 0; cmds[i].name != NULL; i++) {
 		if (!strcmp(argv[0], cmds[i].name)) {
-			argc--;
-			argv++;
+			if (strcmp(argv[0], "create")) {
+				argc--;
+				argv++;
+			}
 			command = &cmds[i];
 			cmds[i].cb(argc, argv);
 			break;
@@ -464,7 +466,6 @@ cli_create(int argc, char **argv)
 	int			i, ch, pyko;
 
 	pyko = 0;
-	optind = 0;
 
 	while ((ch = getopt(argc, argv, "hp")) != -1) {
 		switch (ch) {

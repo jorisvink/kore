@@ -300,7 +300,7 @@ kore_strip_chars(char *in, const char strip, char **out)
 }
 
 time_t
-kore_date_to_time(char *http_date)
+kore_date_to_time(const char *http_date)
 {
 	time_t			t;
 	int			err, i;

@@ -1,18 +1,21 @@
 # Kore Makefile
 
-CC?=gcc
+CC?=cc
 PREFIX?=/usr/local
 OBJDIR?=obj
 KORE=kore
 KODEV=kodev/kodev
 INSTALL_DIR=$(PREFIX)/bin
+MAN_DIR=$(PREFIX)/share/man
 SHARE_DIR=$(PREFIX)/share/kore
 INCLUDE_DIR=$(PREFIX)/include/kore
 
+VERSION=src/version.c
+
 S_SRC=	src/kore.c src/buf.c src/config.c src/connection.c \
-	src/domain.c src/mem.c src/msg.c src/module.c src/net.c \
-	src/pool.c src/runtime.c src/timer.c src/utils.c src/worker.c \
-	src/keymgr.c
+	src/domain.c src/filemap.c src/fileref.c src/mem.c src/msg.c \
+	src/module.c src/net.c src/pool.c src/runtime.c src/timer.c \
+	src/utils.c src/worker.c src/keymgr.c $(VERSION)
 
 FEATURES=
 FEATURES_INC=
@@ -38,6 +41,10 @@ ifneq ("$(NOOPT)", "")
 	CFLAGS+=-O0
 else
 	CFLAGS+=-O3
+endif
+
+ifneq ("$(NOSENDFILE)", "")
+	CFLAGS+=-DKORE_NO_SENDFILE
 endif
 
 ifneq ("$(NOHTTP)", "")
@@ -89,6 +96,11 @@ ifneq ("$(PYTHON)", "")
 	FEATURES_INC+=$(shell python3-config --includes)
 endif
 
+ifneq ("$(SANITIZE)", "")
+	CFLAGS+=-fsanitize=$(SANITIZE)
+	LDFLAGS+=-fsanitize=$(SANITIZE)
+endif
+
 OSNAME=$(shell uname -s | sed -e 's/[-_].*//g' | tr A-Z a-z)
 ifeq ("$(OSNAME)", "darwin")
 	CFLAGS+=-I/opt/local/include/ -I/usr/local/opt/openssl/include
@@ -108,7 +120,22 @@ endif
 
 S_OBJS=	$(S_SRC:src/%.c=$(OBJDIR)/%.o)
 
-all: $(KORE) $(KODEV)
+all: $(VERSION) $(KORE) $(KODEV)
+
+$(VERSION): force
+	@if [ -d .git ]; then \
+		GIT_REVISION=`git rev-parse --short=8 HEAD`; \
+		GIT_BRANCH=`git rev-parse --abbrev-ref HEAD`; \
+		rm -f $(VERSION); \
+		printf "const char *kore_version = \"%s-%s\";\n" \
+		    $$GIT_BRANCH $$GIT_REVISION > $(VERSION); \
+	elif [ -f RELEASE ]; then \
+		printf "const char *kore_version = \"%s\";\n" \
+		    `cat RELEASE` > $(VERSION); \
+	else \
+		echo "No version information found (no .git or RELEASE)"; \
+		exit 1; \
+	fi
 
 $(KODEV):
 	$(MAKE) -C kodev
@@ -124,10 +151,12 @@ objects: $(OBJDIR) $(S_OBJS)
 $(OBJDIR):
 	@mkdir -p $(OBJDIR)
 
-install: $(KORE) $(KODEV)
+install:
 	mkdir -p $(SHARE_DIR)
 	mkdir -p $(INCLUDE_DIR)
 	mkdir -p $(INSTALL_DIR)
+	mkdir -p $(MAN_DIR)/man1
+	install -m 644 share/man/kodev.1 $(MAN_DIR)/man1/kodev.1
 	install -m 555 $(KORE) $(INSTALL_DIR)/$(KORE)
 	install -m 644 kore.features $(SHARE_DIR)/features
 	install -m 644 include/kore/*.h $(INCLUDE_DIR)
@@ -143,8 +172,9 @@ $(OBJDIR)/%.o: src/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
+	rm -f $(VERSION)
 	find . -type f -name \*.o -exec rm {} \;
 	rm -rf $(KORE) $(OBJDIR) kore.features
 	$(MAKE) -C kodev clean
 
-.PHONY: all clean
+.PHONY: all clean force

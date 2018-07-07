@@ -91,8 +91,7 @@ usage(void)
 static void
 version(void)
 {
-	printf("%d.%d.%d-%s ", KORE_VERSION_MAJOR, KORE_VERSION_MINOR,
-	    KORE_VERSION_PATCH, KORE_VERSION_STATE);
+	printf("%s ", kore_version);
 #if defined(KORE_NO_TLS)
 	printf("no-tls ");
 #endif
@@ -121,9 +120,7 @@ version(void)
 int
 main(int argc, char *argv[])
 {
-#if defined(KORE_SINGLE_BINARY)
 	struct kore_runtime_call	*rcall;
-#endif
 	int				ch, flags;
 
 	flags = 0;
@@ -184,8 +181,10 @@ main(int argc, char *argv[])
 	kore_python_init();
 #endif
 #if !defined(KORE_NO_HTTP)
+	http_parent_init();
 	kore_auth_init();
 	kore_validator_init();
+	kore_filemap_init();
 #endif
 	kore_domain_init();
 	kore_module_init();
@@ -194,8 +193,7 @@ main(int argc, char *argv[])
 #if !defined(KORE_SINGLE_BINARY)
 	if (config_file == NULL)
 		usage();
-	kore_parse_config();
-#else
+#endif
 	kore_module_load(NULL, NULL, KORE_MODULE_NATIVE);
 	kore_parse_config();
 
@@ -204,7 +202,6 @@ main(int argc, char *argv[])
 		kore_runtime_configure(rcall, argc, argv);
 		kore_free(rcall);
 	}
-#endif
 
 	kore_platform_init();
 
@@ -218,18 +215,8 @@ main(int argc, char *argv[])
 		}
 	}
 #endif
-
-	sig_recv = 0;
-	signal(SIGHUP, kore_signal);
-	signal(SIGQUIT, kore_signal);
-	signal(SIGTERM, kore_signal);
-	signal(SIGUSR1, kore_signal);
-
-	if (foreground)
-		signal(SIGINT, kore_signal);
-	else
-		signal(SIGINT, SIG_IGN);
-
+    
+	kore_signal_setup();
 	kore_server_start();
 
 	kore_log(LOG_NOTICE, "server shutting down");
@@ -394,6 +381,37 @@ kore_sockopt(int fd, int what, int opt)
 	}
 
 	return (KORE_RESULT_OK);
+}
+
+void
+kore_signal_setup(void)
+{
+	struct sigaction	sa;
+
+	sig_recv = 0;
+	memset(&sa, 0, sizeof(sa));
+	sa.sa_handler = kore_signal;
+
+	if (sigfillset(&sa.sa_mask) == -1)
+		fatal("sigfillset: %s", errno_s);
+
+	if (sigaction(SIGHUP, &sa, NULL) == -1)
+		fatal("sigaction: %s", errno_s);
+	if (sigaction(SIGQUIT, &sa, NULL) == -1)
+		fatal("sigaction: %s", errno_s);
+	if (sigaction(SIGTERM, &sa, NULL) == -1)
+		fatal("sigaction: %s", errno_s);
+	if (sigaction(SIGUSR1, &sa, NULL) == -1)
+		fatal("sigaction: %s", errno_s);
+
+	if (foreground) {
+		if (sigaction(SIGINT, &sa, NULL) == -1)
+			fatal("sigaction: %s", errno_s);
+	} else {
+		(void)signal(SIGINT, SIG_IGN);
+	}
+
+	(void)signal(SIGPIPE, SIG_IGN);
 }
 
 void

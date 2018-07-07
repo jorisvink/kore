@@ -304,16 +304,7 @@ kore_worker_entry(struct kore_worker *kw)
 
 	kore_pid = kw->pid;
 
-	sig_recv = 0;
-	signal(SIGHUP, kore_signal);
-	signal(SIGQUIT, kore_signal);
-	signal(SIGTERM, kore_signal);
-	signal(SIGPIPE, SIG_IGN);
-
-	if (foreground)
-		signal(SIGINT, kore_signal);
-	else
-		signal(SIGINT, SIG_IGN);
+	kore_signal_setup();
 
 #if !defined(KORE_NO_TLS)
 	if (kw->id == KORE_WORKER_KEYMGR) {
@@ -331,6 +322,7 @@ kore_worker_entry(struct kore_worker *kw)
 	kore_accesslog_worker_init();
 #endif
 	kore_timer_init();
+	kore_fileref_init();
 	kore_connection_init();
 	kore_domain_load_crl();
 	kore_domain_keymgr_init();

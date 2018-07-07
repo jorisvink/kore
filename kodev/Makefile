@@ -1,6 +1,6 @@
 # kodev Makefile
 
-CC?=gcc
+CC?=cc
 PREFIX?=/usr/local
 OBJDIR?=obj
 KODEV=kodev
