@@ -33,6 +33,7 @@ struct filemap_entry {
 	size_t				root_len;
 	struct kore_domain		*domain;
 	char				*ondisk;
+	size_t				ondisk_len;
 	TAILQ_ENTRY(filemap_entry)	list;
 };
 
@@ -57,7 +58,7 @@ kore_filemap_create(struct kore_domain *dom, const char *path, const char *root)
 	size_t			sz;
 	int			len;
 	struct filemap_entry	*entry;
-	char			regex[1024];
+	char			regex[1024], rpath[PATH_MAX];
 
 	sz = strlen(root);
 	if (sz == 0)
@@ -74,12 +75,16 @@ kore_filemap_create(struct kore_domain *dom, const char *path, const char *root)
 	    "filemap_resolve", NULL, HANDLER_TYPE_DYNAMIC))
 		return (KORE_RESULT_ERROR);
 
+	if (realpath(path, rpath) == NULL)
+		return (KORE_RESULT_ERROR);
+
 	entry = kore_calloc(1, sizeof(*entry));
 
 	entry->domain = dom;
 	entry->root_len = sz;
 	entry->root = kore_strdup(root);
-	entry->ondisk = kore_strdup(path);
+	entry->ondisk_len = strlen(rpath);
+	entry->ondisk = kore_strdup(rpath);
 
 	TAILQ_INSERT_TAIL(&maps, entry, list);
 
@@ -132,7 +137,7 @@ filemap_serve(struct http_request *req, struct filemap_entry *map)
 	struct kore_fileref	*ref;
 	const char		*path;
 	int			len, fd, index;
-	char			fpath[MAXPATHLEN];
+	char			fpath[PATH_MAX], rpath[PATH_MAX];
 
 	path = req->path + map->root_len;
 
@@ -147,15 +152,16 @@ filemap_serve(struct http_request *req, struct filemap_entry *map)
 		return;
 	}
 
-	if (strstr(fpath, "..")) {
+	index = 0;
+
+lookup:
+	if (realpath(fpath, rpath) == NULL ||
+	    strncmp(rpath, fpath, map->ondisk_len)) {
 		http_response(req, HTTP_STATUS_NOT_FOUND, NULL, 0);
 		return;
 	}
 
-	index = 0;
-
-lookup:
-	if ((ref = kore_fileref_get(fpath)) == NULL) {
+	if ((ref = kore_fileref_get(rpath)) == NULL) {
 		if ((fd = open(fpath, O_RDONLY | O_NOFOLLOW)) == -1) {
 			switch (errno) {
 			case ENOENT:
