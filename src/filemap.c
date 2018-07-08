@@ -177,8 +177,30 @@ filemap_serve(struct http_request *req, struct filemap_entry *map)
 	index = 0;
 
 lookup:
-	if (realpath(fpath, rpath) == NULL ||
-	    strncmp(rpath, fpath, map->ondisk_len)) {
+	if (realpath(fpath, rpath) == NULL) {
+		if (errno == ENOENT) {
+			if (index || kore_filemap_ext == NULL) {
+				req->status = HTTP_STATUS_NOT_FOUND;
+			} else {
+				len = snprintf(fpath, sizeof(fpath),
+				    "%s/%s%s", map->ondisk, path,
+				    kore_filemap_ext);
+				if (len == -1 ||
+				    (size_t)len >= sizeof(fpath)) {
+					http_response(req,
+					    HTTP_STATUS_INTERNAL_ERROR,
+					    NULL, 0);
+					return;
+				}
+				index++;
+				goto lookup;
+			}
+		}
+		http_response(req, HTTP_STATUS_NOT_FOUND, NULL, 0);
+		return;
+	}
+
+	if (strncmp(rpath, fpath, map->ondisk_len)) {
 		http_response(req, HTTP_STATUS_NOT_FOUND, NULL, 0);
 		return;
 	}
