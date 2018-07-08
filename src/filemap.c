@@ -179,9 +179,7 @@ filemap_serve(struct http_request *req, struct filemap_entry *map)
 lookup:
 	if (realpath(fpath, rpath) == NULL) {
 		if (errno == ENOENT) {
-			if (index || kore_filemap_ext == NULL) {
-				req->status = HTTP_STATUS_NOT_FOUND;
-			} else {
+			if (index == 0 && kore_filemap_ext != NULL) {
 				len = snprintf(fpath, sizeof(fpath),
 				    "%s/%s%s", map->ondisk, path,
 				    kore_filemap_ext);
