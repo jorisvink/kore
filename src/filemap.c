@@ -56,15 +56,19 @@ int
 kore_filemap_create(struct kore_domain *dom, const char *path, const char *root)
 {
 	size_t			sz;
+	struct stat		st;
 	int			len;
 	struct filemap_entry	*entry;
-	char			regex[1024], rpath[PATH_MAX];
+	char			regex[1024];
 
 	sz = strlen(root);
 	if (sz == 0)
 		return (KORE_RESULT_ERROR);
 
 	if (root[0] != '/' || root[sz - 1] != '/')
+		return (KORE_RESULT_ERROR);
+
+	if (stat(path, &st) == -1)
 		return (KORE_RESULT_ERROR);
 
 	len = snprintf(regex, sizeof(regex), "^%s.*$", root);
@@ -75,20 +79,38 @@ kore_filemap_create(struct kore_domain *dom, const char *path, const char *root)
 	    "filemap_resolve", NULL, HANDLER_TYPE_DYNAMIC))
 		return (KORE_RESULT_ERROR);
 
-	if (realpath(path, rpath) == NULL)
-		return (KORE_RESULT_ERROR);
-
 	entry = kore_calloc(1, sizeof(*entry));
 
 	entry->domain = dom;
 	entry->root_len = sz;
 	entry->root = kore_strdup(root);
-	entry->ondisk_len = strlen(rpath);
-	entry->ondisk = kore_strdup(rpath);
+
+	/*
+	 * Resolve the ondisk component inside the workers to make sure
+	 * realpath() resolves the correct path (they maybe chrooted).
+	 */
+	entry->ondisk_len = strlen(path);
+	entry->ondisk = kore_strdup(path);
 
 	TAILQ_INSERT_TAIL(&maps, entry, list);
 
 	return (KORE_RESULT_OK);
+}
+
+void
+kore_filemap_resolve_paths(void)
+{
+	struct filemap_entry	*entry;
+	char			rpath[PATH_MAX];
+
+	TAILQ_FOREACH(entry, &maps, list) {
+		if (realpath(entry->ondisk, rpath) == NULL)
+			fatal("realpath(%s): %s", entry->ondisk, errno_s);
+
+		kore_free(entry->ondisk);
+		entry->ondisk_len = strlen(rpath);
+		entry->ondisk = kore_strdup(rpath);
+	}
 }
 
 int
