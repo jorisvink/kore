@@ -103,6 +103,7 @@ If you want to signup to those mailing lists send an empty email to
 
 
 Other mailboxes:
+
 **security@kore.io** - Mail this email if you think you found a security problem.
 
 **sponsor@kore.io** - If your company would like to sponsor part of Kore development.
