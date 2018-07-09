@@ -276,13 +276,15 @@ kore_platform_proctitle(char *title)
 int
 kore_platform_sendfile(struct connection *c, struct netbuf *nb)
 {
-	size_t		len;
-	ssize_t		sent;
 	off_t		smin;
+	ssize_t		sent;
+	size_t		len, prevoff;
 
+	prevoff = nb->fd_off;
 	smin = nb->fd_len - nb->fd_off;
 	len = MIN(SENDFILE_PAYLOAD_MAX, smin);
 
+resend:
 	sent = sendfile(c->fd, nb->file_ref->fd, &nb->fd_off, len);
 	if (sent == -1) {
 		if (errno == EAGAIN) {
@@ -290,11 +292,11 @@ kore_platform_sendfile(struct connection *c, struct netbuf *nb)
 			return (KORE_RESULT_OK);
 		}
 
-		if (errno == EINTR)
-			return (KORE_RESULT_OK);
-
 		return (KORE_RESULT_ERROR);
 	}
+
+	if (nb->fd_off - prevoff != (size_t)len)
+		goto resend;
 
 	if (sent == 0 || nb->fd_off == nb->fd_len) {
 		net_remove_netbuf(&(c->send_queue), nb);
