@@ -33,7 +33,7 @@ License
 
 Documentation
 --------------
-[Read the documentation](https://jorisvink.gitbooks.io/kore-doc/content/)
+[Read the documentation](https://docs.kore.io/3.0.0/)
 
 Platforms supported
 -------------------
@@ -44,13 +44,12 @@ Platforms supported
 
 Building Kore
 -------------
-Clone this repository. I highly recommend using master until the 3.0.0 release
-is tagged as the 2.x releases are outdated. The master branch is always stable.
+Clone this repository or get the latest release at [https://kore.io/releases/3.0.0](https://kore.io/releases/3.0.0).
 
 Requirements
 * openssl (1.0.2k+ or 1.1.0e+)
   (note: this requirement drops away when building with NOTLS=1 NOHTTP=1)
-  (note: libressl should work as a replacement)
+  (note: libressl works as a replacement)
 
 Requirements for background tasks (optional)
 * pthreads
@@ -91,9 +90,18 @@ You can find example applications under **_examples/_**.
 The examples contain a README file with instructions on how
 to build or use them.
 
-Bugs, contributions and more
-----------------------------
-If you run into any bugs, have suggestions or patches please
-contact me at joris@coders.se.
+Mailing lists
+-------------
+
+**patches@kore.io** - Send patches here, preferably inline.
+**users@kore.io** - Questions regarding kore.
+
+If you want to signup to those mailing lists send an empty email to
+	listname+subscribe@kore.io
+
+
+Other mailboxes:
+**security@kore.io** - Mail this email if you think you found a security problem.
+**sponsor@kore.io** - If your company would like to sponsor part of Kore development.
 
 More information can be found on https://kore.io/
