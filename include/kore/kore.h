@@ -484,8 +484,10 @@ extern int	foreground;
 extern int	kore_debug;
 extern int	skip_chroot;
 extern char	*chroot_path;
+extern char	*keymgr_chroot_path;
 extern int	skip_runas;
 extern char	*runas_user;
+extern char	*keymgr_runas_user;
 extern char	*kore_pidfile;
 extern char	*kore_tls_cipher_list;
 extern int	tls_version;
@@ -673,6 +675,7 @@ void		*kore_module_getsym(const char *, struct kore_runtime **);
 void		kore_domain_load_crl(void);
 void		kore_domain_keymgr_init(void);
 void		kore_domain_tlsinit(struct kore_domain *);
+void		kore_domain_reload_certificates(void);
 void		kore_module_load(const char *, const char *, int);
 void		kore_domain_callback(void (*cb)(struct kore_domain *));
 int		kore_module_handler_new(const char *, const char *,

@@ -78,9 +78,10 @@ kore_keymgr_run(void)
 	kore_listener_cleanup();
 	kore_module_cleanup();
 
-	kore_domain_callback(keymgr_load_privatekey);
 	kore_worker_privdrop();
 
+	kore_domain_callback(kore_domain_tlsinit);
+	kore_domain_callback(keymgr_load_privatekey);
 	net_init();
 	kore_connection_init();
 	kore_platform_event_init();
@@ -105,6 +106,11 @@ kore_keymgr_run(void)
 			case SIGINT:
 			case SIGTERM:
 				quit = 1;
+				break;
+			case SIGUSR1:
+				kore_keymgr_cleanup();
+				TAILQ_INIT(&keys);
+				kore_domain_callback(keymgr_load_privatekey);
 				break;
 			default:
 				break;
@@ -258,8 +264,6 @@ keymgr_load_privatekey(struct kore_domain *dom)
 		fatal("PEM_read_PrivateKey: %s", ssl_errno_s);
 
 	(void)fclose(fp);
-	kore_free(dom->certkey);
-	dom->certkey = NULL;
 
 	TAILQ_INSERT_TAIL(&keys, key, list);
 }

@@ -52,6 +52,7 @@ int				tls_version = KORE_TLS_VERSION_1_2;
 #endif
 
 #if !defined(KORE_NO_TLS)
+static void load_certificate(struct kore_domain *dom);
 static int	domain_x509_verify(int, X509_STORE_CTX *);
 static void	domain_load_crl(struct kore_domain *);
 
@@ -149,6 +150,8 @@ kore_domain_cleanup(void)
 	struct kore_domain *dom;
 
 	while ((dom = TAILQ_FIRST(&domains)) != NULL) {
+		kore_free(dom->certfile);
+		kore_free(dom->certkey);
 		TAILQ_REMOVE(&domains, dom, list);
 		kore_domain_free(dom);
 	}
@@ -236,8 +239,8 @@ kore_domain_free(struct kore_domain *dom)
 	kore_free(dom);
 }
 
-void
-kore_domain_tlsinit(struct kore_domain *dom)
+static void
+load_certificate(struct kore_domain *dom)
 {
 #if !defined(KORE_NO_TLS)
 	BIO			*in;
@@ -246,59 +249,10 @@ kore_domain_tlsinit(struct kore_domain *dom)
 	EVP_PKEY		*pkey;
 	STACK_OF(X509_NAME)	*certs;
 	EC_KEY			*eckey;
-	const SSL_METHOD	*method;
 #if !defined(OPENSSL_NO_EC)
 	EC_KEY			*ecdh;
 #endif
 
-	kore_debug("kore_domain_sslstart(%s)", dom->domain);
-
-#if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
-	if ((method = TLS_method()) == NULL)
-		fatal("TLS_method(): %s", ssl_errno_s);
-#else
-	switch (tls_version) {
-	case KORE_TLS_VERSION_1_2:
-		method = TLSv1_2_server_method();
-		break;
-	case KORE_TLS_VERSION_1_0:
-		method = TLSv1_server_method();
-		break;
-	case KORE_TLS_VERSION_BOTH:
-		method = SSLv23_server_method();
-		break;
-	default:
-		fatal("unknown tls_version: %d", tls_version);
-		return;
-	}
-#endif
-
-	if ((dom->ssl_ctx = SSL_CTX_new(method)) == NULL)
-		fatal("SSL_ctx_new(): %s", ssl_errno_s);
-
-#if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
-	if (!SSL_CTX_set_min_proto_version(dom->ssl_ctx, TLS1_VERSION))
-		fatal("SSL_CTX_set_min_proto_version: %s", ssl_errno_s);
-	if (!SSL_CTX_set_max_proto_version(dom->ssl_ctx, TLS1_2_VERSION))
-		fatal("SSL_CTX_set_max_proto_version: %s", ssl_errno_s);
-
-	switch (tls_version) {
-	case KORE_TLS_VERSION_1_2:
-		if (!SSL_CTX_set_min_proto_version(dom->ssl_ctx,
-		    TLS1_2_VERSION))
-			fatal("SSL_CTX_set_min_proto_version: %s", ssl_errno_s);
-		break;
-	case KORE_TLS_VERSION_1_0:
-		if (!SSL_CTX_set_max_proto_version(dom->ssl_ctx, TLS1_VERSION))
-			fatal("SSL_CTX_set_min_proto_version: %s", ssl_errno_s);
-		break;
-	case KORE_TLS_VERSION_BOTH:
-		break;
-	default:
-		fatal("unknown tls_version: %d", tls_version);
-		return;
-	}
-#endif
 	if (!SSL_CTX_use_certificate_chain_file(dom->ssl_ctx, dom->certfile)) {
 		fatal("SSL_CTX_use_certificate_chain_file(%s): %s",
 		    dom->certfile, ssl_errno_s);
@@ -308,6 +262,7 @@ kore_domain_tlsinit(struct kore_domain *dom)
 		fatal("BIO_new: %s", ssl_errno_s);
 	if (BIO_read_filename(in, dom->certfile) <= 0)
 		fatal("BIO_read_filename: %s", ssl_errno_s);
+
 	if ((x509 = PEM_read_bio_X509(in, NULL, NULL, NULL)) == NULL)
 		fatal("PEM_read_bio_X509: %s", ssl_errno_s);
 
@@ -391,9 +346,64 @@ kore_domain_tlsinit(struct kore_domain *dom)
 
 	SSL_CTX_set_info_callback(dom->ssl_ctx, kore_tls_info_callback);
 	SSL_CTX_set_tlsext_servername_callback(dom->ssl_ctx, kore_tls_sni_cb);
+#endif
+}
 
-	kore_free(dom->certfile);
-	dom->certfile = NULL;
+void
+kore_domain_tlsinit(struct kore_domain *dom)
+{
+#if !defined(KORE_NO_TLS)
+	const SSL_METHOD	*method;
+
+	kore_debug("kore_domain_sslstart(%s)", dom->domain);
+
+#if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
+	if ((method = TLS_method()) == NULL)
+		fatal("TLS_method(): %s", ssl_errno_s);
+#else
+	switch (tls_version) {
+	case KORE_TLS_VERSION_1_2:
+		method = TLSv1_2_server_method();
+		break;
+	case KORE_TLS_VERSION_1_0:
+		method = TLSv1_server_method();
+		break;
+	case KORE_TLS_VERSION_BOTH:
+		method = SSLv23_server_method();
+		break;
+	default:
+		fatal("unknown tls_version: %d", tls_version);
+		return;
+	}
+#endif
+
+	if ((dom->ssl_ctx = SSL_CTX_new(method)) == NULL)
+		fatal("SSL_ctx_new(): %s", ssl_errno_s);
+
+#if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
+	if (!SSL_CTX_set_min_proto_version(dom->ssl_ctx, TLS1_VERSION))
+		fatal("SSL_CTX_set_min_proto_version: %s", ssl_errno_s);
+	if (!SSL_CTX_set_max_proto_version(dom->ssl_ctx, TLS1_2_VERSION))
+		fatal("SSL_CTX_set_max_proto_version: %s", ssl_errno_s);
+
+	switch (tls_version) {
+	case KORE_TLS_VERSION_1_2:
+		if (!SSL_CTX_set_min_proto_version(dom->ssl_ctx,
+		    TLS1_2_VERSION))
+			fatal("SSL_CTX_set_min_proto_version: %s", ssl_errno_s);
+		break;
+	case KORE_TLS_VERSION_1_0:
+		if (!SSL_CTX_set_max_proto_version(dom->ssl_ctx, TLS1_VERSION))
+			fatal("SSL_CTX_set_min_proto_version: %s", ssl_errno_s);
+		break;
+	case KORE_TLS_VERSION_BOTH:
+		break;
+	default:
+		fatal("unknown tls_version: %d", tls_version);
+		return;
+	}
+#endif
+	load_certificate(dom);
 #endif
 }
 
@@ -755,5 +765,13 @@ domain_x509_verify(int ok, X509_STORE_CTX *ctx)
 	}
 
 	return (ok);
+}
+
+void
+kore_domain_reload_certificates(void)
+{
+#if !defined(KORE_NO_TLS)
+	kore_domain_callback(load_certificate);
+#endif
 }
 #endif

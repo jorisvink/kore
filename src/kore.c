@@ -44,8 +44,10 @@ int			kore_debug = 0;
 u_int8_t		worker_count = 0;
 int			skip_chroot = 0;
 char			*chroot_path = NULL;
+char			*keymgr_chroot_path = NULL;
 int			skip_runas = 0;
 char			*runas_user = NULL;
+char			*keymgr_runas_user = NULL;
 u_int32_t		kore_socket_backlog = 5000;
 char			*kore_pidfile = KORE_PIDFILE_DEFAULT;
 char			*kore_tls_cipher_list = KORE_DEFAULT_CIPHER_LIST;
@@ -213,7 +215,7 @@ main(int argc, char *argv[])
 		}
 	}
 #endif
-
+    
 	kore_signal_setup();
 	kore_server_start();
 
@@ -229,6 +231,11 @@ main(int argc, char *argv[])
 #endif
 
 	kore_mem_cleanup();
+
+	free(chroot_path);
+	free(keymgr_chroot_path);
+	free(runas_user);
+	free(keymgr_runas_user);
 
 	return (0);
 }
@@ -394,6 +401,8 @@ kore_signal_setup(void)
 		fatal("sigaction: %s", errno_s);
 	if (sigaction(SIGTERM, &sa, NULL) == -1)
 		fatal("sigaction: %s", errno_s);
+	if (sigaction(SIGUSR1, &sa, NULL) == -1)
+		fatal("sigaction: %s", errno_s);
 
 	if (foreground) {
 		if (sigaction(SIGINT, &sa, NULL) == -1)
@@ -499,6 +508,9 @@ kore_server_start(void)
 				quit = 1;
 				kore_worker_dispatch_signal(sig_recv);
 				continue;
+			case SIGUSR1:
+				kore_worker_dispatch_signal(SIGUSR1);
+				break;
 			default:
 				break;
 			}

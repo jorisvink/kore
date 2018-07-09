@@ -12,6 +12,12 @@
 # Server configuration.
 bind		127.0.0.1 443
 
+# The path key manager process will chroot into after starting.
+keymgr_chroot	/home/joris/src/kore
+
+# The key manager process will run as the specified user.
+keymgr_runas	keymgr
+
 # The path worker processes will chroot into after starting.
 chroot		/home/joris/src/kore
 
