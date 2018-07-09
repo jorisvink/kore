@@ -259,6 +259,14 @@ lookup:
 				fd = -1;
 			}
 		} else if (S_ISDIR(st.st_mode) && index == 0) {
+			if (req->path[strlen(req->path) - 1] != '/') {
+				(void)snprintf(fpath,
+				    sizeof(fpath), "%s/", req->path);
+				http_response_header(req, "location", fpath);
+				http_response(req, HTTP_STATUS_FOUND, NULL, 0);
+				return;
+			}
+
 			len = snprintf(fpath, sizeof(fpath),
 			    "%s/%s%s", map->ondisk, path,
 			    kore_filemap_index != NULL ?
