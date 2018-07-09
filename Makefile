@@ -40,7 +40,7 @@ endif
 ifneq ("$(NOOPT)", "")
 	CFLAGS+=-O0
 else
-	CFLAGS+=-O3
+	CFLAGS+=-O2
 endif
 
 ifneq ("$(NOSENDFILE)", "")
