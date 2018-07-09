@@ -647,6 +647,7 @@ int		kore_msg_register(u_int8_t,
 
 #if !defined(KORE_NO_HTTP)
 void		kore_filemap_init(void);
+void		kore_filemap_resolve_paths(void);
 int		kore_filemap_create(struct kore_domain *, const char *,
 		    const char *);
 extern char	*kore_filemap_ext;

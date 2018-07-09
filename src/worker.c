@@ -314,6 +314,7 @@ kore_worker_entry(struct kore_worker *kw)
 	net_init();
 #if !defined(KORE_NO_HTTP)
 	http_init();
+	kore_filemap_resolve_paths();
 	kore_accesslog_worker_init();
 #endif
 	kore_timer_init();

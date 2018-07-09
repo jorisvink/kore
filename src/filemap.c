@@ -33,6 +33,7 @@ struct filemap_entry {
 	size_t				root_len;
 	struct kore_domain		*domain;
 	char				*ondisk;
+	size_t				ondisk_len;
 	TAILQ_ENTRY(filemap_entry)	list;
 };
 
@@ -55,6 +56,7 @@ int
 kore_filemap_create(struct kore_domain *dom, const char *path, const char *root)
 {
 	size_t			sz;
+	struct stat		st;
 	int			len;
 	struct filemap_entry	*entry;
 	char			regex[1024];
@@ -64,6 +66,9 @@ kore_filemap_create(struct kore_domain *dom, const char *path, const char *root)
 		return (KORE_RESULT_ERROR);
 
 	if (root[0] != '/' || root[sz - 1] != '/')
+		return (KORE_RESULT_ERROR);
+
+	if (stat(path, &st) == -1)
 		return (KORE_RESULT_ERROR);
 
 	len = snprintf(regex, sizeof(regex), "^%s.*$", root);
@@ -79,11 +84,33 @@ kore_filemap_create(struct kore_domain *dom, const char *path, const char *root)
 	entry->domain = dom;
 	entry->root_len = sz;
 	entry->root = kore_strdup(root);
+
+	/*
+	 * Resolve the ondisk component inside the workers to make sure
+	 * realpath() resolves the correct path (they maybe chrooted).
+	 */
+	entry->ondisk_len = strlen(path);
 	entry->ondisk = kore_strdup(path);
 
 	TAILQ_INSERT_TAIL(&maps, entry, list);
 
 	return (KORE_RESULT_OK);
+}
+
+void
+kore_filemap_resolve_paths(void)
+{
+	struct filemap_entry	*entry;
+	char			rpath[PATH_MAX];
+
+	TAILQ_FOREACH(entry, &maps, list) {
+		if (realpath(entry->ondisk, rpath) == NULL)
+			fatal("realpath(%s): %s", entry->ondisk, errno_s);
+
+		kore_free(entry->ondisk);
+		entry->ondisk_len = strlen(rpath);
+		entry->ondisk = kore_strdup(rpath);
+	}
 }
 
 int
@@ -132,7 +159,7 @@ filemap_serve(struct http_request *req, struct filemap_entry *map)
 	struct kore_fileref	*ref;
 	const char		*path;
 	int			len, fd, index;
-	char			fpath[MAXPATHLEN];
+	char			fpath[PATH_MAX], rpath[PATH_MAX];
 
 	path = req->path + map->root_len;
 
@@ -147,15 +174,36 @@ filemap_serve(struct http_request *req, struct filemap_entry *map)
 		return;
 	}
 
-	if (strstr(fpath, "..")) {
+	index = 0;
+
+lookup:
+	if (realpath(fpath, rpath) == NULL) {
+		if (errno == ENOENT) {
+			if (index == 0 && kore_filemap_ext != NULL) {
+				len = snprintf(fpath, sizeof(fpath),
+				    "%s/%s%s", map->ondisk, path,
+				    kore_filemap_ext);
+				if (len == -1 ||
+				    (size_t)len >= sizeof(fpath)) {
+					http_response(req,
+					    HTTP_STATUS_INTERNAL_ERROR,
+					    NULL, 0);
+					return;
+				}
+				index++;
+				goto lookup;
+			}
+		}
 		http_response(req, HTTP_STATUS_NOT_FOUND, NULL, 0);
 		return;
 	}
 
-	index = 0;
+	if (strncmp(rpath, fpath, map->ondisk_len)) {
+		http_response(req, HTTP_STATUS_NOT_FOUND, NULL, 0);
+		return;
+	}
 
-lookup:
-	if ((ref = kore_fileref_get(fpath)) == NULL) {
+	if ((ref = kore_fileref_get(rpath)) == NULL) {
 		if ((fd = open(fpath, O_RDONLY | O_NOFOLLOW)) == -1) {
 			switch (errno) {
 			case ENOENT:
@@ -211,6 +259,14 @@ lookup:
 				fd = -1;
 			}
 		} else if (S_ISDIR(st.st_mode) && index == 0) {
+			if (req->path[strlen(req->path) - 1] != '/') {
+				(void)snprintf(fpath,
+				    sizeof(fpath), "%s/", req->path);
+				http_response_header(req, "location", fpath);
+				http_response(req, HTTP_STATUS_FOUND, NULL, 0);
+				return;
+			}
+
 			len = snprintf(fpath, sizeof(fpath),
 			    "%s/%s%s", map->ondisk, path,
 			    kore_filemap_index != NULL ?
