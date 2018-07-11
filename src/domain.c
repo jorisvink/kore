@@ -52,9 +52,10 @@ int				tls_version = KORE_TLS_VERSION_1_2;
 #endif
 
 #if !defined(KORE_NO_TLS)
+static BIO	*domain_bio_mem(const void *, size_t);
 static int	domain_x509_verify(int, X509_STORE_CTX *);
 static void	domain_load_crl(struct kore_domain *);
-static X509	*domain_load_certificate_chain(SSL_CTX *, const char *, size_t);
+static X509	*domain_load_certificate_chain(SSL_CTX *, const void *, size_t);
 
 static void	keymgr_init(void);
 static void	keymgr_await_data(void);
@@ -753,20 +754,14 @@ domain_x509_verify(int ok, X509_STORE_CTX *ctx)
  * BIO set to the pem data that we received.
  */
 static X509 *
-domain_load_certificate_chain(SSL_CTX *ctx, const char *data, size_t len)
+domain_load_certificate_chain(SSL_CTX *ctx, const void *data, size_t len)
 {
-	BIO		*in;
 	unsigned long	err;
+	BIO		*in;
 	X509		*x, *ca;
 
-	/* because OpenSSL likes taking ints as buffer sizes. */
-	if (len > INT_MAX)
-		fatal("domain_load_certificate_chain: len > INT_MAX");
-
 	ERR_clear_error();
-
-	if ((in = BIO_new_mem_buf(data, len)) == NULL)
-		fatal("BIO_new_mem_buf: %s", ssl_errno_s);
+	in = domain_bio_mem(data, len);
 
 	if ((x = PEM_read_bio_X509_AUX(in, NULL, NULL, NULL)) == NULL)
 		fatal("PEM_read_bio_X509_AUX: %s", ssl_errno_s);
@@ -775,13 +770,23 @@ domain_load_certificate_chain(SSL_CTX *ctx, const char *data, size_t len)
 	if (SSL_CTX_use_certificate(ctx, x) == 0)
 		fatal("SSL_CTX_use_certificate: %s", ssl_errno_s);
 
+#if defined(LIBRESSL_VERSION_TEXT)
+	sk_X509_pop_free(ctx->extra_certs, X509_free);
+	ctx->extra_certs = NULL;
+#else
 	SSL_CTX_clear_chain_certs(ctx);
+#endif
 
 	ERR_clear_error();
 	while ((ca = PEM_read_bio_X509(in, NULL, NULL, NULL)) != NULL) {
 		/* ca its reference count won't be increased. */
+#if defined(LIBRESSL_VERSION_TEXT)
+		if (SSL_CTX_add_extra_chain_cert(ctx, ca) == 0)
+			fatal("SSL_CTX_add_extra_chain_cert: %s", ssl_errno_s);
+#else
 		if (SSL_CTX_add0_chain_cert(ctx, ca) == 0)
 			fatal("SSL_CTX_add0_chain_cert: %s", ssl_errno_s);
+#endif
 	}
 
 	err = ERR_peek_last_error();
@@ -794,4 +799,34 @@ domain_load_certificate_chain(SSL_CTX *ctx, const char *data, size_t len)
 
 	return (x);
 }
+
+/*
+ * XXX - Hack around the fact that LibreSSL its BIO_new_mem_buf() does not
+ * take a const pointer for their first argument.
+ *
+ * Since we build with -Wcast-qual and -Werror I rather do this than having
+ * a bunch of pragma preprocessor magic to remove the warnings for that code
+ * if we're dealing with LibreSSL.
+ *
+ * They fixed this in their upcoming 2.8.0 release but that is not out yet
+ * and I'd like this to run on older OpenBSD platforms as well.
+ */
+static BIO *
+domain_bio_mem(const void *data, size_t len)
+{
+	BIO					*in;
+	union { void *p; const void *cp; }	deconst;
+
+	/* because OpenSSL likes taking ints as memory buffer lengths. */
+	if (len > INT_MAX)
+		fatal("domain_bio_mem: len(%zu) > INT_MAX", len);
+
+	deconst.cp = data;
+
+	if ((in = BIO_new_mem_buf(deconst.p, len)) == NULL)
+		fatal("BIO_new_mem_buf: %s", ssl_errno_s);
+
+	return (in);
+}
+
 #endif
