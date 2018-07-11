@@ -41,11 +41,11 @@ pid_t			kore_pid = -1;
 u_int16_t		cpu_count = 1;
 int			foreground = 0;
 int			kore_debug = 0;
-u_int8_t		worker_count = 0;
-int			skip_chroot = 0;
-char			*chroot_path = NULL;
 int			skip_runas = 0;
-char			*runas_user = NULL;
+int			skip_chroot = 0;
+u_int8_t		worker_count = 0;
+char			*kore_root_path = NULL;
+char			*kore_runas_user = NULL;
 u_int32_t		kore_socket_backlog = 5000;
 char			*kore_pidfile = KORE_PIDFILE_DEFAULT;
 char			*kore_tls_cipher_list = KORE_DEFAULT_CIPHER_LIST;
@@ -394,6 +394,8 @@ kore_signal_setup(void)
 		fatal("sigaction: %s", errno_s);
 	if (sigaction(SIGTERM, &sa, NULL) == -1)
 		fatal("sigaction: %s", errno_s);
+	if (sigaction(SIGUSR1, &sa, NULL) == -1)
+		fatal("sigaction: %s", errno_s);
 
 	if (foreground) {
 		if (sigaction(SIGINT, &sa, NULL) == -1)
@@ -486,6 +488,7 @@ kore_server_start(void)
 
 	quit = 0;
 	worker_max_connections = tmp;
+
 	while (quit != 1) {
 		if (sig_recv != 0) {
 			switch (sig_recv) {
@@ -499,6 +502,9 @@ kore_server_start(void)
 				quit = 1;
 				kore_worker_dispatch_signal(sig_recv);
 				continue;
+			case SIGUSR1:
+				kore_worker_dispatch_signal(sig_recv);
+				break;
 			default:
 				break;
 			}

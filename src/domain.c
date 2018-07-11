@@ -54,6 +54,7 @@ int				tls_version = KORE_TLS_VERSION_1_2;
 #if !defined(KORE_NO_TLS)
 static int	domain_x509_verify(int, X509_STORE_CTX *);
 static void	domain_load_crl(struct kore_domain *);
+static X509	*domain_load_certificate_chain(SSL_CTX *, const char *, size_t);
 
 static void	keymgr_init(void);
 static void	keymgr_await_data(void);
@@ -236,11 +237,10 @@ kore_domain_free(struct kore_domain *dom)
 	kore_free(dom);
 }
 
-void
-kore_domain_tlsinit(struct kore_domain *dom)
-{
 #if !defined(KORE_NO_TLS)
-	BIO			*in;
+void
+kore_domain_tlsinit(struct kore_domain *dom, const void *pem, size_t pemlen)
+{
 	RSA			*rsa;
 	X509			*x509;
 	EVP_PKEY		*pkey;
@@ -251,7 +251,10 @@ kore_domain_tlsinit(struct kore_domain *dom)
 	EC_KEY			*ecdh;
 #endif
 
-	kore_debug("kore_domain_sslstart(%s)", dom->domain);
+	kore_debug("kore_domain_tlsinit(%s)", dom->domain);
+
+	if (dom->ssl_ctx != NULL)
+		SSL_CTX_free(dom->ssl_ctx);
 
 #if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
 	if ((method = TLS_method()) == NULL)
@@ -299,20 +302,8 @@ kore_domain_tlsinit(struct kore_domain *dom)
 		return;
 	}
 #endif
-	if (!SSL_CTX_use_certificate_chain_file(dom->ssl_ctx, dom->certfile)) {
-		fatal("SSL_CTX_use_certificate_chain_file(%s): %s",
-		    dom->certfile, ssl_errno_s);
-	}
 
-	if ((in = BIO_new(BIO_s_file())) == NULL)
-		fatal("BIO_new: %s", ssl_errno_s);
-	if (BIO_read_filename(in, dom->certfile) <= 0)
-		fatal("BIO_read_filename: %s", ssl_errno_s);
-	if ((x509 = PEM_read_bio_X509(in, NULL, NULL, NULL)) == NULL)
-		fatal("PEM_read_bio_X509: %s", ssl_errno_s);
-
-	BIO_free(in);
-
+	x509 = domain_load_certificate_chain(dom->ssl_ctx, pem, pemlen);
 	if ((pkey = X509_get_pubkey(x509)) == NULL)
 		fatal("certificate has no public key");
 
@@ -392,10 +383,9 @@ kore_domain_tlsinit(struct kore_domain *dom)
 	SSL_CTX_set_info_callback(dom->ssl_ctx, kore_tls_info_callback);
 	SSL_CTX_set_tlsext_servername_callback(dom->ssl_ctx, kore_tls_sni_cb);
 
-	kore_free(dom->certfile);
-	dom->certfile = NULL;
-#endif
+	X509_free(x509);
 }
+#endif
 
 void
 kore_domain_callback(void (*cb)(struct kore_domain *))
@@ -755,5 +745,53 @@ domain_x509_verify(int ok, X509_STORE_CTX *ctx)
 	}
 
 	return (ok);
+}
+
+/*
+ * What follows is basically a reimplementation of
+ * SSL_CTX_use_certificate_chain_file() from OpenSSL but with our
+ * BIO set to the pem data that we received.
+ */
+static X509 *
+domain_load_certificate_chain(SSL_CTX *ctx, const char *data, size_t len)
+{
+	BIO		*in;
+	unsigned long	err;
+	X509		*x, *ca;
+
+	/* because OpenSSL likes taking ints as buffer sizes. */
+	if (len > INT_MAX)
+		fatal("domain_load_certificate_chain: len > INT_MAX");
+
+	ERR_clear_error();
+
+	if ((in = BIO_new_mem_buf(data, len)) == NULL)
+		fatal("BIO_new_mem_buf: %s", ssl_errno_s);
+
+	if ((x = PEM_read_bio_X509_AUX(in, NULL, NULL, NULL)) == NULL)
+		fatal("PEM_read_bio_X509_AUX: %s", ssl_errno_s);
+
+	/* refcount for x509 will go up one. */
+	if (SSL_CTX_use_certificate(ctx, x) == 0)
+		fatal("SSL_CTX_use_certificate: %s", ssl_errno_s);
+
+	SSL_CTX_clear_chain_certs(ctx);
+
+	ERR_clear_error();
+	while ((ca = PEM_read_bio_X509(in, NULL, NULL, NULL)) != NULL) {
+		/* ca its reference count won't be increased. */
+		if (SSL_CTX_add0_chain_cert(ctx, ca) == 0)
+			fatal("SSL_CTX_add0_chain_cert: %s", ssl_errno_s);
+	}
+
+	err = ERR_peek_last_error();
+
+	if (ERR_GET_LIB(err) != ERR_LIB_PEM ||
+	    ERR_GET_REASON(err) != PEM_R_NO_START_LINE)
+		fatal("PEM_read_bio_X509: %s", ssl_errno_s);
+
+	BIO_free(in);
+
+	return (x);
 }
 #endif

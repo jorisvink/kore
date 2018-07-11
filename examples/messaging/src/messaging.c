@@ -54,8 +54,8 @@ init(int state)
 void
 received_message(struct kore_msg *msg, const void *data)
 {
-	kore_log(LOG_INFO, "got message from %u (%d bytes): %.*s", msg->src,
-	    msg->length, msg->length, (const char *)data);
+	kore_log(LOG_INFO, "got message from %u (%zu bytes): %.*s", msg->src,
+	    msg->length, (int)msg->length, (const char *)data);
 }
 
 /*

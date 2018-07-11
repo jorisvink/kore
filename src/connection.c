@@ -223,6 +223,11 @@ kore_connection_handle(struct connection *c)
 	switch (c->state) {
 #if !defined(KORE_NO_TLS)
 	case CONN_STATE_TLS_SHAKE:
+		if (primary_dom->ssl_ctx == NULL) {
+			kore_log(LOG_NOTICE, "TLS setup not yet complete");
+			return (KORE_RESULT_ERROR);
+		}
+
 		if (c->ssl == NULL) {
 			c->ssl = SSL_new(primary_dom->ssl_ctx);
 			if (c->ssl == NULL) {

@@ -363,6 +363,7 @@ struct kore_worker {
 	int				pipe[2];
 	struct connection		*msg[2];
 	u_int8_t			has_lock;
+	int				restarted;
 	u_int64_t			time_locked;
 	struct kore_module_handle	*active_hdlr;
 };
@@ -446,13 +447,15 @@ struct kore_timer {
 #define KORE_WORKER_KEYMGR	0
 
 /* Reserved message ids, registered on workers. */
-#define KORE_MSG_ACCESSLOG	1
-#define KORE_MSG_WEBSOCKET	2
-#define KORE_MSG_KEYMGR_REQ	3
-#define KORE_MSG_KEYMGR_RESP	4
-#define KORE_MSG_SHUTDOWN	5
-#define KORE_MSG_ENTROPY_REQ	6
-#define KORE_MSG_ENTROPY_RESP	7
+#define KORE_MSG_ACCESSLOG		1
+#define KORE_MSG_WEBSOCKET		2
+#define KORE_MSG_KEYMGR_REQ		3
+#define KORE_MSG_KEYMGR_RESP		4
+#define KORE_MSG_SHUTDOWN		5
+#define KORE_MSG_ENTROPY_REQ		6
+#define KORE_MSG_ENTROPY_RESP		7
+#define KORE_MSG_CERTIFICATE		8
+#define KORE_MSG_CERTIFICATE_REQ	9
 
 /* Predefined message targets. */
 #define KORE_MSG_PARENT		1000
@@ -462,15 +465,22 @@ struct kore_msg {
 	u_int8_t	id;
 	u_int16_t	src;
 	u_int16_t	dst;
-	u_int32_t	length;
+	size_t		length;
 };
 
 #if !defined(KORE_NO_TLS)
 struct kore_keyreq {
 	int		padding;
 	char		domain[KORE_DOMAINNAME_LEN];
-	u_int8_t	domain_len;
+	u_int16_t	domain_len;
 	u_int16_t	data_len;
+	u_int8_t	data[];
+};
+
+struct kore_x509_msg {
+	char		domain[KORE_DOMAINNAME_LEN];
+	u_int16_t	domain_len;
+	size_t		data_len;
 	u_int8_t	data[];
 };
 #endif
@@ -483,16 +493,18 @@ extern pid_t	kore_pid;
 extern int	foreground;
 extern int	kore_debug;
 extern int	skip_chroot;
-extern char	*chroot_path;
 extern int	skip_runas;
-extern char	*runas_user;
 extern char	*kore_pidfile;
+extern char	*kore_root_path;
+extern char	*kore_runas_user;
 extern char	*kore_tls_cipher_list;
-extern int	tls_version;
 
 #if !defined(KORE_NO_TLS)
+extern int	tls_version;
 extern DH	*tls_dhparam;
 extern char	*rand_file;
+extern char	*keymgr_runas_user;
+extern char	*keymgr_root_path;
 #endif
 
 extern u_int8_t			nlisteners;
@@ -641,7 +653,7 @@ void		kore_msg_worker_init(void);
 void		kore_msg_parent_init(void);
 void		kore_msg_parent_add(struct kore_worker *);
 void		kore_msg_parent_remove(struct kore_worker *);
-void		kore_msg_send(u_int16_t, u_int8_t, const void *, u_int32_t);
+void		kore_msg_send(u_int16_t, u_int8_t, const void *, size_t);
 int		kore_msg_register(u_int8_t,
 		    void (*cb)(struct kore_msg *, const void *));
 
@@ -672,9 +684,9 @@ void		kore_domain_closelogs(void);
 void		*kore_module_getsym(const char *, struct kore_runtime **);
 void		kore_domain_load_crl(void);
 void		kore_domain_keymgr_init(void);
-void		kore_domain_tlsinit(struct kore_domain *);
 void		kore_module_load(const char *, const char *, int);
 void		kore_domain_callback(void (*cb)(struct kore_domain *));
+void		kore_domain_tlsinit(struct kore_domain *, const void *, size_t);
 int		kore_module_handler_new(const char *, const char *,
 		    const char *, const char *, int);
 void		kore_module_handler_free(struct kore_module_handle *);
@@ -757,7 +769,7 @@ void	kore_buf_appendv(struct kore_buf *, const char *, va_list);
 void	kore_buf_replace_string(struct kore_buf *, char *, void *, size_t);
 
 void	kore_keymgr_run(void);
-void	kore_keymgr_cleanup(void);
+void	kore_keymgr_cleanup(int);
 
 void	kore_worker_configure(void);
 void	kore_parent_configure(int, char **);

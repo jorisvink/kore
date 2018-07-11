@@ -53,7 +53,7 @@ extern u_int32_t	asset_len_builtin_kore_conf;
 static int		configure_include(char *);
 static int		configure_bind(char *);
 static int		configure_domain(char *);
-static int		configure_chroot(char *);
+static int		configure_root(char *);
 static int		configure_runas(char *);
 static int		configure_workers(char *);
 static int		configure_pidfile(char *);
@@ -70,8 +70,10 @@ static int		configure_certkey(char *);
 static int		configure_tls_version(char *);
 static int		configure_tls_cipher(char *);
 static int		configure_tls_dhparam(char *);
+static int		configure_keymgr_root(char *);
+static int		configure_keymgr_runas(char *);
+static int		configure_client_verify(char *);
 static int		configure_client_verify_depth(char *);
-static int		configure_client_certificates(char *);
 #endif
 
 #if !defined(KORE_NO_HTTP)
@@ -117,8 +119,6 @@ static int		configure_python_path(char *);
 static int		configure_python_import(char *);
 #endif
 
-static void		domain_tls_init(void);
-
 static struct {
 	const char		*name;
 	int			(*configure)(char *);
@@ -130,8 +130,9 @@ static struct {
 	{ "python_path",		configure_python_path },
 	{ "python_import",		configure_python_import },
 #endif
+	{ "root",			configure_root },
+	{ "chroot",			configure_root },
 	{ "domain",			configure_domain },
-	{ "chroot",			configure_chroot },
 	{ "runas",			configure_runas },
 	{ "workers",			configure_workers },
 	{ "worker_max_connections",	configure_max_connections },
@@ -145,9 +146,11 @@ static struct {
 	{ "tls_cipher",			configure_tls_cipher },
 	{ "tls_dhparam",		configure_tls_dhparam },
 	{ "rand_file",			configure_rand_file },
+	{ "keymgr_runas",		configure_keymgr_runas },
+	{ "keymgr_root",		configure_keymgr_root },
 	{ "certfile",			configure_certfile },
 	{ "certkey",			configure_certkey },
-	{ "client_certificates",	configure_client_certificates },
+	{ "client_verify",		configure_client_verify },
 	{ "client_verify_depth",	configure_client_verify_depth },
 #endif
 #if !defined(KORE_NO_HTTP)
@@ -205,6 +208,7 @@ void
 kore_parse_config(void)
 {
 	FILE		*fp;
+	char		path[PATH_MAX];
 
 #if !defined(KORE_SINGLE_BINARY)
 	if ((fp = fopen(config_file, "r")) == NULL)
@@ -219,21 +223,48 @@ kore_parse_config(void)
 	if (!kore_module_loaded())
 		fatal("no application module was loaded");
 
-	if (skip_chroot != 1 && chroot_path == NULL) {
-		fatal("missing a chroot path");
+	if (kore_root_path == NULL) {
+		if (getcwd(path, sizeof(path)) == NULL)
+			fatal("getcwd: %s", errno_s);
+		kore_root_path = kore_strdup(path);
+		kore_log(LOG_NOTICE,
+		    "privsep: no root path set, using working directory");
 	}
 
 	if (getuid() != 0 && skip_chroot == 0) {
 		fatal("cannot chroot, use -n to skip it");
 	}
 
-	if (skip_runas != 1 && runas_user == NULL) {
+	if (skip_runas != 1 && kore_runas_user == NULL) {
 		fatal("missing runas user, use -r to skip it");
 	}
 
 	if (getuid() != 0 && skip_runas == 0) {
 		fatal("cannot drop privileges, use -r to skip it");
 	}
+
+	if (skip_runas) {
+		kore_log(LOG_WARNING, "privsep: will not change user");
+	} else {
+#if !defined(KORE_NO_TLS)
+		if (keymgr_runas_user == NULL) {
+			kore_log(LOG_NOTICE,
+			    "privsep: no keymgr_runas set, using 'runas` user");
+			keymgr_runas_user = kore_strdup(kore_runas_user);
+		}
+#endif
+	}
+
+#if !defined(KORE_NO_TLS)
+	if (keymgr_root_path == NULL) {
+		kore_log(LOG_NOTICE,
+		    "privsep: no keymgr_root set, using 'root` directory");
+		keymgr_root_path = kore_strdup(kore_root_path);
+	}
+#endif
+
+	if (skip_chroot)
+		kore_log(LOG_WARNING, "privsep: will not chroot");
 }
 
 void
@@ -271,7 +302,7 @@ kore_parse_config_file(FILE *fp)
 #endif
 
 		if (!strcmp(p, "}") && current_domain != NULL)
-			domain_tls_init();
+			current_domain = NULL;
 
 		if (!strcmp(p, "}")) {
 			lineno++;
@@ -466,23 +497,23 @@ configure_client_verify_depth(char *value)
 }
 
 static int
-configure_client_certificates(char *options)
+configure_client_verify(char *options)
 {
 	char		*argv[3];
 
 	if (current_domain == NULL) {
-		printf("client_certificates not specified in domain context\n");
+		printf("client_verify not specified in domain context\n");
 		return (KORE_RESULT_ERROR);
 	}
 
 	kore_split_string(options, " ", argv, 3);
 	if (argv[0] == NULL) {
-		printf("client_certificate is missing a parameter\n");
+		printf("client_verify is missing a parameter\n");
 		return (KORE_RESULT_ERROR);
 	}
 
 	if (current_domain->cafile != NULL) {
-		printf("client_certificate already set for %s\n",
+		printf("client_verify already set for %s\n",
 		    current_domain->domain);
 		return (KORE_RESULT_ERROR);
 	}
@@ -538,6 +569,26 @@ configure_certkey(char *path)
 	}
 
 	current_domain->certkey = kore_strdup(path);
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_keymgr_runas(char *user)
+{
+	if (keymgr_runas_user != NULL)
+		kore_free(keymgr_runas_user);
+	keymgr_runas_user = kore_strdup(user);
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_keymgr_root(char *root)
+{
+	if (keymgr_root_path != NULL)
+		kore_free(keymgr_root_path);
+	keymgr_root_path = kore_strdup(root);
+
 	return (KORE_RESULT_OK);
 }
 
@@ -1090,11 +1141,11 @@ configure_websocket_timeout(char *option)
 #endif /* !KORE_NO_HTTP */
 
 static int
-configure_chroot(char *path)
+configure_root(char *path)
 {
-	if (chroot_path != NULL)
-		kore_free(chroot_path);
-	chroot_path = kore_strdup(path);
+	if (kore_root_path != NULL)
+		kore_free(kore_root_path);
+	kore_root_path = kore_strdup(path);
 
 	return (KORE_RESULT_OK);
 }
@@ -1102,9 +1153,9 @@ configure_chroot(char *path)
 static int
 configure_runas(char *user)
 {
-	if (runas_user != NULL)
-		kore_free(runas_user);
-	runas_user = kore_strdup(user);
+	if (kore_runas_user != NULL)
+		kore_free(kore_runas_user);
+	kore_runas_user = kore_strdup(user);
 
 	return (KORE_RESULT_OK);
 }
@@ -1201,13 +1252,6 @@ configure_socket_backlog(char *option)
 	}
 
 	return (KORE_RESULT_OK);
-}
-
-static void
-domain_tls_init(void)
-{
-	kore_domain_tlsinit(current_domain);
-	current_domain = NULL;
 }
 
 #if defined(KORE_USE_PGSQL)
