@@ -33,6 +33,21 @@ kore_buf_alloc(size_t initial)
 	return (buf);
 }
 
+//The two functions after this comment may reason memory leak if not used properly:
+
+//If we allocate a kore_buf with kore_buf_alloc, it will set the buf->flags variable as KORE_BUF_OWNER_API
+//but after using this kore_buf, programmer may want to kore_buf_cleanup the kore_buf and reinitialize after
+//with the kore_buf_init according to the size needed. In this situation, buf->flags will be equal to zero
+//because kore_buf_init sets it as.
+
+//when the user want to free the kore_buf as a whole, 
+//because 0 not equals KORE_BUF_OWNER_API (buf->flags & KORE_BUF_OWNER_API), 
+//even if the content (buf->data) of the struct freed
+//struct (buf) won't be freed. 
+
+//So i want the developers to redesign them
+
+
 void
 kore_buf_init(struct kore_buf *buf, size_t initial)
 {
