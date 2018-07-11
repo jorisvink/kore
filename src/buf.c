@@ -41,9 +41,9 @@ kore_buf_alloc(size_t initial)
 //because kore_buf_init sets it as.
 
 //when the user want to free the kore_buf as a whole, 
-//because 0 not equals KORE_BUF_OWNER_API (buf->flags & KORE_BUF_OWNER_API), 
+//because 0 not equals to KORE_BUF_OWNER_API (buf->flags & KORE_BUF_OWNER_API), 
 //even if the content (buf->data) of the struct be freed
-//struct (buf) won't be freed. 
+//struct (buf) won't be freed. So memory leak...
 
 //So i want the developers to redesign them
 
