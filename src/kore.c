@@ -244,6 +244,13 @@ kore_tls_sni_cb(SSL *ssl, int *ad, void *arg)
 	kore_debug("kore_tls_sni_cb(): received host %s", sname);
 
 	if (sname != NULL && (dom = kore_domain_lookup(sname)) != NULL) {
+		if (dom->ssl_ctx == NULL) {
+			kore_log(LOG_NOTICE,
+			    "TLS configuration for %s not complete",
+			    dom->domain);
+			return (SSL_TLSEXT_ERR_NOACK);
+		}
+
 		kore_debug("kore_ssl_sni_cb(): Using %s CTX", sname);
 		SSL_set_SSL_CTX(ssl, dom->ssl_ctx);
 
