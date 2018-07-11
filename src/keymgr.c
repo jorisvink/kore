@@ -14,6 +14,23 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+/*
+ * The kore keymgr process is responsible for managing certificates
+ * and their matching private keys.
+ *
+ * It is the only process in Kore that holds the private keys (the workers
+ * do not have a copy of them in memory).
+ *
+ * When a worker requires the private key for signing it will send a message
+ * to the keymgr with the to-be-signed data (KORE_MSG_KEYMGR_REQ). The keymgr
+ * will perform the signing and respond with a KORE_MSG_KEYMGR_RESP message.
+ *
+ * The keymgr can transparently reload the private keys and certificates
+ * for a configured domain when it receives a SIGUSR1. It it reloads them
+ * it will send the newly loaded certificate chains to the worker processes
+ * which will update their TLS contexts accordingly.
+ */
+
 #include <sys/types.h>
 #include <sys/stat.h>
 
