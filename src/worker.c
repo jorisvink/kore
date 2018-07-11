@@ -219,7 +219,7 @@ kore_worker_dispatch_signal(int sig)
 }
 
 void
-kore_worker_privdrop(void)
+kore_worker_privdrop(const char *runas, const char *root)
 {
 	rlim_t			fd;
 	struct rlimit		rl;
@@ -227,17 +227,17 @@ kore_worker_privdrop(void)
 
 	/* Must happen before chroot. */
 	if (skip_runas == 0) {
-		pw = getpwnam(runas_user);
+		pw = getpwnam(runas);
 		if (pw == NULL) {
-			fatal("cannot getpwnam(\"%s\") runas user: %s",
-			    runas_user, errno_s);
+			fatal("cannot getpwnam(\"%s\") for user: %s",
+			    runas, errno_s);
 		}
 	}
 
 	if (skip_chroot == 0) {
-		if (chroot(chroot_path) == -1) {
+		if (chroot(root) == -1) {
 			fatal("cannot chroot(\"%s\"): %s",
-			    chroot_path, errno_s);
+			    root, errno_s);
 		}
 
 		if (chdir("/") == -1)
@@ -309,7 +309,7 @@ kore_worker_entry(struct kore_worker *kw)
 	}
 #endif
 
-	kore_worker_privdrop();
+	kore_worker_privdrop(runas_user, chroot_path);
 
 	net_init();
 #if !defined(KORE_NO_HTTP)

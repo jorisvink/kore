@@ -519,10 +519,10 @@ void		kore_signal_setup(void);
 void		kore_worker_wait(int);
 void		kore_worker_init(void);
 void		kore_worker_shutdown(void);
-void		kore_worker_privdrop(void);
 void		kore_worker_dispatch_signal(int);
 void		kore_worker_spawn(u_int16_t, u_int16_t);
 void		kore_worker_entry(struct kore_worker *);
+void		kore_worker_privdrop(const char *, const char *);
 
 struct kore_worker	*kore_worker_data(u_int8_t);
 

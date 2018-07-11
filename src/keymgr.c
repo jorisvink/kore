@@ -79,7 +79,7 @@ kore_keymgr_run(void)
 	kore_module_cleanup();
 
 	kore_domain_callback(keymgr_load_privatekey);
-	kore_worker_privdrop();
+	kore_worker_privdrop(runas_user, chroot_path);
 
 	net_init();
 	kore_connection_init();
