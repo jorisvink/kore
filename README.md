@@ -1,6 +1,5 @@
 About
 -----
-[![Build Status](https://travis-ci.org/jorisvink/kore.svg?branch=master)](https://travis-ci.org/jorisvink/kore)
 
 Kore (https://kore.io) is an easy to use web application platform for
 writing scalable web APIs in C. Its main goals are security, scalability
