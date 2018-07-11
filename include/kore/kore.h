@@ -530,6 +530,7 @@ void		kore_signal(int);
 void		kore_signal_setup(void);
 void		kore_worker_wait(int);
 void		kore_worker_init(void);
+void		kore_worker_make_busy(void);
 void		kore_worker_shutdown(void);
 void		kore_worker_dispatch_signal(int);
 void		kore_worker_spawn(u_int16_t, u_int16_t);

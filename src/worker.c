@@ -72,8 +72,8 @@ struct wlock {
 static int	worker_trylock(void);
 static void	worker_unlock(void);
 
-static inline int	kore_worker_acceptlock_obtain(u_int64_t);
-static inline int	kore_worker_acceptlock_release(u_int64_t);
+static inline int	worker_acceptlock_obtain(u_int64_t);
+static inline int	worker_acceptlock_release(u_int64_t);
 
 #if !defined(KORE_NO_TLS)
 static void	worker_entropy_recv(struct kore_msg *, const void *);
@@ -290,7 +290,7 @@ kore_worker_entry(struct kore_worker *kw)
 	char				buf[16];
 	int				quit, had_lock, r;
 	u_int64_t			timerwait, netwait;
-	u_int64_t			now, next_lock, next_prune;
+	u_int64_t			now, next_prune, next_lock;
 #if !defined(KORE_NO_TLS)
 	u_int64_t			last_seed;
 #endif
@@ -403,7 +403,7 @@ kore_worker_entry(struct kore_worker *kw)
 #endif
 
 		if (!worker->has_lock && next_lock <= now) {
-			if (kore_worker_acceptlock_obtain(now)) {
+			if (worker_acceptlock_obtain(now)) {
 				if (had_lock == 0) {
 					kore_platform_enable_accept();
 					had_lock = 1;
@@ -430,7 +430,7 @@ kore_worker_entry(struct kore_worker *kw)
 		if (worker->has_lock && r > 0) {
 			if (netwait > 10)
 				now = kore_time_ms();
-			if (kore_worker_acceptlock_release(now))
+			if (worker_acceptlock_release(now))
 				next_lock = now + WORKER_LOCK_TIMEOUT;
 		}
 
@@ -559,8 +559,17 @@ kore_worker_wait(int final)
 	}
 }
 
+void
+kore_worker_make_busy(void)
+{
+	if (worker->has_lock) {
+		worker_unlock();
+		worker->has_lock = 0;
+	}
+}
+
 static inline int
-kore_worker_acceptlock_release(u_int64_t now)
+worker_acceptlock_release(u_int64_t now)
 {
 	if (worker_count == WORKER_SOLO_COUNT || worker_no_lock == 1)
 		return (0);
@@ -589,7 +598,7 @@ kore_worker_acceptlock_release(u_int64_t now)
 }
 
 static inline int
-kore_worker_acceptlock_obtain(u_int64_t now)
+worker_acceptlock_obtain(u_int64_t now)
 {
 	int		r;
 
