@@ -562,6 +562,9 @@ kore_worker_wait(int final)
 void
 kore_worker_make_busy(void)
 {
+	if (worker_count == WORKER_SOLO_COUNT || worker_no_lock == 1)
+		return;
+
 	if (worker->has_lock) {
 		worker_unlock();
 		worker->has_lock = 0;
