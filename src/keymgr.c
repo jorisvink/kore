@@ -116,6 +116,11 @@ kore_keymgr_run(void)
 	RAND_poll();
 	last_seed = 0;
 
+#if defined(__OpenBSD__)
+	if (pledge("stdio", NULL) == -1)
+		fatal("failed to pledge keymgr process");
+#endif
+
 	kore_log(LOG_NOTICE, "key manager started");
 
 	while (quit != 1) {
