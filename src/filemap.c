@@ -55,11 +55,12 @@ kore_filemap_init(void)
 int
 kore_filemap_create(struct kore_domain *dom, const char *path, const char *root)
 {
-	size_t			sz;
-	struct stat		st;
-	int			len;
-	struct filemap_entry	*entry;
-	char			regex[1024], fpath[PATH_MAX];
+	size_t				sz;
+	struct stat			st;
+	int				len;
+	struct kore_module_handle	*hdlr;
+	struct filemap_entry		*entry;
+	char				regex[1024], fpath[PATH_MAX];
 
 	sz = strlen(root);
 	if (sz == 0)
@@ -89,8 +90,18 @@ kore_filemap_create(struct kore_domain *dom, const char *path, const char *root)
 	    "filemap_resolve", NULL, HANDLER_TYPE_DYNAMIC))
 		return (KORE_RESULT_ERROR);
 
-	entry = kore_calloc(1, sizeof(*entry));
+	hdlr = NULL;
+	TAILQ_FOREACH(hdlr, &dom->handlers, list) {
+		if (!strcmp(hdlr->path, regex))
+			break;
+	}
 
+	if (hdlr == NULL)
+		fatal("couldn't find newly created handler for filemap");
+
+	hdlr->methods = HTTP_METHOD_GET | HTTP_METHOD_HEAD;
+
+	entry = kore_calloc(1, sizeof(*entry));
 	entry->domain = dom;
 	entry->root_len = sz;
 	entry->root = kore_strdup(root);
