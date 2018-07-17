@@ -22,6 +22,8 @@
 #include <sys/types.h>
 #include <sys/queue.h>
 
+#include <openssl/sha.h>
+
 #if defined(__cplusplus)
 extern "C" {
 #endif
