@@ -341,21 +341,21 @@ struct kore_module {
 	TAILQ_ENTRY(kore_module)	list;
 };
 
-struct kore_module_handle {
-	char				*path;
-	char				*func;
-	int				type;
-	int				errors;
-	regex_t				rctx;
-	struct kore_domain		*dom;
-	struct kore_runtime_call	*rcall;
 #if !defined(KORE_NO_HTTP)
+struct kore_module_handle {
+	char					*path;
+	char					*func;
+	int					type;
+	int					errors;
+	regex_t					rctx;
+	struct kore_domain			*dom;
+	struct kore_runtime_call		*rcall;
 	struct kore_auth			*auth;
 	int					methods;
 	TAILQ_HEAD(, kore_handler_params)	params;
-#endif
 	TAILQ_ENTRY(kore_module_handle)		list;
 };
+#endif
 
 struct kore_worker {
 	u_int8_t			id;
@@ -380,7 +380,9 @@ struct kore_domain {
 	SSL_CTX					*ssl_ctx;
 	int					x509_verify_depth;
 #endif
+#if !defined(KORE_NO_HTTP)
 	TAILQ_HEAD(, kore_module_handle)	handlers;
+#endif
 	TAILQ_ENTRY(kore_domain)		list;
 };
 
@@ -689,9 +691,13 @@ void		kore_domain_keymgr_init(void);
 void		kore_module_load(const char *, const char *, int);
 void		kore_domain_callback(void (*cb)(struct kore_domain *));
 void		kore_domain_tlsinit(struct kore_domain *, const void *, size_t);
+#if !defined(KORE_NO_HTTP)
 int		kore_module_handler_new(const char *, const char *,
 		    const char *, const char *, int);
 void		kore_module_handler_free(struct kore_module_handle *);
+struct kore_module_handle	*kore_module_handler_find(const char *,
+				    const char *);
+#endif
 
 struct kore_runtime_call	*kore_runtime_getcall(const char *);
 
@@ -712,8 +718,6 @@ void	kore_runtime_wsmessage(struct kore_runtime_call *,
 #endif
 
 struct kore_domain		*kore_domain_lookup(const char *);
-struct kore_module_handle	*kore_module_handler_find(const char *,
-				    const char *);
 
 #if !defined(KORE_NO_HTTP)
 void		kore_validator_init(void);

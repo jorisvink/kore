@@ -484,6 +484,7 @@ kore_worker_wait(int final)
 	u_int16_t		id;
 	pid_t			pid;
 	struct kore_worker	*kw;
+	const char		*func;
 	int			status;
 
 	if (final)
@@ -514,11 +515,14 @@ kore_worker_wait(int final)
 
 		if (WEXITSTATUS(status) || WTERMSIG(status) ||
 		    WCOREDUMP(status)) {
+			func = "none";
+#if !defined(KORE_NO_HTTP)
+			if (kw->active_hdlr != NULL)
+				func = kw->active_hdlr->func;
+#endif
 			kore_log(LOG_NOTICE,
 			    "worker %d (pid: %d) (hdlr: %s) gone",
-			    kw->id, kw->pid,
-			    (kw->active_hdlr != NULL) ? kw->active_hdlr->func :
-			    "none");
+			    kw->id, kw->pid, func);
 
 #if !defined(KORE_NO_TLS)
 			if (id == KORE_WORKER_KEYMGR) {
@@ -536,6 +540,7 @@ kore_worker_wait(int final)
 			    worker_no_lock == 0)
 				worker_unlock();
 
+#if !defined(KORE_NO_HTTP)
 			if (kw->active_hdlr != NULL) {
 				kw->active_hdlr->errors++;
 				kore_log(LOG_NOTICE,
@@ -543,6 +548,7 @@ kore_worker_wait(int final)
 				    kw->active_hdlr->func,
 				    kw->active_hdlr->errors);
 			}
+#endif
 
 			kore_log(LOG_NOTICE, "restarting worker %d", kw->id);
 			kw->restarted = 1;

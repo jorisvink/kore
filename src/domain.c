@@ -189,7 +189,11 @@ kore_domain_new(char *domain)
 	dom->x509_verify_depth = 1;
 #endif
 	dom->domain = kore_strdup(domain);
+
+#if !defined(KORE_NO_HTTP)
 	TAILQ_INIT(&(dom->handlers));
+#endif
+
 	TAILQ_INSERT_TAIL(&domains, dom, list);
 
 	if (primary_dom == NULL)

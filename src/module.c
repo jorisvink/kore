@@ -134,8 +134,10 @@ kore_module_reload(int cbs)
 {
 	struct stat			st;
 	int				ret;
+#if !defined(KORE_NO_HTTP)
 	struct kore_domain		*dom;
 	struct kore_module_handle	*hdlr;
+#endif
 	struct kore_module		*module;
 
 	TAILQ_FOREACH(module, &modules, list) {
@@ -182,6 +184,7 @@ kore_module_reload(int cbs)
 		kore_log(LOG_NOTICE, "reloaded '%s' module", module->path);
 	}
 
+#if !defined(KORE_NO_HTTP)
 	TAILQ_FOREACH(dom, &domains, list) {
 		TAILQ_FOREACH(hdlr, &(dom->handlers), list) {
 			kore_free(hdlr->rcall);
@@ -191,6 +194,7 @@ kore_module_reload(int cbs)
 			hdlr->errors = 0;
 		}
 	}
+#endif
 
 #if !defined(KORE_NO_HTTP)
 	kore_validator_reload();
