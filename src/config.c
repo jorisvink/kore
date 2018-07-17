@@ -741,7 +741,7 @@ configure_restrict(char *options)
 	}
 
 	if (hdlr == NULL) {
-		printf("bad restrict option handler '%s' not found", argv[0]);
+		printf("bad restrict option handler '%s' not found\n", argv[0]);
 		return (KORE_RESULT_ERROR);
 	}
 
