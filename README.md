@@ -18,6 +18,7 @@ Key Features
 * Built-in parameter validation
 * Optional asynchronous PostgreSQL support
 * Optional support for page handlers in Python
+* Reload private keys and certificates on-the-fly
 * Private keys isolated in separate process (RSA and ECDSA)
 * Default sane TLS ciphersuites (PFS in all major browsers)
 * Modules can be reloaded on-the-fly, even while serving content
