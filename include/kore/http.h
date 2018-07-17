@@ -210,6 +210,9 @@ struct http_file {
 
 #define HTTP_VALIDATOR_IS_REQUEST	0x8000
 
+#define HTTP_BODY_DIGEST_LEN		32
+#define HTTP_BODY_DIGEST_STRLEN		((HTTP_BODY_DIGEST_LEN * 2) + 1)
+
 struct kore_task;
 
 struct http_request {
@@ -226,6 +229,7 @@ struct http_request {
 	const char			*agent;
 	const char			*referer;
 	struct connection		*owner;
+	SHA256_CTX			hashctx;
 	u_int8_t			*headers;
 	struct kore_buf			*http_body;
 	int				http_body_fd;
@@ -237,6 +241,8 @@ struct http_request {
 	size_t				state_len;
 	char				*query_string;
 	struct kore_module_handle	*hdlr;
+
+	u_int8_t	http_body_digest[HTTP_BODY_DIGEST_LEN];
 
 #if defined(KORE_USE_PYTHON)
 	void				*py_coro;
@@ -293,6 +299,7 @@ void		http_process_request(struct http_request *);
 int		http_body_rewind(struct http_request *);
 int		http_media_register(const char *, const char *);
 ssize_t		http_body_read(struct http_request *, void *, size_t);
+int		http_body_digest(struct http_request *, char *, size_t);
 void		http_response(struct http_request *, int, const void *, size_t);
 void		http_response_fileref(struct http_request *, int,
 		    struct kore_fileref *);

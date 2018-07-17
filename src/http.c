@@ -762,6 +762,9 @@ http_header_recv(struct netbuf *nb)
 			    (nb->s_off - len));
 		}
 
+		SHA256_Init(&req->hashctx);
+		SHA256_Update(&req->hashctx, end_headers, (nb->s_off - len));
+
 		bytes_left = req->content_length - (nb->s_off - len);
 		if (bytes_left > 0) {
 			kore_debug("%ld/%ld (%ld - %ld) more bytes for body",
@@ -772,9 +775,10 @@ http_header_recv(struct netbuf *nb)
 			c->rnb->extra = req;
 			http_request_sleep(req);
 			req->content_length = bytes_left;
-		} else if (bytes_left == 0) {
+		} else {
 			req->flags |= HTTP_REQUEST_COMPLETE;
 			req->flags &= ~HTTP_REQUEST_EXPECT_BODY;
+			SHA256_Final(req->http_body_digest, &req->hashctx);
 			if (!http_body_rewind(req)) {
 				req->flags |= HTTP_REQUEST_DELETE;
 				http_error_response(req->owner, 500);
@@ -1159,6 +1163,30 @@ http_body_rewind(struct http_request *req)
 
 	req->http_body_offset = 0;
 	req->http_body_length = req->content_length;
+
+	return (KORE_RESULT_OK);
+}
+
+int
+http_body_digest(struct http_request *req, char *out, size_t len)
+{
+	size_t		idx;
+	int		slen;
+
+	if (len != HTTP_BODY_DIGEST_STRLEN) {
+		fatal("http_body_digest: bad len:%zu wanted:%zu",
+		    len, HTTP_BODY_DIGEST_STRLEN);
+	}
+
+	if (!(req->flags & HTTP_REQUEST_COMPLETE))
+		return (KORE_RESULT_ERROR);
+
+	for (idx = 0; idx < sizeof(req->http_body_digest); idx++) {
+		slen = snprintf(out + (idx * 2), len - (idx * 2), "%02x",
+		    req->http_body_digest[idx]);
+		if (slen == -1 || (size_t)slen >= len)
+			fatal("failed to create hex string");
+	}
 
 	return (KORE_RESULT_OK);
 }
@@ -1662,6 +1690,8 @@ http_body_recv(struct netbuf *nb)
 	u_int64_t		bytes_left;
 	struct http_request	*req = (struct http_request *)nb->extra;
 
+	SHA256_Update(&req->hashctx, nb->buf, nb->s_off);
+
 	if (req->http_body_fd != -1) {
 		ret = write(req->http_body_fd, nb->buf, nb->s_off);
 		if (ret == -1 || (size_t)ret != nb->s_off) {
@@ -1690,6 +1720,7 @@ http_body_recv(struct netbuf *nb)
 			http_error_response(req->owner, 500);
 			return (KORE_RESULT_ERROR);
 		}
+		SHA256_Final(req->http_body_digest, &req->hashctx);
 		net_recv_reset(nb->owner, http_header_max, http_header_recv);
 	} else {
 		bytes_left = req->content_length;
