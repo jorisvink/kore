@@ -267,6 +267,10 @@ domain localhost {
 	static		/params-test		serve_params_test
 	static		/private		serve_private
 
+	# Restrict some URIs to certain methods
+	restrict /private post
+	restrict /validator post get head
+
 	# Page handlers with authentication.
 	static		/private/test	serve_private_test	auth_example
 

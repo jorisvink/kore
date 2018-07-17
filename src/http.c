@@ -1372,6 +1372,11 @@ http_request_new(struct connection *c, const char *host,
 		return (NULL);
 	}
 
+	if (!(hdlr->methods & m)) {
+		http_error_response(c, 400);
+		return (NULL);
+	}
+
 	req = kore_pool_get(&http_request_pool);
 	req->end = 0;
 	req->total = 0;

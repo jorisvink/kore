@@ -235,6 +235,7 @@ kore_module_handler_new(const char *path, const char *domain,
 	hdlr->type = type;
 	hdlr->path = kore_strdup(path);
 	hdlr->func = kore_strdup(func);
+	hdlr->methods = HTTP_METHOD_ALL;
 
 	TAILQ_INIT(&(hdlr->params));
 

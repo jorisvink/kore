@@ -351,6 +351,7 @@ struct kore_module_handle {
 	struct kore_runtime_call	*rcall;
 #if !defined(KORE_NO_HTTP)
 	struct kore_auth			*auth;
+	int					methods;
 	TAILQ_HEAD(, kore_handler_params)	params;
 #endif
 	TAILQ_ENTRY(kore_module_handle)		list;

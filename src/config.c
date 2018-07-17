@@ -78,6 +78,7 @@ static int		configure_client_verify_depth(char *);
 
 #if !defined(KORE_NO_HTTP)
 static int		configure_filemap(char *);
+static int		configure_restrict(char *);
 static int		configure_handler(int, char *);
 static int		configure_static_handler(char *);
 static int		configure_dynamic_handler(char *);
@@ -160,6 +161,7 @@ static struct {
 	{ "static",			configure_static_handler },
 	{ "dynamic",			configure_dynamic_handler },
 	{ "accesslog",			configure_accesslog },
+	{ "restrict",			configure_restrict },
 	{ "http_media_type",		configure_http_media_type },
 	{ "http_header_max",		configure_http_header_max },
 	{ "http_body_max",		configure_http_body_max },
@@ -709,6 +711,60 @@ configure_accesslog(char *path)
 	if (current_domain->accesslog == -1) {
 		printf("accesslog open(%s): %s\n", path, errno_s);
 		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_restrict(char *options)
+{
+	struct kore_module_handle	*hdlr;
+	int				i, cnt;
+	char				*argv[10];
+
+	if (current_domain == NULL) {
+		printf("restrict not used in domain context\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	cnt = kore_split_string(options, " ", argv, 10);
+	if (cnt < 2) {
+		printf("bad restrict option '%s', missing methods\n", options);
+		return (KORE_RESULT_ERROR);
+	}
+
+	hdlr = NULL;
+	TAILQ_FOREACH(hdlr, &(current_domain->handlers), list) {
+		if (!strcmp(hdlr->path, argv[0]))
+			break;
+	}
+
+	if (hdlr == NULL) {
+		printf("bad restrict option handler '%s' not found", argv[0]);
+		return (KORE_RESULT_ERROR);
+	}
+
+	hdlr->methods = 0;
+
+	for (i = 1; i < cnt; i++) {
+		if (!strcasecmp(argv[i], "post")) {
+			hdlr->methods |= HTTP_METHOD_POST;
+		} else if (!strcasecmp(argv[i], "get")) {
+			hdlr->methods |= HTTP_METHOD_GET;
+		} else if (!strcasecmp(argv[i], "put")) {
+			hdlr->methods |= HTTP_METHOD_PUT;
+		} else if (!strcasecmp(argv[i], "delete")) {
+			hdlr->methods |= HTTP_METHOD_DELETE;
+		} else if (!strcasecmp(argv[i], "head")) {
+			hdlr->methods |= HTTP_METHOD_HEAD;
+		} else if (!strcasecmp(argv[i], "patch")) {
+			hdlr->methods |= HTTP_METHOD_PATCH;
+		} else {
+			printf("unknown method: %s in restrict for %s\n",
+			    argv[i], argv[0]);
+			return (KORE_RESULT_ERROR);
+		}
 	}
 
 	return (KORE_RESULT_OK);
