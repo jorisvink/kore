@@ -713,7 +713,8 @@ http_header_recv(struct netbuf *nb)
 	/* take full ownership of the buffer. */
 	req->headers = nb->buf;
 	nb->buf = NULL;
-	nb->m_len = 0;
+	nb->s_off = 0;
+	nb->buf = kore_malloc(nb->m_len);
 
 	for (i = 1; i < h; i++) {
 		if (i == skip)
