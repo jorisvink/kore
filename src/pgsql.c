@@ -384,9 +384,6 @@ kore_pgsql_cleanup(struct kore_pgsql *pgsql)
 	if (pgsql->conn != NULL)
 		pgsql_conn_release(pgsql);
 
-	kore_free(pgsql->notify.extra);
-	kore_free(pgsql->notify.channel);
-
 	pgsql->result = NULL;
 	pgsql->error = NULL;
 	pgsql->conn = NULL;
@@ -712,18 +709,14 @@ pgsql_read_result(struct kore_pgsql *pgsql)
 	}
 
 	while ((notify = PQnotifies(pgsql->conn->db)) != NULL) {
-		kore_free(pgsql->notify.extra);
-		kore_free(pgsql->notify.channel);
 		pgsql->state = KORE_PGSQL_STATE_NOTIFY;
-		pgsql->notify.channel = kore_strdup(notify->relname);
+		pgsql->notify.extra = notify->extra;
+		pgsql->notify.channel = notify->relname;
 
-		if (notify->extra != NULL)
-			pgsql->notify.extra = kore_strdup(notify->extra);
-		else
-			pgsql->notify.extra = NULL;
+		if (pgsql->cb != NULL)
+			pgsql->cb(pgsql, pgsql->arg);
 
 		PQfreemem(notify);
-		return;
 	}
 
 	pgsql->result = PQgetResult(pgsql->conn->db);
