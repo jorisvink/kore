@@ -713,8 +713,7 @@ http_header_recv(struct netbuf *nb)
 	/* take full ownership of the buffer. */
 	req->headers = nb->buf;
 	nb->buf = NULL;
-	nb->s_off = 0;
-	nb->buf = kore_malloc(nb->m_len);
+	nb->m_len = 0;
 
 	for (i = 1; i < h; i++) {
 		if (i == skip)
@@ -1882,8 +1881,10 @@ http_response_normal(struct http_request *req, struct connection *c,
 	if (d != NULL && req != NULL && req->method != HTTP_METHOD_HEAD)
 		net_send_queue(c, d, len);
 
-	if (!(c->flags & CONN_CLOSE_EMPTY))
+	if (!(c->flags & CONN_CLOSE_EMPTY)) {
 		net_recv_reset(c, http_header_max, http_header_recv);
+		(void)net_recv_flush(c);
+	}
 
 	if (req != NULL)
 		req->content_length = len;
