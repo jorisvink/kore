@@ -1455,7 +1455,7 @@ http_request_new(struct connection *c, const char *host,
 	}
 
 	if (!(hdlr->methods & m)) {
-		http_error_response(c, 400);
+		http_error_response(c, HTTP_STATUS_METHOD_NOT_ALLOWED);
 		return (NULL);
 	}
 
