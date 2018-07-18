@@ -56,6 +56,11 @@ struct kore_pgsql {
 	PGresult		*result;
 	struct pgsql_conn	*conn;
 
+	struct {
+		char		*channel;
+		char		*extra;
+	} notify;
+
 	struct http_request	*req;
 	void			*arg;
 	void			(*cb)(struct kore_pgsql *, void *);
@@ -99,5 +104,6 @@ int	kore_pgsql_getlength(struct kore_pgsql *, int, int);
 #define KORE_PGSQL_STATE_ERROR		4
 #define KORE_PGSQL_STATE_DONE		5
 #define KORE_PGSQL_STATE_COMPLETE	6
+#define KORE_PGSQL_STATE_NOTIFY		7
 
 #endif
