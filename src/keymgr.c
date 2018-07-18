@@ -117,7 +117,7 @@ kore_keymgr_run(void)
 	last_seed = 0;
 
 #if defined(__OpenBSD__)
-	if (pledge("stdio", NULL) == -1)
+	if (pledge("stdio rpath", NULL) == -1)
 		fatal("failed to pledge keymgr process");
 #endif
 
