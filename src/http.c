@@ -61,6 +61,58 @@ static struct {
 	{ NULL,		NULL },
 };
 
+#define HTTP_MAP_LIMIT		127
+
+/*
+ * token      = 1*<any CHAR except CTLs or separators>
+ * separators = "(" | ")" | "<" | ">" | "@"
+ *            | "," | ";" | ":" | "\" | <">
+ *            | "/" | "[" | "]" | "?" | "="
+ *            | "{" | "}" | SP | HT
+ */
+static const char http_token[] = {
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, '!' , 0x00, '#' , '$' , '%' , '&' , '\'',
+	0x00, 0x00, '*' , '+' , 0x00, '-' , '.' , 0x00,
+	'0' , '1' , '2' , '3' , '4' , '5' , '6' , '7' ,
+	'8' , '9' , 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 'A' , 'B' , 'C' , 'D' , 'E' , 'F' , 'G' ,
+	'H' , 'I' , 'J' , 'K' , 'L' , 'M' , 'N' , 'O' ,
+	'P' , 'Q' , 'R' , 'S' , 'T' , 'U' , 'V' , 'W' ,
+	'X' , 'Y' , 'Z' , 0x00, 0x00, 0x00, '^' , '_' ,
+	'`' , 'a' , 'b' , 'c' , 'd' , 'e' , 'f' , 'g' ,
+	'h' , 'i' , 'j' , 'k' , 'l' , 'm' , 'n' , 'o' ,
+	'p' , 'q' , 'r' , 's' , 't' , 'u' , 'v' , 'w' ,
+	'x' , 'y' , 'z' , 0x00, '|' , 0x00, '~' ,
+};
+
+/*
+ * field-content  = <the OCTETs making up the field-value
+ *                   and consisting of either *TEXT or combinations
+ *                   of token, separators, and quoted-string>
+ */
+static const char http_field_content[] = {
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	' ' , '!' , '"' , '#' , '$' , '%' , '&' , '\'',
+	'(' , ')' , '*' , '+' , ',' , '-' , '.' , '/' ,
+	'0' , '1' , '2' , '3' , '4' , '5' , '6' , '7' ,
+	'8' , '9' , ':' , ';' , '<' , '=' , '>' , '?' ,
+	'@' , 'A' , 'B' , 'C' , 'D' , 'E' , 'F' , 'G' ,
+	'H' , 'I' , 'J' , 'K' , 'L' , 'M' , 'N' , 'O' ,
+	'P' , 'Q' , 'R' , 'S' , 'T' , 'U' , 'V' , 'W' ,
+	'X' , 'Y' , 'Z' , '[' , '\\', ']' , '^' , '_' ,
+	'`' , 'a' , 'b' , 'c' , 'd' , 'e' , 'f' , 'g' ,
+	'h' , 'i' , 'j' , 'k' , 'l' , 'm' , 'n' , 'o' ,
+	'p' , 'q' , 'r' , 's' , 't' , 'u' , 'v' , 'w' ,
+	'x' , 'y' , 'z' , '{' , '|' , '}' , '~' ,
+};
+
 static int	http_body_recv(struct netbuf *);
 static void	http_error_response(struct connection *, int);
 static void	http_write_response_cookie(struct http_cookie *);
@@ -77,6 +129,7 @@ static int	multipart_parse_headers(struct http_request *,
 		    struct kore_buf *, struct kore_buf *,
 		    const char *, const int);
 
+static char			*http_validate_header(char *);
 static struct http_request	*http_request_new(struct connection *,
 				    const char *, const char *, char *,
 				    const char *);
@@ -584,6 +637,7 @@ http_request_cookie(struct http_request *req, const char *cookie, char **out)
 int
 http_header_recv(struct netbuf *nb)
 {
+	struct connection	*c;
 	size_t			len;
 	ssize_t			ret;
 	struct http_header	*hdr;
@@ -592,10 +646,10 @@ http_header_recv(struct netbuf *nb)
 	u_int64_t		bytes_left;
 	u_int8_t		*end_headers;
 	int			h, i, v, skip, l;
-	char			*request[4], *host, *hbuf;
-	char			*p, *headers[HTTP_REQ_HEADER_MAX];
-	struct connection	*c = (struct connection *)nb->owner;
+	char			*headers[HTTP_REQ_HEADER_MAX];
+	char			*value, *host, *request[4], *hbuf;
 
+	c = nb->owner;
 	kore_debug("http_header_recv(%p)", nb);
 
 	if (nb->b_len < 4)
@@ -633,19 +687,16 @@ http_header_recv(struct netbuf *nb)
 		if (strncasecmp(headers[i], "host", 4))
 			continue;
 
-		if ((host = strchr(headers[i], ':')) == NULL) {
+		if ((host = http_validate_header(headers[i])) == NULL) {
 			http_error_response(c, 400);
 			return (KORE_RESULT_OK);
 		}
-
-		*(host)++ = '\0';
 
 		if (*host == '\0') {
 			http_error_response(c, 400);
 			return (KORE_RESULT_OK);
 		}
 
-		host++;
 		skip = i;
 		break;
 	}
@@ -662,24 +713,28 @@ http_header_recv(struct netbuf *nb)
 	/* take full ownership of the buffer. */
 	req->headers = nb->buf;
 	nb->buf = NULL;
-	nb->m_len = 0;
+	nb->s_off = 0;
+	nb->buf = kore_malloc(nb->m_len);
 
 	for (i = 1; i < h; i++) {
 		if (i == skip)
 			continue;
 
-		p = strchr(headers[i], ':');
-		if (p == NULL) {
-			kore_debug("malformed header: '%s'", headers[i]);
-			continue;
+		if ((value = http_validate_header(headers[i])) == NULL) {
+			req->flags |= HTTP_REQUEST_DELETE;
+			http_error_response(c, 400);
+			return (KORE_RESULT_OK);
 		}
 
-		*(p++) = '\0';
-		if (*p == ' ')
-			p++;
+		if (*value == '\0') {
+			req->flags |= HTTP_REQUEST_DELETE;
+			http_error_response(c, 400);
+			return (KORE_RESULT_OK);
+		}
+
 		hdr = kore_pool_get(&http_header_pool);
 		hdr->header = headers[i];
-		hdr->value = p;
+		hdr->value = value;
 		TAILQ_INSERT_TAIL(&(req->req_headers), hdr, list);
 
 		if (req->agent == NULL &&
@@ -762,6 +817,9 @@ http_header_recv(struct netbuf *nb)
 			    (nb->s_off - len));
 		}
 
+		SHA256_Init(&req->hashctx);
+		SHA256_Update(&req->hashctx, end_headers, (nb->s_off - len));
+
 		bytes_left = req->content_length - (nb->s_off - len);
 		if (bytes_left > 0) {
 			kore_debug("%ld/%ld (%ld - %ld) more bytes for body",
@@ -772,9 +830,10 @@ http_header_recv(struct netbuf *nb)
 			c->rnb->extra = req;
 			http_request_sleep(req);
 			req->content_length = bytes_left;
-		} else if (bytes_left == 0) {
+		} else {
 			req->flags |= HTTP_REQUEST_COMPLETE;
 			req->flags &= ~HTTP_REQUEST_EXPECT_BODY;
+			SHA256_Final(req->http_body_digest, &req->hashctx);
 			if (!http_body_rewind(req)) {
 				req->flags |= HTTP_REQUEST_DELETE;
 				http_error_response(req->owner, 500);
@@ -1163,6 +1222,30 @@ http_body_rewind(struct http_request *req)
 	return (KORE_RESULT_OK);
 }
 
+int
+http_body_digest(struct http_request *req, char *out, size_t len)
+{
+	size_t		idx;
+	int		slen;
+
+	if (len != HTTP_BODY_DIGEST_STRLEN) {
+		fatal("http_body_digest: bad len:%zu wanted:%zu",
+		    len, HTTP_BODY_DIGEST_STRLEN);
+	}
+
+	if (!(req->flags & HTTP_REQUEST_COMPLETE))
+		return (KORE_RESULT_ERROR);
+
+	for (idx = 0; idx < sizeof(req->http_body_digest); idx++) {
+		slen = snprintf(out + (idx * 2), len - (idx * 2), "%02x",
+		    req->http_body_digest[idx]);
+		if (slen == -1 || (size_t)slen >= len)
+			fatal("failed to create hex string");
+	}
+
+	return (KORE_RESULT_OK);
+}
+
 ssize_t
 http_body_read(struct http_request *req, void *out, size_t len)
 {
@@ -1368,6 +1451,11 @@ http_request_new(struct connection *c, const char *host,
 		m = HTTP_METHOD_PATCH;
 		flags = HTTP_REQUEST_EXPECT_BODY;
 	} else {
+		http_error_response(c, 400);
+		return (NULL);
+	}
+
+	if (!(hdlr->methods & m)) {
 		http_error_response(c, 400);
 		return (NULL);
 	}
@@ -1657,6 +1745,8 @@ http_body_recv(struct netbuf *nb)
 	u_int64_t		bytes_left;
 	struct http_request	*req = (struct http_request *)nb->extra;
 
+	SHA256_Update(&req->hashctx, nb->buf, nb->s_off);
+
 	if (req->http_body_fd != -1) {
 		ret = write(req->http_body_fd, nb->buf, nb->s_off);
 		if (ret == -1 || (size_t)ret != nb->s_off) {
@@ -1685,6 +1775,7 @@ http_body_recv(struct netbuf *nb)
 			http_error_response(req->owner, 500);
 			return (KORE_RESULT_ERROR);
 		}
+		SHA256_Final(req->http_body_digest, &req->hashctx);
 		net_recv_reset(nb->owner, http_header_max, http_header_recv);
 	} else {
 		bytes_left = req->content_length;
@@ -2046,4 +2137,43 @@ http_media_type(const char *path)
 	}
 
 	return (NULL);
+}
+
+static char *
+http_validate_header(char *header)
+{
+	u_int8_t	idx;
+	char		*p, *value;
+
+	for (p = header; *p != '\0'; p++) {
+		idx = *p;
+		if (idx > HTTP_MAP_LIMIT)
+			return (NULL);
+
+		if (*p == ':') {
+			*(p)++ = '\0';
+			break;
+		}
+
+		if (http_token[idx] == 0x00)
+			return (NULL);
+	}
+
+	while (isspace(*(unsigned char *)p))
+		p++;
+
+	if (*p == '\0')
+		return (NULL);
+
+	value = p;
+	while (*p != '\0') {
+		idx = *p;
+		if (idx > HTTP_MAP_LIMIT)
+			return (NULL);
+		if (http_field_content[idx] == 0x00)
+			return (NULL);
+		p++;
+	}
+
+	return (value);
 }

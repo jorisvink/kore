@@ -376,6 +376,7 @@ static int			run_after = 0;
 static char			*compiler_c = "cc";
 static char			*compiler_cpp = "c++";
 static char			*compiler_ld = "cc";
+static const char		*prefix = PREFIX;
 static struct mime_list		mime_types;
 static struct cfile_list	source_files;
 static struct buildopt_list	build_options;
@@ -409,12 +410,16 @@ int
 main(int argc, char **argv)
 {
 	int		i;
+	const char	*env;
 
 	if (argc < 2)
 		usage();
 
 	argc--;
 	argv++;
+
+	if ((env = getenv("KORE_PREFIX")) != NULL)
+		prefix = env;
 
 	(void)umask(S_IWGRP | S_IWOTH);
 
@@ -795,7 +800,7 @@ cli_info(int argc, char **argv)
 		printf("kore source  \t %s\n", bopt->kore_source);
 	} else {
 		cli_kore_features(bopt, &features, &len);
-		printf("kore binary  \t %s/bin/kore\n", PREFIX);
+		printf("kore binary  \t %s/bin/kore\n", prefix);
 		printf("kore features\t %.*s\n", (int)len, features);
 		free(features);
 	}
@@ -1532,7 +1537,7 @@ cli_run_kore(void)
 		(void)cli_vasprintf(&cmd, "./%s", appl);
 	} else {
 		flags = "-fnrc";
-		(void)cli_vasprintf(&cmd, "%s/bin/kore", PREFIX);
+		(void)cli_vasprintf(&cmd, "%s/bin/kore", prefix);
 		(void)cli_vasprintf(&cpath, "conf/%s.conf", appl);
 	}
 
@@ -1829,7 +1834,7 @@ cli_build_flags_common(struct buildopt *bopt, struct cli_buf *buf)
 	cli_buf_appendf(buf, "-fPIC -Isrc -Isrc/includes ");
 
 	if (bopt->single_binary == 0)
-		cli_buf_appendf(buf, "-I%s/include ", PREFIX);
+		cli_buf_appendf(buf, "-I%s/include ", prefix);
 	else
 		cli_buf_appendf(buf, "-I%s/include ", bopt->kore_source);
 
@@ -1991,7 +1996,7 @@ cli_kore_features(struct buildopt *bopt, char **out, size_t *outlen)
 	if (bopt->single_binary) {
 		(void)cli_vasprintf(&path, ".objs/features");
 	} else {
-		(void)cli_vasprintf(&path, "%s/share/kore/features", PREFIX);
+		(void)cli_vasprintf(&path, "%s/share/kore/features", prefix);
 	}
 
 	cli_file_open(path, O_RDONLY, &fd);

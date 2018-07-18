@@ -361,6 +361,7 @@ kore_pgsql_continue(struct kore_pgsql *pgsql)
 		break;
 	case KORE_PGSQL_STATE_ERROR:
 	case KORE_PGSQL_STATE_RESULT:
+	case KORE_PGSQL_STATE_NOTIFY:
 		kore_pgsql_handle(pgsql->conn, 0);
 		break;
 	default:
@@ -700,9 +701,22 @@ pgsql_conn_cleanup(struct pgsql_conn *conn)
 static void
 pgsql_read_result(struct kore_pgsql *pgsql)
 {
+	PGnotify	*notify;
+
 	if (PQisBusy(pgsql->conn->db)) {
 		pgsql->state = KORE_PGSQL_STATE_WAIT;
 		return;
+	}
+
+	while ((notify = PQnotifies(pgsql->conn->db)) != NULL) {
+		pgsql->state = KORE_PGSQL_STATE_NOTIFY;
+		pgsql->notify.extra = notify->extra;
+		pgsql->notify.channel = notify->relname;
+
+		if (pgsql->cb != NULL)
+			pgsql->cb(pgsql, pgsql->arg);
+
+		PQfreemem(notify);
 	}
 
 	pgsql->result = PQgetResult(pgsql->conn->db);

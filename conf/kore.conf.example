@@ -12,10 +12,15 @@
 # Server configuration.
 bind		127.0.0.1 443
 
-# The path worker processes will chroot into after starting.
-chroot		/home/joris/src/kore
+# The worker process root directory. If chrooting was not disabled
+# at startup the worker processes will chroot into this directory.
+#
+# If this configuration option is not set, Kore will take the current
+# working directory as the root.
+root		/home/joris/src/kore
 
-# Worker processes will run as the specified user.
+# Worker processes will run as the specified user. If this option is
+# missing Kore will run as the current user.
 runas		joris
 
 # How many worker processes Kore will spawn. If the directive
@@ -67,6 +72,25 @@ workers		4
 #
 # NOTE: This file location must be inside your chrooted environment.
 #rand_file	random.data
+
+# Key manager specific options.
+#	If TLS is enabled you will need to specify paths to the domain
+#	certificate and key that Kore will load. This loading is done
+#	from the keymgr (separate process) and all paths must be relative
+#	to the keymgr_root_path configuration option.
+#
+#	keymgr_root_path	The root path the keymgr will chdir into.
+#				If chroot was not disable at startup time
+#				the keymgr process will chroot into here.
+#
+#	keymgr_runas_user	The user to run the keymgr as.
+#
+#	If privsep and chrooting is enabled at startup time but these
+#	configuration options were not set, they will take over the
+#	values from the 'root' and 'runas' configuration options.
+#
+#keymgr_root_path
+#keymgr_runas_user
 
 # Filemap settings
 #	filemap_index	Name of the file to be used as the directory
@@ -203,9 +227,13 @@ authentication auth_example {
 #
 #	accesslog
 #		- File where all requests are logged.
-#	client_certificates [CA] [optional CRL]
-#		- Require client certificates to be sent for the given
-#		  CA with an optional CRL file.
+#
+#	NOTE: due to current limitations the client_verify CA path
+#	MUST be in the 'root' of the Kore workers, not the keymgr.
+#
+#	client_verify [CA] [optional CRL]
+#		- Turns on client verification, requiring the client to
+#		  send a certificate that will be verified by the given CA.
 #	client_verify_depth [depth]
 #		- Configure the depth for x509 chain validation.
 #		  By default 1.
@@ -239,11 +267,18 @@ domain localhost {
 	static		/params-test		serve_params_test
 	static		/private		serve_private
 
+	# Restrict some URIs to certain methods
+	restrict /private post
+	restrict /validator post get head
+
 	# Page handlers with authentication.
 	static		/private/test	serve_private_test	auth_example
 
 	# Allow access to files from the directory static_files via
 	# the /files/ URI.
+	#
+	# Note the directory given must be relative to the root configuration
+	# option.
 	filemap		/files/			static_files
 
 	# Configure /params-test POST to only accept the following parameters.
@@ -279,7 +314,7 @@ domain localhost {
 #	certfile		cert/other/server.crt
 #	certkey			cert/other/server.key
 #	accesslog		/var/log/other_kore_access.log
-#	client_certificates	cert/other/ca.crt
+#	client_verify		/other/ca.crt
 #	client_verify_depth	1
 
 #	static		/css/style.css		serve_style_css

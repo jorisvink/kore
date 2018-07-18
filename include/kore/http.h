@@ -22,6 +22,8 @@
 #include <sys/types.h>
 #include <sys/queue.h>
 
+#include <openssl/sha.h>
+
 #if defined(__cplusplus)
 extern "C" {
 #endif
@@ -188,13 +190,17 @@ struct http_file {
 	TAILQ_ENTRY(http_file)	list;
 };
 
-#define HTTP_METHOD_GET		0
-#define HTTP_METHOD_POST	1
-#define HTTP_METHOD_PUT		2
-#define HTTP_METHOD_DELETE	3
-#define HTTP_METHOD_HEAD	4
-#define HTTP_METHOD_OPTIONS	5
-#define HTTP_METHOD_PATCH	6
+#define HTTP_METHOD_GET		0x0001
+#define HTTP_METHOD_POST	0x0002
+#define HTTP_METHOD_PUT		0x0004
+#define HTTP_METHOD_DELETE	0x0010
+#define HTTP_METHOD_HEAD	0x0020
+#define HTTP_METHOD_OPTIONS	0x0040
+#define HTTP_METHOD_PATCH	0x0080
+
+#define HTTP_METHOD_ALL		(HTTP_METHOD_GET | HTTP_METHOD_POST | \
+    HTTP_METHOD_PUT | HTTP_METHOD_DELETE | HTTP_METHOD_HEAD | \
+    HTTP_METHOD_OPTIONS | HTTP_METHOD_PATCH)
 
 #define HTTP_REQUEST_COMPLETE		0x0001
 #define HTTP_REQUEST_DELETE		0x0002
@@ -205,6 +211,9 @@ struct http_file {
 #define HTTP_REQUEST_AUTHED		0x0100
 
 #define HTTP_VALIDATOR_IS_REQUEST	0x8000
+
+#define HTTP_BODY_DIGEST_LEN		32
+#define HTTP_BODY_DIGEST_STRLEN		((HTTP_BODY_DIGEST_LEN * 2) + 1)
 
 struct kore_task;
 
@@ -222,6 +231,7 @@ struct http_request {
 	const char			*agent;
 	const char			*referer;
 	struct connection		*owner;
+	SHA256_CTX			hashctx;
 	u_int8_t			*headers;
 	struct kore_buf			*http_body;
 	int				http_body_fd;
@@ -233,6 +243,8 @@ struct http_request {
 	size_t				state_len;
 	char				*query_string;
 	struct kore_module_handle	*hdlr;
+
+	u_int8_t	http_body_digest[HTTP_BODY_DIGEST_LEN];
 
 #if defined(KORE_USE_PYTHON)
 	void				*py_coro;
@@ -289,6 +301,7 @@ void		http_process_request(struct http_request *);
 int		http_body_rewind(struct http_request *);
 int		http_media_register(const char *, const char *);
 ssize_t		http_body_read(struct http_request *, void *, size_t);
+int		http_body_digest(struct http_request *, char *, size_t);
 void		http_response(struct http_request *, int, const void *, size_t);
 void		http_response_fileref(struct http_request *, int,
 		    struct kore_fileref *);

@@ -129,7 +129,7 @@ kore_msg_register(u_int8_t id, void (*cb)(struct kore_msg *, const void *))
 }
 
 void
-kore_msg_send(u_int16_t dst, u_int8_t id, const void *data, u_int32_t len)
+kore_msg_send(u_int16_t dst, u_int8_t id, const void *data, size_t len)
 {
 	struct kore_msg		m;
 

@@ -1,6 +1,5 @@
 About
 -----
-[![Build Status](https://travis-ci.org/jorisvink/kore.svg?branch=master)](https://travis-ci.org/jorisvink/kore)
 
 Kore (https://kore.io) is an easy to use web application platform for
 writing scalable web APIs in C. Its main goals are security, scalability
@@ -19,6 +18,7 @@ Key Features
 * Built-in parameter validation
 * Optional asynchronous PostgreSQL support
 * Optional support for page handlers in Python
+* Reload private keys and certificates on-the-fly
 * Private keys isolated in separate process (RSA and ECDSA)
 * Default sane TLS ciphersuites (PFS in all major browsers)
 * Modules can be reloaded on-the-fly, even while serving content
@@ -94,14 +94,18 @@ Mailing lists
 -------------
 
 **patches@kore.io** - Send patches here, preferably inline.
+
 **users@kore.io** - Questions regarding kore.
+
 
 If you want to signup to those mailing lists send an empty email to
 	listname+subscribe@kore.io
 
 
 Other mailboxes:
+
 **security@kore.io** - Mail this email if you think you found a security problem.
+
 **sponsor@kore.io** - If your company would like to sponsor part of Kore development.
 
 More information can be found on https://kore.io/

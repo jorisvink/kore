@@ -72,11 +72,12 @@ struct wlock {
 static int	worker_trylock(void);
 static void	worker_unlock(void);
 
-static inline int	kore_worker_acceptlock_obtain(u_int64_t);
-static inline int	kore_worker_acceptlock_release(u_int64_t);
+static inline int	worker_acceptlock_obtain(u_int64_t);
+static inline int	worker_acceptlock_release(u_int64_t);
 
 #if !defined(KORE_NO_TLS)
-static void		worker_entropy_recv(struct kore_msg *, const void *);
+static void	worker_entropy_recv(struct kore_msg *, const void *);
+static void	worker_certificate_recv(struct kore_msg *, const void *);
 #endif
 
 static struct kore_worker		*kore_workers;
@@ -219,28 +220,36 @@ kore_worker_dispatch_signal(int sig)
 }
 
 void
-kore_worker_privdrop(void)
+kore_worker_privdrop(const char *runas, const char *root)
 {
 	rlim_t			fd;
 	struct rlimit		rl;
 	struct passwd		*pw = NULL;
 
+	if (root == NULL)
+		fatal("no root directory for kore_worker_privdrop");
+
 	/* Must happen before chroot. */
 	if (skip_runas == 0) {
-		pw = getpwnam(runas_user);
+		if (runas == NULL)
+			fatal("no runas user given and -r not specified");
+		pw = getpwnam(runas);
 		if (pw == NULL) {
-			fatal("cannot getpwnam(\"%s\") runas user: %s",
-			    runas_user, errno_s);
+			fatal("cannot getpwnam(\"%s\") for user: %s",
+			    runas, errno_s);
 		}
 	}
 
 	if (skip_chroot == 0) {
-		if (chroot(chroot_path) == -1) {
+		if (chroot(root) == -1) {
 			fatal("cannot chroot(\"%s\"): %s",
-			    chroot_path, errno_s);
+			    root, errno_s);
 		}
 
 		if (chdir("/") == -1)
+			fatal("cannot chdir(\"/\"): %s", errno_s);
+	} else {
+		if (chdir(root) == -1)
 			fatal("cannot chdir(\"/\"): %s", errno_s);
 	}
 
@@ -281,7 +290,7 @@ kore_worker_entry(struct kore_worker *kw)
 	char				buf[16];
 	int				quit, had_lock, r;
 	u_int64_t			timerwait, netwait;
-	u_int64_t			now, next_lock, next_prune;
+	u_int64_t			now, next_prune, next_lock;
 #if !defined(KORE_NO_TLS)
 	u_int64_t			last_seed;
 #endif
@@ -309,7 +318,7 @@ kore_worker_entry(struct kore_worker *kw)
 	}
 #endif
 
-	kore_worker_privdrop();
+	kore_worker_privdrop(kore_runas_user, kore_root_path);
 
 	net_init();
 #if !defined(KORE_NO_HTTP)
@@ -343,6 +352,11 @@ kore_worker_entry(struct kore_worker *kw)
 #if !defined(KORE_NO_TLS)
 	last_seed = 0;
 	kore_msg_register(KORE_MSG_ENTROPY_RESP, worker_entropy_recv);
+	kore_msg_register(KORE_MSG_CERTIFICATE, worker_certificate_recv);
+	if (worker->restarted) {
+		kore_msg_send(KORE_WORKER_KEYMGR,
+		    KORE_MSG_CERTIFICATE_REQ, NULL, 0);
+	}
 #endif
 
 	if (nlisteners == 0)
@@ -357,6 +371,7 @@ kore_worker_entry(struct kore_worker *kw)
 	}
 
 	kore_module_onload();
+	worker->restarted = 0;
 
 	for (;;) {
 		if (sig_recv != 0) {
@@ -388,7 +403,7 @@ kore_worker_entry(struct kore_worker *kw)
 #endif
 
 		if (!worker->has_lock && next_lock <= now) {
-			if (kore_worker_acceptlock_obtain(now)) {
+			if (worker_acceptlock_obtain(now)) {
 				if (had_lock == 0) {
 					kore_platform_enable_accept();
 					had_lock = 1;
@@ -415,7 +430,7 @@ kore_worker_entry(struct kore_worker *kw)
 		if (worker->has_lock && r > 0) {
 			if (netwait > 10)
 				now = kore_time_ms();
-			if (kore_worker_acceptlock_release(now))
+			if (worker_acceptlock_release(now))
 				next_lock = now + WORKER_LOCK_TIMEOUT;
 		}
 
@@ -469,6 +484,7 @@ kore_worker_wait(int final)
 	u_int16_t		id;
 	pid_t			pid;
 	struct kore_worker	*kw;
+	const char		*func;
 	int			status;
 
 	if (final)
@@ -499,11 +515,14 @@ kore_worker_wait(int final)
 
 		if (WEXITSTATUS(status) || WTERMSIG(status) ||
 		    WCOREDUMP(status)) {
+			func = "none";
+#if !defined(KORE_NO_HTTP)
+			if (kw->active_hdlr != NULL)
+				func = kw->active_hdlr->func;
+#endif
 			kore_log(LOG_NOTICE,
 			    "worker %d (pid: %d) (hdlr: %s) gone",
-			    kw->id, kw->pid,
-			    (kw->active_hdlr != NULL) ? kw->active_hdlr->func :
-			    "none");
+			    kw->id, kw->pid, func);
 
 #if !defined(KORE_NO_TLS)
 			if (id == KORE_WORKER_KEYMGR) {
@@ -521,6 +540,7 @@ kore_worker_wait(int final)
 			    worker_no_lock == 0)
 				worker_unlock();
 
+#if !defined(KORE_NO_HTTP)
 			if (kw->active_hdlr != NULL) {
 				kw->active_hdlr->errors++;
 				kore_log(LOG_NOTICE,
@@ -528,8 +548,10 @@ kore_worker_wait(int final)
 				    kw->active_hdlr->func,
 				    kw->active_hdlr->errors);
 			}
+#endif
 
 			kore_log(LOG_NOTICE, "restarting worker %d", kw->id);
+			kw->restarted = 1;
 			kore_msg_parent_remove(kw);
 			kore_worker_spawn(kw->id, kw->cpu);
 			kore_msg_parent_add(kw);
@@ -543,8 +565,20 @@ kore_worker_wait(int final)
 	}
 }
 
+void
+kore_worker_make_busy(void)
+{
+	if (worker_count == WORKER_SOLO_COUNT || worker_no_lock == 1)
+		return;
+
+	if (worker->has_lock) {
+		worker_unlock();
+		worker->has_lock = 0;
+	}
+}
+
 static inline int
-kore_worker_acceptlock_release(u_int64_t now)
+worker_acceptlock_release(u_int64_t now)
 {
 	if (worker_count == WORKER_SOLO_COUNT || worker_no_lock == 1)
 		return (0);
@@ -573,7 +607,7 @@ kore_worker_acceptlock_release(u_int64_t now)
 }
 
 static inline int
-kore_worker_acceptlock_obtain(u_int64_t now)
+worker_acceptlock_obtain(u_int64_t now)
 {
 	int		r;
 
@@ -631,11 +665,53 @@ worker_entropy_recv(struct kore_msg *msg, const void *data)
 {
 	if (msg->length != 1024) {
 		kore_log(LOG_WARNING,
-		    "invalid entropy response (got:%u - wanted:1024)",
+		    "invalid entropy response (got:%zu - wanted:1024)",
 		    msg->length);
 	}
 
 	RAND_poll();
 	RAND_seed(data, msg->length);
+}
+
+static void
+worker_certificate_recv(struct kore_msg *msg, const void *data)
+{
+	struct kore_domain		*dom;
+	const struct kore_x509_msg	*req;
+
+	if (msg->length < sizeof(*req)) {
+		kore_log(LOG_WARNING,
+		    "short KORE_MSG_CERTIFICATE message (%zu)", msg->length);
+		return;
+	}
+
+	req = (const struct kore_x509_msg *)data;
+	if (msg->length != (sizeof(*req) + req->data_len)) {
+		kore_log(LOG_WARNING,
+		    "invalid KORE_MSG_CERTIFICATE payload (%zu)", msg->length);
+		return;
+	}
+
+	if (req->domain_len > KORE_DOMAINNAME_LEN) {
+		kore_log(LOG_WARNING,
+		    "invalid KORE_MSG_CERTIFICATE domain (%u)",
+		    req->domain_len);
+		return;
+	}
+
+	dom = NULL;
+	TAILQ_FOREACH(dom, &domains, list) {
+		if (!strncmp(dom->domain, req->domain, req->domain_len))
+			break;
+	}
+
+	if (dom == NULL) {
+		kore_log(LOG_WARNING,
+		    "got KORE_MSG_CERTIFICATE for domain that does not exist");
+		return;
+	}
+
+	/* reinitialize the domain TLS context. */
+	kore_domain_tlsinit(dom, req->data, req->data_len);
 }
 #endif

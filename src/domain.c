@@ -52,8 +52,10 @@ int				tls_version = KORE_TLS_VERSION_1_2;
 #endif
 
 #if !defined(KORE_NO_TLS)
+static BIO	*domain_bio_mem(const void *, size_t);
 static int	domain_x509_verify(int, X509_STORE_CTX *);
 static void	domain_load_crl(struct kore_domain *);
+static X509	*domain_load_certificate_chain(SSL_CTX *, const void *, size_t);
 
 static void	keymgr_init(void);
 static void	keymgr_await_data(void);
@@ -187,7 +189,11 @@ kore_domain_new(char *domain)
 	dom->x509_verify_depth = 1;
 #endif
 	dom->domain = kore_strdup(domain);
+
+#if !defined(KORE_NO_HTTP)
 	TAILQ_INIT(&(dom->handlers));
+#endif
+
 	TAILQ_INSERT_TAIL(&domains, dom, list);
 
 	if (primary_dom == NULL)
@@ -236,11 +242,10 @@ kore_domain_free(struct kore_domain *dom)
 	kore_free(dom);
 }
 
-void
-kore_domain_tlsinit(struct kore_domain *dom)
-{
 #if !defined(KORE_NO_TLS)
-	BIO			*in;
+void
+kore_domain_tlsinit(struct kore_domain *dom, const void *pem, size_t pemlen)
+{
 	RSA			*rsa;
 	X509			*x509;
 	EVP_PKEY		*pkey;
@@ -251,7 +256,10 @@ kore_domain_tlsinit(struct kore_domain *dom)
 	EC_KEY			*ecdh;
 #endif
 
-	kore_debug("kore_domain_sslstart(%s)", dom->domain);
+	kore_debug("kore_domain_tlsinit(%s)", dom->domain);
+
+	if (dom->ssl_ctx != NULL)
+		SSL_CTX_free(dom->ssl_ctx);
 
 #if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
 	if ((method = TLS_method()) == NULL)
@@ -299,20 +307,8 @@ kore_domain_tlsinit(struct kore_domain *dom)
 		return;
 	}
 #endif
-	if (!SSL_CTX_use_certificate_chain_file(dom->ssl_ctx, dom->certfile)) {
-		fatal("SSL_CTX_use_certificate_chain_file(%s): %s",
-		    dom->certfile, ssl_errno_s);
-	}
 
-	if ((in = BIO_new(BIO_s_file())) == NULL)
-		fatal("BIO_new: %s", ssl_errno_s);
-	if (BIO_read_filename(in, dom->certfile) <= 0)
-		fatal("BIO_read_filename: %s", ssl_errno_s);
-	if ((x509 = PEM_read_bio_X509(in, NULL, NULL, NULL)) == NULL)
-		fatal("PEM_read_bio_X509: %s", ssl_errno_s);
-
-	BIO_free(in);
-
+	x509 = domain_load_certificate_chain(dom->ssl_ctx, pem, pemlen);
 	if ((pkey = X509_get_pubkey(x509)) == NULL)
 		fatal("certificate has no public key");
 
@@ -392,10 +388,9 @@ kore_domain_tlsinit(struct kore_domain *dom)
 	SSL_CTX_set_info_callback(dom->ssl_ctx, kore_tls_info_callback);
 	SSL_CTX_set_tlsext_servername_callback(dom->ssl_ctx, kore_tls_sni_cb);
 
-	kore_free(dom->certfile);
-	dom->certfile = NULL;
-#endif
+	X509_free(x509);
 }
+#endif
 
 void
 kore_domain_callback(void (*cb)(struct kore_domain *))
@@ -756,4 +751,86 @@ domain_x509_verify(int ok, X509_STORE_CTX *ctx)
 
 	return (ok);
 }
+
+/*
+ * What follows is basically a reimplementation of
+ * SSL_CTX_use_certificate_chain_file() from OpenSSL but with our
+ * BIO set to the pem data that we received.
+ */
+static X509 *
+domain_load_certificate_chain(SSL_CTX *ctx, const void *data, size_t len)
+{
+	unsigned long	err;
+	BIO		*in;
+	X509		*x, *ca;
+
+	ERR_clear_error();
+	in = domain_bio_mem(data, len);
+
+	if ((x = PEM_read_bio_X509_AUX(in, NULL, NULL, NULL)) == NULL)
+		fatal("PEM_read_bio_X509_AUX: %s", ssl_errno_s);
+
+	/* refcount for x509 will go up one. */
+	if (SSL_CTX_use_certificate(ctx, x) == 0)
+		fatal("SSL_CTX_use_certificate: %s", ssl_errno_s);
+
+#if defined(LIBRESSL_VERSION_TEXT)
+	sk_X509_pop_free(ctx->extra_certs, X509_free);
+	ctx->extra_certs = NULL;
+#else
+	SSL_CTX_clear_chain_certs(ctx);
+#endif
+
+	ERR_clear_error();
+	while ((ca = PEM_read_bio_X509(in, NULL, NULL, NULL)) != NULL) {
+		/* ca its reference count won't be increased. */
+#if defined(LIBRESSL_VERSION_TEXT)
+		if (SSL_CTX_add_extra_chain_cert(ctx, ca) == 0)
+			fatal("SSL_CTX_add_extra_chain_cert: %s", ssl_errno_s);
+#else
+		if (SSL_CTX_add0_chain_cert(ctx, ca) == 0)
+			fatal("SSL_CTX_add0_chain_cert: %s", ssl_errno_s);
+#endif
+	}
+
+	err = ERR_peek_last_error();
+
+	if (ERR_GET_LIB(err) != ERR_LIB_PEM ||
+	    ERR_GET_REASON(err) != PEM_R_NO_START_LINE)
+		fatal("PEM_read_bio_X509: %s", ssl_errno_s);
+
+	BIO_free(in);
+
+	return (x);
+}
+
+/*
+ * XXX - Hack around the fact that LibreSSL its BIO_new_mem_buf() does not
+ * take a const pointer for their first argument.
+ *
+ * Since we build with -Wcast-qual and -Werror I rather do this than having
+ * a bunch of pragma preprocessor magic to remove the warnings for that code
+ * if we're dealing with LibreSSL.
+ *
+ * They fixed this in their upcoming 2.8.0 release but that is not out yet
+ * and I'd like this to run on older OpenBSD platforms as well.
+ */
+static BIO *
+domain_bio_mem(const void *data, size_t len)
+{
+	BIO					*in;
+	union { void *p; const void *cp; }	deconst;
+
+	/* because OpenSSL likes taking ints as memory buffer lengths. */
+	if (len > INT_MAX)
+		fatal("domain_bio_mem: len(%zu) > INT_MAX", len);
+
+	deconst.cp = data;
+
+	if ((in = BIO_new_mem_buf(deconst.p, len)) == NULL)
+		fatal("BIO_new_mem_buf: %s", ssl_errno_s);
+
+	return (in);
+}
+
 #endif

@@ -14,7 +14,24 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include <sys/param.h>
+/*
+ * The kore keymgr process is responsible for managing certificates
+ * and their matching private keys.
+ *
+ * It is the only process in Kore that holds the private keys (the workers
+ * do not have a copy of them in memory).
+ *
+ * When a worker requires the private key for signing it will send a message
+ * to the keymgr with the to-be-signed data (KORE_MSG_KEYMGR_REQ). The keymgr
+ * will perform the signing and respond with a KORE_MSG_KEYMGR_RESP message.
+ *
+ * The keymgr can transparently reload the private keys and certificates
+ * for a configured domain when it receives a SIGUSR1. It it reloads them
+ * it will send the newly loaded certificate chains to the worker processes
+ * which will update their TLS contexts accordingly.
+ */
+
+#include <sys/types.h>
 #include <sys/stat.h>
 
 #include <openssl/evp.h>
@@ -46,23 +63,35 @@ static TAILQ_HEAD(, key)	keys;
 extern volatile sig_atomic_t	sig_recv;
 static int			initialized = 0;
 
+static void	keymgr_reload(void);
 static void	keymgr_load_randfile(void);
 static void	keymgr_save_randfile(void);
 
 static void	keymgr_load_privatekey(struct kore_domain *);
 static void	keymgr_msg_recv(struct kore_msg *, const void *);
 static void	keymgr_entropy_request(struct kore_msg *, const void *);
+static void	keymgr_certificate_request(struct kore_msg *, const void *);
+static void	keymgr_submit_certificates(struct kore_domain *, u_int16_t);
 
 static void	keymgr_rsa_encrypt(struct kore_msg *, const void *,
 		    struct key *);
 static void	keymgr_ecdsa_sign(struct kore_msg *, const void *,
 		    struct key *);
 
+char	*keymgr_root_path = NULL;
+char	*keymgr_runas_user = NULL;
+
 void
 kore_keymgr_run(void)
 {
 	int		quit;
 	u_int64_t	now, last_seed;
+
+	quit = 0;
+
+	kore_listener_cleanup();
+	kore_module_cleanup();
+	kore_worker_privdrop(keymgr_runas_user, keymgr_root_path);
 
 	if (rand_file != NULL) {
 		keymgr_load_randfile();
@@ -71,15 +100,7 @@ kore_keymgr_run(void)
 		kore_log(LOG_WARNING, "no rand_file location specified");
 	}
 
-	quit = 0;
 	initialized = 1;
-	TAILQ_INIT(&keys);
-
-	kore_listener_cleanup();
-	kore_module_cleanup();
-
-	kore_domain_callback(keymgr_load_privatekey);
-	kore_worker_privdrop();
 
 	net_init();
 	kore_connection_init();
@@ -88,8 +109,18 @@ kore_keymgr_run(void)
 	kore_msg_worker_init();
 	kore_msg_register(KORE_MSG_KEYMGR_REQ, keymgr_msg_recv);
 	kore_msg_register(KORE_MSG_ENTROPY_REQ, keymgr_entropy_request);
+	kore_msg_register(KORE_MSG_CERTIFICATE_REQ, keymgr_certificate_request);
 
+	keymgr_reload();
+
+	RAND_poll();
 	last_seed = 0;
+
+#if defined(__OpenBSD__)
+	if (pledge("stdio", NULL) == -1)
+		fatal("failed to pledge keymgr process");
+#endif
+
 	kore_log(LOG_NOTICE, "key manager started");
 
 	while (quit != 1) {
@@ -106,6 +137,9 @@ kore_keymgr_run(void)
 			case SIGTERM:
 				quit = 1;
 				break;
+			case SIGUSR1:
+				keymgr_reload();
+				break;
 			default:
 				break;
 			}
@@ -116,18 +150,19 @@ kore_keymgr_run(void)
 		kore_connection_prune(KORE_CONNECTION_PRUNE_DISCONNECT);
 	}
 
-	kore_keymgr_cleanup();
+	kore_keymgr_cleanup(1);
 	kore_platform_event_cleanup();
 	kore_connection_cleanup();
 	net_cleanup();
 }
 
 void
-kore_keymgr_cleanup(void)
+kore_keymgr_cleanup(int final)
 {
 	struct key		*key, *next;
 
-	kore_log(LOG_NOTICE, "cleaning up keys");
+	if (final)
+		kore_log(LOG_NOTICE, "cleaning up keys");
 
 	if (initialized == 0)
 		return;
@@ -139,6 +174,69 @@ kore_keymgr_cleanup(void)
 		EVP_PKEY_free(key->pkey);
 		kore_free(key);
 	}
+}
+
+static void
+keymgr_reload(void)
+{
+	struct kore_domain	*dom;
+
+	kore_log(LOG_INFO, "(re)loading certificates and keys");
+
+	kore_keymgr_cleanup(0);
+	TAILQ_INIT(&keys);
+
+	kore_domain_callback(keymgr_load_privatekey);
+
+	/* can't use kore_domain_callback() due to dst parameter. */
+	TAILQ_FOREACH(dom, &domains, list)
+		keymgr_submit_certificates(dom, KORE_MSG_WORKER_ALL);
+}
+
+static void
+keymgr_submit_certificates(struct kore_domain *dom, u_int16_t dst)
+{
+	int				fd;
+	struct stat			st;
+	ssize_t				ret;
+	size_t				len;
+	struct kore_x509_msg		*msg;
+	u_int8_t			*payload;
+
+	if ((fd = open(dom->certfile, O_RDONLY)) == -1)
+		fatal("open(%s): %s", dom->certfile, errno_s);
+	if (fstat(fd, &st) == -1)
+		fatal("stat(%s): %s", dom->certfile, errno_s);
+	if (!S_ISREG(st.st_mode))
+		fatal("%s is not a file", dom->certfile);
+
+	if (st.st_size <= 0 || st.st_size > (1024 * 1024 * 5)) {
+		fatal("%s length is not valid (%jd)", dom->certfile,
+		    (intmax_t)st.st_size);
+	}
+
+	len = sizeof(*msg) + st.st_size;
+	payload = kore_calloc(1, len);
+
+	msg = (struct kore_x509_msg *)payload;
+	msg->domain_len = strlen(dom->domain);
+	if (msg->domain_len > sizeof(msg->domain))
+		fatal("domain name '%s' too long", dom->domain);
+	memcpy(msg->domain, dom->domain, msg->domain_len);
+
+	msg->data_len = st.st_size;
+	ret = read(fd, &msg->data[0], msg->data_len);
+	if (ret == 0)
+		fatal("eof while reading %s", dom->certfile);
+
+	if ((size_t)ret != msg->data_len) {
+		fatal("bad read on %s: expected %zu, got %zd",
+		    dom->certfile, msg->data_len, ret);
+	}
+
+	kore_msg_send(dst, KORE_MSG_CERTIFICATE, payload, len);
+	kore_free(payload);
+	close(fd);
 }
 
 static void
@@ -245,23 +343,27 @@ keymgr_load_privatekey(struct kore_domain *dom)
 	FILE			*fp;
 	struct key		*key;
 
-	if (dom->certkey == NULL)
-		return;
-
 	if ((fp = fopen(dom->certkey, "r")) == NULL)
 		fatal("failed to open private key: %s", dom->certkey);
 
-	key = kore_malloc(sizeof(*key));
+	key = kore_calloc(1, sizeof(*key));
 	key->dom = dom;
 
 	if ((key->pkey = PEM_read_PrivateKey(fp, NULL, NULL, NULL)) == NULL)
 		fatal("PEM_read_PrivateKey: %s", ssl_errno_s);
 
 	(void)fclose(fp);
-	kore_free(dom->certkey);
-	dom->certkey = NULL;
 
 	TAILQ_INSERT_TAIL(&keys, key, list);
+}
+
+static void
+keymgr_certificate_request(struct kore_msg *msg, const void *data)
+{
+	struct kore_domain	*dom;
+
+	TAILQ_FOREACH(dom, &domains, list)
+		keymgr_submit_certificates(dom, msg->src);
 }
 
 static void
@@ -290,7 +392,10 @@ keymgr_msg_recv(struct kore_msg *msg, const void *data)
 		return;
 
 	req = (const struct kore_keyreq *)data;
+
 	if (msg->length != (sizeof(*req) + req->data_len))
+		return;
+	if (req->domain_len > KORE_DOMAINNAME_LEN)
 		return;
 
 	key = NULL;

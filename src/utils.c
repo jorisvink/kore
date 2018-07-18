@@ -620,7 +620,7 @@ fatal(const char *fmt, ...)
 
 #if !defined(KORE_NO_TLS)
 	if (worker != NULL && worker->id == KORE_WORKER_KEYMGR)
-		kore_keymgr_cleanup();
+		kore_keymgr_cleanup(1);
 #endif
 
 	printf("%s: %s\n", __progname, buf);
