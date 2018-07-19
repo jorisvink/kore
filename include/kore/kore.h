@@ -566,6 +566,9 @@ int		kore_accesslog_write(const void *, u_int32_t);
 
 #if !defined(KORE_NO_HTTP)
 int		kore_auth_run(struct http_request *, struct kore_auth *);
+int		kore_auth_cookie(struct http_request *, struct kore_auth *);
+int		kore_auth_header(struct http_request *, struct kore_auth *);
+int		kore_auth_request(struct http_request *, struct kore_auth *);
 void		kore_auth_init(void);
 int		kore_auth_new(const char *);
 struct kore_auth	*kore_auth_lookup(const char *);
