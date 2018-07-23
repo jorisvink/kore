@@ -263,6 +263,8 @@ struct http_request {
 	TAILQ_ENTRY(http_request)	olist;
 };
 
+#define KORE_HTTP_STATE(f)		{ #f, f }
+
 struct http_state {
 	const char		*name;
 	int			(*cb)(struct http_request *);
