@@ -272,7 +272,7 @@ lookup:
 
 			/* kore_fileref_create() takes ownership of the fd. */
 			ref = kore_fileref_create(fpath, fd,
-			    st.st_size, st.st_mtime);
+			    st.st_size, &st.st_mtim);
 			if (ref == NULL) {
 				http_response(req,
 				    HTTP_STATUS_INTERNAL_ERROR, NULL, 0);

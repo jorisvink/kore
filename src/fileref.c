@@ -44,7 +44,7 @@ kore_fileref_init(void)
 }
 
 struct kore_fileref *
-kore_fileref_create(const char *path, int fd, off_t size, time_t mtime)
+kore_fileref_create(const char *path, int fd, off_t size, struct timespec *ts)
 {
 	struct kore_fileref	*ref;
 
@@ -56,12 +56,15 @@ kore_fileref_create(const char *path, int fd, off_t size, time_t mtime)
 	ref->cnt = 1;
 	ref->flags = 0;
 	ref->size = size;
-	ref->mtime = mtime;
 	ref->path = kore_strdup(path);
+	ref->mtime_sec = ts->tv_sec;
+	ref->mtime = ((u_int64_t)(ts->tv_sec * 1000 + (ts->tv_nsec / 1000000)));
 
 #if !defined(KORE_USE_PLATFORM_SENDFILE)
-	if ((uintmax_t)size> SIZE_MAX)
+	if ((uintmax_t)size> SIZE_MAX) {
+		kore_pool_put(&ref_pool, ref);
 		return (NULL);
+	}
 
 	ref->base = mmap(NULL, (size_t)size, PROT_READ, MAP_PRIVATE, fd, 0);
 	if (ref->base == MAP_FAILED)
@@ -91,6 +94,7 @@ kore_fileref_get(const char *path)
 {
 	struct stat		st;
 	struct kore_fileref	*ref;
+	u_int64_t		mtime;
 
 	TAILQ_FOREACH(ref, &refs, list) {
 		if (!strcmp(ref->path, path)) {
@@ -101,7 +105,10 @@ kore_fileref_get(const char *path)
 				return (NULL);
 			}
 
-			if (st.st_mtime != ref->mtime) {
+			mtime = ((u_int64_t)(st.st_mtim.tv_sec * 1000 +
+			    (st.st_mtim.tv_nsec / 1000000)));
+
+			if (ref->mtime != mtime) {
 				fileref_soft_remove(ref);
 				return (NULL);
 			}

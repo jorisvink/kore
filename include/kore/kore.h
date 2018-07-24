@@ -51,6 +51,7 @@ extern "C" {
 #if defined(__APPLE__)
 #undef daemon
 extern int daemon(int, int);
+#define st_mtim		st_mtimespec
 #endif
 
 #if !defined(KORE_NO_SENDFILE) && defined(KORE_NO_TLS)
@@ -116,7 +117,8 @@ struct kore_fileref {
 	int				flags;
 	off_t				size;
 	char				*path;
-	time_t				mtime;
+	u_int64_t			mtime;
+	time_t				mtime_sec;
 	u_int64_t			expiration;
 #if !defined(KORE_USE_PLATFORM_SENDFILE)
 	void				*base;
@@ -675,7 +677,8 @@ extern char	*kore_filemap_index;
 
 void			kore_fileref_init(void);
 struct kore_fileref	*kore_fileref_get(const char *);
-struct kore_fileref	*kore_fileref_create(const char *, int, off_t, time_t);
+struct kore_fileref	*kore_fileref_create(const char *, int, off_t,
+			    struct timespec *);
 void			kore_fileref_release(struct kore_fileref *);
 
 void		kore_domain_init(void);

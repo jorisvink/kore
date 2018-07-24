@@ -568,14 +568,14 @@ http_response_fileref(struct http_request *req, int status,
 
 	if (http_request_header(req, "if-modified-since", &modified)) {
 		mtime = kore_date_to_time(modified);
-		if (mtime == ref->mtime) {
+		if (mtime == ref->mtime_sec) {
 			kore_fileref_release(ref);
 			http_response(req, HTTP_STATUS_NOT_MODIFIED, NULL, 0);
 			return;
 		}
 	}
 
-	if ((tm = gmtime(&ref->mtime)) != NULL) {
+	if ((tm = gmtime(&ref->mtime_sec)) != NULL) {
 		if (strftime(tbuf, sizeof(tbuf),
 		    "%a, %d %b %Y %H:%M:%S GMT", tm) > 0) {
 			http_response_header(req, "last-modified", tbuf);
