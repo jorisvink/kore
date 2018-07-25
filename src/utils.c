@@ -541,12 +541,12 @@ kore_base64_decode(const char *in, u_int8_t **out, size_t *olen)
 }
 
 void *
-kore_mem_find(void *src, size_t slen, void *needle, size_t len)
+kore_mem_find(void *src, size_t slen, const void *needle, size_t len)
 {
 	size_t		pos;
 
 	for (pos = 0; pos < slen; pos++) {
-		if ( *((u_int8_t *)src + pos) != *(u_int8_t *)needle)
+		if ( *((u_int8_t *)src + pos) != *(const u_int8_t *)needle)
 			continue;
 
 		if ((slen - pos) < len)

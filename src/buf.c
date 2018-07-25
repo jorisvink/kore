@@ -145,7 +145,8 @@ kore_buf_release(struct kore_buf *buf, size_t *len)
 }
 
 void
-kore_buf_replace_string(struct kore_buf *b, char *src, void *dst, size_t len)
+kore_buf_replace_string(struct kore_buf *b, const char *src,
+    const void *dst, size_t len)
 {
 	char		*key, *end, *tmp, *p;
 	size_t		blen, off, off2, nlen, klen;

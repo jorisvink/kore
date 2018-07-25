@@ -643,7 +643,7 @@ long long	kore_strtonum(const char *, int, long long, long long, int *);
 double		kore_strtodouble(const char *, long double, long double, int *);
 int		kore_base64_encode(const void *, size_t, char **);
 int		kore_base64_decode(const char *, u_int8_t **, size_t *);
-void		*kore_mem_find(void *, size_t, void *, size_t);
+void		*kore_mem_find(void *, size_t, const void *, size_t);
 char		*kore_text_trim(char *, size_t);
 char		*kore_read_line(FILE *, char *, size_t);
 
@@ -778,7 +778,8 @@ void		kore_buf_cleanup(struct kore_buf *);
 char	*kore_buf_stringify(struct kore_buf *, size_t *);
 void	kore_buf_appendf(struct kore_buf *, const char *, ...);
 void	kore_buf_appendv(struct kore_buf *, const char *, va_list);
-void	kore_buf_replace_string(struct kore_buf *, char *, void *, size_t);
+void	kore_buf_replace_string(struct kore_buf *,
+	    const char *, const void *, size_t);
 
 void	kore_keymgr_run(void);
 void	kore_keymgr_cleanup(int);
