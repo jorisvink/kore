@@ -99,8 +99,10 @@ kore_fileref_get(const char *path)
 	TAILQ_FOREACH(ref, &refs, list) {
 		if (!strcmp(ref->path, path)) {
 			if (stat(ref->path, &st) == -1) {
-				kore_log(LOG_ERR, "stat(%s): %s",
-				    ref->path, errno_s);
+				if (errno != ENOENT) {
+					kore_log(LOG_ERR, "stat(%s): %s",
+					    ref->path, errno_s);
+				}
 				fileref_soft_remove(ref);
 				return (NULL);
 			}
