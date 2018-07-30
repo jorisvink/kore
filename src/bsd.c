@@ -256,13 +256,13 @@ kore_platform_disable_accept(void)
 void
 kore_platform_schedule_read(int fd, void *data)
 {
-	kore_platform_event_schedule(fd, EVFILT_READ, EV_ADD, data);
+	kore_platform_event_schedule(fd, EVFILT_READ, EV_ADD | EV_CLEAR, data);
 }
 
 void
 kore_platform_schedule_write(int fd, void *data)
 {
-	kore_platform_event_schedule(fd, EVFILT_WRITE, EV_ADD, data);
+	kore_platform_event_schedule(fd, EVFILT_WRITE, EV_ADD | EV_CLEAR, data);
 }
 
 void
