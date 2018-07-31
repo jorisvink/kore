@@ -60,6 +60,10 @@ extern int daemon(int, int);
 #endif
 #endif
 
+#if defined(__OpenBSD__)
+#define KORE_USE_PLATFORM_PLEDGE	1
+#endif
+
 #define KORE_RESULT_ERROR	0
 #define KORE_RESULT_OK		1
 #define KORE_RESULT_RETRY	2
@@ -560,6 +564,11 @@ void		kore_platform_worker_setcpu(struct kore_worker *);
 
 #if defined(KORE_USE_PLATFORM_SENDFILE)
 int		kore_platform_sendfile(struct connection *, struct netbuf *);
+#endif
+
+#if defined(KORE_USE_PLATFORM_PLEDGE)
+void		kore_platform_pledge(void);
+void		kore_platform_add_pledge(const char *);
 #endif
 
 void		kore_accesslog_init(void);

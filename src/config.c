@@ -63,6 +63,10 @@ static int		configure_accept_threshold(char *);
 static int		configure_set_affinity(char *);
 static int		configure_socket_backlog(char *);
 
+#if defined(KORE_USE_PLATFORM_PLEDGE)
+static int		configure_add_pledge(char *);
+#endif
+
 #if !defined(KORE_NO_TLS)
 static int		configure_rand_file(char *);
 static int		configure_certfile(char *);
@@ -142,6 +146,9 @@ static struct {
 	{ "worker_set_affinity",	configure_set_affinity },
 	{ "pidfile",			configure_pidfile },
 	{ "socket_backlog",		configure_socket_backlog },
+#if defined(KORE_USE_PLATFORM_PLEDGE)
+	{ "pledge",			configure_add_pledge },
+#endif
 #if !defined(KORE_NO_TLS)
 	{ "tls_version",		configure_tls_version },
 	{ "tls_cipher",			configure_tls_cipher },
@@ -1375,6 +1382,16 @@ configure_python_import(char *module)
 		return (KORE_RESULT_ERROR);
 
 	kore_module_load(argv[0], argv[1], KORE_MODULE_PYTHON);
+	return (KORE_RESULT_OK);
+}
+#endif
+
+#if defined(KORE_USE_PLATFORM_PLEDGE)
+static int
+configure_add_pledge(char *pledge)
+{
+	kore_platform_add_pledge(pledge);
+
 	return (KORE_RESULT_OK);
 }
 #endif

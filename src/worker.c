@@ -281,6 +281,11 @@ kore_worker_privdrop(const char *runas, const char *root)
 #endif
 			fatal("cannot drop privileges");
 	}
+
+#if defined(KORE_USE_PLATFORM_PLEDGE)
+	kore_platform_pledge();
+#endif
+
 }
 
 void

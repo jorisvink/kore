@@ -41,6 +41,10 @@ static int			kfd = -1;
 static struct kevent		*events = NULL;
 static u_int32_t		event_count = 0;
 
+#if defined(KORE_USE_PLATFORM_PLEDGE)
+static char	pledges[256] = { "stdio rpath inet error" };
+#endif
+
 void
 kore_platform_init(void)
 {
@@ -318,5 +322,28 @@ kore_platform_sendfile(struct connection *c, struct netbuf *nb)
 	}
 
 	return (KORE_RESULT_OK);
+}
+#endif
+
+#if defined(KORE_USE_PLATFORM_PLEDGE)
+void
+kore_platform_pledge(void)
+{
+	if (pledge(pledges, NULL) == -1)
+		fatal("failed to pledge process");
+}
+
+void
+kore_platform_add_pledge(const char *pledge)
+{
+	size_t		len;
+
+	len = strlcat(pledges, " ", sizeof(pledges));
+	if (len >= sizeof(pledges))
+		fatal("truncation on pledges");
+
+	len = strlcat(pledges, pledge, sizeof(pledges));
+	if (len >= sizeof(pledges))
+		fatal("truncation on pledges (%s)", pledge);
 }
 #endif
