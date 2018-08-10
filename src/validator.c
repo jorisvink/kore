@@ -27,6 +27,7 @@ kore_validator_init(void)
 int
 kore_validator_add(const char *name, u_int8_t type, const char *arg)
 {
+	int				ret;
 	struct kore_validator		*val;
 
 	val = kore_malloc(sizeof(*val));
@@ -34,10 +35,12 @@ kore_validator_add(const char *name, u_int8_t type, const char *arg)
 
 	switch (val->type) {
 	case KORE_VALIDATOR_TYPE_REGEX:
-		if (regcomp(&(val->rctx), arg, REG_EXTENDED | REG_NOSUB)) {
+		ret = regcomp(&(val->rctx), arg, REG_EXTENDED | REG_NOSUB);
+		if (ret) {
 			kore_free(val);
 			kore_log(LOG_NOTICE,
-			    "validator %s has bad regex %s", name, arg);
+			    "validator %s has bad regex %s (%d)",
+			    name, arg, ret);
 			return (KORE_RESULT_ERROR);
 		}
 		break;
