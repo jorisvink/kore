@@ -91,6 +91,15 @@ kore_keymgr_run(void)
 
 	kore_listener_cleanup();
 	kore_module_cleanup();
+
+	net_init();
+	kore_connection_init();
+	kore_platform_event_init();
+	kore_msg_worker_init();
+	kore_msg_register(KORE_MSG_KEYMGR_REQ, keymgr_msg_recv);
+	kore_msg_register(KORE_MSG_ENTROPY_REQ, keymgr_entropy_request);
+	kore_msg_register(KORE_MSG_CERTIFICATE_REQ, keymgr_certificate_request);
+
 	kore_worker_privdrop(keymgr_runas_user, keymgr_root_path);
 
 	if (rand_file != NULL) {
@@ -102,17 +111,7 @@ kore_keymgr_run(void)
 
 	initialized = 1;
 
-	net_init();
-	kore_connection_init();
-	kore_platform_event_init();
-
-	kore_msg_worker_init();
-	kore_msg_register(KORE_MSG_KEYMGR_REQ, keymgr_msg_recv);
-	kore_msg_register(KORE_MSG_ENTROPY_REQ, keymgr_entropy_request);
-	kore_msg_register(KORE_MSG_CERTIFICATE_REQ, keymgr_certificate_request);
-
 	keymgr_reload();
-
 	RAND_poll();
 	last_seed = 0;
 

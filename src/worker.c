@@ -322,12 +322,13 @@ kore_worker_entry(struct kore_worker *kw)
 		exit(0);
 	}
 #endif
+	net_init();
+	kore_connection_init();
 	kore_platform_event_init();
 	kore_msg_worker_init();
 
 	kore_worker_privdrop(kore_runas_user, kore_root_path);
 
-	net_init();
 #if !defined(KORE_NO_HTTP)
 	http_init();
 	kore_filemap_resolve_paths();
@@ -335,7 +336,6 @@ kore_worker_entry(struct kore_worker *kw)
 #endif
 	kore_timer_init();
 	kore_fileref_init();
-	kore_connection_init();
 	kore_domain_load_crl();
 	kore_domain_keymgr_init();
 
