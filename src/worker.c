@@ -227,30 +227,30 @@ kore_worker_privdrop(const char *runas, const char *root)
 	struct passwd		*pw = NULL;
 
 	if (root == NULL)
-		fatal("no root directory for kore_worker_privdrop");
+		fatalx("no root directory for kore_worker_privdrop");
 
 	/* Must happen before chroot. */
 	if (skip_runas == 0) {
 		if (runas == NULL)
-			fatal("no runas user given and -r not specified");
+			fatalx("no runas user given and -r not specified");
 		pw = getpwnam(runas);
 		if (pw == NULL) {
-			fatal("cannot getpwnam(\"%s\") for user: %s",
+			fatalx("cannot getpwnam(\"%s\") for user: %s",
 			    runas, errno_s);
 		}
 	}
 
 	if (skip_chroot == 0) {
 		if (chroot(root) == -1) {
-			fatal("cannot chroot(\"%s\"): %s",
+			fatalx("cannot chroot(\"%s\"): %s",
 			    root, errno_s);
 		}
 
 		if (chdir("/") == -1)
-			fatal("cannot chdir(\"/\"): %s", errno_s);
+			fatalx("cannot chdir(\"/\"): %s", errno_s);
 	} else {
 		if (chdir(root) == -1)
-			fatal("cannot chdir(\"%s\"): %s", root, errno_s);
+			fatalx("cannot chdir(\"%s\"): %s", root, errno_s);
 	}
 
 	if (getrlimit(RLIMIT_NOFILE, &rl) == -1) {
@@ -279,7 +279,7 @@ kore_worker_privdrop(const char *runas, const char *root)
 		    setresgid(pw->pw_gid, pw->pw_gid, pw->pw_gid) ||
 		    setresuid(pw->pw_uid, pw->pw_uid, pw->pw_uid))
 #endif
-			fatal("cannot drop privileges");
+			fatalx("cannot drop privileges");
 	}
 
 #if defined(KORE_USE_PLATFORM_PLEDGE)
@@ -322,6 +322,8 @@ kore_worker_entry(struct kore_worker *kw)
 		exit(0);
 	}
 #endif
+	kore_platform_event_init();
+	kore_msg_worker_init();
 
 	kore_worker_privdrop(kore_runas_user, kore_root_path);
 
@@ -342,9 +344,6 @@ kore_worker_entry(struct kore_worker *kw)
 	next_lock = 0;
 	next_prune = 0;
 	worker_active_connections = 0;
-
-	kore_platform_event_init();
-	kore_msg_worker_init();
 
 #if defined(KORE_USE_PGSQL)
 	kore_pgsql_sys_init();
