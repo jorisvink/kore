@@ -1119,7 +1119,7 @@ cli_build_asset(char *fpath, struct dirent *dp)
 	cli_file_writef(out, "#include <sys/types.h>\n\n");
 	cli_file_writef(out, "#include <kore/kore.h>\n");
 	cli_file_writef(out, "#include <kore/http.h>\n\n");
-	cli_file_writef(out, "#include \"assets.h\"\n\n");
+	cli_file_writef(out, "#include \"../src/assets.h\"\n\n");
 
 	/* Write the file data as a byte array. */
 	cli_file_writef(out, "const u_int8_t asset_%s_%s[] = {\n", name, ext);
