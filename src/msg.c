@@ -34,6 +34,7 @@ static int		msg_recv_packet(struct netbuf *);
 static int		msg_recv_data(struct netbuf *);
 static void		msg_disconnected_parent(struct connection *);
 static void		msg_disconnected_worker(struct connection *);
+static void		msg_type_shutdown(struct kore_msg *, const void *);
 
 #if !defined(KORE_NO_HTTP)
 static void		msg_type_accesslog(struct kore_msg *, const void *);
@@ -56,6 +57,8 @@ kore_msg_parent_init(void)
 		kw = kore_worker_data(i);
 		kore_msg_parent_add(kw);
 	}
+
+	kore_msg_register(KORE_MSG_SHUTDOWN, msg_type_shutdown);
 
 #if !defined(KORE_NO_HTTP)
 	kore_msg_register(KORE_MSG_ACCESSLOG, msg_type_accesslog);
@@ -104,6 +107,7 @@ kore_msg_worker_init(void)
 	worker->msg[1]->state = CONN_STATE_ESTABLISHED;
 	worker->msg[1]->disconnect = msg_disconnected_parent;
 	worker->msg[1]->handle = kore_connection_handle;
+	worker->msg[1]->flags = CONN_WRITE_POSSIBLE;
 
 	TAILQ_INSERT_TAIL(&connections, worker->msg[1], list);
 	kore_platform_event_all(worker->msg[1]->fd, worker->msg[1]);
@@ -212,6 +216,15 @@ static void
 msg_disconnected_worker(struct connection *c)
 {
 	c->hdlr_extra = NULL;
+}
+
+static void
+msg_type_shutdown(struct kore_msg *msg, const void *data)
+{
+	kore_log(LOG_NOTICE,
+	    "shutdown requested by worker %u, going down", msg->src);
+
+	(void)raise(SIGQUIT);
 }
 
 #if !defined(KORE_NO_HTTP)
