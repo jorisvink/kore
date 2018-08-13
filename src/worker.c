@@ -250,7 +250,7 @@ kore_worker_privdrop(const char *runas, const char *root)
 			fatal("cannot chdir(\"/\"): %s", errno_s);
 	} else {
 		if (chdir(root) == -1)
-			fatal("cannot chdir(\"/\"): %s", errno_s);
+			fatal("cannot chdir(\"%s\"): %s", root, errno_s);
 	}
 
 	if (getrlimit(RLIMIT_NOFILE, &rl) == -1) {
