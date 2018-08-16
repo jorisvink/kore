@@ -116,7 +116,8 @@ static const char http_field_content[] = {
 static int	http_body_recv(struct netbuf *);
 static void	http_error_response(struct connection *, int);
 static void	http_write_response_cookie(struct http_cookie *);
-static void	http_argument_add(struct http_request *, char *, char *, int);
+static void	http_argument_add(struct http_request *, char *, char *,
+		    int, int);
 static void	http_response_normal(struct http_request *,
 		    struct connection *, int, const void *, size_t);
 static void	multipart_add_field(struct http_request *, struct kore_buf *,
@@ -1118,7 +1119,7 @@ http_populate_post(struct http_request *req)
 	for (i = 0; i < v; i++) {
 		kore_split_string(args[i], "=", val, 3);
 		if (val[0] != NULL && val[1] != NULL)
-			http_argument_add(req, val[0], val[1], 0);
+			http_argument_add(req, val[0], val[1], 0, 1);
 	}
 
 out:
@@ -1140,7 +1141,7 @@ http_populate_qs(struct http_request *req)
 	for (i = 0; i < v; i++) {
 		kore_split_string(args[i], "=", val, 3);
 		if (val[0] != NULL && val[1] != NULL)
-			http_argument_add(req, val[0], val[1], 1);
+			http_argument_add(req, val[0], val[1], 1, 1);
 	}
 
 	kore_free(query);
@@ -1675,7 +1676,7 @@ multipart_add_field(struct http_request *req, struct kore_buf *in,
 
 	data->offset -= 2;
 	string = kore_buf_stringify(data, NULL);
-	http_argument_add(req, name, string, 0);
+	http_argument_add(req, name, string, 0, 0);
 	kore_buf_free(data);
 }
 
@@ -1706,12 +1707,14 @@ multipart_file_add(struct http_request *req, struct kore_buf *in,
 }
 
 static void
-http_argument_add(struct http_request *req, char *name, char *value, int qs)
+http_argument_add(struct http_request *req, char *name, char *value, int qs,
+    int decode)
 {
 	struct http_arg			*q;
 	struct kore_handler_params	*p;
 
-	http_argument_urldecode(name);
+	if (decode)
+		http_argument_urldecode(name);
 
 	TAILQ_FOREACH(p, &(req->hdlr->params), list) {
 		if (qs == 1 && !(p->flags & KORE_PARAMS_QUERY_STRING))
@@ -1725,7 +1728,9 @@ http_argument_add(struct http_request *req, char *name, char *value, int qs)
 		if (strcmp(p->name, name))
 			continue;
 
-		http_argument_urldecode(value);
+		if (decode)
+			http_argument_urldecode(value);
+
 		if (!kore_validator_check(req, p->validator, value))
 			break;
 
