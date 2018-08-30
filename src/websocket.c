@@ -139,7 +139,7 @@ int
 kore_websocket_send_clean(struct netbuf *nb)
 {
 	kore_free(nb->buf);
-	return 0;
+	return (0);
 }
 
 void
