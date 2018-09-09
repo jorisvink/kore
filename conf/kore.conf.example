@@ -77,20 +77,20 @@ workers		4
 #	If TLS is enabled you will need to specify paths to the domain
 #	certificate and key that Kore will load. This loading is done
 #	from the keymgr (separate process) and all paths must be relative
-#	to the keymgr_root_path configuration option.
+#	to the keymgr_root configuration option.
 #
-#	keymgr_root_path	The root path the keymgr will chdir into.
+#	keymgr_root	The root path the keymgr will chdir into.
 #				If chroot was not disable at startup time
 #				the keymgr process will chroot into here.
 #
-#	keymgr_runas_user	The user to run the keymgr as.
+#	keymgr_runas	The user to run the keymgr as.
 #
 #	If privsep and chrooting is enabled at startup time but these
 #	configuration options were not set, they will take over the
 #	values from the 'root' and 'runas' configuration options.
 #
-#keymgr_root_path
-#keymgr_runas_user
+#keymgr_root
+#keymgr_runas
 
 # Filemap settings
 #	filemap_index	Name of the file to be used as the directory
