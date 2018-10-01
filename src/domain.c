@@ -125,6 +125,7 @@ kore_domain_init(void)
 {
 	TAILQ_INIT(&domains);
 
+#if !defined(KORE_NO_TLS)
 #if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
 	if (keymgr_rsa_meth == NULL) {
 		if ((keymgr_rsa_meth = RSA_meth_new("kore RSA keymgr method",
@@ -143,6 +144,7 @@ kore_domain_init(void)
 
 	EC_KEY_METHOD_set_sign(keymgr_ec_meth, NULL, NULL, keymgr_ecdsa_sign);
 #endif
+#endif
 }
 
 void
@@ -155,6 +157,7 @@ kore_domain_cleanup(void)
 		kore_domain_free(dom);
 	}
 
+#if !defined(KORE_NO_TLS)
 #if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
 	if (keymgr_rsa_meth != NULL) {
 		RSA_meth_free(keymgr_rsa_meth);
@@ -165,6 +168,7 @@ kore_domain_cleanup(void)
 		EC_KEY_METHOD_free(keymgr_ec_meth);
 		keymgr_ec_meth = NULL;
 	}
+#endif
 #endif
 }
 
