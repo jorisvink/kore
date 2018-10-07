@@ -219,7 +219,7 @@ struct connection {
 	union {
 		struct sockaddr_in	ipv4;
 		struct sockaddr_in6	ipv6;
-		struct sockaddr_un	unix;
+		struct sockaddr_un	sun;
 	} addr;
 
 	struct {

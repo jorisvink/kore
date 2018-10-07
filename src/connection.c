@@ -115,7 +115,7 @@ kore_connection_accept(struct listener *listener, struct connection **out)
 		break;
 	case AF_UNIX:
 		len = sizeof(struct sockaddr_un);
-		s = (struct sockaddr *)&(c->addr.unix);
+		s = (struct sockaddr *)&(c->addr.sun);
 		break;
 	default:
 		fatal("unknown family type %d", c->family);
