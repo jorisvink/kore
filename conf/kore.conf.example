@@ -11,6 +11,7 @@
 
 # Server configuration.
 bind		127.0.0.1 443
+#bind_unix	/var/run/kore.sock
 
 # The worker process root directory. If chrooting was not disabled
 # at startup the worker processes will chroot into this directory.
