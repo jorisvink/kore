@@ -102,13 +102,23 @@ kore_connection_accept(struct listener *listener, struct connection **out)
 	*out = NULL;
 	c = kore_connection_new(listener);
 
-	c->addrtype = listener->addrtype;
-	if (c->addrtype == AF_INET) {
+	c->family = listener->family;
+
+	switch (c->family) {
+	case AF_INET:
 		len = sizeof(struct sockaddr_in);
 		s = (struct sockaddr *)&(c->addr.ipv4);
-	} else {
+		break;
+	case AF_INET6:
 		len = sizeof(struct sockaddr_in6);
 		s = (struct sockaddr *)&(c->addr.ipv6);
+		break;
+	case AF_UNIX:
+		len = sizeof(struct sockaddr_un);
+		s = (struct sockaddr *)&(c->addr.unix);
+		break;
+	default:
+		fatal("unknown family type %d", c->family);
 	}
 
 	if ((c->fd = accept(listener->fd, s, &len)) == -1) {
@@ -117,7 +127,7 @@ kore_connection_accept(struct listener *listener, struct connection **out)
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (!kore_connection_nonblock(c->fd, 1)) {
+	if (!kore_connection_nonblock(c->fd, listener->family != AF_UNIX)) {
 		close(c->fd);
 		kore_pool_put(&connection_pool, c);
 		return (KORE_RESULT_ERROR);

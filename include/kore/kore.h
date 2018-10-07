@@ -24,6 +24,7 @@
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/queue.h>
+#include <sys/un.h>
 
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -214,10 +215,11 @@ struct connection {
 	int			(*read)(struct connection *, size_t *);
 	int			(*write)(struct connection *, size_t, size_t *);
 
-	u_int8_t		addrtype;
+	int			family;
 	union {
 		struct sockaddr_in	ipv4;
 		struct sockaddr_in6	ipv6;
+		struct sockaddr_un	unix;
 	} addr;
 
 	struct {
@@ -271,14 +273,9 @@ extern struct kore_runtime	kore_native_runtime;
 
 struct listener {
 	u_int8_t			type;
-	u_int8_t			addrtype;
 	int				fd;
+	int				family;
 	struct kore_runtime_call	*connect;
-
-	union {
-		struct sockaddr_in	ipv4;
-		struct sockaddr_in6	ipv6;
-	} addr;
 
 	LIST_ENTRY(listener)	list;
 };
@@ -593,6 +590,9 @@ struct kore_timer	*kore_timer_add(void (*cb)(void *, u_int64_t),
 
 int		kore_sockopt(int, int, int);
 void		kore_listener_cleanup(void);
+void		kore_listener_free(struct listener *);
+struct listener	*kore_listener_alloc(int, const char *);
+int		kore_server_bind_unix(const char *, const char *);
 int		kore_server_bind(const char *, const char *, const char *);
 #if !defined(KORE_NO_TLS)
 int		kore_tls_sni_cb(SSL *, int *, void *);

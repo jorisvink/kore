@@ -26,7 +26,7 @@ struct kore_log_packet {
 	u_int8_t	method;
 	int		status;
 	size_t		length;
-	u_int8_t	addrtype;
+	int		family;
 	u_int8_t	addr[sizeof(struct in6_addr)];
 	char		host[KORE_DOMAINNAME_LEN];
 	char		path[HTTP_URI_LEN];
@@ -102,9 +102,13 @@ kore_accesslog_write(const void *data, u_int32_t len)
 		cn = logpacket.cn;
 #endif
 
-	if (inet_ntop(logpacket.addrtype, &(logpacket.addr),
-	    addr, sizeof(addr)) == NULL)
-		(void)kore_strlcpy(addr, "-", sizeof(addr));
+	if (logpacket.family != AF_UNIX) {
+		if (inet_ntop(logpacket.family, &(logpacket.addr),
+		    addr, sizeof(addr)) == NULL)
+			(void)kore_strlcpy(addr, "-", sizeof(addr));
+	} else {
+		(void)kore_strlcpy(addr, "unix-socket", sizeof(addr));
+	}
 
 	time(&now);
 	tm = localtime(&now);
@@ -140,15 +144,21 @@ kore_accesslog(struct http_request *req)
 {
 	struct kore_log_packet	logpacket;
 
-	logpacket.addrtype = req->owner->addrtype;
-	if (logpacket.addrtype == AF_INET) {
+	logpacket.family = req->owner->family;
+
+	switch (logpacket.family) {
+	case AF_INET:
 		memcpy(logpacket.addr,
 		    &(req->owner->addr.ipv4.sin_addr),
 		    sizeof(req->owner->addr.ipv4.sin_addr));
-	} else {
+		break;
+	case AF_INET6:
 		memcpy(logpacket.addr,
 		    &(req->owner->addr.ipv6.sin6_addr),
 		    sizeof(req->owner->addr.ipv6.sin6_addr));
+		break;
+	default:
+		break;
 	}
 
 	logpacket.status = req->status;

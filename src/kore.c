@@ -16,6 +16,7 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/un.h>
 
 #include <sys/socket.h>
 #include <sys/resource.h>
@@ -299,37 +300,13 @@ kore_server_bind(const char *ip, const char *port, const char *ccb)
 	if (r != 0)
 		fatal("getaddrinfo(%s): %s", ip, gai_strerror(r));
 
-	l = kore_malloc(sizeof(struct listener));
-	l->type = KORE_TYPE_LISTENER;
-	l->addrtype = results->ai_family;
-
-	if (l->addrtype != AF_INET && l->addrtype != AF_INET6)
-		fatal("getaddrinfo(): unknown address family %d", l->addrtype);
-
-	if ((l->fd = socket(results->ai_family, SOCK_STREAM, 0)) == -1) {
-		kore_free(l);
-		freeaddrinfo(results);
-		kore_log(LOG_ERR, "socket(): %s", errno_s);
-		return (KORE_RESULT_ERROR);
-	}
-
-	if (!kore_connection_nonblock(l->fd, 1)) {
-		kore_free(l);
-		freeaddrinfo(results);
-		kore_log(LOG_ERR, "kore_connection_nonblock(): %s", errno_s);
-		return (KORE_RESULT_ERROR);
-	}
-
-	if (!kore_sockopt(l->fd, SOL_SOCKET, SO_REUSEADDR)) {
-		close(l->fd);
-		kore_free(l);
+	if ((l = kore_listener_alloc(results->ai_family, ccb)) == NULL) {
 		freeaddrinfo(results);
 		return (KORE_RESULT_ERROR);
 	}
 
 	if (bind(l->fd, results->ai_addr, results->ai_addrlen) == -1) {
-		close(l->fd);
-		kore_free(l);
+		kore_listener_free(l);
 		freeaddrinfo(results);
 		kore_log(LOG_ERR, "bind(): %s", errno_s);
 		return (KORE_RESULT_ERROR);
@@ -338,25 +315,10 @@ kore_server_bind(const char *ip, const char *port, const char *ccb)
 	freeaddrinfo(results);
 
 	if (listen(l->fd, kore_socket_backlog) == -1) {
-		close(l->fd);
-		kore_free(l);
+		kore_listener_free(l);
 		kore_log(LOG_ERR, "listen(): %s", errno_s);
 		return (KORE_RESULT_ERROR);
 	}
-
-	if (ccb != NULL) {
-		if ((l->connect = kore_runtime_getcall(ccb)) == NULL) {
-			kore_log(LOG_ERR, "no such callback: '%s'", ccb);
-			close(l->fd);
-			kore_free(l);
-			return (KORE_RESULT_ERROR);
-		}
-	} else {
-		l->connect = NULL;
-	}
-
-	nlisteners++;
-	LIST_INSERT_HEAD(&listeners, l, list);
 
 	if (foreground) {
 #if !defined(KORE_NO_TLS)
@@ -367,6 +329,106 @@ kore_server_bind(const char *ip, const char *port, const char *ccb)
 	}
 
 	return (KORE_RESULT_OK);
+}
+
+int
+kore_server_bind_unix(const char *path, const char *ccb)
+{
+	struct listener		*l;
+	struct sockaddr_un	sun;
+
+	memset(&sun, 0, sizeof(sun));
+	sun.sun_family = AF_UNIX;
+
+	if (kore_strlcpy(sun.sun_path, path, sizeof(sun.sun_path)) >=
+	    sizeof(sun.sun_path)) {
+		kore_log(LOG_ERR, "unix socket path '%s' too long", path);
+		return (KORE_RESULT_ERROR);
+	}
+
+	if ((l = kore_listener_alloc(AF_UNIX, ccb)) == NULL)
+		return (KORE_RESULT_ERROR);
+
+	if (bind(l->fd, (struct sockaddr *)&sun, sizeof(sun)) == -1) {
+		kore_log(LOG_ERR, "bind: %s", errno_s);
+		kore_listener_free(l);
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (listen(l->fd, kore_socket_backlog) == -1) {
+		kore_log(LOG_ERR, "listen(): %s", errno_s);
+		kore_listener_free(l);
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (foreground)
+		kore_log(LOG_NOTICE, "running on %s", path);
+
+	return (KORE_RESULT_OK);
+}
+
+struct listener *
+kore_listener_alloc(int family, const char *ccb)
+{
+	struct listener		*l;
+
+	switch (family) {
+	case AF_INET:
+	case AF_INET6:
+	case AF_UNIX:
+		break;
+	default:
+		fatal("unknown address family %d", family);
+	}
+
+	l = kore_calloc(1, sizeof(struct listener));
+
+	l->fd = -1;
+	l->family = family;
+	l->type = KORE_TYPE_LISTENER;
+
+	if ((l->fd = socket(family, SOCK_STREAM, 0)) == -1) {
+		kore_listener_free(l);
+		kore_log(LOG_ERR, "socket(): %s", errno_s);
+		return (NULL);
+	}
+
+	if (!kore_connection_nonblock(l->fd, 1)) {
+		kore_listener_free(l);
+		kore_log(LOG_ERR, "kore_connection_nonblock(): %s", errno_s);
+		return (NULL);
+	}
+
+	if (!kore_sockopt(l->fd, SOL_SOCKET, SO_REUSEADDR)) {
+		kore_listener_free(l);
+		return (NULL);
+	}
+
+	if (ccb != NULL) {
+		if ((l->connect = kore_runtime_getcall(ccb)) == NULL) {
+			kore_log(LOG_ERR, "no such callback: '%s'", ccb);
+			kore_listener_free(l);
+			return (NULL);
+		}
+	} else {
+		l->connect = NULL;
+	}
+
+	nlisteners++;
+	LIST_INSERT_HEAD(&listeners, l, list);
+
+	return (l);
+}
+
+void
+kore_listener_free(struct listener *l)
+{
+	LIST_REMOVE(l, list);
+
+	if (l->fd != -1)
+		close(l->fd);
+
+	kore_free(l);
 }
 
 int
@@ -421,9 +483,7 @@ kore_listener_cleanup(void)
 
 	while (!LIST_EMPTY(&listeners)) {
 		l = LIST_FIRST(&listeners);
-		LIST_REMOVE(l, list);
-		close(l->fd);
-		kore_free(l);
+		kore_listener_free(l);
 	}
 }
 

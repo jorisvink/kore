@@ -52,6 +52,7 @@ extern u_int32_t	asset_len_builtin_kore_conf;
 
 static int		configure_include(char *);
 static int		configure_bind(char *);
+static int		configure_bind_unix(char *);
 static int		configure_domain(char *);
 static int		configure_root(char *);
 static int		configure_runas(char *);
@@ -130,6 +131,7 @@ static struct {
 } config_names[] = {
 	{ "include",			configure_include },
 	{ "bind",			configure_bind },
+	{ "bind_unix",			configure_bind_unix },
 	{ "load",			configure_load },
 #if defined(KORE_USE_PYTHON)
 	{ "python_path",		configure_python_path },
@@ -372,6 +374,18 @@ configure_bind(char *options)
 		return (KORE_RESULT_ERROR);
 
 	return (kore_server_bind(argv[0], argv[1], argv[2]));
+}
+
+static int
+configure_bind_unix(char *options)
+{
+	char		*argv[3];
+
+	kore_split_string(options, " ", argv, 3);
+	if (argv[0] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	return (kore_server_bind_unix(argv[0], argv[1]));
 }
 
 static int

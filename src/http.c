@@ -1398,7 +1398,7 @@ http_request_new(struct connection *c, const char *host,
 
 	hp = NULL;
 
-	switch (c->addrtype) {
+	switch (c->family) {
 	case AF_INET6:
 		if (*host == '[') {
 			if ((hp = strrchr(host, ']')) == NULL) {
