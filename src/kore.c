@@ -383,6 +383,9 @@ kore_listener_alloc(int family, const char *ccb)
 
 	l = kore_calloc(1, sizeof(struct listener));
 
+	nlisteners++;
+	LIST_INSERT_HEAD(&listeners, l, list);
+
 	l->fd = -1;
 	l->family = family;
 	l->type = KORE_TYPE_LISTENER;
@@ -413,9 +416,6 @@ kore_listener_alloc(int family, const char *ccb)
 	} else {
 		l->connect = NULL;
 	}
-
-	nlisteners++;
-	LIST_INSERT_HEAD(&listeners, l, list);
 
 	return (l);
 }
