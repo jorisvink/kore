@@ -393,7 +393,7 @@ kore_listener_alloc(int family, const char *ccb)
 		return (NULL);
 	}
 
-	if (!kore_connection_nonblock(l->fd, 1)) {
+	if (!kore_connection_nonblock(l->fd, family != AF_UNIX)) {
 		kore_listener_free(l);
 		kore_log(LOG_ERR, "kore_connection_nonblock(): %s", errno_s);
 		return (NULL);
