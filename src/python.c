@@ -737,7 +737,7 @@ pyconnection_get_addr(struct pyconnection *pyc, void *closure)
 	PyObject	*result;
 	char		addr[INET6_ADDRSTRLEN];
 
-	switch (pyc->c->addrtype) {
+	switch (pyc->c->family) {
 	case AF_INET:
 		ptr = &pyc->c->addr.ipv4.sin_addr;
 		break;
@@ -745,11 +745,11 @@ pyconnection_get_addr(struct pyconnection *pyc, void *closure)
 		ptr = &pyc->c->addr.ipv6.sin6_addr;
 		break;
 	default:
-		PyErr_SetString(PyExc_RuntimeError, "invalid addrtype");
+		PyErr_SetString(PyExc_RuntimeError, "invalid family");
 		return (NULL);
 	}
 
-	if (inet_ntop(pyc->c->addrtype, ptr, addr, sizeof(addr)) == NULL) {
+	if (inet_ntop(pyc->c->family, ptr, addr, sizeof(addr)) == NULL) {
 		PyErr_SetString(PyExc_RuntimeError, "inet_ntop failed");
 		return (NULL);
 	}
