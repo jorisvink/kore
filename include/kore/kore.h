@@ -171,13 +171,13 @@ TAILQ_HEAD(netbuf_head, netbuf);
 #define CONN_PROTO_WEBSOCKET	2
 #define CONN_PROTO_MSG		3
 
-#define CONN_READ_POSSIBLE	0x01
-#define CONN_WRITE_POSSIBLE	0x02
-#define CONN_WRITE_BLOCK	0x04
-#define CONN_IDLE_TIMER_ACT	0x10
-#define CONN_READ_BLOCK		0x20
-#define CONN_CLOSE_EMPTY	0x40
-#define CONN_WS_CLOSE_SENT	0x80
+#define KORE_EVENT_READ		0x01
+#define KORE_EVENT_WRITE	0x02
+#define KORE_EVENT_ERROR	0x04
+
+#define CONN_IDLE_TIMER_ACT	0x01
+#define CONN_CLOSE_EMPTY	0x02
+#define CONN_WS_CLOSE_SENT	0x04
 
 #define KORE_IDLE_TIMER_MAX	5000
 
@@ -196,8 +196,14 @@ TAILQ_HEAD(netbuf_head, netbuf);
 #define KORE_CONNECTION_PRUNE_DISCONNECT	0
 #define KORE_CONNECTION_PRUNE_ALL		1
 
+struct kore_event {
+	int		type;
+	int		flags;
+	void		(*handle)(void *, int);
+} __attribute__((packed));
+
 struct connection {
-	u_int8_t		type;
+	struct kore_event	evt;
 	int			fd;
 	u_int8_t		state;
 	u_int8_t		proto;
@@ -272,7 +278,7 @@ struct kore_runtime_call {
 extern struct kore_runtime	kore_native_runtime;
 
 struct listener {
-	u_int8_t			type;
+	struct kore_event		evt;
 	int				fd;
 	int				family;
 	struct kore_runtime_call	*connect;
@@ -588,10 +594,12 @@ void		kore_timer_remove(struct kore_timer *);
 struct kore_timer	*kore_timer_add(void (*cb)(void *, u_int64_t),
 			    u_int64_t, void *, int);
 
-int		kore_sockopt(int, int, int);
 void		kore_listener_cleanup(void);
+void		kore_listener_accept(void *, int);
 void		kore_listener_free(struct listener *);
 struct listener	*kore_listener_alloc(int, const char *);
+
+int		kore_sockopt(int, int, int);
 int		kore_server_bind_unix(const char *, const char *);
 int		kore_server_bind(const char *, const char *, const char *);
 #if !defined(KORE_NO_TLS)
@@ -603,6 +611,7 @@ void			kore_connection_init(void);
 void			kore_connection_cleanup(void);
 void			kore_connection_prune(int);
 struct connection	*kore_connection_new(void *);
+void			kore_connection_event(void *, int);
 int			kore_connection_nonblock(int, int);
 void			kore_connection_check_timeout(u_int64_t);
 int			kore_connection_handle(struct connection *);

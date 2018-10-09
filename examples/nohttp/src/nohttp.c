@@ -56,9 +56,10 @@ connection_setup(struct connection *c)
  *
  * In this callback you would generally look at the state of the connection
  * in c->state and perform the required actions like writing / reading using
- * net_send_flush() or net_recv_flush() if CONN_SEND_POSSIBLE or
- * CONN_READ_POSSIBLE are set respectively. Returning KORE_RESULT_ERROR from
- * this callback will disconnect the connection alltogether.
+ * net_send_flush() or net_recv_flush() if KORE_EVENT_WRITE or
+ * KORE_EVENT_READ are set respectively in c->evt.flags.
+ * Returning KORE_RESULT_ERROR from this callback will disconnect the
+ * connection alltogether.
  */
 int
 connection_handle(struct connection *c)

@@ -308,6 +308,9 @@ kore_pgsql_handle(void *c, int err)
 		return;
 	}
 
+	if (!(conn->evt.flags & KORE_EVENT_READ))
+		fatal("%s: read event not set", __func__);
+
 	pgsql = conn->job->pgsql;
 
 	if (!PQconsumeInput(conn->db)) {
@@ -597,12 +600,14 @@ pgsql_conn_create(struct kore_pgsql *pgsql, struct pgsql_db *db)
 
 	db->conn_count++;
 
-	conn = kore_malloc(sizeof(*conn));
+	conn = kore_calloc(1, sizeof(*conn));
 	conn->job = NULL;
 	conn->flags = PGSQL_CONN_FREE;
-	conn->type = KORE_TYPE_PGSQL_CONN;
 	conn->name = kore_strdup(db->name);
 	TAILQ_INSERT_TAIL(&pgsql_conn_free, conn, list);
+
+	conn->evt.type = KORE_TYPE_PGSQL_CONN;
+	conn->evt.handle = kore_pgsql_handle;
 
 	conn->db = PQconnectdb(db->conn_string);
 	if (conn->db == NULL || (PQstatus(conn->db) != CONNECTION_OK)) {

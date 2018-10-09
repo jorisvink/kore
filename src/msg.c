@@ -107,7 +107,7 @@ kore_msg_worker_init(void)
 	worker->msg[1]->state = CONN_STATE_ESTABLISHED;
 	worker->msg[1]->disconnect = msg_disconnected_parent;
 	worker->msg[1]->handle = kore_connection_handle;
-	worker->msg[1]->flags = CONN_WRITE_POSSIBLE;
+	worker->msg[1]->evt.flags = KORE_EVENT_WRITE;
 
 	TAILQ_INSERT_TAIL(&connections, worker->msg[1], list);
 	kore_platform_event_all(worker->msg[1]->fd, worker->msg[1]);

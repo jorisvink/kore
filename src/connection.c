@@ -74,9 +74,11 @@ kore_connection_new(void *owner)
 	c->disconnect = NULL;
 	c->hdlr_extra = NULL;
 	c->proto = CONN_PROTO_UNKNOWN;
-	c->type = KORE_TYPE_CONNECTION;
 	c->idle_timer.start = 0;
 	c->idle_timer.length = KORE_IDLE_TIMER_MAX;
+
+	c->evt.type = KORE_TYPE_CONNECTION;
+	c->evt.handle = kore_connection_event;
 
 #if !defined(KORE_NO_HTTP)
 	c->ws_connect = NULL;
@@ -218,6 +220,20 @@ kore_connection_disconnect(struct connection *c)
 	}
 }
 
+void
+kore_connection_event(void *arg, int error)
+{
+	struct connection	*c = arg;
+
+	if (error) {
+		kore_connection_disconnect(c);
+		return;
+	}
+
+	if (!c->handle(c))
+		kore_connection_disconnect(c);
+}
+
 int
 kore_connection_handle(struct connection *c)
 {
@@ -313,12 +329,12 @@ kore_connection_handle(struct connection *c)
 		/* FALLTHROUGH */
 #endif /* !KORE_NO_TLS */
 	case CONN_STATE_ESTABLISHED:
-		if (c->flags & CONN_READ_POSSIBLE) {
+		if (c->evt.flags & KORE_EVENT_READ) {
 			if (!net_recv_flush(c))
 				return (KORE_RESULT_ERROR);
 		}
 
-		if (c->flags & CONN_WRITE_POSSIBLE) {
+		if (c->evt.flags & KORE_EVENT_WRITE) {
 			if (!net_send_flush(c))
 				return (KORE_RESULT_ERROR);
 		}

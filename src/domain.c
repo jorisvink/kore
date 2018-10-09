@@ -698,7 +698,7 @@ keymgr_await_data(void)
 		if (!(pfd[0].revents & POLLIN))
 			break;
 
-		worker->msg[1]->flags |= CONN_READ_POSSIBLE;
+		worker->msg[1]->evt.flags |= KORE_EVENT_READ;
 		if (!net_recv_flush(worker->msg[1]))
 			break;
 

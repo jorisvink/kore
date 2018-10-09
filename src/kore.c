@@ -388,7 +388,9 @@ kore_listener_alloc(int family, const char *ccb)
 
 	l->fd = -1;
 	l->family = family;
-	l->type = KORE_TYPE_LISTENER;
+
+	l->evt.type = KORE_TYPE_LISTENER;
+	l->evt.handle = kore_listener_accept;
 
 	if ((l->fd = socket(family, SOCK_STREAM, 0)) == -1) {
 		kore_listener_free(l);
@@ -429,6 +431,37 @@ kore_listener_free(struct listener *l)
 		close(l->fd);
 
 	kore_free(l);
+}
+
+void
+kore_listener_accept(void *arg, int error)
+{
+	struct connection	*c;
+	struct listener		*l = arg;
+	u_int32_t		accepted;
+
+	if (error)
+		fatal("error on listening socket");
+
+	if (!(l->evt.flags & KORE_EVENT_READ))
+		return;
+
+	accepted = 0;
+
+	while (worker_active_connections < worker_max_connections) {
+		if (worker_accept_threshold != 0 &&
+		    accepted >= worker_accept_threshold)
+			break;
+
+		if (!kore_connection_accept(l, &c))
+			break;
+
+		if (c == NULL)
+			break;
+
+		accepted++;
+		kore_platform_event_all(c->fd, c);
+	}
 }
 
 int

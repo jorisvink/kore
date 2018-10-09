@@ -59,8 +59,10 @@ kore_task_create(struct kore_task *t, int (*entry)(struct kore_task *))
 #if !defined(KORE_NO_HTTP)
 	t->req = NULL;
 #endif
+	t->evt.type = KORE_TYPE_TASK;
+	t->evt.handle = kore_task_handle;
+
 	t->entry = entry;
-	t->type = KORE_TYPE_TASK;
 	t->state = KORE_TASK_STATE_CREATED;
 	pthread_rwlock_init(&(t->lock), NULL);
 
@@ -201,8 +203,10 @@ kore_task_channel_read(struct kore_task *t, void *out, u_int32_t len)
 }
 
 void
-kore_task_handle(struct kore_task *t, int finished)
+kore_task_handle(void *arg, int finished)
 {
+	struct kore_task	*t = arg;
+
 	kore_debug("kore_task_handle: %p, %d", t, finished);
 
 #if !defined(KORE_NO_HTTP)

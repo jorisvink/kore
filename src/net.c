@@ -234,7 +234,7 @@ net_send(struct connection *c)
 
 		if (!c->write(c, len, &r))
 			return (KORE_RESULT_ERROR);
-		if (!(c->flags & CONN_WRITE_POSSIBLE))
+		if (!(c->evt.flags & KORE_EVENT_WRITE))
 			return (KORE_RESULT_OK);
 
 		c->snb->s_off += r;
@@ -256,7 +256,7 @@ net_send_flush(struct connection *c)
 	kore_debug("net_send_flush(%p)", c);
 
 	while (!TAILQ_EMPTY(&(c->send_queue)) &&
-	    (c->flags & CONN_WRITE_POSSIBLE)) {
+	    (c->evt.flags & KORE_EVENT_WRITE)) {
 		if (!net_send(c))
 			return (KORE_RESULT_ERROR);
 	}
@@ -278,13 +278,13 @@ net_recv_flush(struct connection *c)
 	if (c->rnb == NULL)
 		return (KORE_RESULT_OK);
 
-	while (c->flags & CONN_READ_POSSIBLE) {
+	while (c->evt.flags & KORE_EVENT_READ) {
 		if (c->rnb->buf == NULL)
 			return (KORE_RESULT_OK);
 
 		if (!c->read(c, &r))
 			return (KORE_RESULT_ERROR);
-		if (!(c->flags & CONN_READ_POSSIBLE))
+		if (!(c->evt.flags & KORE_EVENT_READ))
 			break;
 
 		c->rnb->s_off += r;
@@ -345,8 +345,8 @@ net_write_tls(struct connection *c, size_t len, size_t *written)
 		switch (r) {
 		case SSL_ERROR_WANT_READ:
 		case SSL_ERROR_WANT_WRITE:
+			c->evt.flags &= ~KORE_EVENT_WRITE;
 			c->snb->flags |= NETBUF_MUST_RESEND;
-			c->flags &= ~CONN_WRITE_POSSIBLE;
 			return (KORE_RESULT_OK);
 		case SSL_ERROR_SYSCALL:
 			switch (errno) {
@@ -354,8 +354,8 @@ net_write_tls(struct connection *c, size_t len, size_t *written)
 				*written = 0;
 				return (KORE_RESULT_OK);
 			case EAGAIN:
+				c->evt.flags &= ~KORE_EVENT_WRITE;
 				c->snb->flags |= NETBUF_MUST_RESEND;
-				c->flags &= ~CONN_WRITE_POSSIBLE;
 				return (KORE_RESULT_OK);
 			default:
 				break;
@@ -389,7 +389,7 @@ net_read_tls(struct connection *c, size_t *bytes)
 		switch (r) {
 		case SSL_ERROR_WANT_READ:
 		case SSL_ERROR_WANT_WRITE:
-			c->flags &= ~CONN_READ_POSSIBLE;
+			c->evt.flags &= ~KORE_EVENT_READ;
 			return (KORE_RESULT_OK);
 		case SSL_ERROR_SYSCALL:
 			switch (errno) {
@@ -397,8 +397,8 @@ net_read_tls(struct connection *c, size_t *bytes)
 				*bytes = 0;
 				return (KORE_RESULT_OK);
 			case EAGAIN:
+				c->evt.flags &= ~KORE_EVENT_READ;
 				c->snb->flags |= NETBUF_MUST_RESEND;
-				c->flags &= ~CONN_WRITE_POSSIBLE;
 				return (KORE_RESULT_OK);
 			default:
 				break;
@@ -428,7 +428,7 @@ net_write(struct connection *c, size_t len, size_t *written)
 			*written = 0;
 			return (KORE_RESULT_OK);
 		case EAGAIN:
-			c->flags &= ~CONN_WRITE_POSSIBLE;
+			c->evt.flags &= ~KORE_EVENT_WRITE;
 			return (KORE_RESULT_OK);
 		default:
 			kore_debug("write: %s", errno_s);
@@ -454,7 +454,7 @@ net_read(struct connection *c, size_t *bytes)
 			*bytes = 0;
 			return (KORE_RESULT_OK);
 		case EAGAIN:
-			c->flags &= ~CONN_READ_POSSIBLE;
+			c->evt.flags &= ~KORE_EVENT_READ;
 			return (KORE_RESULT_OK);
 		default:
 			kore_debug("read(): %s", errno_s);
@@ -464,7 +464,7 @@ net_read(struct connection *c, size_t *bytes)
 
 	if (r == 0) {
 		kore_connection_disconnect(c);
-		c->flags &= ~CONN_READ_POSSIBLE;
+		c->evt.flags &= ~KORE_EVENT_READ;
 		return (KORE_RESULT_OK);
 	}
 
