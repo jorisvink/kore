@@ -391,7 +391,10 @@ http_request_free(struct http_request *req)
 #endif
 
 #if defined(KORE_USE_PYTHON)
-	Py_XDECREF(req->py_coro);
+	if (req->py_coro != NULL) {
+		kore_python_coro_delete(req->py_coro);
+		req->py_coro = NULL;
+	}
 #endif
 #if defined(KORE_USE_PGSQL)
 	while (!LIST_EMPTY(&(req->pgsqls))) {
@@ -1212,7 +1215,7 @@ http_body_rewind(struct http_request *req)
 			    req->http_body_path, errno_s);
 			return (KORE_RESULT_ERROR);
 		}
-	} else {
+	} else if (req->http_body != NULL) {
 		kore_buf_reset(req->http_body);
 	}
 
@@ -1479,10 +1482,6 @@ http_request_new(struct connection *c, const char *host,
 	req->http_body_length = 0;
 	req->http_body_offset = 0;
 	req->http_body_path = NULL;
-
-#if defined(KORE_USE_PYTHON)
-	req->py_coro = NULL;
-#endif
 
 	req->host = host;
 	req->path = path;

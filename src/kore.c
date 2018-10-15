@@ -335,21 +335,30 @@ int
 kore_server_bind_unix(const char *path, const char *ccb)
 {
 	struct listener		*l;
+	int			len;
 	struct sockaddr_un	sun;
+	socklen_t		socklen;
 
 	memset(&sun, 0, sizeof(sun));
 	sun.sun_family = AF_UNIX;
 
-	if (kore_strlcpy(sun.sun_path, path, sizeof(sun.sun_path)) >=
-	    sizeof(sun.sun_path)) {
+	len = snprintf(sun.sun_path, sizeof(sun.sun_path), "%s", path);
+	if (len == -1 || (size_t)len >= sizeof(sun.sun_path)) {
 		kore_log(LOG_ERR, "unix socket path '%s' too long", path);
 		return (KORE_RESULT_ERROR);
 	}
 
+#if defined(__linux__)
+	if (sun.sun_path[0] == '@')
+		sun.sun_path[0] = '\0';
+#endif
+
+	socklen = sizeof(sun.sun_family) + len;
+
 	if ((l = kore_listener_alloc(AF_UNIX, ccb)) == NULL)
 		return (KORE_RESULT_ERROR);
 
-	if (bind(l->fd, (struct sockaddr *)&sun, sizeof(sun)) == -1) {
+	if (bind(l->fd, (struct sockaddr *)&sun, socklen) == -1) {
 		kore_log(LOG_ERR, "bind: %s", errno_s);
 		kore_listener_free(l);
 		return (KORE_RESULT_ERROR);

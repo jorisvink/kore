@@ -214,6 +214,12 @@ kore_platform_disable_read(int fd)
 }
 
 void
+kore_platform_disable_write(int fd)
+{
+	kore_platform_event_schedule(fd, EVFILT_WRITE, EV_DELETE, NULL);
+}
+
+void
 kore_platform_proctitle(char *title)
 {
 #ifndef __MACH__

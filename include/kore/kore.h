@@ -160,6 +160,7 @@ TAILQ_HEAD(netbuf_head, netbuf);
 #define KORE_TYPE_CONNECTION	2
 #define KORE_TYPE_PGSQL_CONN	3
 #define KORE_TYPE_TASK		4
+#define KORE_TYPE_PYSOCKET	5
 
 #define CONN_STATE_UNKNOWN		0
 #define CONN_STATE_TLS_SHAKE		1
@@ -556,6 +557,7 @@ void		kore_platform_event_init(void);
 void		kore_platform_event_cleanup(void);
 void		kore_platform_proctitle(char *);
 void		kore_platform_disable_read(int);
+void		kore_platform_disable_write(int);
 void		kore_platform_enable_accept(void);
 void		kore_platform_disable_accept(void);
 int		kore_platform_event_wait(u_int64_t);

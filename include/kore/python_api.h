@@ -25,7 +25,9 @@
 
 void		kore_python_init(void);
 void		kore_python_cleanup(void);
+void		kore_python_coro_run(void);
 void		kore_python_path(const char *);
+void		kore_python_coro_delete(void *);
 
 PyObject	*kore_python_callable(PyObject *, const char *);
 

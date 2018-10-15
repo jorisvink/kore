@@ -110,6 +110,8 @@ else ifeq ("$(OSNAME)", "linux")
 	CFLAGS+=-D_GNU_SOURCE=1 -D_FORTIFY_SOURCE=2
 	LDFLAGS+=-ldl
 	S_SRC+=src/linux.c
+	CFLAGS+=-I/home/joris/crypto/openssl/openssl-1.0.2o/include
+	LDFLAGS+=-L/home/joris/crypto/openssl/openssl-1.0.2o
 else
 	S_SRC+=src/bsd.c
 	ifneq ("$(JSONRPC)", "")

@@ -448,6 +448,9 @@ kore_worker_entry(struct kore_worker *kw)
 #if !defined(KORE_NO_HTTP)
 		http_process();
 #endif
+#if defined(KORE_USE_PYTHON)
+		kore_python_coro_run();
+#endif
 
 		if (next_prune <= now) {
 			kore_connection_check_timeout(now);

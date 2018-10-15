@@ -243,12 +243,11 @@ struct http_request {
 	size_t				state_len;
 	char				*query_string;
 	struct kore_module_handle	*hdlr;
-
-	u_int8_t	http_body_digest[HTTP_BODY_DIGEST_LEN];
-
 #if defined(KORE_USE_PYTHON)
 	void				*py_coro;
 #endif
+
+	u_int8_t	http_body_digest[HTTP_BODY_DIGEST_LEN];
 
 	LIST_HEAD(, kore_task)		tasks;
 	LIST_HEAD(, kore_pgsql)		pgsqls;
