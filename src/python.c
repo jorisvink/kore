@@ -226,7 +226,7 @@ kore_python_coro_delete(void *obj)
 	kore_pool_put(&coro_pool, coro);
 }
 
-/* XXX - Fix this (show error type + traceback. */
+/* XXX - Fix this (show error type + traceback). */
 void
 kore_python_log_error(const char *function)
 {
