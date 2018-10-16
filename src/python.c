@@ -43,7 +43,6 @@ struct python_coro {
 
 static PyMODINIT_FUNC	python_module_init(void);
 static PyObject		*python_import(const char *);
-static void		python_log_error(const char *);
 static PyObject		*pyconnection_alloc(struct connection *);
 static PyObject		*python_callable(PyObject *, const char *);
 
@@ -227,32 +226,9 @@ kore_python_coro_delete(void *obj)
 	kore_pool_put(&coro_pool, coro);
 }
 
-static void *
-python_malloc(void *ctx, size_t len)
-{
-	return (kore_malloc(len));
-}
-
-static void *
-python_calloc(void *ctx, size_t memb, size_t len)
-{
-	return (kore_calloc(memb, len));
-}
-
-static void *
-python_realloc(void *ctx, void *ptr, size_t len)
-{
-	return (kore_realloc(ptr, len));
-}
-
-static void
-python_free(void *ctx, void *ptr)
-{
-	kore_free(ptr);
-}
-
-static void
-python_log_error(const char *function)
+/* XXX - Fix this (show error type + traceback. */
+void
+kore_python_log_error(const char *function)
 {
 	PyObject	*type, *value, *traceback;
 
@@ -278,6 +254,30 @@ python_log_error(const char *function)
 	Py_DECREF(traceback);
 }
 
+static void *
+python_malloc(void *ctx, size_t len)
+{
+	return (kore_malloc(len));
+}
+
+static void *
+python_calloc(void *ctx, size_t memb, size_t len)
+{
+	return (kore_calloc(memb, len));
+}
+
+static void *
+python_realloc(void *ctx, void *ptr, size_t len)
+{
+	return (kore_realloc(ptr, len));
+}
+
+static void
+python_free(void *ctx, void *ptr)
+{
+	kore_free(ptr);
+}
+
 static void
 python_module_free(struct kore_module *module)
 {
@@ -293,7 +293,7 @@ python_module_reload(struct kore_module *module)
 
 	PyErr_Clear();
 	if ((handle = PyImport_ReloadModule(module->handle)) == NULL) {
-		python_log_error("python_module_reload");
+		kore_python_log_error("python_module_reload");
 		return;
 	}
 
@@ -357,7 +357,7 @@ python_coro_run(struct python_coro *coro)
 
 		item = _PyGen_Send((PyGenObject *)coro->obj, NULL);
 		if (item == NULL) {
-			python_log_error("coroutine");
+			kore_python_log_error("coroutine");
 			coro_running = NULL;
 			return (KORE_RESULT_OK);
 		}
@@ -447,7 +447,7 @@ python_runtime_http_request(void *addr, struct http_request *req)
 	Py_DECREF(args);
 
 	if (pyret == NULL) {
-		python_log_error("python_runtime_http_request");
+		kore_python_log_error("python_runtime_http_request");
 		http_response(req, HTTP_STATUS_INTERNAL_ERROR, NULL, 0);
 		return (KORE_RESULT_OK);
 	}
@@ -506,7 +506,7 @@ python_runtime_validator(void *addr, struct http_request *req, const void *data)
 	Py_DECREF(args);
 
 	if (pyret == NULL) {
-		python_log_error("python_runtime_validator");
+		kore_python_log_error("python_runtime_validator");
 		fatal("failed to execute python call");
 	}
 
@@ -559,7 +559,7 @@ python_runtime_wsmessage(void *addr, struct connection *c, u_int8_t op,
 	Py_DECREF(args);
 
 	if (pyret == NULL) {
-		python_log_error("python_runtime_wsconnect");
+		kore_python_log_error("python_runtime_wsconnect");
 		fatal("failed to execute python call");
 	}
 
@@ -581,7 +581,7 @@ python_runtime_execute(void *addr)
 	Py_DECREF(args);
 
 	if (pyret == NULL) {
-		python_log_error("python_runtime_execute");
+		kore_python_log_error("python_runtime_execute");
 		fatal("failed to execute python call");
 	}
 
@@ -625,7 +625,7 @@ python_runtime_configure(void *addr, int argc, char **argv)
 	Py_DECREF(list);
 
 	if (pyret == NULL) {
-		python_log_error("python_runtime_configure");
+		kore_python_log_error("python_runtime_configure");
 		fatal("failed to call configure method: wrong args?");
 	}
 
@@ -654,7 +654,7 @@ python_runtime_onload(void *addr, int action)
 	Py_DECREF(args);
 
 	if (pyret == NULL) {
-		python_log_error("python_runtime_onload");
+		kore_python_log_error("python_runtime_onload");
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -688,7 +688,7 @@ python_runtime_connect(void *addr, struct connection *c)
 	Py_DECREF(args);
 
 	if (pyret == NULL) {
-		python_log_error("python_runtime_connect");
+		kore_python_log_error("python_runtime_connect");
 		kore_connection_disconnect(c);
 	}
 

@@ -714,7 +714,6 @@ void		kore_domain_closelogs(void);
 void		*kore_module_getsym(const char *, struct kore_runtime **);
 void		kore_domain_load_crl(void);
 void		kore_domain_keymgr_init(void);
-void		kore_module_load(const char *, const char *, int);
 void		kore_domain_callback(void (*cb)(struct kore_domain *));
 void		kore_domain_tlsinit(struct kore_domain *, const void *, size_t);
 #if !defined(KORE_NO_HTTP)
@@ -726,6 +725,8 @@ struct kore_module_handle	*kore_module_handler_find(const char *,
 #endif
 
 struct kore_runtime_call	*kore_runtime_getcall(const char *);
+struct kore_module		*kore_module_load(const char *,
+				    const char *, int);
 
 void	kore_runtime_execute(struct kore_runtime_call *);
 int	kore_runtime_onload(struct kore_runtime_call *, int);
