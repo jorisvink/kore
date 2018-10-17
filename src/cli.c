@@ -61,8 +61,8 @@
 #define PRI_TIME_T		"ld"
 #endif
 
-#define LD_FLAGS_MAX		30
-#define CFLAGS_MAX		30
+#define LD_FLAGS_MAX		300
+#define CFLAGS_MAX		300
 #define CXXFLAGS_MAX		CFLAGS_MAX
 
 #define BUILD_NOBUILD		0
@@ -387,6 +387,7 @@ static int			cflags_count = 0;
 static int			cxxflags_count = 0;
 static int			ldflags_count = 0;
 static char			*flavor = NULL;
+static char			*object_dir = ".objs";
 static char			*cflags[CFLAGS_MAX];
 static char			*cxxflags[CXXFLAGS_MAX];
 static char			*ldflags[LD_FLAGS_MAX];
@@ -410,7 +411,7 @@ int
 main(int argc, char **argv)
 {
 	int		i;
-	const char	*env;
+	char		*env;
 
 	if (argc < 2)
 		usage();
@@ -420,6 +421,9 @@ main(int argc, char **argv)
 
 	if ((env = getenv("KORE_PREFIX")) != NULL)
 		prefix = env;
+
+	if ((env = getenv("KORE_OBJDIR")) != NULL)
+		object_dir = env;
 
 	(void)umask(S_IWGRP | S_IWOTH);
 
@@ -571,8 +575,8 @@ cli_build(int argc, char **argv)
 	char			*build_path;
 	int			requires_relink, l;
 	char			*sofile, *config, *data;
-	char			*assets_path, *p, *obj_path;
-	char			pwd[PATH_MAX], *src_path, *assets_header;
+	char			*assets_path, *p, *src_path;
+	char			pwd[PATH_MAX], *assets_header;
 
 	if (getcwd(pwd, sizeof(pwd)) == NULL)
 		fatal("could not get cwd: %s", errno_s);
@@ -618,10 +622,8 @@ cli_build(int argc, char **argv)
 	cli_buildopt_parse(build_path);
 	free(build_path);
 
-	(void)cli_vasprintf(&obj_path, ".objs");
-	if (!cli_dir_exists(obj_path))
-		cli_mkdir(obj_path, 0755);
-	free(obj_path);
+	if (!cli_dir_exists(object_dir))
+		cli_mkdir(object_dir, 0755);
 
 	if (bopt->single_binary) {
 		if (bopt->kore_source == NULL)
@@ -725,8 +727,8 @@ cli_clean(int argc, char **argv)
 {
 	char		pwd[PATH_MAX], *sofile;
 
-	if (cli_dir_exists(".objs"))
-		cli_cleanup_files(".objs");
+	if (cli_dir_exists(object_dir))
+		cli_cleanup_files(object_dir);
 
 	if (getcwd(pwd, sizeof(pwd)) == NULL)
 		fatal("could not get cwd: %s", errno_s);
@@ -1085,8 +1087,8 @@ cli_build_asset(char *fpath, struct dirent *dp)
 		return;
 	}
 
-	(void)cli_vasprintf(&opath, ".objs/%s.o", name);
-	(void)cli_vasprintf(&cpath, ".objs/%s.c", name);
+	(void)cli_vasprintf(&opath, "%s/%s.o", object_dir, name);
+	(void)cli_vasprintf(&cpath, "%s/%s.c", object_dir, name);
 
 	/* Check if the file needs to be built. */
 	if (!cli_file_requires_build(&st, opath)) {
@@ -1226,7 +1228,7 @@ cli_register_source_file(char *fpath, struct dirent *dp)
 	if (!strcmp(ext, ".cpp"))
 		cxx_files_count++;
 
-	(void)cli_vasprintf(&opath, ".objs/%s.o", dp->d_name);
+	(void)cli_vasprintf(&opath, "%s/%s.o", object_dir, dp->d_name);
 	if (!cli_file_requires_build(&st, opath)) {
 		build = BUILD_NOBUILD;
 	} else if (!strcmp(ext, ".cpp")) {
@@ -1254,7 +1256,7 @@ cli_register_kore_file(char *fpath, struct dirent *dp)
 	if ((fname = basename(fpath)) == NULL)
 		fatal("basename failed");
 
-	(void)cli_vasprintf(&opath, ".objs/%s.o", fname);
+	(void)cli_vasprintf(&opath, "%s/%s.o", object_dir, fname);
 
 	/* Silently ignore non existing object files for kore source files. */
 	if (stat(opath, &ost) == -1) {
@@ -1486,12 +1488,15 @@ cli_compile_kore(void *arg)
 {
 	struct buildopt		*bopt = arg;
 	int			idx, i, fcnt;
-	char			*obj, *args[20], pwd[MAXPATHLEN], *flavors[7];
+	char			pwd[MAXPATHLEN], *obj, *args[20], *flavors[7];
 
-	if (getcwd(pwd, sizeof(pwd)) == NULL)
-		fatal("could not get cwd: %s", errno_s);
-
-	(void)cli_vasprintf(&obj, "OBJDIR=%s/.objs", pwd);
+	if (object_dir[0] != '/') {
+		if (getcwd(pwd, sizeof(pwd)) == NULL)
+			fatal("could not get cwd: %s", errno_s);
+		(void)cli_vasprintf(&obj, "OBJDIR=%s/%s", pwd, object_dir);
+	} else {
+		(void)cli_vasprintf(&obj, "OBJDIR=%s", object_dir);
+	}
 
 	if (putenv(obj) != 0)
 		fatal("cannot set OBJDIR for building kore");
@@ -1856,7 +1861,7 @@ cli_build_cflags(struct buildopt *bopt)
 {
 	size_t			len;
 	struct buildopt		*obopt;
-	char			*string, *buf;
+	char			*string, *buf, *env;
 
 	if ((obopt = cli_buildopt_find(flavor)) == NULL)
 		fatal("no such build flavor: %s", flavor);
@@ -1878,6 +1883,9 @@ cli_build_cflags(struct buildopt *bopt)
 		free(buf);
 	}
 
+	if ((env = getenv("CFLAGS")) != NULL)
+		cli_buf_appendf(bopt->cflags, "%s", env);
+
 	string = cli_buf_stringify(bopt->cflags, NULL);
 	printf("CFLAGS=%s\n", string);
 	cflags_count = cli_split_string(string, " ", cflags, CFLAGS_MAX);
@@ -1887,7 +1895,7 @@ static void
 cli_build_cxxflags(struct buildopt *bopt)
 {
 	struct buildopt		*obopt;
-	char			*string;
+	char			*string, *env;
 
 	if ((obopt = cli_buildopt_find(flavor)) == NULL)
 		fatal("no such build flavor: %s", flavor);
@@ -1902,6 +1910,9 @@ cli_build_cxxflags(struct buildopt *bopt)
 		    obopt->cxxflags->offset);
 	}
 
+	if ((env = getenv("CXXFLAGS")) != NULL)
+		cli_buf_appendf(bopt->cxxflags, "%s", env);
+
 	string = cli_buf_stringify(bopt->cxxflags, NULL);
 	if (cxx_files_count > 0)
 		printf("CXXFLAGS=%s\n", string);
@@ -1914,7 +1925,7 @@ cli_build_ldflags(struct buildopt *bopt)
 	int			fd;
 	size_t			len;
 	struct buildopt		*obopt;
-	char			*string, *buf;
+	char			*string, *buf, *env, *path;
 
 	if ((obopt = cli_buildopt_find(flavor)) == NULL)
 		fatal("no such build flavor: %s", flavor);
@@ -1930,11 +1941,12 @@ cli_build_ldflags(struct buildopt *bopt)
 		cli_buf_appendf(bopt->ldflags, "-shared ");
 #endif
 	} else {
-		cli_file_open(".objs/ldflags", O_RDONLY, &fd);
+		(void)cli_vasprintf(&path, "%s/ldflags", object_dir);
+		cli_file_open(path, O_RDONLY, &fd);
 		cli_file_read(fd, &buf, &len);
 		cli_file_close(fd);
 		if (len == 0)
-			fatal(".objs/ldflags is empty");
+			fatal("ldflags is empty");
 		len--;
 
 		cli_buf_append(bopt->ldflags, buf, len);
@@ -1947,6 +1959,9 @@ cli_build_ldflags(struct buildopt *bopt)
 		    obopt->ldflags->offset);
 	}
 
+	if ((env = getenv("LDFLAGS")) != NULL)
+		cli_buf_appendf(bopt->ldflags, "%s", env);
+
 	string = cli_buf_stringify(bopt->ldflags, NULL);
 	printf("LDFLAGS=%s\n", string);
 	ldflags_count = cli_split_string(string, " ", ldflags, LD_FLAGS_MAX);
@@ -1956,7 +1971,12 @@ static void
 cli_flavor_load(void)
 {
 	FILE		*fp;
-	char		buf[BUFSIZ], pwd[MAXPATHLEN], *p, *conf;
+	char		buf[BUFSIZ], pwd[MAXPATHLEN], *p, *conf, *env;
+
+	if ((env = getenv("KORE_BUILD_FLAVOR")) != NULL) {
+		flavor = cli_strdup(env);
+		return;
+	}
 
 	if (getcwd(pwd, sizeof(pwd)) == NULL)
 		fatal("could not get cwd: %s", errno_s);
@@ -1994,7 +2014,7 @@ cli_kore_features(struct buildopt *bopt, char **out, size_t *outlen)
 	char		*path, *data;
 
 	if (bopt->single_binary) {
-		(void)cli_vasprintf(&path, ".objs/features");
+		(void)cli_vasprintf(&path, "%s/features", object_dir);
 	} else {
 		(void)cli_vasprintf(&path, "%s/share/kore/features", prefix);
 	}
@@ -2005,7 +2025,7 @@ cli_kore_features(struct buildopt *bopt, char **out, size_t *outlen)
 	free(path);
 
 	if (len == 0)
-		fatal(".objs/features is empty");
+		fatal("features is empty");
 
 	len--;
 
