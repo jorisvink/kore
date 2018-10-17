@@ -5,6 +5,7 @@ PREFIX?=/usr/local
 OBJDIR?=obj
 KORE=kore
 KODEV=kodev/kodev
+KORE_CRYPTO?=crypto
 INSTALL_DIR=$(PREFIX)/bin
 MAN_DIR=$(PREFIX)/share/man
 SHARE_DIR=$(PREFIX)/share/kore
@@ -24,7 +25,7 @@ CFLAGS+=-Wall -Werror -Wstrict-prototypes -Wmissing-prototypes
 CFLAGS+=-Wmissing-declarations -Wshadow -Wpointer-arith -Wcast-qual
 CFLAGS+=-Wsign-compare -Iinclude/kore -std=c99 -pedantic
 CFLAGS+=-DPREFIX='"$(PREFIX)"' -fstack-protector-all
-LDFLAGS=-rdynamic -lssl -lcrypto
+LDFLAGS=-rdynamic -lssl -l$(KORE_CRYPTO)
 
 ifneq ("$(KORE_SINGLE_BINARY)", "")
 	CFLAGS+=-DKORE_SINGLE_BINARY
@@ -61,7 +62,7 @@ ifneq ("$(NOTLS)", "")
 	ifneq ("$(NOHTTP)", "")
 		LDFLAGS=-rdynamic
 	else
-		LDFLAGS=-rdynamic -lcrypto
+		LDFLAGS=-rdynamic -l$(KORE_CRYPTO)
 	endif
 endif
 
@@ -90,10 +91,12 @@ endif
 
 ifneq ("$(PYTHON)", "")
 	S_SRC+=src/python.c
-	LDFLAGS+=$(shell python3-config --ldflags)
-	CFLAGS+=$(shell python3-config --includes) -DKORE_USE_PYTHON
+	KORE_PYTHON_LIB?=$(shell python3-config --ldflags)
+	KORE_PYTHON_INC?=$(shell python3-config --includes)
+	LDFLAGS+=$(KORE_PYTHON_LIB)
+	CFLAGS+=$(KORE_PYTHON_INC) -DKORE_USE_PYTHON
 	FEATURES+=-DKORE_USE_PYTHON
-	FEATURES_INC+=$(shell python3-config --includes)
+	FEATURES_INC+=$(KORE_PYTHON_INC)
 endif
 
 ifneq ("$(SANITIZE)", "")
