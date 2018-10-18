@@ -55,9 +55,9 @@ extern char		*__progname;
 
 static void	usage(void);
 static void	version(void);
-static void	kore_server_start(void);
 static void	kore_write_kore_pid(void);
 static void	kore_server_sslstart(void);
+static void	kore_server_start(int, char *[]);
 
 static void
 usage(void)
@@ -119,7 +119,9 @@ version(void)
 int
 main(int argc, char *argv[])
 {
+#if defined(KORE_SINGLE_BINARY)
 	struct kore_runtime_call	*rcall;
+#endif
 	int				ch, flags;
 
 	flags = 0;
@@ -196,11 +198,13 @@ main(int argc, char *argv[])
 	kore_module_load(NULL, NULL, KORE_MODULE_NATIVE);
 	kore_parse_config();
 
+#if defined(KORE_SINGLE_BINARY)
 	rcall = kore_runtime_getcall("kore_parent_configure");
 	if (rcall != NULL) {
 		kore_runtime_configure(rcall, argc, argv);
 		kore_free(rcall);
 	}
+#endif
 
 	kore_platform_init();
 
@@ -216,7 +220,7 @@ main(int argc, char *argv[])
 #endif
 
 	kore_signal_setup();
-	kore_server_start();
+	kore_server_start(argc, argv);
 
 	kore_log(LOG_NOTICE, "server shutting down");
 	kore_worker_shutdown();
@@ -547,16 +551,23 @@ kore_server_sslstart(void)
 }
 
 static void
-kore_server_start(void)
+kore_server_start(int argc, char *argv[])
 {
 	u_int32_t			tmp;
 	int				quit;
-#if !defined(KORE_SINGLE_BINARY)
 	struct kore_runtime_call	*rcall;
-#endif
 
-	if (foreground == 0 && daemon(1, 1) == -1)
-		fatal("cannot daemon(): %s", errno_s);
+	if (foreground == 0) {
+		if (daemon(1, 0) == -1)
+			fatal("cannot daemon(): %s", errno_s);
+#if defined(KORE_SINGLE_BINARY)
+		rcall = kore_runtime_getcall("kore_parent_daemonized");
+		if (rcall != NULL) {
+			kore_runtime_execute(rcall);
+			kore_free(rcall);
+		}
+#endif
+	}
 
 	kore_pid = getpid();
 	kore_write_kore_pid();
@@ -577,7 +588,7 @@ kore_server_start(void)
 #if !defined(KORE_SINGLE_BINARY)
 	rcall = kore_runtime_getcall("kore_parent_configure");
 	if (rcall != NULL) {
-		kore_runtime_execute(rcall);
+		kore_runtime_configure(rcall, argc, argv);
 		kore_free(rcall);
 	}
 #endif

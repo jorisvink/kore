@@ -623,7 +623,9 @@ fatalx(const char *fmt, ...)
 {
 	va_list		args;
 
-	kore_msg_send(KORE_MSG_PARENT, KORE_MSG_SHUTDOWN, NULL, 0);
+	/* In case people call fatalx() from the parent context. */
+	if (worker != NULL)
+		kore_msg_send(KORE_MSG_PARENT, KORE_MSG_SHUTDOWN, NULL, 0);
 
 	va_start(args, fmt);
 	fatal_log(fmt, args);

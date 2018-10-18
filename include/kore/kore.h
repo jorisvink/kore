@@ -807,6 +807,7 @@ void	kore_keymgr_run(void);
 void	kore_keymgr_cleanup(int);
 
 void	kore_worker_configure(void);
+void	kore_parent_daemonized(void);
 void	kore_parent_configure(int, char **);
 
 #if defined(__cplusplus)
