@@ -14,10 +14,22 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#define CORO_STATE_RUNNABLE		1
+#define CORO_STATE_SUSPENDED		2
+
+struct python_coro {
+	int				state;
+	int				error;
+	PyObject			*obj;
+	struct http_request		*request;
+	TAILQ_ENTRY(python_coro)	list;
+};
+
 static PyObject		*python_kore_log(PyObject *, PyObject *);
-static PyObject		*python_kore_fatal(PyObject *, PyObject *);
-static PyObject		*python_kore_fatalx(PyObject *, PyObject *);
 static PyObject		*python_kore_bind(PyObject *, PyObject *);
+static PyObject		*python_kore_fatal(PyObject *, PyObject *);
+static PyObject		*python_kore_queue(PyObject *, PyObject *);
+static PyObject		*python_kore_fatalx(PyObject *, PyObject *);
 static PyObject		*python_kore_bind_unix(PyObject *, PyObject *);
 static PyObject		*python_kore_task_create(PyObject *, PyObject *);
 static PyObject		*python_kore_socket_wrap(PyObject *, PyObject *);
@@ -35,9 +47,10 @@ static PyObject		*python_websocket_broadcast(PyObject *, PyObject *);
 
 static struct PyMethodDef pykore_methods[] = {
 	METHOD("log", python_kore_log, METH_VARARGS),
+	METHOD("bind", python_kore_bind, METH_VARARGS),
+	METHOD("queue", python_kore_queue, METH_VARARGS),
 	METHOD("fatal", python_kore_fatal, METH_VARARGS),
 	METHOD("fatalx", python_kore_fatalx, METH_VARARGS),
-	METHOD("bind", python_kore_bind, METH_VARARGS),
 	METHOD("bind_unix", python_kore_bind_unix, METH_VARARGS),
 	METHOD("task_create", python_kore_task_create, METH_VARARGS),
 	METHOD("socket_wrap", python_kore_socket_wrap, METH_VARARGS),
@@ -102,7 +115,7 @@ struct pysocket_data {
 	int			fd;
 	int			type;
 	void			*self;
-	void			*coro;
+	struct python_coro	*coro;
 	int			state;
 	size_t			length;
 	struct kore_buf		buffer;
@@ -133,6 +146,70 @@ static PyTypeObject pysocket_op_type = {
 	.tp_iternext = (iternextfunc)pysocket_op_iternext,
 	.tp_basicsize = sizeof(struct pysocket_op),
 	.tp_dealloc = (destructor)pysocket_op_dealloc,
+	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+};
+
+struct pyqueue_waiting {
+	struct python_coro		*coro;
+	TAILQ_ENTRY(pyqueue_waiting)	list;
+};
+
+struct pyqueue_object {
+	PyObject			*obj;
+	TAILQ_ENTRY(pyqueue_object)	list;
+};
+
+struct pyqueue {
+	PyObject_HEAD
+	TAILQ_HEAD(, pyqueue_object)	objects;
+	TAILQ_HEAD(, pyqueue_waiting)	waiting;
+};
+
+static PyObject *pyqueue_pop(struct pyqueue *, PyObject *);
+static PyObject *pyqueue_push(struct pyqueue *, PyObject *);
+
+static PyMethodDef pyqueue_methods[] = {
+	METHOD("pop", pyqueue_pop, METH_NOARGS),
+	METHOD("push", pyqueue_push, METH_VARARGS),
+	METHOD(NULL, NULL, -1)
+};
+
+static void	pyqueue_dealloc(struct pyqueue *);
+
+static PyTypeObject pyqueue_type = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "kore.queue",
+	.tp_doc = "queue",
+	.tp_methods = pyqueue_methods,
+	.tp_basicsize = sizeof(struct pyqueue),
+	.tp_dealloc = (destructor)pyqueue_dealloc,
+	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+};
+
+struct pyqueue_op {
+	PyObject_HEAD
+	struct pyqueue		*queue;
+};
+
+static void	pyqueue_op_dealloc(struct pyqueue_op *);
+
+static PyObject	*pyqueue_op_await(PyObject *);
+static PyObject	*pyqueue_op_iternext(struct pyqueue_op *);
+
+static PyAsyncMethods pyqueue_op_async = {
+	(unaryfunc)pyqueue_op_await,
+	NULL,
+	NULL
+};
+
+static PyTypeObject pyqueue_op_type = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "kore.queueop",
+	.tp_doc = "queue waitable",
+	.tp_as_async = &pyqueue_op_async,
+	.tp_iternext = (iternextfunc)pyqueue_op_iternext,
+	.tp_basicsize = sizeof(struct pyqueue_op),
+	.tp_dealloc = (destructor)pyqueue_op_dealloc,
 	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
 };
 

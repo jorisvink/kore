@@ -30,17 +30,6 @@
 #include "python_api.h"
 #include "python_methods.h"
 
-#define CORO_STATE_RUNNABLE		1
-#define CORO_STATE_SUSPENDED		2
-
-struct python_coro {
-	int				state;
-	int				error;
-	PyObject			*obj;
-	struct http_request		*request;
-	TAILQ_ENTRY(python_coro)	list;
-};
-
 static PyMODINIT_FUNC	python_module_init(void);
 static PyObject		*python_import(const char *);
 static PyObject		*pyconnection_alloc(struct connection *);
@@ -150,6 +139,9 @@ static PyMemAllocatorEx allocator = {
 };
 
 static struct kore_pool			coro_pool;
+static struct kore_pool			queue_wait_pool;
+static struct kore_pool			queue_object_pool;
+
 static int				coro_count;
 static TAILQ_HEAD(, python_coro)	coro_runnable;
 static TAILQ_HEAD(, python_coro)	coro_suspended;
@@ -168,6 +160,11 @@ kore_python_init(void)
 	TAILQ_INIT(&coro_suspended);
 
 	kore_pool_init(&coro_pool, "coropool", sizeof(struct python_coro), 100);
+
+	kore_pool_init(&queue_wait_pool, "queue_wait_pool",
+	    sizeof(struct pyqueue_waiting), 100);
+	kore_pool_init(&queue_object_pool, "queue_object_pool",
+	    sizeof(struct pyqueue_object), 100);
 
 	PyMem_SetAllocator(PYMEM_DOMAIN_OBJ, &allocator);
 	PyMem_SetAllocator(PYMEM_DOMAIN_MEM, &allocator);
@@ -207,6 +204,13 @@ kore_python_coro_run(void)
 		if (python_coro_run(coro) == KORE_RESULT_OK)
 			kore_python_coro_delete(coro);
 	}
+
+	/*
+	 * If something was woken up, let Kore do HTTP processing
+	 * so they run ASAP without having to wait for a tick from
+	 * the event loop.
+	 */
+	http_process();
 }
 
 void
@@ -704,6 +708,7 @@ python_module_init(void)
 	if ((pykore = PyModule_Create(&pykore_module)) == NULL)
 		fatal("python_module_init: failed to setup pykore module");
 
+	python_push_type("pyqueue", pykore, &pyqueue_type);
 	python_push_type("pysocket", pykore, &pysocket_type);
 	python_push_type("pysocket_op", pykore, &pysocket_op_type);
 	python_push_type("pyconnection", pykore, &pyconnection_type);
@@ -885,6 +890,20 @@ out:
 	Py_XDECREF(pyproto);
 
 	return ((PyObject *)sock);
+}
+
+static PyObject *
+python_kore_queue(PyObject *self, PyObject *args)
+{
+	struct pyqueue		*queue;
+
+	if ((queue = PyObject_New(struct pyqueue, &pyqueue_type)) == NULL)
+		return (NULL);
+
+	TAILQ_INIT(&queue->objects);
+	TAILQ_INIT(&queue->waiting);
+
+	return ((PyObject *)queue);
 }
 
 static PyObject *
@@ -1143,6 +1162,8 @@ pysocket_op_dealloc(struct pysocket_op *op)
 		kore_buf_cleanup(&op->data.buffer);
 
 	Py_DECREF(op->data.socket);
+	Py_INCREF(op->data.coro->obj);
+
 	PyObject_Del((PyObject *)op);
 }
 
@@ -1177,6 +1198,7 @@ pysocket_op_create(struct pysocket *sock, int type, const void *ptr, size_t len)
 	op->data.evt.handle = pysocket_evt_handle;
 
 	Py_INCREF(op->data.socket);
+	Py_INCREF(op->data.coro->obj);
 
 	switch (type) {
 	case PYSOCKET_TYPE_RECV:
@@ -1381,6 +1403,113 @@ pysocket_evt_handle(void *arg, int error)
 		python_coro_wakeup(coro);
 
 	coro->error = error;
+}
+
+static void
+pyqueue_dealloc(struct pyqueue *queue)
+{
+	PyObject_Del((PyObject *)queue);
+}
+
+static PyObject *
+pyqueue_pop(struct pyqueue *queue, PyObject *args)
+{
+	struct pyqueue_op	*op;
+	struct pyqueue_waiting	*waiting;
+
+	if ((op = PyObject_New(struct pyqueue_op, &pyqueue_op_type)) == NULL)
+		return (NULL);
+
+	op->queue = queue;
+
+	waiting = kore_pool_get(&queue_wait_pool);
+
+	waiting->coro = coro_running;
+	TAILQ_INSERT_TAIL(&queue->waiting, waiting, list);
+
+	Py_INCREF((PyObject *)queue);
+	Py_INCREF(waiting->coro->obj);
+
+	return ((PyObject *)op);
+}
+
+static PyObject *
+pyqueue_push(struct pyqueue *queue, PyObject *args)
+{
+	PyObject		*obj;
+	struct pyqueue_object	*object;
+	struct pyqueue_waiting	*waiting;
+
+	if (!PyArg_ParseTuple(args, "O", &obj))
+		return (NULL);
+
+	Py_INCREF(obj);
+
+	object = kore_pool_get(&queue_object_pool);
+	object->obj = obj;
+
+	TAILQ_INSERT_TAIL(&queue->objects, object, list);
+
+	/* Wakeup first in line if any. */
+	if ((waiting = TAILQ_FIRST(&queue->waiting)) != NULL) {
+		TAILQ_REMOVE(&queue->waiting, waiting, list);
+
+		/* wakeup HTTP request if one is tied. */
+		if (waiting->coro->request != NULL)
+			http_request_wakeup(waiting->coro->request);
+		else
+			python_coro_wakeup(waiting->coro);
+
+		Py_DECREF(waiting->coro->obj);
+		kore_pool_put(&queue_wait_pool, waiting);
+	}
+
+	Py_RETURN_TRUE;
+}
+
+static void
+pyqueue_op_dealloc(struct pyqueue_op *op)
+{
+	Py_DECREF((PyObject *)op->queue);
+	PyObject_Del((PyObject *)op);
+}
+
+static PyObject *
+pyqueue_op_await(PyObject *obj)
+{
+	Py_INCREF(obj);
+	return (obj);
+}
+
+static PyObject *
+pyqueue_op_iternext(struct pyqueue_op *op)
+{
+	PyObject		*obj;
+	struct pyqueue_object	*object;
+	struct pyqueue_waiting	*waiting;
+
+	if ((object = TAILQ_FIRST(&op->queue->objects)) == NULL) {
+		Py_RETURN_NONE;
+	}
+
+	TAILQ_REMOVE(&op->queue->objects, object, list);
+
+	obj = object->obj;
+	kore_pool_put(&queue_object_pool, object);
+
+	TAILQ_FOREACH(waiting, &op->queue->waiting, list) {
+		if (waiting->coro == coro_running) {
+			TAILQ_REMOVE(&op->queue->waiting, waiting, list);
+			Py_DECREF(waiting->coro->obj);
+			kore_pool_put(&queue_wait_pool, waiting);
+			break;
+		}
+	}
+
+	PyErr_SetObject(PyExc_StopIteration, obj);
+	Py_DECREF(obj);
+
+	return (NULL);
 }
 
 static PyObject *
