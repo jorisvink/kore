@@ -1162,7 +1162,7 @@ pysocket_op_dealloc(struct pysocket_op *op)
 		kore_buf_cleanup(&op->data.buffer);
 
 	Py_DECREF(op->data.socket);
-	Py_INCREF(op->data.coro->obj);
+	Py_DECREF(op->data.coro->obj);
 
 	PyObject_Del((PyObject *)op);
 }
