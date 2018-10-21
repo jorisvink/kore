@@ -151,6 +151,7 @@ static PyTypeObject pysocket_op_type = {
 
 struct pyqueue_waiting {
 	struct python_coro		*coro;
+	struct pyqueue_op		*op;
 	TAILQ_ENTRY(pyqueue_waiting)	list;
 };
 
@@ -189,6 +190,7 @@ static PyTypeObject pyqueue_type = {
 struct pyqueue_op {
 	PyObject_HEAD
 	struct pyqueue		*queue;
+	struct pyqueue_waiting	*waiting;
 };
 
 static void	pyqueue_op_dealloc(struct pyqueue_op *);
