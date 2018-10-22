@@ -80,6 +80,7 @@ static void	worker_entropy_recv(struct kore_msg *, const void *);
 static void	worker_certificate_recv(struct kore_msg *, const void *);
 #endif
 
+static u_int64_t			next_lock;
 static struct kore_worker		*kore_workers;
 static int				worker_no_lock;
 static int				shm_accept_key;
@@ -293,9 +294,9 @@ kore_worker_entry(struct kore_worker *kw)
 {
 	struct kore_runtime_call	*rcall;
 	char				buf[16];
+	u_int64_t			now, next_prune;
 	int				quit, had_lock, r;
 	u_int64_t			timerwait, netwait;
-	u_int64_t			now, next_prune, next_lock;
 #if !defined(KORE_NO_TLS)
 	u_int64_t			last_seed;
 #endif
@@ -581,6 +582,7 @@ kore_worker_make_busy(void)
 	if (worker->has_lock) {
 		worker_unlock();
 		worker->has_lock = 0;
+		next_lock = kore_time_ms() + WORKER_LOCK_TIMEOUT;
 	}
 }
 
