@@ -103,7 +103,7 @@ kore_worker_init(void)
 	worker_no_lock = 0;
 
 	if (worker_count == 0)
-		worker_count = 1;
+		worker_count = cpu_count;
 
 #if !defined(KORE_NO_TLS)
 	/* account for the key manager. */
