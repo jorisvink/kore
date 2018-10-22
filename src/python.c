@@ -1447,6 +1447,24 @@ pyqueue_pop(struct pyqueue *queue, PyObject *args)
 }
 
 static PyObject *
+pyqueue_popnow(struct pyqueue *queue, PyObject *args)
+{
+	PyObject		*obj;
+	struct pyqueue_object	*object;
+
+	if ((object = TAILQ_FIRST(&queue->objects)) == NULL) {
+		Py_RETURN_NONE;
+	}
+
+	TAILQ_REMOVE(&queue->objects, object, list);
+
+	obj = object->obj;
+	kore_pool_put(&queue_object_pool, object);
+
+	return (obj);
+}
+
+static PyObject *
 pyqueue_push(struct pyqueue *queue, PyObject *args)
 {
 	PyObject		*obj;

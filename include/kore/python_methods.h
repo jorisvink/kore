@@ -168,10 +168,12 @@ struct pyqueue {
 
 static PyObject *pyqueue_pop(struct pyqueue *, PyObject *);
 static PyObject *pyqueue_push(struct pyqueue *, PyObject *);
+static PyObject *pyqueue_popnow(struct pyqueue *, PyObject *);
 
 static PyMethodDef pyqueue_methods[] = {
 	METHOD("pop", pyqueue_pop, METH_NOARGS),
 	METHOD("push", pyqueue_push, METH_VARARGS),
+	METHOD("popnow", pyqueue_popnow, METH_NOARGS),
 	METHOD(NULL, NULL, -1)
 };
 
