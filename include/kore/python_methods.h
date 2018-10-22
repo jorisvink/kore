@@ -18,14 +18,17 @@
 #define CORO_STATE_SUSPENDED		2
 
 struct python_coro {
+	u_int64_t			id;
 	int				state;
 	int				error;
 	PyObject			*obj;
+	struct pylock			*lock;
 	struct http_request		*request;
 	TAILQ_ENTRY(python_coro)	list;
 };
 
 static PyObject		*python_kore_log(PyObject *, PyObject *);
+static PyObject		*python_kore_lock(PyObject *, PyObject *);
 static PyObject		*python_kore_bind(PyObject *, PyObject *);
 static PyObject		*python_kore_fatal(PyObject *, PyObject *);
 static PyObject		*python_kore_queue(PyObject *, PyObject *);
@@ -47,6 +50,7 @@ static PyObject		*python_websocket_broadcast(PyObject *, PyObject *);
 
 static struct PyMethodDef pykore_methods[] = {
 	METHOD("log", python_kore_log, METH_VARARGS),
+	METHOD("lock", python_kore_lock, METH_NOARGS),
 	METHOD("bind", python_kore_bind, METH_VARARGS),
 	METHOD("queue", python_kore_queue, METH_VARARGS),
 	METHOD("fatal", python_kore_fatal, METH_VARARGS),
@@ -214,6 +218,64 @@ static PyTypeObject pyqueue_op_type = {
 	.tp_iternext = (iternextfunc)pyqueue_op_iternext,
 	.tp_basicsize = sizeof(struct pyqueue_op),
 	.tp_dealloc = (destructor)pyqueue_op_dealloc,
+	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+};
+
+struct pylock {
+	PyObject_HEAD
+	struct python_coro		*owner;
+	TAILQ_HEAD(, pylock_op)		ops;
+};
+
+static PyObject *pylock_aexit(struct pylock *, PyObject *);
+static PyObject *pylock_aenter(struct pylock *, PyObject *);
+
+static PyMethodDef pylock_methods[] = {
+	METHOD("__aexit__", pylock_aexit, METH_VARARGS),
+	METHOD("__aenter__", pylock_aenter, METH_NOARGS),
+	METHOD(NULL, NULL, -1)
+};
+
+static void	pylock_dealloc(struct pylock *);
+
+static PyTypeObject pylock_type = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "kore.lock",
+	.tp_doc = "locking mechanism",
+	.tp_methods = pylock_methods,
+	.tp_basicsize = sizeof(struct pylock),
+	.tp_dealloc = (destructor)pylock_dealloc,
+	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+};
+
+struct pylock_op {
+	PyObject_HEAD
+	int			locking;
+	int			active;
+	struct pylock		*lock;
+	struct python_coro	*coro;
+	TAILQ_ENTRY(pylock_op)	list;
+};
+
+static void	pylock_op_dealloc(struct pylock_op *);
+
+static PyObject	*pylock_op_await(PyObject *);
+static PyObject	*pylock_op_iternext(struct pylock_op *);
+
+static PyAsyncMethods pylock_op_async = {
+	(unaryfunc)pylock_op_await,
+	NULL,
+	NULL
+};
+
+static PyTypeObject pylock_op_type = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "kore.lockop",
+	.tp_doc = "lock awaitable",
+	.tp_as_async = &pylock_op_async,
+	.tp_iternext = (iternextfunc)pylock_op_iternext,
+	.tp_basicsize = sizeof(struct pylock_op),
+	.tp_dealloc = (destructor)pylock_op_dealloc,
 	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
 };
 
