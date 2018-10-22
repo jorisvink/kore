@@ -463,8 +463,10 @@ kore_listener_accept(void *arg, int error)
 
 	while (worker_active_connections < worker_max_connections) {
 		if (worker_accept_threshold != 0 &&
-		    accepted >= worker_accept_threshold)
+		    accepted >= worker_accept_threshold) {
+			kore_worker_make_busy();
 			break;
+		}
 
 		if (!kore_connection_accept(l, &c))
 			break;
