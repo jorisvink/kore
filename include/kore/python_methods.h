@@ -30,6 +30,7 @@ struct python_coro {
 static PyObject		*python_kore_log(PyObject *, PyObject *);
 static PyObject		*python_kore_lock(PyObject *, PyObject *);
 static PyObject		*python_kore_bind(PyObject *, PyObject *);
+static PyObject		*python_kore_timer(PyObject *, PyObject *);
 static PyObject		*python_kore_fatal(PyObject *, PyObject *);
 static PyObject		*python_kore_queue(PyObject *, PyObject *);
 static PyObject		*python_kore_fatalx(PyObject *, PyObject *);
@@ -53,6 +54,7 @@ static struct PyMethodDef pykore_methods[] = {
 	METHOD("log", python_kore_log, METH_VARARGS),
 	METHOD("lock", python_kore_lock, METH_NOARGS),
 	METHOD("bind", python_kore_bind, METH_VARARGS),
+	METHOD("timer", python_kore_timer, METH_VARARGS),
 	METHOD("queue", python_kore_queue, METH_VARARGS),
 	METHOD("fatal", python_kore_fatal, METH_VARARGS),
 	METHOD("fatalx", python_kore_fatalx, METH_VARARGS),
@@ -69,6 +71,32 @@ static struct PyMethodDef pykore_methods[] = {
 
 static struct PyModuleDef pykore_module = {
 	PyModuleDef_HEAD_INIT, "kore", NULL, -1, pykore_methods
+};
+
+struct pytimer {
+	PyObject_HEAD
+	int			flags;
+	struct kore_timer	*run;
+	PyObject		*callable;
+};
+
+static PyObject	*pytimer_close(struct pytimer *, PyObject *);
+
+static PyMethodDef pytimer_methods[] = {
+	METHOD("close", pytimer_close, METH_NOARGS),
+	METHOD(NULL, NULL, -1)
+};
+
+static void	pytimer_dealloc(struct pytimer *);
+
+static PyTypeObject pytimer_type = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "kore.timer",
+	.tp_doc = "kore timer implementation",
+	.tp_methods = pytimer_methods,
+	.tp_basicsize = sizeof(struct pytimer),
+	.tp_dealloc = (destructor)pytimer_dealloc,
+	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
 };
 
 struct pysocket {

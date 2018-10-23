@@ -53,6 +53,7 @@ static PyObject		*pysocket_async_accept(struct pysocket_op *);
 static PyObject		*pysocket_async_connect(struct pysocket_op *);
 
 static void		pylock_do_release(struct pylock *);
+static void		pytimer_run(void *, u_int64_t);
 
 #if defined(KORE_USE_PGSQL)
 static PyObject		*pykore_pgsql_alloc(struct http_request *,
@@ -100,7 +101,7 @@ struct kore_runtime kore_python_runtime = {
 	.onload = python_runtime_onload,
 	.connect = python_runtime_connect,
 	.execute = python_runtime_execute,
-	.configure = python_runtime_configure
+	.configure = python_runtime_configure,
 };
 
 static struct {
@@ -115,6 +116,7 @@ static struct {
 	{ "RESULT_ERROR", KORE_RESULT_ERROR },
 	{ "MODULE_LOAD", KORE_MODULE_LOAD },
 	{ "MODULE_UNLOAD", KORE_MODULE_UNLOAD },
+	{ "TIMER_ONESHOT", KORE_TIMER_ONESHOT },
 	{ "CONN_PROTO_HTTP", CONN_PROTO_HTTP },
 	{ "CONN_PROTO_UNKNOWN", CONN_PROTO_UNKNOWN },
 	{ "CONN_PROTO_WEBSOCKET", CONN_PROTO_WEBSOCKET },
@@ -718,6 +720,7 @@ python_module_init(void)
 		fatal("python_module_init: failed to setup pykore module");
 
 	python_push_type("pylock", pykore, &pylock_type);
+	python_push_type("pytimer", pykore, &pytimer_type);
 	python_push_type("pyqueue", pykore, &pyqueue_type);
 	python_push_type("pysocket", pykore, &pysocket_type);
 	python_push_type("pysocket_op", pykore, &pysocket_op_type);
@@ -967,6 +970,37 @@ python_kore_shutdown(PyObject *self, PyObject *args)
 }
 
 static PyObject *
+python_kore_timer(PyObject *self, PyObject *args)
+{
+	u_int64_t		ms;
+	PyObject		*obj;
+	int			flags;
+	struct pytimer		*timer;
+
+	if (!PyArg_ParseTuple(args, "OKi", &obj, &ms, &flags))
+		return (NULL);
+
+	if (flags & ~(KORE_TIMER_FLAGS)) {
+		PyErr_SetString(PyExc_RuntimeError, "invalid flags");
+		return (NULL);
+	}
+
+	if ((timer = PyObject_New(struct pytimer, &pytimer_type)) == NULL)
+		return (NULL);
+
+	timer->flags = flags;
+	timer->callable = obj;
+	timer->run = kore_timer_add(pytimer_run, ms, timer, flags);
+
+	printf("timer of %llu ms started (0x%04x)\n", ms, flags);
+
+	Py_INCREF((PyObject *)timer);
+	Py_INCREF(timer->callable);
+
+	return ((PyObject *)timer);
+}
+
+static PyObject *
 python_import(const char *path)
 {
 	PyObject	*module;
@@ -1069,6 +1103,56 @@ pyconnection_get_addr(struct pyconnection *pyc, void *closure)
 		return (PyErr_NoMemory());
 
 	return (result);
+}
+
+static void
+pytimer_run(void *arg, u_int64_t now)
+{
+	PyObject	*ret;
+	struct pytimer	*timer = arg;
+
+	PyErr_Clear();
+	ret = PyObject_CallObject(timer->callable, NULL);
+	Py_DECREF(ret);
+
+	if (timer->flags & KORE_TIMER_ONESHOT) {
+		timer->run = NULL;
+		Py_DECREF((PyObject *)timer);
+	}
+}
+
+static void
+pytimer_dealloc(struct pytimer *timer)
+{
+	if (timer->run != NULL) {
+		kore_timer_remove(timer->run);
+		timer->run = NULL;
+	}
+
+	if (timer->callable != NULL) {
+		Py_DECREF(timer->callable);
+		timer->callable = NULL;
+	}
+
+	PyObject_Del((PyObject *)timer);
+}
+
+static PyObject *
+pytimer_close(struct pytimer *timer, PyObject *args)
+{
+	if (timer->run != NULL) {
+		kore_timer_remove(timer->run);
+		timer->run = NULL;
+	}
+
+	if (timer->callable != NULL) {
+		Py_DECREF(timer->callable);
+		timer->callable = NULL;
+	}
+
+	Py_DECREF((PyObject *)timer);
+
+	Py_RETURN_TRUE;
 }
 
 static void
