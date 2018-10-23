@@ -119,9 +119,7 @@ version(void)
 int
 main(int argc, char *argv[])
 {
-#if defined(KORE_SINGLE_BINARY)
 	struct kore_runtime_call	*rcall;
-#endif
 	int				ch, flags;
 
 	flags = 0;
@@ -224,7 +222,15 @@ main(int argc, char *argv[])
 
 	kore_log(LOG_NOTICE, "server shutting down");
 	kore_worker_shutdown();
-	unlink(kore_pidfile);
+
+	rcall = kore_runtime_getcall("kore_parent_teardown");
+	if (rcall != NULL) {
+		kore_runtime_execute(rcall);
+		kore_free(rcall);
+	}
+
+	if (unlink(kore_pidfile) == -1 && errno != ENOENT)
+		kore_log(LOG_NOTICE, "failed to remove pidfile (%s)", errno_s);
 
 	kore_listener_cleanup();
 	kore_log(LOG_NOTICE, "goodbye");

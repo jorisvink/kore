@@ -463,6 +463,12 @@ kore_worker_entry(struct kore_worker *kw)
 			break;
 	}
 
+	rcall = kore_runtime_getcall("kore_worker_teardown");
+	if (rcall != NULL) {
+		kore_runtime_execute(rcall);
+		kore_free(rcall);
+	}
+
 	kore_platform_event_cleanup();
 	kore_connection_cleanup();
 	kore_domain_cleanup();
