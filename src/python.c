@@ -1014,6 +1014,7 @@ python_kore_timer(PyObject *self, PyObject *args)
 	timer->callable = obj;
 	timer->run = kore_timer_add(pytimer_run, ms, timer, flags);
 
+	Py_INCREF((PyObject *)timer);
 	Py_INCREF(timer->callable);
 
 	return ((PyObject *)timer);
@@ -1169,6 +1170,7 @@ pytimer_close(struct pytimer *timer, PyObject *args)
 		timer->callable = NULL;
 	}
 
+	Py_INCREF((PyObject *)timer);
 	Py_RETURN_TRUE;
 }
 
