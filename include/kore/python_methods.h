@@ -22,7 +22,6 @@ struct python_coro {
 	int				state;
 	int				error;
 	PyObject			*obj;
-	struct pylock			*lock;
 	struct http_request		*request;
 	TAILQ_ENTRY(python_coro)	list;
 };
@@ -34,6 +33,7 @@ static PyObject		*python_kore_timer(PyObject *, PyObject *);
 static PyObject		*python_kore_fatal(PyObject *, PyObject *);
 static PyObject		*python_kore_queue(PyObject *, PyObject *);
 static PyObject		*python_kore_fatalx(PyObject *, PyObject *);
+static PyObject		*python_kore_suspend(PyObject *, PyObject *);
 static PyObject		*python_kore_shutdown(PyObject *, PyObject *);
 static PyObject		*python_kore_bind_unix(PyObject *, PyObject *);
 static PyObject		*python_kore_task_create(PyObject *, PyObject *);
@@ -58,6 +58,7 @@ static struct PyMethodDef pykore_methods[] = {
 	METHOD("queue", python_kore_queue, METH_VARARGS),
 	METHOD("fatal", python_kore_fatal, METH_VARARGS),
 	METHOD("fatalx", python_kore_fatalx, METH_VARARGS),
+	METHOD("suspend", python_kore_suspend, METH_VARARGS),
 	METHOD("shutdown", python_kore_shutdown, METH_NOARGS),
 	METHOD("bind_unix", python_kore_bind_unix, METH_VARARGS),
 	METHOD("task_create", python_kore_task_create, METH_VARARGS),
@@ -71,6 +72,40 @@ static struct PyMethodDef pykore_methods[] = {
 
 static struct PyModuleDef pykore_module = {
 	PyModuleDef_HEAD_INIT, "kore", NULL, -1, pykore_methods
+};
+
+#define PYSUSPEND_OP_INIT	1
+#define PYSUSPEND_OP_WAIT	2
+#define PYSUSPEND_OP_CONTINUE	3
+
+struct pysuspend_op {
+	PyObject_HEAD
+	int			state;
+	int			delay;
+	struct python_coro	*coro;
+	struct kore_timer	*timer;
+};
+
+static void	pysuspend_op_dealloc(struct pysuspend_op *);
+
+static PyObject	*pysuspend_op_await(PyObject *);
+static PyObject	*pysuspend_op_iternext(struct pysuspend_op *);
+
+static PyAsyncMethods pysuspend_op_async = {
+	(unaryfunc)pysuspend_op_await,
+	NULL,
+	NULL
+};
+
+static PyTypeObject pysuspend_op_type = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "kore.suspend",
+	.tp_doc = "suspension operation",
+	.tp_as_async = &pysuspend_op_async,
+	.tp_iternext = (iternextfunc)pysuspend_op_iternext,
+	.tp_basicsize = sizeof(struct pysuspend_op),
+	.tp_dealloc = (destructor)pysuspend_op_dealloc,
+	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
 };
 
 struct pytimer {

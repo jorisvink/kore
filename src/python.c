@@ -53,7 +53,9 @@ static PyObject		*pysocket_async_accept(struct pysocket_op *);
 static PyObject		*pysocket_async_connect(struct pysocket_op *);
 
 static void		pylock_do_release(struct pylock *);
+
 static void		pytimer_run(void *, u_int64_t);
+static void		pysuspend_wakeup(void *, u_int64_t);
 
 #if defined(KORE_USE_PGSQL)
 static PyObject		*pykore_pgsql_alloc(struct http_request *,
@@ -723,16 +725,15 @@ python_module_init(void)
 	python_push_type("pytimer", pykore, &pytimer_type);
 	python_push_type("pyqueue", pykore, &pyqueue_type);
 	python_push_type("pysocket", pykore, &pysocket_type);
-	python_push_type("pysocket_op", pykore, &pysocket_op_type);
 	python_push_type("pyconnection", pykore, &pyconnection_type);
+
+	python_push_type("pyhttp_file", pykore, &pyhttp_file_type);
+	python_push_type("pyhttp_request", pykore, &pyhttp_request_type);
 
 	for (i = 0; python_integers[i].symbol != NULL; i++) {
 		python_push_integer(pykore, python_integers[i].symbol,
 		    python_integers[i].value);
 	}
-
-	python_push_type("pyhttp_file", pykore, &pyhttp_file_type);
-	python_push_type("pyhttp_request", pykore, &pyhttp_request_type);
 
 	return (pykore);
 }
@@ -962,6 +963,27 @@ python_kore_fatalx(PyObject *self, PyObject *args)
 }
 
 static PyObject *
+python_kore_suspend(PyObject *self, PyObject *args)
+{
+	struct pysuspend_op	*sop;
+	int			delay;
+
+	if (!PyArg_ParseTuple(args, "i", &delay))
+		return (NULL);
+
+	sop = PyObject_New(struct pysuspend_op, &pysuspend_op_type);
+	if (sop == NULL)
+		return (NULL);
+
+	sop->timer = NULL;
+	sop->delay = delay;
+	sop->coro = coro_running;
+	sop->state = PYSUSPEND_OP_INIT;
+
+	return ((PyObject *)sop);
+}
+
+static PyObject *
 python_kore_shutdown(PyObject *self, PyObject *args)
 {
 	kore_shutdown();
@@ -992,9 +1014,6 @@ python_kore_timer(PyObject *self, PyObject *args)
 	timer->callable = obj;
 	timer->run = kore_timer_add(pytimer_run, ms, timer, flags);
 
-	printf("timer of %llu ms started (0x%04x)\n", ms, flags);
-
-	Py_INCREF((PyObject *)timer);
 	Py_INCREF(timer->callable);
 
 	return ((PyObject *)timer);
@@ -1150,9 +1169,60 @@ pytimer_close(struct pytimer *timer, PyObject *args)
 		timer->callable = NULL;
 	}
 
-	Py_DECREF((PyObject *)timer);
-
 	Py_RETURN_TRUE;
+}
+
+static void
+pysuspend_op_dealloc(struct pysuspend_op *sop)
+{
+	if (sop->timer != NULL) {
+		kore_timer_remove(sop->timer);
+		sop->timer = NULL;
+	}
+
+	PyObject_Del((PyObject *)sop);
+}
+
+static PyObject *
+pysuspend_op_await(PyObject *sop)
+{
+	Py_INCREF(sop);
+	return (sop);
+}
+
+static PyObject *
+pysuspend_op_iternext(struct pysuspend_op *sop)
+{
+	switch (sop->state) {
+	case PYSUSPEND_OP_INIT:
+		sop->timer = kore_timer_add(pysuspend_wakeup, sop->delay,
+		    sop, KORE_TIMER_ONESHOT);
+		sop->state = PYSUSPEND_OP_WAIT;
+		break;
+	case PYSUSPEND_OP_WAIT:
+		break;
+	case PYSUSPEND_OP_CONTINUE:
+		PyErr_SetNone(PyExc_StopIteration);
+		return (NULL);
+	default:
+		fatal("unknown state %d for pysuspend_op", sop->state);
+	}
+
+	Py_RETURN_NONE;
+}
+
+static void
+pysuspend_wakeup(void *arg, u_int64_t now)
+{
+	struct pysuspend_op	*sop = arg;
+
+	sop->timer = NULL;
+	sop->state = PYSUSPEND_OP_CONTINUE;
+
+	if (sop->coro->request != NULL)
+		http_request_wakeup(sop->coro->request);
+	else
+		python_coro_wakeup(sop->coro);
 }
 
 static void
