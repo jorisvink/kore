@@ -33,6 +33,7 @@ static PyObject		*python_kore_bind(PyObject *, PyObject *);
 static PyObject		*python_kore_fatal(PyObject *, PyObject *);
 static PyObject		*python_kore_queue(PyObject *, PyObject *);
 static PyObject		*python_kore_fatalx(PyObject *, PyObject *);
+static PyObject		*python_kore_shutdown(PyObject *, PyObject *);
 static PyObject		*python_kore_bind_unix(PyObject *, PyObject *);
 static PyObject		*python_kore_task_create(PyObject *, PyObject *);
 static PyObject		*python_kore_socket_wrap(PyObject *, PyObject *);
@@ -55,6 +56,7 @@ static struct PyMethodDef pykore_methods[] = {
 	METHOD("queue", python_kore_queue, METH_VARARGS),
 	METHOD("fatal", python_kore_fatal, METH_VARARGS),
 	METHOD("fatalx", python_kore_fatalx, METH_VARARGS),
+	METHOD("shutdown", python_kore_shutdown, METH_NOARGS),
 	METHOD("bind_unix", python_kore_bind_unix, METH_VARARGS),
 	METHOD("task_create", python_kore_task_create, METH_VARARGS),
 	METHOD("socket_wrap", python_kore_socket_wrap, METH_VARARGS),

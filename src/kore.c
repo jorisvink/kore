@@ -541,6 +541,17 @@ kore_signal(int sig)
 	sig_recv = sig;
 }
 
+void
+kore_shutdown(void)
+{
+	if (worker != NULL) {
+		kore_msg_send(KORE_MSG_PARENT, KORE_MSG_SHUTDOWN, NULL, 0);
+		return;
+	}
+
+	fatal("kore_shutdown: called from parent");
+}
+
 static void
 kore_server_sslstart(void)
 {

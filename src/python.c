@@ -959,6 +959,14 @@ python_kore_fatalx(PyObject *self, PyObject *args)
 }
 
 static PyObject *
+python_kore_shutdown(PyObject *self, PyObject *args)
+{
+	kore_shutdown();
+
+	Py_RETURN_TRUE;
+}
+
+static PyObject *
 python_import(const char *path)
 {
 	PyObject	*module;
