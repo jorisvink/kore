@@ -48,7 +48,6 @@ static char	pledges[256] = { "stdio rpath inet error" };
 void
 kore_platform_init(void)
 {
-#if defined(__MACH__) || defined(__FreeBSD_version)
 	long	n;
 	size_t	len = sizeof(n);
 	int	mib[] = { CTL_HW, HW_NCPU };
@@ -59,9 +58,6 @@ kore_platform_init(void)
 	} else {
 		cpu_count = (u_int16_t)n;
 	}
-#else
-	cpu_count = 1;
-#endif /* __MACH__ || __FreeBSD_version */
 }
 
 void
