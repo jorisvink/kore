@@ -60,7 +60,7 @@ kore_platform_init(void)
 		cpu_count = (u_int16_t)n;
 	}
 #else
-	cpu_count = 0;
+	cpu_count = 1;
 #endif /* __MACH__ || __FreeBSD_version */
 }
 
