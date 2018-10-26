@@ -34,10 +34,10 @@ workers		4
 
 # The number of active connections each worker can handle.
 # You might have to tweak this number based on your hardware.
-#worker_max_connections		250
+#worker_max_connections		512
 
 # Limit of maximum open files per worker.
-#worker_rlimit_nofiles		1024
+#worker_rlimit_nofiles		768
 
 # Limit the number of new connections a worker can accept
 # in a single event loop. By default Kore will accept as
