@@ -21,6 +21,7 @@
 #include <sys/socket.h>
 #include <sys/resource.h>
 
+#include <fcntl.h>
 #include <stdio.h>
 #include <netdb.h>
 #include <signal.h>
@@ -417,6 +418,12 @@ kore_listener_alloc(int family, const char *ccb)
 		return (NULL);
 	}
 
+	if (fcntl(l->fd, F_SETFD, FD_CLOEXEC) == -1) {
+		kore_listener_free(l);
+		kore_log(LOG_ERR, "fcntl(): %s", errno_s);
+		return (NULL);
+	}
+
 	if (!kore_connection_nonblock(l->fd, family != AF_UNIX)) {
 		kore_listener_free(l);
 		kore_log(LOG_ERR, "kore_connection_nonblock(): %s", errno_s);
@@ -518,6 +525,8 @@ kore_signal_setup(void)
 	if (sigaction(SIGTERM, &sa, NULL) == -1)
 		fatal("sigaction: %s", errno_s);
 	if (sigaction(SIGUSR1, &sa, NULL) == -1)
+		fatal("sigaction: %s", errno_s);
+	if (sigaction(SIGCHLD, &sa, NULL) == -1)
 		fatal("sigaction: %s", errno_s);
 
 	if (foreground) {
@@ -644,6 +653,9 @@ kore_server_start(int argc, char *argv[])
 			case SIGUSR1:
 				kore_worker_dispatch_signal(sig_recv);
 				break;
+			case SIGCHLD:
+				kore_worker_wait(0);
+				break;
 			default:
 				break;
 			}
@@ -651,7 +663,6 @@ kore_server_start(int argc, char *argv[])
 			sig_recv = 0;
 		}
 
-		kore_worker_wait(0);
 		kore_platform_event_wait(100);
 		kore_connection_prune(KORE_CONNECTION_PRUNE_DISCONNECT);
 	}

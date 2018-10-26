@@ -20,14 +20,17 @@
 struct python_coro {
 	u_int64_t			id;
 	int				state;
-	int				error;
 	PyObject			*obj;
+	struct pysocket_op		*sockop;
 	struct http_request		*request;
+	PyObject			*exception;
+	char				*exception_msg;
 	TAILQ_ENTRY(python_coro)	list;
 };
 
 static PyObject		*python_kore_log(PyObject *, PyObject *);
 static PyObject		*python_kore_lock(PyObject *, PyObject *);
+static PyObject		*python_kore_proc(PyObject *, PyObject *);
 static PyObject		*python_kore_bind(PyObject *, PyObject *);
 static PyObject		*python_kore_timer(PyObject *, PyObject *);
 static PyObject		*python_kore_fatal(PyObject *, PyObject *);
@@ -53,6 +56,7 @@ static PyObject		*python_websocket_broadcast(PyObject *, PyObject *);
 static struct PyMethodDef pykore_methods[] = {
 	METHOD("log", python_kore_log, METH_VARARGS),
 	METHOD("lock", python_kore_lock, METH_NOARGS),
+	METHOD("proc", python_kore_proc, METH_VARARGS),
 	METHOD("bind", python_kore_bind, METH_VARARGS),
 	METHOD("timer", python_kore_timer, METH_VARARGS),
 	METHOD("queue", python_kore_queue, METH_VARARGS),
@@ -182,6 +186,7 @@ static PyTypeObject pysocket_type = {
 struct pysocket_data {
 	struct kore_event	evt;
 	int			fd;
+	int			eof;
 	int			type;
 	void			*self;
 	struct python_coro	*coro;
@@ -341,6 +346,72 @@ static PyTypeObject pylock_op_type = {
 	.tp_iternext = (iternextfunc)pylock_op_iternext,
 	.tp_basicsize = sizeof(struct pylock_op),
 	.tp_dealloc = (destructor)pylock_op_dealloc,
+	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+};
+
+struct pyproc {
+	PyObject_HEAD
+	pid_t			pid;
+	int			reaped;
+	int			status;
+	struct pysocket		*in;
+	struct pysocket		*out;
+	struct python_coro	*coro;
+	struct kore_timer	*timer;
+	TAILQ_ENTRY(pyproc)	list;
+};
+
+static void	pyproc_dealloc(struct pyproc *);
+
+static PyObject	*pyproc_kill(struct pyproc *, PyObject *);
+static PyObject	*pyproc_reap(struct pyproc *, PyObject *);
+static PyObject	*pyproc_recv(struct pyproc *, PyObject *);
+static PyObject	*pyproc_send(struct pyproc *, PyObject *);
+static PyObject	*pyproc_close_stdin(struct pyproc *, PyObject *);
+
+static PyMethodDef pyproc_methods[] = {
+	METHOD("kill", pyproc_kill, METH_NOARGS),
+	METHOD("reap", pyproc_reap, METH_NOARGS),
+	METHOD("recv", pyproc_recv, METH_VARARGS),
+	METHOD("send", pyproc_send, METH_VARARGS),
+	METHOD("close_stdin", pyproc_close_stdin, METH_NOARGS),
+	METHOD(NULL, NULL, -1),
+};
+
+static PyTypeObject pyproc_type = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "kore.proc",
+	.tp_doc = "async process",
+	.tp_methods = pyproc_methods,
+	.tp_basicsize = sizeof(struct pyproc),
+	.tp_dealloc = (destructor)pyproc_dealloc,
+	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+};
+
+struct pyproc_op {
+	PyObject_HEAD
+	struct pyproc		*proc;
+};
+
+static void	pyproc_op_dealloc(struct pyproc_op *);
+
+static PyObject	*pyproc_op_await(PyObject *);
+static PyObject	*pyproc_op_iternext(struct pyproc_op *);
+
+static PyAsyncMethods pyproc_op_async = {
+	(unaryfunc)pyproc_op_await,
+	NULL,
+	NULL
+};
+
+static PyTypeObject pyproc_op_type = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "kore.proc_op",
+	.tp_doc = "proc reaper awaitable",
+	.tp_as_async = &pyproc_op_async,
+	.tp_iternext = (iternextfunc)pyproc_op_iternext,
+	.tp_basicsize = sizeof(struct pyproc_op),
+	.tp_dealloc = (destructor)pyproc_op_dealloc,
 	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
 };
 

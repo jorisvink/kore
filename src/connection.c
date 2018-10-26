@@ -135,6 +135,12 @@ kore_connection_accept(struct listener *listener, struct connection **out)
 		return (KORE_RESULT_ERROR);
 	}
 
+	if (fcntl(c->fd, F_SETFD, FD_CLOEXEC) == -1) {
+		close(c->fd);
+		kore_pool_put(&connection_pool, c);
+		return (KORE_RESULT_ERROR);
+	}
+
 	c->handle = kore_connection_handle;
 	TAILQ_INSERT_TAIL(&connections, c, list);
 

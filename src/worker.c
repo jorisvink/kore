@@ -90,8 +90,8 @@ extern volatile sig_atomic_t	sig_recv;
 struct kore_worker		*worker = NULL;
 u_int8_t			worker_set_affinity = 1;
 u_int32_t			worker_accept_threshold = 0;
-u_int32_t			worker_rlimit_nofiles = 1024;
-u_int32_t			worker_max_connections = 250;
+u_int32_t			worker_rlimit_nofiles = 768;
+u_int32_t			worker_max_connections = 512;
 u_int32_t			worker_active_connections = 0;
 
 void
@@ -379,23 +379,6 @@ kore_worker_entry(struct kore_worker *kw)
 	worker->restarted = 0;
 
 	for (;;) {
-		if (sig_recv != 0) {
-			switch (sig_recv) {
-			case SIGHUP:
-				kore_module_reload(1);
-				break;
-			case SIGQUIT:
-			case SIGINT:
-			case SIGTERM:
-				quit = 1;
-				break;
-			default:
-				break;
-			}
-
-			sig_recv = 0;
-		}
-
 		netwait = 100;
 		now = kore_time_ms();
 
@@ -444,6 +427,28 @@ kore_worker_entry(struct kore_worker *kw)
 				had_lock = 0;
 				kore_platform_disable_accept();
 			}
+		}
+
+		if (sig_recv != 0) {
+			switch (sig_recv) {
+			case SIGHUP:
+				kore_module_reload(1);
+				break;
+			case SIGQUIT:
+			case SIGINT:
+			case SIGTERM:
+				quit = 1;
+				break;
+			case SIGCHLD:
+#if defined(KORE_USE_PYTHON)
+				kore_python_proc_reap();
+#endif
+				break;
+			default:
+				break;
+			}
+
+			sig_recv = 0;
 		}
 
 #if !defined(KORE_NO_HTTP)
