@@ -1029,10 +1029,13 @@ python_kore_gather(PyObject *self, PyObject *args)
 	TAILQ_INIT(&op->coroutines);
 
 	for (idx = 0; idx < sz; idx++) {
-		if ((obj = PyTuple_GetItem(args, idx)) == NULL)
+		if ((obj = PyTuple_GetItem(args, idx)) == NULL) {
+			Py_DECREF((PyObject *)op);
 			return (NULL);
+		}
 
 		if (!PyCoro_CheckExact(obj)) {
+			Py_DECREF((PyObject *)op);
 			PyErr_SetString(PyExc_TypeError, "not a coroutine");
 			return (NULL);
 		}
