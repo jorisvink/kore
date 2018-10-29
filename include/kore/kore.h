@@ -69,8 +69,8 @@ extern int daemon(int, int);
 #define KORE_RESULT_OK		1
 #define KORE_RESULT_RETRY	2
 
-#define KORE_TLS_VERSION_1_2	0
-#define KORE_TLS_VERSION_1_0	1
+#define KORE_TLS_VERSION_1_3	0
+#define KORE_TLS_VERSION_1_2	1
 #define KORE_TLS_VERSION_BOTH	2
 
 #define KORE_RESEED_TIME	(1800 * 1000)

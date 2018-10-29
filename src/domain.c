@@ -48,7 +48,7 @@ static u_int8_t			keymgr_buf[2048];
 static size_t			keymgr_buflen = 0;
 static int			keymgr_response = 0;
 DH				*tls_dhparam = NULL;
-int				tls_version = KORE_TLS_VERSION_1_2;
+int				tls_version = KORE_TLS_VERSION_BOTH;
 #endif
 
 #if !defined(KORE_NO_TLS)
@@ -143,6 +143,9 @@ kore_domain_init(void)
 	}
 
 	EC_KEY_METHOD_set_sign(keymgr_ec_meth, NULL, NULL, keymgr_ecdsa_sign);
+#else
+	kore_log(LOG_NOTICE, "%s has no TLS 1.3 - will only use TLS 1.2",
+	    OPENSSL_VERSION_TEXT);
 #endif
 #endif
 }
@@ -256,7 +259,7 @@ kore_domain_tlsinit(struct kore_domain *dom, const void *pem, size_t pemlen)
 	STACK_OF(X509_NAME)	*certs;
 	EC_KEY			*eckey;
 	const SSL_METHOD	*method;
-#if !defined(OPENSSL_NO_EC)
+#if defined(LIBRESSL_VERSION_TEXT) || OPENSSL_VERSION_NUMBER < 0x10100000L
 	EC_KEY			*ecdh;
 #endif
 
@@ -267,59 +270,61 @@ kore_domain_tlsinit(struct kore_domain *dom, const void *pem, size_t pemlen)
 
 #if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
 	if ((method = TLS_method()) == NULL)
-		fatal("TLS_method(): %s", ssl_errno_s);
+		fatalx("TLS_method(): %s", ssl_errno_s);
 #else
 	switch (tls_version) {
 	case KORE_TLS_VERSION_1_2:
 		method = TLSv1_2_server_method();
 		break;
-	case KORE_TLS_VERSION_1_0:
-		method = TLSv1_server_method();
-		break;
 	case KORE_TLS_VERSION_BOTH:
-		method = SSLv23_server_method();
+		method = TLSv1_2_server_method();
 		break;
 	default:
-		fatal("unknown tls_version: %d", tls_version);
+		fatalx("unknown tls_version: %d", tls_version);
 		return;
 	}
 #endif
 
 	if ((dom->ssl_ctx = SSL_CTX_new(method)) == NULL)
-		fatal("SSL_ctx_new(): %s", ssl_errno_s);
+		fatalx("SSL_ctx_new(): %s", ssl_errno_s);
 
 #if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
-	if (!SSL_CTX_set_min_proto_version(dom->ssl_ctx, TLS1_VERSION))
-		fatal("SSL_CTX_set_min_proto_version: %s", ssl_errno_s);
-	if (!SSL_CTX_set_max_proto_version(dom->ssl_ctx, TLS1_2_VERSION))
-		fatal("SSL_CTX_set_max_proto_version: %s", ssl_errno_s);
+	if (!SSL_CTX_set_min_proto_version(dom->ssl_ctx, TLS1_2_VERSION))
+		fatalx("SSL_CTX_set_min_proto_version: %s", ssl_errno_s);
+	if (!SSL_CTX_set_max_proto_version(dom->ssl_ctx, TLS1_3_VERSION))
+		fatalx("SSL_CTX_set_max_proto_version: %s", ssl_errno_s);
 
 	switch (tls_version) {
-	case KORE_TLS_VERSION_1_2:
+	case KORE_TLS_VERSION_1_3:
 		if (!SSL_CTX_set_min_proto_version(dom->ssl_ctx,
-		    TLS1_2_VERSION))
-			fatal("SSL_CTX_set_min_proto_version: %s", ssl_errno_s);
+		    TLS1_3_VERSION)) {
+			fatalx("SSL_CTX_set_min_proto_version: %s",
+			    ssl_errno_s);
+		}
 		break;
-	case KORE_TLS_VERSION_1_0:
-		if (!SSL_CTX_set_max_proto_version(dom->ssl_ctx, TLS1_VERSION))
-			fatal("SSL_CTX_set_min_proto_version: %s", ssl_errno_s);
+	case KORE_TLS_VERSION_1_2:
+		if (!SSL_CTX_set_max_proto_version(dom->ssl_ctx,
+		    TLS1_2_VERSION)) {
+			fatalx("SSL_CTX_set_min_proto_version: %s",
+			    ssl_errno_s);
+		}
 		break;
 	case KORE_TLS_VERSION_BOTH:
 		break;
 	default:
-		fatal("unknown tls_version: %d", tls_version);
+		fatalx("unknown tls_version: %d", tls_version);
 		return;
 	}
 #endif
 
 	x509 = domain_load_certificate_chain(dom->ssl_ctx, pem, pemlen);
 	if ((pkey = X509_get_pubkey(x509)) == NULL)
-		fatal("certificate has no public key");
+		fatalx("certificate has no public key");
 
 	switch (EVP_PKEY_id(pkey)) {
 	case EVP_PKEY_RSA:
 		if ((rsa = EVP_PKEY_get1_RSA(pkey)) == NULL)
-			fatal("no RSA public key present");
+			fatalx("no RSA public key present");
 		RSA_set_app_data(rsa, dom);
 #if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
 		RSA_set_method(rsa, keymgr_rsa_meth);
@@ -329,7 +334,7 @@ kore_domain_tlsinit(struct kore_domain *dom, const void *pem, size_t pemlen)
 		break;
 	case EVP_PKEY_EC:
 		if ((eckey = EVP_PKEY_get1_EC_KEY(pkey)) == NULL)
-			fatal("no EC public key present");
+			fatalx("no EC public key present");
 #if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
 		EC_KEY_set_ex_data(eckey, 0, dom);
 		EC_KEY_set_method(eckey, keymgr_ec_meth);
@@ -339,33 +344,38 @@ kore_domain_tlsinit(struct kore_domain *dom, const void *pem, size_t pemlen)
 #endif
 		break;
 	default:
-		fatal("unknown public key in certificate");
+		fatalx("unknown public key in certificate");
 	}
 
 	if (!SSL_CTX_use_PrivateKey(dom->ssl_ctx, pkey))
-		fatal("SSL_CTX_use_PrivateKey(): %s", ssl_errno_s);
+		fatalx("SSL_CTX_use_PrivateKey(): %s", ssl_errno_s);
 
 	if (!SSL_CTX_check_private_key(dom->ssl_ctx))
-		fatal("Public/Private key for %s do not match", dom->domain);
+		fatalx("Public/Private key for %s do not match", dom->domain);
 
 	if (tls_dhparam == NULL)
-		fatal("No DH parameters given");
+		fatalx("No DH parameters given");
 
 	SSL_CTX_set_tmp_dh(dom->ssl_ctx, tls_dhparam);
 	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_SINGLE_DH_USE);
 
+#if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
+	if (!SSL_CTX_set_ecdh_auto(dom->ssl_ctx, 1))
+		fatalx("SSL_CTX_set_ecdh_auto: %s", ssl_errno_s);
+#else
 	if ((ecdh = EC_KEY_new_by_curve_name(NID_secp384r1)) == NULL)
-		fatal("EC_KEY_new_by_curve_name: %s", ssl_errno_s);
+		fatalx("EC_KEY_new_by_curve_name: %s", ssl_errno_s);
 
 	SSL_CTX_set_tmp_ecdh(dom->ssl_ctx, ecdh);
 	EC_KEY_free(ecdh);
+#endif
 
 	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_SINGLE_ECDH_USE);
 	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_COMPRESSION);
 
 	if (dom->cafile != NULL) {
 		if ((certs = SSL_load_client_CA_file(dom->cafile)) == NULL) {
-			fatal("SSL_load_client_CA_file(%s): %s",
+			fatalx("SSL_load_client_CA_file(%s): %s",
 			    dom->cafile, ssl_errno_s);
 		}
 
@@ -383,6 +393,7 @@ kore_domain_tlsinit(struct kore_domain *dom, const void *pem, size_t pemlen)
 	if (tls_version == KORE_TLS_VERSION_BOTH) {
 		SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_SSLv2);
 		SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_SSLv3);
+		SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_TLSv1);
 		SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_TLSv1_1);
 	}
 

@@ -287,7 +287,11 @@ kore_tls_info_callback(const SSL *ssl, int flags, int ret)
 	if (flags & SSL_CB_HANDSHAKE_START) {
 		if ((c = SSL_get_app_data(ssl)) == NULL)
 			fatal("no SSL_get_app_data");
-		c->tls_reneg++;
+
+#if defined(TLS1_3_VERSION)
+		if (SSL_version(ssl) != TLS1_3_VERSION)
+#endif
+			c->tls_reneg++;
 	}
 }
 #endif

@@ -446,10 +446,10 @@ config_file_write(void)
 static int
 configure_tls_version(char *version)
 {
-	if (!strcmp(version, "1.2")) {
+	if (!strcmp(version, "1.3")) {
+		tls_version = KORE_TLS_VERSION_1_3;
+	} else if (!strcmp(version, "1.2")) {
 		tls_version = KORE_TLS_VERSION_1_2;
-	} else if (!strcmp(version, "1.0")) {
-		tls_version = KORE_TLS_VERSION_1_0;
 	} else if (!strcmp(version, "both")) {
 		tls_version = KORE_TLS_VERSION_BOTH;
 	} else {
