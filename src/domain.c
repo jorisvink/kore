@@ -273,6 +273,7 @@ kore_domain_tlsinit(struct kore_domain *dom, const void *pem, size_t pemlen)
 		fatalx("TLS_method(): %s", ssl_errno_s);
 #else
 	switch (tls_version) {
+	case KORE_TLS_VERSION_1_3:
 	case KORE_TLS_VERSION_1_2:
 		method = TLSv1_2_server_method();
 		break;
