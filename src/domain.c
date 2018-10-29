@@ -16,7 +16,8 @@
 
 /*
  * XXX - Lots of OPENSSL ifdefs here for 1.0.2 and 1.1.0 release lines.
- * The idea is to only support 1.1.0 down the line and remove the 1.0.2 goo.
+ * The idea is to only support 1.1.1 down the line and remove the rest.
+ * (although we have to remain compat with 1.0.2 due to LibreSSL).
  */
 
 #include <sys/param.h>
@@ -133,6 +134,7 @@ kore_domain_init(void)
 			fatal("failed to allocate RSA method");
 	}
 
+
 	RSA_meth_set_init(keymgr_rsa_meth, keymgr_rsa_init);
 	RSA_meth_set_finish(keymgr_rsa_meth, keymgr_rsa_finish);
 	RSA_meth_set_priv_enc(keymgr_rsa_meth, keymgr_rsa_privenc);
@@ -143,10 +145,13 @@ kore_domain_init(void)
 	}
 
 	EC_KEY_METHOD_set_sign(keymgr_ec_meth, NULL, NULL, keymgr_ecdsa_sign);
-#else
+#endif
+
+#if !defined(TLS1_3_VERSION)
 	kore_log(LOG_NOTICE, "%s has no TLS 1.3 - will only use TLS 1.2",
 	    OPENSSL_VERSION_TEXT);
 #endif
+
 #endif
 }
 
@@ -290,17 +295,25 @@ kore_domain_tlsinit(struct kore_domain *dom, const void *pem, size_t pemlen)
 #if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
 	if (!SSL_CTX_set_min_proto_version(dom->ssl_ctx, TLS1_2_VERSION))
 		fatalx("SSL_CTX_set_min_proto_version: %s", ssl_errno_s);
+
+#if defined(TLS1_3_VERSION)
 	if (!SSL_CTX_set_max_proto_version(dom->ssl_ctx, TLS1_3_VERSION))
 		fatalx("SSL_CTX_set_max_proto_version: %s", ssl_errno_s);
+#else
+	if (!SSL_CTX_set_max_proto_version(dom->ssl_ctx, TLS1_2_VERSION))
+		fatalx("SSL_CTX_set_min_proto_version: %s", ssl_errno_s);
+#endif
 
 	switch (tls_version) {
 	case KORE_TLS_VERSION_1_3:
+#if defined(TLS1_3_VERSION)
 		if (!SSL_CTX_set_min_proto_version(dom->ssl_ctx,
 		    TLS1_3_VERSION)) {
 			fatalx("SSL_CTX_set_min_proto_version: %s",
 			    ssl_errno_s);
 		}
 		break;
+#endif
 	case KORE_TLS_VERSION_1_2:
 		if (!SSL_CTX_set_max_proto_version(dom->ssl_ctx,
 		    TLS1_2_VERSION)) {
