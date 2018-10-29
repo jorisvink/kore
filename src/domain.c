@@ -275,8 +275,6 @@ kore_domain_tlsinit(struct kore_domain *dom, const void *pem, size_t pemlen)
 	switch (tls_version) {
 	case KORE_TLS_VERSION_1_3:
 	case KORE_TLS_VERSION_1_2:
-		method = TLSv1_2_server_method();
-		break;
 	case KORE_TLS_VERSION_BOTH:
 		method = TLSv1_2_server_method();
 		break;
