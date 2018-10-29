@@ -61,6 +61,9 @@ static void		pytimer_run(void *, u_int64_t);
 static void		pyproc_timeout(void *, u_int64_t);
 static void		pysuspend_wakeup(void *, u_int64_t);
 
+static void		pygather_reap_coro(struct pygather_op *,
+			    struct python_coro *);
+
 #if defined(KORE_USE_PGSQL)
 static PyObject		*pykore_pgsql_alloc(struct http_request *,
 			    const char *, const char *);
@@ -153,17 +156,18 @@ static TAILQ_HEAD(, pyproc)		procs;
 
 static struct kore_pool			coro_pool;
 static struct kore_pool			queue_wait_pool;
+static struct kore_pool			gather_coro_pool;
 static struct kore_pool			queue_object_pool;
+static struct kore_pool			gather_result_pool;
 
 static u_int64_t			coro_id;
 static int				coro_count;
-static TAILQ_HEAD(, python_coro)	coro_runnable;
-static TAILQ_HEAD(, python_coro)	coro_suspended;
+static struct coro_list			coro_runnable;
+static struct coro_list			coro_suspended;
 
 extern const char *__progname;
 
 /* XXX */
-static struct http_request		*req_running = NULL;
 static struct python_coro		*coro_running = NULL;
 
 void
@@ -180,8 +184,12 @@ kore_python_init(void)
 
 	kore_pool_init(&queue_wait_pool, "queue_wait_pool",
 	    sizeof(struct pyqueue_waiting), 100);
+	kore_pool_init(&gather_coro_pool, "gather_coro_pool",
+	    sizeof(struct pygather_coro), 100);
 	kore_pool_init(&queue_object_pool, "queue_object_pool",
 	    sizeof(struct pyqueue_object), 100);
+	kore_pool_init(&gather_result_pool, "gather_result_pool",
+	    sizeof(struct pygather_result), 100);
 
 	PyMem_SetAllocator(PYMEM_DOMAIN_OBJ, &allocator);
 	PyMem_SetAllocator(PYMEM_DOMAIN_MEM, &allocator);
@@ -212,14 +220,27 @@ kore_python_path(const char *path)
 void
 kore_python_coro_run(void)
 {
+	struct pygather_op	*op;
 	struct python_coro	*coro, *next;
 
 	for (coro = TAILQ_FIRST(&coro_runnable); coro != NULL; coro = next) {
 		next = TAILQ_NEXT(coro, list);
+
 		if (coro->state != CORO_STATE_RUNNABLE)
 			fatal("non-runnable coro on coro_runnable");
-		if (python_coro_run(coro) == KORE_RESULT_OK)
-			kore_python_coro_delete(coro);
+
+		if (python_coro_run(coro) == KORE_RESULT_OK) {
+			if (coro->gatherop != NULL) {
+				op = coro->gatherop;
+				if (op->coro->request != NULL)
+					http_request_wakeup(op->coro->request);
+				else
+					python_coro_wakeup(op->coro);
+				pygather_reap_coro(op, coro);
+			} else {
+				kore_python_coro_delete(coro);
+			}
+		}
 	}
 
 	/*
@@ -268,14 +289,28 @@ kore_python_log_error(const char *function)
 		return;
 	}
 
-	if ((repr = PyObject_Repr(value)) == NULL)
-		sval = "unknown";
-	else
-		sval = PyUnicode_AsUTF8(repr);
+	if (value == NULL || !PyObject_IsInstance(value, type))
+		PyErr_NormalizeException(&type, &value, &traceback);
 
-	kore_log(LOG_ERR, "uncaught exception %s in '%s'", sval, function);
+	/*
+	 * If we're in an active coroutine and it was tied to a gather
+	 * operation we have to make sure we can use the Exception that
+	 * was thrown as the result value so we can propagate it via the
+	 * return list of kore.gather().
+	 */
+	if (coro_running != NULL && coro_running->gatherop != NULL) {
+		PyErr_SetObject(PyExc_StopIteration, value);
+	} else {
+		if ((repr = PyObject_Repr(value)) == NULL)
+			sval = "unknown";
+		else
+			sval = PyUnicode_AsUTF8(repr);
 
-	Py_XDECREF(repr);
+		kore_log(LOG_ERR,
+		    "uncaught exception %s in '%s'", sval, function);
+
+		Py_XDECREF(repr);
+	}
 
 	Py_DECREF(type);
 	Py_DECREF(value);
@@ -391,6 +426,7 @@ python_coro_create(PyObject *obj, struct http_request *req)
 	coro_count++;
 
 	coro->sockop = NULL;
+	coro->gatherop = NULL;
 	coro->exception = NULL;
 	coro->exception_msg = NULL;
 
@@ -482,17 +518,13 @@ python_runtime_http_request(void *addr, struct http_request *req)
 {
 	PyObject	*pyret, *pyreq, *args, *callable;
 
-	req_running = req;
-
 	if (req->py_coro != NULL) {
 		python_coro_wakeup(req->py_coro);
 		if (python_coro_run(req->py_coro) == KORE_RESULT_OK) {
 			kore_python_coro_delete(req->py_coro);
 			req->py_coro = NULL;
-			req_running = NULL;
 			return (KORE_RESULT_OK);
 		}
-		req_running = NULL;
 		return (KORE_RESULT_RETRY);
 	}
 
@@ -518,16 +550,13 @@ python_runtime_http_request(void *addr, struct http_request *req)
 	}
 
 	if (PyCoro_CheckExact(pyret)) {
-		http_request_sleep(req);
 		req->py_coro = python_coro_create(pyret, req);
-		req_running = NULL;
-		/* XXX merge with the above python_coro_run() block. */
 		if (python_coro_run(req->py_coro) == KORE_RESULT_OK) {
 			kore_python_coro_delete(req->py_coro);
 			req->py_coro = NULL;
-			req_running = NULL;
 			return (KORE_RESULT_OK);
 		}
+		http_request_sleep(req);
 		return (KORE_RESULT_RETRY);
 	}
 
@@ -535,7 +564,6 @@ python_runtime_http_request(void *addr, struct http_request *req)
 		fatal("python_runtime_http_request: unexpected return type");
 
 	Py_DECREF(pyret);
-	req_running = NULL;
 
 	return (KORE_RESULT_OK);
 }
@@ -967,6 +995,59 @@ python_kore_queue(PyObject *self, PyObject *args)
 	TAILQ_INIT(&queue->waiting);
 
 	return ((PyObject *)queue);
+}
+
+static PyObject *
+python_kore_gather(PyObject *self, PyObject *args)
+{
+	struct pygather_op	*op;
+	PyObject		*obj;
+	struct pygather_coro	*coro;
+	Py_ssize_t		sz, idx;
+
+	if (coro_running == NULL) {
+		PyErr_SetString(PyExc_RuntimeError,
+		    "kore.gather only available in coroutines");
+		return (NULL);
+	}
+
+	sz = PyTuple_Size(args);
+
+	if (sz > INT_MAX) {
+		PyErr_SetString(PyExc_TypeError, "too many arguments");
+		return (NULL);
+	}
+
+	op = PyObject_New(struct pygather_op, &pygather_op_type);
+	if (op == NULL)
+		return (NULL);
+
+	op->count = (int)sz;
+	op->coro = coro_running;
+
+	TAILQ_INIT(&op->results);
+	TAILQ_INIT(&op->coroutines);
+
+	for (idx = 0; idx < sz; idx++) {
+		if ((obj = PyTuple_GetItem(args, idx)) == NULL)
+			return (NULL);
+
+		if (!PyCoro_CheckExact(obj)) {
+			PyErr_SetString(PyExc_TypeError, "not a coroutine");
+			return (NULL);
+		}
+
+		Py_INCREF(obj);
+
+		coro = kore_pool_get(&gather_coro_pool);
+
+		coro->coro = python_coro_create(obj, NULL);
+		coro->coro->gatherop = op;
+
+		TAILQ_INSERT_TAIL(&op->coroutines, coro, list);
+	}
+
+	return ((PyObject *)op);
 }
 
 static PyObject *
@@ -2281,6 +2362,107 @@ pyproc_op_iternext(struct pyproc_op *op)
 
 	PyErr_SetObject(PyExc_StopIteration, res);
 	Py_DECREF(res);
+
+	return (NULL);
+}
+
+static void
+pygather_reap_coro(struct pygather_op *op, struct python_coro *reap)
+{
+	struct pygather_coro	*coro;
+	struct pygather_result	*result;
+
+	TAILQ_FOREACH(coro, &op->coroutines, list) {
+		if (coro->coro->id == reap->id)
+			break;
+	}
+
+	if (coro == NULL)
+		fatal("coroutine %" PRIu64 " not found in gather", reap->id);
+
+	result = kore_pool_get(&gather_result_pool);
+	result->obj = NULL;
+
+	if (_PyGen_FetchStopIterationValue(&result->obj) == -1) {
+		result->obj = Py_None;
+		Py_INCREF(Py_None);
+	}
+
+	TAILQ_INSERT_TAIL(&op->results, result, list);
+
+	TAILQ_REMOVE(&op->coroutines, coro, list);
+	kore_pool_put(&gather_coro_pool, coro);
+
+	kore_python_coro_delete(reap);
+}
+
+static void
+pygather_op_dealloc(struct pygather_op *op)
+{
+	struct pygather_coro		*coro, *next;
+	struct pygather_result		*res, *rnext;
+
+	for (coro = TAILQ_FIRST(&op->coroutines); coro != NULL; coro = next) {
+		next = TAILQ_NEXT(coro, list);
+		TAILQ_REMOVE(&op->coroutines, coro, list);
+
+		/* Make sure we don't end up in pygather_reap_coro(). */
+		coro->coro->gatherop = NULL;
+
+		kore_python_coro_delete(coro->coro);
+		kore_pool_put(&gather_coro_pool, coro);
+	}
+
+	for (res = TAILQ_FIRST(&op->results); res != NULL; res = rnext) {
+		rnext = TAILQ_NEXT(res, list);
+		TAILQ_REMOVE(&op->results, res, list);
+
+		Py_DECREF(res->obj);
+		kore_pool_put(&gather_result_pool, res);
+	}
+
+	PyObject_Del((PyObject *)op);
+}
+
+static PyObject *
+pygather_op_await(PyObject *obj)
+{
+	Py_INCREF(obj);
+	return (obj);
+}
+
+static PyObject *
+pygather_op_iternext(struct pygather_op *op)
+{
+	int				idx;
+	struct pygather_result		*res, *next;
+	PyObject			*list, *obj;
+
+	if (!TAILQ_EMPTY(&op->coroutines)) {
+		Py_RETURN_NONE;
+	}
+
+	if ((list = PyList_New(op->count)) == NULL)
+		return (NULL);
+
+	idx = 0;
+
+	for (res = TAILQ_FIRST(&op->results); res != NULL; res = next) {
+		next = TAILQ_NEXT(res, list);
+		TAILQ_REMOVE(&op->results, res, list);
+
+		obj = res->obj;
+		res->obj = NULL;
+		kore_pool_put(&gather_result_pool, res);
+
+		if (PyList_SetItem(list, idx++, obj) != 0) {
+			Py_DECREF(list);
+			return (NULL);
+		}
+	}
+
+	PyErr_SetObject(PyExc_StopIteration, list);
+	Py_DECREF(list);
 
 	return (NULL);
 }

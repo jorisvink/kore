@@ -22,11 +22,14 @@ struct python_coro {
 	int				state;
 	PyObject			*obj;
 	struct pysocket_op		*sockop;
+	struct pygather_op		*gatherop;
 	struct http_request		*request;
 	PyObject			*exception;
 	char				*exception_msg;
 	TAILQ_ENTRY(python_coro)	list;
 };
+
+TAILQ_HEAD(coro_list, python_coro);
 
 static PyObject		*python_kore_log(PyObject *, PyObject *);
 static PyObject		*python_kore_lock(PyObject *, PyObject *);
@@ -35,6 +38,7 @@ static PyObject		*python_kore_bind(PyObject *, PyObject *);
 static PyObject		*python_kore_timer(PyObject *, PyObject *);
 static PyObject		*python_kore_fatal(PyObject *, PyObject *);
 static PyObject		*python_kore_queue(PyObject *, PyObject *);
+static PyObject		*python_kore_gather(PyObject *, PyObject *);
 static PyObject		*python_kore_fatalx(PyObject *, PyObject *);
 static PyObject		*python_kore_suspend(PyObject *, PyObject *);
 static PyObject		*python_kore_shutdown(PyObject *, PyObject *);
@@ -60,6 +64,7 @@ static struct PyMethodDef pykore_methods[] = {
 	METHOD("bind", python_kore_bind, METH_VARARGS),
 	METHOD("timer", python_kore_timer, METH_VARARGS),
 	METHOD("queue", python_kore_queue, METH_VARARGS),
+	METHOD("gather", python_kore_gather, METH_VARARGS),
 	METHOD("fatal", python_kore_fatal, METH_VARARGS),
 	METHOD("fatalx", python_kore_fatalx, METH_VARARGS),
 	METHOD("suspend", python_kore_suspend, METH_VARARGS),
@@ -412,6 +417,47 @@ static PyTypeObject pyproc_op_type = {
 	.tp_iternext = (iternextfunc)pyproc_op_iternext,
 	.tp_basicsize = sizeof(struct pyproc_op),
 	.tp_dealloc = (destructor)pyproc_op_dealloc,
+	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+};
+
+struct pygather_coro {
+	struct python_coro		*coro;
+	PyObject			*result;
+	TAILQ_ENTRY(pygather_coro)	list;
+};
+
+struct pygather_result {
+	PyObject			*obj;
+	TAILQ_ENTRY(pygather_result)	list;
+};
+
+struct pygather_op {
+	PyObject_HEAD
+	int				count;
+	struct python_coro		*coro;
+	TAILQ_HEAD(, pygather_result)	results;
+	TAILQ_HEAD(, pygather_coro)	coroutines;
+};
+
+static void	pygather_op_dealloc(struct pygather_op *);
+
+static PyObject	*pygather_op_await(PyObject *);
+static PyObject	*pygather_op_iternext(struct pygather_op *);
+
+static PyAsyncMethods pygather_op_async = {
+	(unaryfunc)pygather_op_await,
+	NULL,
+	NULL
+};
+
+static PyTypeObject pygather_op_type = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "kore.pygather_op",
+	.tp_doc = "coroutine gathering",
+	.tp_as_async = &pygather_op_async,
+	.tp_iternext = (iternextfunc)pygather_op_iternext,
+	.tp_basicsize = sizeof(struct pygather_op),
+	.tp_dealloc = (destructor)pygather_op_dealloc,
 	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
 };
 
