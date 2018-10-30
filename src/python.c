@@ -324,33 +324,43 @@ kore_python_proc_reap(void)
 	pid_t			child;
 	int			status;
 
-	if ((child = waitpid(-1, &status, 0)) == -1) {
-		if (errno == ECHILD)
+	for (;;) {
+		if ((child = waitpid(-1, &status, WNOHANG)) == -1) {
+			if (errno == ECHILD)
+				return;
+			if (errno == EINTR)
+				continue;
+			kore_log(LOG_NOTICE, "waitpid: %s", errno_s);
 			return;
-		kore_log(LOG_NOTICE, "waitpid: %s", errno_s);
-		return;
+		}
+
+		if (child == 0)
+			return;
+
+		proc = NULL;
+
+		TAILQ_FOREACH(proc, &procs, list) {
+			if (proc->pid == child)
+				break;
+		}
+
+		if (proc == NULL)
+			continue;
+
+		proc->pid = -1;
+		proc->reaped = 1;
+		proc->status = status;
+
+		if (proc->timer != NULL) {
+			kore_timer_remove(proc->timer);
+			proc->timer = NULL;
+		}
+
+		if (proc->coro->request != NULL)
+			http_request_wakeup(proc->coro->request);
+		else
+			python_coro_wakeup(proc->coro);
 	}
-
-	proc = NULL;
-
-	TAILQ_FOREACH(proc, &procs, list) {
-		if (proc->pid == child)
-			break;
-	}
-
-	if (proc == NULL) {
-		kore_log(LOG_NOTICE, "SIGCHLD for unknown proc (%d)", child);
-		return;
-	}
-
-	proc->pid = -1;
-	proc->reaped = 1;
-	proc->status = status;
-
-	if (proc->coro->request != NULL)
-		http_request_wakeup(proc->coro->request);
-	else
-		python_coro_wakeup(proc->coro);
 }
 
 static void *
@@ -881,6 +891,16 @@ python_kore_log(PyObject *self, PyObject *args)
 }
 
 static PyObject *
+python_kore_time(PyObject *self, PyObject *args)
+{
+	u_int64_t	now;
+
+	now = kore_time_ms();
+
+	return (PyLong_FromUnsignedLongLong(now));
+}
+
+static PyObject *
 python_kore_bind(PyObject *self, PyObject *args)
 {
 	const char	*ip, *port;
@@ -1238,11 +1258,8 @@ python_kore_proc(PyObject *self, PyObject *args)
 	close(out_pipe[1]);
 
 	if (!kore_connection_nonblock(in_pipe[1], 0) ||
-	    !kore_connection_nonblock(out_pipe[0], 0)) {
-		Py_DECREF((PyObject *)proc);
-		PyErr_SetString(PyExc_RuntimeError, errno_s);
-		return (NULL);
-	}
+	    !kore_connection_nonblock(out_pipe[0], 0))
+		fatal("failed to mark kore.proc pipes are non-blocking");
 
 	proc->in->fd = in_pipe[1];
 	proc->out->fd = out_pipe[0];
@@ -1705,9 +1722,9 @@ pysocket_op_iternext(struct pysocket_op *op)
 			return (NULL);
 		}
 
-		PyErr_SetNone(PyExc_StopIteration);
-
-		return (NULL);
+		/* Drain the recv socket. */
+		op->data.evt.flags |= KORE_EVENT_READ;
+		return (pysocket_async_recv(op));
 	}
 
 	switch (op->data.type) {

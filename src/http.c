@@ -1501,6 +1501,10 @@ http_request_new(struct connection *c, const char *host,
 	req->host = host;
 	req->path = path;
 
+#if defined(KORE_USE_PYTHON)
+	req->py_coro = NULL;
+#endif
+
 	if (qsoff > 0) {
 		req->query_string = path + qsoff;
 		*(req->query_string)++ = '\0';
