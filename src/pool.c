@@ -21,6 +21,8 @@
 
 #include "kore.h"
 
+#define POOL_MIN_ELEMENTS		16
+
 #define POOL_ELEMENT_BUSY		0
 #define POOL_ELEMENT_FREE		1
 
@@ -37,6 +39,9 @@ kore_pool_init(struct kore_pool *pool, const char *name,
     size_t len, size_t elm)
 {
 	kore_debug("kore_pool_init(%p, %s, %zu, %zu)", pool, name, len, elm);
+
+	if (elm < POOL_MIN_ELEMENTS)
+		elm = POOL_MIN_ELEMENTS;
 
 	if ((pool->name = strdup(name)) == NULL)
 		fatal("kore_pool_init: strdup %s", errno_s);
