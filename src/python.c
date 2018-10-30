@@ -2402,8 +2402,17 @@ pygather_reap_coro(struct pygather_op *op, struct python_coro *reap)
 static void
 pygather_op_dealloc(struct pygather_op *op)
 {
+	struct python_coro		*old;
 	struct pygather_coro		*coro, *next;
 	struct pygather_result		*res, *rnext;
+
+	/*
+	 * Since we are calling kore_python_coro_delete() on all the
+	 * remaining coroutines in this gather op we must remember the
+	 * original coroutine that is running as the removal will end
+	 * up setting coro_running to NULL.
+	 */
+	old = coro_running;
 
 	for (coro = TAILQ_FIRST(&op->coroutines); coro != NULL; coro = next) {
 		next = TAILQ_NEXT(coro, list);
@@ -2415,6 +2424,8 @@ pygather_op_dealloc(struct pygather_op *op)
 		kore_python_coro_delete(coro->coro);
 		kore_pool_put(&gather_coro_pool, coro);
 	}
+
+	coro_running = old;
 
 	for (res = TAILQ_FIRST(&op->results); res != NULL; res = rnext) {
 		rnext = TAILQ_NEXT(res, list);
