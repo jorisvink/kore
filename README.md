@@ -47,7 +47,7 @@ Building Kore
 Clone this repository or get the latest release at [https://kore.io/releases/3.0.0](https://kore.io/releases/3.0.0).
 
 Requirements
-* openssl (1.0.2k+ or 1.1.0e+)
+* openssl (1.0.2, 1.1.0 or 1.1.1)
   (note: this requirement drops away when building with NOTLS=1 NOHTTP=1)
   (note: libressl works as a replacement)
 
