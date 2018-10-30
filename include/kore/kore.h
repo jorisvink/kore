@@ -441,6 +441,7 @@ struct kore_pool {
 	size_t			slen;
 	size_t			elms;
 	size_t			inuse;
+	size_t			growth;
 	volatile int		lock;
 	char			*name;
 
