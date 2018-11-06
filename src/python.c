@@ -1499,7 +1499,6 @@ static void
 pysocket_dealloc(struct pysocket *sock)
 {
 	if (sock->socket != NULL) {
-		(void)PyObject_CallMethod(sock->socket, "close", NULL);
 		Py_DECREF(sock->socket);
 	} else if (sock->fd != -1) {
 		(void)close(sock->fd);
