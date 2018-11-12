@@ -173,6 +173,8 @@ static struct python_coro		*coro_running = NULL;
 void
 kore_python_init(void)
 {
+	struct kore_runtime_call	*rcall;
+
 	coro_id = 0;
 	coro_count = 0;
 
@@ -198,6 +200,12 @@ kore_python_init(void)
 
 	if (PyImport_AppendInittab("kore", &python_module_init) == -1)
 		fatal("kore_python_init: failed to add new module");
+
+	rcall = kore_runtime_getcall("kore_python_preinit");
+	if (rcall != NULL) {
+		kore_runtime_execute(rcall);
+		kore_free(rcall);
+	}
 
 	Py_Initialize();
 }
@@ -1589,7 +1597,6 @@ static PyObject *
 pysocket_close(struct pysocket *sock, PyObject *args)
 {
 	if (sock->socket != NULL) {
-		(void)PyObject_CallMethod(sock->socket, "close", NULL);
 		Py_DECREF(sock->socket);
 		sock->socket = NULL;
 	} else if (sock->fd != -1) {
