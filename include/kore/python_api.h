@@ -24,6 +24,7 @@
 #include <Python.h>
 
 void		kore_python_init(void);
+void		kore_python_preinit(void);
 void		kore_python_cleanup(void);
 void		kore_python_coro_run(void);
 void		kore_python_proc_reap(void);

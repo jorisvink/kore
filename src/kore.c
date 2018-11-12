@@ -177,9 +177,6 @@ main(int argc, char *argv[])
 	LIST_INIT(&listeners);
 
 	kore_log_init();
-#if defined(KORE_USE_PYTHON)
-	kore_python_init();
-#endif
 #if !defined(KORE_NO_HTTP)
 	http_parent_init();
 	kore_auth_init();
@@ -195,6 +192,11 @@ main(int argc, char *argv[])
 		usage();
 #endif
 	kore_module_load(NULL, NULL, KORE_MODULE_NATIVE);
+
+#if defined(KORE_USE_PYTHON)
+	kore_python_init();
+#endif
+
 	kore_parse_config();
 
 #if defined(KORE_SINGLE_BINARY)
