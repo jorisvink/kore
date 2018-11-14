@@ -37,6 +37,7 @@ static PyObject		*python_import(const char *);
 static PyObject		*pyconnection_alloc(struct connection *);
 static PyObject		*python_callable(PyObject *, const char *);
 
+static int		pyhttp_response_sent(struct netbuf *);
 static PyObject		*pyhttp_file_alloc(struct http_file *);
 static PyObject		*pyhttp_request_alloc(const struct http_request *);
 
@@ -2544,22 +2545,41 @@ pyhttp_file_alloc(struct http_file *file)
 static PyObject *
 pyhttp_response(struct pyhttp_request *pyreq, PyObject *args)
 {
-	const char		*body;
-	int			status, len;
+	char			*ptr;
+	PyObject		*data;
+	Py_ssize_t		length;
+	int			status;
 
-	len = -1;
+	length = -1;
 
-	if (!PyArg_ParseTuple(args, "iy#", &status, &body, &len))
+	if (!PyArg_ParseTuple(args, "iS", &status, &data))
 		return (NULL);
 
-	if (len < 0) {
+	if (PyBytes_AsStringAndSize(data, &ptr, &length) == -1)
+		return (NULL);
+
+	if (length < 0) {
 		PyErr_SetString(PyExc_TypeError, "invalid length");
 		return (NULL);
 	}
 
-	http_response(pyreq->req, status, body, len);
+	Py_INCREF(data);
+
+	http_response_stream(pyreq->req, status, ptr, length,
+	    pyhttp_response_sent, data);
 
 	Py_RETURN_TRUE;
+}
+
+static int
+pyhttp_response_sent(struct netbuf *nb)
+{
+	PyObject	*data;
+
+	data = nb->extra;
+	Py_DECREF(data);
+
+	return (KORE_RESULT_OK);
 }
 
 static PyObject *
