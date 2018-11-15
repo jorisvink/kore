@@ -506,6 +506,7 @@ extern char	*config_file;
 
 extern pid_t	kore_pid;
 extern int	foreground;
+extern int	kore_quiet;
 extern int	kore_debug;
 extern int	skip_chroot;
 extern int	skip_runas;

@@ -43,6 +43,7 @@ pid_t			kore_pid = -1;
 u_int16_t		cpu_count = 1;
 int			foreground = 0;
 int			kore_debug = 0;
+int			kore_quiet = 0;
 int			skip_runas = 0;
 int			skip_chroot = 0;
 u_int8_t		worker_count = 0;
@@ -76,6 +77,7 @@ usage(void)
 	fprintf(stderr, "\t-f\tstart in foreground\n");
 	fprintf(stderr, "\t-h\tthis help text\n");
 	fprintf(stderr, "\t-n\tdo not chroot\n");
+	fprintf(stderr, "\t-q\tonly log errors\n");
 	fprintf(stderr, "\t-r\tdo not drop privileges\n");
 	fprintf(stderr, "\t-v\tdisplay %s build information\n", __progname);
 
@@ -126,9 +128,9 @@ main(int argc, char *argv[])
 	flags = 0;
 
 #if !defined(KORE_SINGLE_BINARY)
-	while ((ch = getopt(argc, argv, "c:dfhnrv")) != -1) {
+	while ((ch = getopt(argc, argv, "c:dfhnqrv")) != -1) {
 #else
-	while ((ch = getopt(argc, argv, "dfhnrv")) != -1) {
+	while ((ch = getopt(argc, argv, "dfhnqrv")) != -1) {
 #endif
 		flags++;
 		switch (ch) {
@@ -150,6 +152,9 @@ main(int argc, char *argv[])
 			break;
 		case 'n':
 			skip_chroot = 1;
+			break;
+		case 'q':
+			kore_quiet = 1;
 			break;
 		case 'r':
 			skip_runas = 1;
@@ -223,7 +228,9 @@ main(int argc, char *argv[])
 	kore_signal_setup();
 	kore_server_start(argc, argv);
 
-	kore_log(LOG_NOTICE, "server shutting down");
+	if (!kore_quiet)
+		kore_log(LOG_NOTICE, "server shutting down");
+
 	kore_worker_shutdown();
 
 	rcall = kore_runtime_getcall("kore_parent_teardown");
@@ -236,7 +243,9 @@ main(int argc, char *argv[])
 		kore_log(LOG_NOTICE, "failed to remove pidfile (%s)", errno_s);
 
 	kore_listener_cleanup();
-	kore_log(LOG_NOTICE, "goodbye");
+
+	if (!kore_quiet)
+		kore_log(LOG_NOTICE, "goodbye");
 
 #if defined(KORE_USE_PYTHON)
 	kore_python_cleanup();
@@ -337,7 +346,7 @@ kore_server_bind(const char *ip, const char *port, const char *ccb)
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (foreground) {
+	if (foreground && !kore_quiet) {
 #if !defined(KORE_NO_TLS)
 		kore_log(LOG_NOTICE, "running on https://%s:%s", ip, port);
 #else
@@ -387,7 +396,7 @@ kore_server_bind_unix(const char *path, const char *ccb)
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (foreground)
+	if (foreground && !kore_quiet)
 		kore_log(LOG_NOTICE, "running on %s", path);
 
 	return (KORE_RESULT_OK);
@@ -606,19 +615,22 @@ kore_server_start(int argc, char *argv[])
 	kore_pid = getpid();
 	kore_write_kore_pid();
 
-	kore_log(LOG_NOTICE, "%s is starting up", __progname);
+	if (!kore_quiet) {
+		kore_log(LOG_NOTICE, "%s is starting up", __progname);
 #if defined(KORE_USE_PGSQL)
-	kore_log(LOG_NOTICE, "pgsql built-in enabled");
+		kore_log(LOG_NOTICE, "pgsql built-in enabled");
 #endif
 #if defined(KORE_USE_TASKS)
-	kore_log(LOG_NOTICE, "tasks built-in enabled");
+		kore_log(LOG_NOTICE, "tasks built-in enabled");
 #endif
 #if defined(KORE_USE_JSONRPC)
-	kore_log(LOG_NOTICE, "jsonrpc built-in enabled");
+		kore_log(LOG_NOTICE, "jsonrpc built-in enabled");
 #endif
 #if defined(KORE_USE_PYTHON)
-	kore_log(LOG_NOTICE, "python built-in enabled");
+		kore_log(LOG_NOTICE, "python built-in enabled");
 #endif
+	}
+
 #if !defined(KORE_SINGLE_BINARY)
 	rcall = kore_runtime_getcall("kore_parent_configure");
 	if (rcall != NULL) {

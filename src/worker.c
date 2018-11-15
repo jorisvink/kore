@@ -185,7 +185,11 @@ kore_worker_shutdown(void)
 	struct kore_worker	*kw;
 	u_int16_t		id, done;
 
-	kore_log(LOG_NOTICE, "waiting for workers to drain and shutdown");
+	if (!kore_quiet) {
+		kore_log(LOG_NOTICE,
+		    "waiting for workers to drain and shutdown");
+	}
+
 	for (;;) {
 		done = 0;
 		for (id = 0; id < worker_count; id++) {
@@ -367,7 +371,10 @@ kore_worker_entry(struct kore_worker *kw)
 	if (nlisteners == 0)
 		worker_no_lock = 1;
 
-	kore_log(LOG_NOTICE, "worker %d started (cpu#%d)", kw->id, kw->cpu);
+	if (!kore_quiet) {
+		kore_log(LOG_NOTICE,
+		    "worker %d started (cpu#%d)", kw->id, kw->cpu);
+	}
 
 	rcall = kore_runtime_getcall("kore_worker_configure");
 	if (rcall != NULL) {
@@ -524,8 +531,10 @@ kore_worker_wait(int final)
 		if (kw->pid != pid)
 			continue;
 
-		kore_log(LOG_NOTICE, "worker %d (%d)-> status %d",
-		    kw->id, pid, status);
+		if (final == 0 || (final == 1 && !kore_quiet)) {
+			kore_log(LOG_NOTICE, "worker %d (%d)-> status %d",
+			    kw->id, pid, status);
+		}
 
 		if (final) {
 			kw->pid = 0;

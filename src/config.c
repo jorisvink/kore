@@ -238,8 +238,11 @@ kore_parse_config(void)
 		if (getcwd(path, sizeof(path)) == NULL)
 			fatal("getcwd: %s", errno_s);
 		kore_root_path = kore_strdup(path);
-		kore_log(LOG_NOTICE,
-		    "privsep: no root path set, using working directory");
+
+		if (!kore_quiet) {
+			kore_log(LOG_NOTICE, "privsep: no root path set, "
+			    "using working directory");
+		}
 	}
 
 	if (getuid() != 0 && skip_chroot == 0) {
@@ -255,12 +258,15 @@ kore_parse_config(void)
 	}
 
 	if (skip_runas) {
-		kore_log(LOG_WARNING, "privsep: will not change user");
+		if (!kore_quiet)
+			kore_log(LOG_WARNING, "privsep: will not change user");
 	} else {
 #if !defined(KORE_NO_TLS)
 		if (keymgr_runas_user == NULL) {
-			kore_log(LOG_NOTICE,
-			    "privsep: no keymgr_runas set, using 'runas` user");
+			if (!kore_quiet) {
+				kore_log(LOG_NOTICE, "privsep: no keymgr_runas "
+				    "set, using 'runas` user");
+			}
 			keymgr_runas_user = kore_strdup(kore_runas_user);
 		}
 #endif
@@ -268,13 +274,15 @@ kore_parse_config(void)
 
 #if !defined(KORE_NO_TLS)
 	if (keymgr_root_path == NULL) {
-		kore_log(LOG_NOTICE,
-		    "privsep: no keymgr_root set, using 'root` directory");
+		if (!kore_quiet) {
+			kore_log(LOG_NOTICE, "privsep: no keymgr_root set, "
+			    "using 'root` directory");
+		}
 		keymgr_root_path = kore_strdup(kore_root_path);
 	}
 #endif
 
-	if (skip_chroot)
+	if (skip_chroot && !kore_quiet)
 		kore_log(LOG_WARNING, "privsep: will not chroot");
 }
 

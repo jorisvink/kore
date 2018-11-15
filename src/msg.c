@@ -207,7 +207,9 @@ msg_recv_data(struct netbuf *nb)
 static void
 msg_disconnected_parent(struct connection *c)
 {
-	kore_log(LOG_ERR, "parent gone, shutting down");
+	if (!kore_quiet)
+		kore_log(LOG_ERR, "parent gone, shutting down");
+
 	if (kill(worker->pid, SIGQUIT) == -1)
 		kore_log(LOG_ERR, "failed to send SIGQUIT: %s", errno_s);
 }
