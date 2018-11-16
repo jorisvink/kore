@@ -1310,17 +1310,40 @@ python_import(const char *path)
 static PyObject *
 python_callable(PyObject *module, const char *symbol)
 {
-	PyObject	*obj;
+	char		*base, *method;
+	PyObject	*res, *obj, *meth;
 
-	if ((obj = PyObject_GetAttrString(module, symbol)) == NULL)
-		return (NULL);
+	res = NULL;
+	obj = NULL;
+	base = kore_strdup(symbol);
 
-	if (!PyCallable_Check(obj)) {
+	if ((method = strchr(base, '.')) != NULL)
+		*(method)++ = '\0';
+
+	if ((obj = PyObject_GetAttrString(module, base)) == NULL)
+		goto out;
+
+	if (method != NULL) {
+		if ((meth = PyObject_GetAttrString(obj, method)) == NULL)
+			goto out;
+
 		Py_DECREF(obj);
-		return (NULL);
+		obj = meth;
 	}
 
-	return (obj);
+	if (!PyCallable_Check(obj))
+		goto out;
+
+	res = obj;
+	obj = NULL;
+
+out:
+	if (obj != NULL)
+		Py_DECREF(obj);
+
+	kore_free(base);
+
+	return (res);
 }
 
 static PyObject *
