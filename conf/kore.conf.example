@@ -48,11 +48,10 @@ workers		4
 # then worker_max_connections) or you have an actual reason
 # to not spend too much time in the accept loop this setting
 # will make a HUGE positive difference.
-#
-# This is disabled by default. If you wish to enable this
-# specify the number of connections a worker will accept
-# before returning from the accept loop.
-#worker_accept_threshold		0
+
+# Number of accept() calls a worker will do at most in one go
+# before releasing the lock to others.
+#worker_accept_threshold		16
 
 # Workers bind themselves to a single CPU by default.
 # Turn this off by setting this option to 0
