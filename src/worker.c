@@ -52,7 +52,7 @@
 #define WAIT_ANY		(-1)
 #endif
 
-#define WORKER_LOCK_TIMEOUT	500
+#define WORKER_LOCK_TIMEOUT	100
 
 #if !defined(KORE_NO_TLS)
 #define WORKER_SOLO_COUNT	2
