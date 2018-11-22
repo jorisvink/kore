@@ -35,6 +35,10 @@ Documentation
 --------------
 [Read the documentation](https://docs.kore.io/3.0.0/)
 
+Performance
+-----------
+Read the [benchmarks](https://blog.kore.io/posts/benchmarks) blog post.
+
 Platforms supported
 -------------------
 * Linux
@@ -44,7 +48,7 @@ Platforms supported
 
 Building Kore
 -------------
-Clone this repository or get the latest release at [https://kore.io/releases/3.0.0](https://kore.io/releases/3.0.0).
+Clone this repository or get the latest release at [https://kore.io/releases/3.1.0](https://kore.io/releases/3.1.0).
 
 Requirements
 * openssl (1.0.2, 1.1.0 or 1.1.1)
