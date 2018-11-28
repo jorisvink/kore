@@ -1409,6 +1409,39 @@ pyconnection_get_addr(struct pyconnection *pyc, void *closure)
 	return (result);
 }
 
+#if !defined(KORE_NO_TLS)
+static PyObject *
+pyconnection_get_peer_x509(struct pyconnection *pyc, void *closure)
+{
+	int			len;
+	PyObject		*bytes;
+	u_int8_t		*der, *pp;
+
+	if (pyc->c->cert == NULL) {
+		Py_RETURN_NONE;
+	}
+
+	if ((len = i2d_X509(pyc->c->cert, NULL)) <= 0) {
+		PyErr_SetString(PyExc_RuntimeError, "i2d_X509 failed");
+		return (NULL);
+	}
+
+	der = kore_calloc(1, len);
+	pp = der;
+
+	if (i2d_X509(pyc->c->cert, &pp) <= 0) {
+		kore_free(der);
+		PyErr_SetString(PyExc_RuntimeError, "i2d_X509 failed");
+		return (NULL);
+	}
+
+	bytes = PyBytes_FromStringAndSize((char *)der, len);
+	kore_free(der);
+
+	return (bytes);
+}
+#endif
+
 static void
 pytimer_run(void *arg, u_int64_t now)
 {
