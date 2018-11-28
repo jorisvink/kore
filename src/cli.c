@@ -387,6 +387,7 @@ static int			cflags_count = 0;
 static int			cxxflags_count = 0;
 static int			ldflags_count = 0;
 static char			*flavor = NULL;
+static char			*out_dir = ".";
 static char			*object_dir = ".objs";
 static char			*cflags[CFLAGS_MAX];
 static char			*cxxflags[CXXFLAGS_MAX];
@@ -424,6 +425,9 @@ main(int argc, char **argv)
 
 	if ((env = getenv("KORE_OBJDIR")) != NULL)
 		object_dir = env;
+
+	if ((env = getenv("KODEV_OUTPUT")) != NULL)
+		out_dir = env;
 
 	(void)umask(S_IWGRP | S_IWOTH);
 
@@ -1465,9 +1469,9 @@ cli_link_application(void *arg)
 	bopt = arg;
 
 	if (bopt->single_binary)
-		(void)cli_vasprintf(&output, "%s", appl);
+		(void)cli_vasprintf(&output, "%s/%s", out_dir, appl);
 	else
-		(void)cli_vasprintf(&output, "%s.so", appl);
+		(void)cli_vasprintf(&output, "%s/%s.so", out_dir, appl);
 
 	idx = 0;
 	args[idx++] = compiler_ld;
