@@ -602,8 +602,8 @@ cli_build(int argc, char **argv)
 	(void)cli_vasprintf(&src_path, "src");
 	(void)cli_vasprintf(&assets_path, "assets");
 	(void)cli_vasprintf(&config, "conf/%s.conf", appl);
-	(void)cli_vasprintf(&assets_header, "src/assets.h");
 	(void)cli_vasprintf(&build_path, "conf/build.conf");
+	(void)cli_vasprintf(&assets_header, "%s/assets.h", object_dir);
 
 	if (!cli_dir_exists(src_path) || !cli_file_exists(config))
 		fatal("%s doesn't appear to be a kore app", appl);
@@ -1121,7 +1121,7 @@ cli_build_asset(char *fpath, struct dirent *dp)
 	cli_file_writef(out, "#include <sys/types.h>\n\n");
 	cli_file_writef(out, "#include <kore/kore.h>\n");
 	cli_file_writef(out, "#include <kore/http.h>\n\n");
-	cli_file_writef(out, "#include \"../src/assets.h\"\n\n");
+	cli_file_writef(out, "#include \"assets.h\"\n\n");
 
 	/* Write the file data as a byte array. */
 	cli_file_writef(out, "const u_int8_t asset_%s_%s[] = {\n", name, ext);
@@ -1413,7 +1413,7 @@ cli_compile_source_file(void *arg)
 	char			**flags;
 	char			*compiler;
 	int			flags_count;
-	char			*args[32 + CFLAGS_MAX];
+	char			*args[34 + CFLAGS_MAX];
 
 	cf = arg;
 
@@ -1440,6 +1440,8 @@ cli_compile_source_file(void *arg)
 	for (i = 0; i < flags_count; i++)
 		args[idx++] = flags[i];
 
+	args[idx++] = "-I";
+	args[idx++] = object_dir;
 	args[idx++] = "-c";
 	args[idx++] = cf->fpath;
 	args[idx++] = "-o";
