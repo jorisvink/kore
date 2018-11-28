@@ -1163,7 +1163,8 @@ cli_build_asset(char *fpath, struct dirent *dp)
 	cli_file_writef(out, "};\n\n");
 	cli_file_writef(out, "const u_int32_t asset_len_%s_%s = %" PRIu32 ";\n",
 	    name, ext, (u_int32_t)st.st_size);
-	cli_file_writef(out, "const time_t asset_mtime_%s_%s = %" PRI_TIME_T ";\n",
+	cli_file_writef(out,
+	    "const time_t asset_mtime_%s_%s = %" PRI_TIME_T ";\n",
 	    name, ext, st.st_mtime);
 
 	if (bopt->flavor_nohttp == 0) {
