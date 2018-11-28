@@ -100,7 +100,7 @@ client_setup(struct connection *c)
 	backend = kore_connection_new(NULL);
 
 	/* Prepare our connection. */
-	backend->addrtype = AF_INET;
+	backend->family = AF_INET;
 	backend->addr.ipv4.sin_family = AF_INET;
 	backend->addr.ipv4.sin_port = htons(backends[i].port);
 	backend->addr.ipv4.sin_addr.s_addr = inet_addr(backends[i].ip);
@@ -150,7 +150,7 @@ client_setup(struct connection *c)
 	TAILQ_INSERT_TAIL(&connections, backend, list);
 
 	/* Kick off connecting. */
-	backend->flags |= CONN_WRITE_POSSIBLE;
+	backend->evt.flags |= KORE_EVENT_WRITE;
 	backend->handle(backend);
 }
 
@@ -170,7 +170,7 @@ backend_handle_connect(struct connection *c)
 	struct connection	*src;
 
 	/* We will get a write notification when we can progress. */
-	if (!(c->flags & CONN_WRITE_POSSIBLE))
+	if (!(c->evt.flags & KORE_EVENT_WRITE))
 		return (KORE_RESULT_OK);
 
 	kore_connection_stop_idletimer(c);
@@ -190,7 +190,7 @@ backend_handle_connect(struct connection *c)
 
 		/* Clean the write flag, we'll be called later. */
 		if (errno != EISCONN) {
-			c->flags &= ~CONN_WRITE_POSSIBLE;
+			c->evt.flags &= ~KORE_EVENT_WRITE;
 			kore_connection_start_idletimer(c);
 			return (KORE_RESULT_OK);
 		}

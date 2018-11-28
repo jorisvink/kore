@@ -60,7 +60,7 @@ kore_module_cleanup(void)
 	}
 }
 
-void
+struct kore_module *
 kore_module_load(const char *path, const char *onload, int type)
 {
 	struct stat		st;
@@ -114,6 +114,8 @@ kore_module_load(const char *path, const char *onload, int type)
 			    module->path, onload);
 		}
 	}
+
+	return (module);
 }
 
 void

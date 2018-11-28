@@ -11,6 +11,7 @@
 
 # Server configuration.
 bind		127.0.0.1 443
+#bind_unix	/var/run/kore.sock
 
 # The worker process root directory. If chrooting was not disabled
 # at startup the worker processes will chroot into this directory.
@@ -33,10 +34,10 @@ workers		4
 
 # The number of active connections each worker can handle.
 # You might have to tweak this number based on your hardware.
-#worker_max_connections		250
+#worker_max_connections		512
 
 # Limit of maximum open files per worker.
-#worker_rlimit_nofiles		1024
+#worker_rlimit_nofiles		768
 
 # Limit the number of new connections a worker can accept
 # in a single event loop. By default Kore will accept as
@@ -47,11 +48,10 @@ workers		4
 # then worker_max_connections) or you have an actual reason
 # to not spend too much time in the accept loop this setting
 # will make a HUGE positive difference.
-#
-# This is disabled by default. If you wish to enable this
-# specify the number of connections a worker will accept
-# before returning from the accept loop.
-#worker_accept_threshold		0
+
+# Number of accept() calls a worker will do at most in one go
+# before releasing the lock to others.
+#worker_accept_threshold		16
 
 # Workers bind themselves to a single CPU by default.
 # Turn this off by setting this option to 0
@@ -77,20 +77,20 @@ workers		4
 #	If TLS is enabled you will need to specify paths to the domain
 #	certificate and key that Kore will load. This loading is done
 #	from the keymgr (separate process) and all paths must be relative
-#	to the keymgr_root_path configuration option.
+#	to the keymgr_root configuration option.
 #
-#	keymgr_root_path	The root path the keymgr will chdir into.
+#	keymgr_root	The root path the keymgr will chdir into.
 #				If chroot was not disable at startup time
 #				the keymgr process will chroot into here.
 #
-#	keymgr_runas_user	The user to run the keymgr as.
+#	keymgr_runas	The user to run the keymgr as.
 #
 #	If privsep and chrooting is enabled at startup time but these
 #	configuration options were not set, they will take over the
 #	values from the 'root' and 'runas' configuration options.
 #
-#keymgr_root_path
-#keymgr_runas_user
+#keymgr_root
+#keymgr_runas
 
 # Filemap settings
 #	filemap_index	Name of the file to be used as the directory

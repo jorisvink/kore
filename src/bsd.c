@@ -41,10 +41,13 @@ static int			kfd = -1;
 static struct kevent		*events = NULL;
 static u_int32_t		event_count = 0;
 
+#if defined(KORE_USE_PLATFORM_PLEDGE)
+static char	pledges[256] = { "stdio rpath inet error" };
+#endif
+
 void
 kore_platform_init(void)
 {
-#if defined(__MACH__) || defined(__FreeBSD_version)
 	long	n;
 	size_t	len = sizeof(n);
 	int	mib[] = { CTL_HW, HW_NCPU };
@@ -55,9 +58,6 @@ kore_platform_init(void)
 	} else {
 		cpu_count = (u_int16_t)n;
 	}
-#else
-	cpu_count = 0;
-#endif /* __MACH__ || __FreeBSD_version */
 }
 
 void
@@ -118,9 +118,7 @@ int
 kore_platform_event_wait(u_int64_t timer)
 {
 	u_int32_t		r;
-	struct listener		*l;
-	struct connection	*c;
-	u_int8_t		type;
+	struct kore_event	*evt;
 	struct timespec		timeo;
 	int			n, i;
 
@@ -136,83 +134,23 @@ kore_platform_event_wait(u_int64_t timer)
 	if (n > 0)
 		kore_debug("main(): %d sockets available", n);
 
-	r = 0;
 	for (i = 0; i < n; i++) {
 		if (events[i].udata == NULL)
 			fatal("events[%d].udata == NULL", i);
 
-		type = *(u_int8_t *)events[i].udata;
+		r = 0;
+		evt = (struct kore_event *)events[i].udata;
 
-		if (events[i].flags & EV_EOF ||
-		    events[i].flags & EV_ERROR) {
-			switch (type) {
-			case KORE_TYPE_LISTENER:
-				fatal("error on server socket");
-				/* NOTREACHED */
-#if defined(KORE_USE_PGSQL)
-			case KORE_TYPE_PGSQL_CONN:
-				kore_pgsql_handle(events[i].udata, 1);
-				break;
-#endif
-#if defined(KORE_USE_TASKS)
-			case KORE_TYPE_TASK:
-				kore_task_handle(events[i].udata, 1);
-				break;
-#endif
-			default:
-				c = (struct connection *)events[i].udata;
-				kore_connection_disconnect(c);
-				break;
-			}
+		if (events[i].filter == EVFILT_READ)
+			evt->flags |= KORE_EVENT_READ;
 
-			continue;
-		}
+		if (events[i].filter == EVFILT_WRITE)
+			evt->flags |= KORE_EVENT_WRITE;
 
-		switch (type) {
-		case KORE_TYPE_LISTENER:
-			l = (struct listener *)events[i].udata;
+		if (events[i].flags & EV_EOF || events[i].flags & EV_ERROR)
+			r = 1;
 
-			while (worker_active_connections <
-			    worker_max_connections) {
-				if (worker_accept_threshold != 0 &&
-				    r >= worker_accept_threshold)
-					break;
-
-				if (!kore_connection_accept(l, &c))
-					break;
-
-				if (c == NULL)
-					break;
-
-				r++;
-				kore_platform_event_all(c->fd, c);
-			}
-			break;
-		case KORE_TYPE_CONNECTION:
-			c = (struct connection *)events[i].udata;
-			if (events[i].filter == EVFILT_READ &&
-			    !(c->flags & CONN_READ_BLOCK))
-				c->flags |= CONN_READ_POSSIBLE;
-			if (events[i].filter == EVFILT_WRITE &&
-			    !(c->flags & CONN_WRITE_BLOCK))
-				c->flags |= CONN_WRITE_POSSIBLE;
-
-			if (c->handle != NULL && !c->handle(c))
-				kore_connection_disconnect(c);
-			break;
-#if defined(KORE_USE_PGSQL)
-		case KORE_TYPE_PGSQL_CONN:
-			kore_pgsql_handle(events[i].udata, 0);
-			break;
-#endif
-#if defined(KORE_USE_TASKS)
-		case KORE_TYPE_TASK:
-			kore_task_handle(events[i].udata, 0);
-			break;
-#endif
-		default:
-			fatal("wrong type in event %d", type);
-		}
+		evt->handle(events[i].udata, r);
 	}
 
 	return (r);
@@ -256,19 +194,25 @@ kore_platform_disable_accept(void)
 void
 kore_platform_schedule_read(int fd, void *data)
 {
-	kore_platform_event_schedule(fd, EVFILT_READ, EV_ADD, data);
+	kore_platform_event_schedule(fd, EVFILT_READ, EV_ADD | EV_CLEAR, data);
 }
 
 void
 kore_platform_schedule_write(int fd, void *data)
 {
-	kore_platform_event_schedule(fd, EVFILT_WRITE, EV_ADD, data);
+	kore_platform_event_schedule(fd, EVFILT_WRITE, EV_ADD | EV_CLEAR, data);
 }
 
 void
 kore_platform_disable_read(int fd)
 {
 	kore_platform_event_schedule(fd, EVFILT_READ, EV_DELETE, NULL);
+}
+
+void
+kore_platform_disable_write(int fd)
+{
+	kore_platform_event_schedule(fd, EVFILT_WRITE, EV_DELETE, NULL);
 }
 
 void
@@ -298,7 +242,7 @@ kore_platform_sendfile(struct connection *c, struct netbuf *nb)
 	if (ret == -1) {
 		if (errno == EAGAIN) {
 			nb->fd_off += len;
-			c->flags &= ~CONN_WRITE_POSSIBLE;
+			c->evt.flags &= ~KORE_EVENT_WRITE;
 			return (KORE_RESULT_OK);
 		}
 
@@ -318,5 +262,28 @@ kore_platform_sendfile(struct connection *c, struct netbuf *nb)
 	}
 
 	return (KORE_RESULT_OK);
+}
+#endif
+
+#if defined(KORE_USE_PLATFORM_PLEDGE)
+void
+kore_platform_pledge(void)
+{
+	if (pledge(pledges, NULL) == -1)
+		fatal("failed to pledge process");
+}
+
+void
+kore_platform_add_pledge(const char *pledge)
+{
+	size_t		len;
+
+	len = strlcat(pledges, " ", sizeof(pledges));
+	if (len >= sizeof(pledges))
+		fatal("truncation on pledges");
+
+	len = strlcat(pledges, pledge, sizeof(pledges));
+	if (len >= sizeof(pledges))
+		fatal("truncation on pledges (%s)", pledge);
 }
 #endif

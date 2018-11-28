@@ -24,6 +24,7 @@
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/queue.h>
+#include <sys/un.h>
 
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -51,6 +52,7 @@ extern "C" {
 #if defined(__APPLE__)
 #undef daemon
 extern int daemon(int, int);
+#define st_mtim		st_mtimespec
 #endif
 
 #if !defined(KORE_NO_SENDFILE) && defined(KORE_NO_TLS)
@@ -59,12 +61,16 @@ extern int daemon(int, int);
 #endif
 #endif
 
+#if defined(__OpenBSD__)
+#define KORE_USE_PLATFORM_PLEDGE	1
+#endif
+
 #define KORE_RESULT_ERROR	0
 #define KORE_RESULT_OK		1
 #define KORE_RESULT_RETRY	2
 
-#define KORE_TLS_VERSION_1_2	0
-#define KORE_TLS_VERSION_1_0	1
+#define KORE_TLS_VERSION_1_3	0
+#define KORE_TLS_VERSION_1_2	1
 #define KORE_TLS_VERSION_BOTH	2
 
 #define KORE_RESEED_TIME	(1800 * 1000)
@@ -116,7 +122,8 @@ struct kore_fileref {
 	int				flags;
 	off_t				size;
 	char				*path;
-	time_t				mtime;
+	u_int64_t			mtime;
+	time_t				mtime_sec;
 	u_int64_t			expiration;
 #if !defined(KORE_USE_PLATFORM_SENDFILE)
 	void				*base;
@@ -153,6 +160,7 @@ TAILQ_HEAD(netbuf_head, netbuf);
 #define KORE_TYPE_CONNECTION	2
 #define KORE_TYPE_PGSQL_CONN	3
 #define KORE_TYPE_TASK		4
+#define KORE_TYPE_PYSOCKET	5
 
 #define CONN_STATE_UNKNOWN		0
 #define CONN_STATE_TLS_SHAKE		1
@@ -164,13 +172,13 @@ TAILQ_HEAD(netbuf_head, netbuf);
 #define CONN_PROTO_WEBSOCKET	2
 #define CONN_PROTO_MSG		3
 
-#define CONN_READ_POSSIBLE	0x01
-#define CONN_WRITE_POSSIBLE	0x02
-#define CONN_WRITE_BLOCK	0x04
-#define CONN_IDLE_TIMER_ACT	0x10
-#define CONN_READ_BLOCK		0x20
-#define CONN_CLOSE_EMPTY	0x40
-#define CONN_WS_CLOSE_SENT	0x80
+#define KORE_EVENT_READ		0x01
+#define KORE_EVENT_WRITE	0x02
+#define KORE_EVENT_ERROR	0x04
+
+#define CONN_IDLE_TIMER_ACT	0x01
+#define CONN_CLOSE_EMPTY	0x02
+#define CONN_WS_CLOSE_SENT	0x04
 
 #define KORE_IDLE_TIMER_MAX	5000
 
@@ -185,12 +193,19 @@ TAILQ_HEAD(netbuf_head, netbuf);
 #define WEBSOCKET_BROADCAST_GLOBAL	2
 
 #define KORE_TIMER_ONESHOT	0x01
+#define KORE_TIMER_FLAGS	(KORE_TIMER_ONESHOT)
 
 #define KORE_CONNECTION_PRUNE_DISCONNECT	0
 #define KORE_CONNECTION_PRUNE_ALL		1
 
+struct kore_event {
+	int		type;
+	int		flags;
+	void		(*handle)(void *, int);
+} __attribute__((packed));
+
 struct connection {
-	u_int8_t		type;
+	struct kore_event	evt;
 	int			fd;
 	u_int8_t		state;
 	u_int8_t		proto;
@@ -208,10 +223,11 @@ struct connection {
 	int			(*read)(struct connection *, size_t *);
 	int			(*write)(struct connection *, size_t, size_t *);
 
-	u_int8_t		addrtype;
+	int			family;
 	union {
 		struct sockaddr_in	ipv4;
 		struct sockaddr_in6	ipv6;
+		struct sockaddr_un	sun;
 	} addr;
 
 	struct {
@@ -264,15 +280,10 @@ struct kore_runtime_call {
 extern struct kore_runtime	kore_native_runtime;
 
 struct listener {
-	u_int8_t			type;
-	u_int8_t			addrtype;
+	struct kore_event		evt;
 	int				fd;
+	int				family;
 	struct kore_runtime_call	*connect;
-
-	union {
-		struct sockaddr_in	ipv4;
-		struct sockaddr_in6	ipv6;
-	} addr;
 
 	LIST_ENTRY(listener)	list;
 };
@@ -430,6 +441,7 @@ struct kore_pool {
 	size_t			slen;
 	size_t			elms;
 	size_t			inuse;
+	size_t			growth;
 	volatile int		lock;
 	char			*name;
 
@@ -494,6 +506,7 @@ extern char	*config_file;
 
 extern pid_t	kore_pid;
 extern int	foreground;
+extern int	kore_quiet;
 extern int	kore_debug;
 extern int	skip_chroot;
 extern int	skip_runas;
@@ -530,6 +543,7 @@ extern struct kore_domain	*primary_dom;
 extern struct kore_pool		nb_pool;
 
 void		kore_signal(int);
+void		kore_shutdown(void);
 void		kore_signal_setup(void);
 void		kore_worker_wait(int);
 void		kore_worker_init(void);
@@ -547,6 +561,7 @@ void		kore_platform_event_init(void);
 void		kore_platform_event_cleanup(void);
 void		kore_platform_proctitle(char *);
 void		kore_platform_disable_read(int);
+void		kore_platform_disable_write(int);
 void		kore_platform_enable_accept(void);
 void		kore_platform_disable_accept(void);
 int		kore_platform_event_wait(u_int64_t);
@@ -560,12 +575,20 @@ void		kore_platform_worker_setcpu(struct kore_worker *);
 int		kore_platform_sendfile(struct connection *, struct netbuf *);
 #endif
 
+#if defined(KORE_USE_PLATFORM_PLEDGE)
+void		kore_platform_pledge(void);
+void		kore_platform_add_pledge(const char *);
+#endif
+
 void		kore_accesslog_init(void);
 void		kore_accesslog_worker_init(void);
 int		kore_accesslog_write(const void *, u_int32_t);
 
 #if !defined(KORE_NO_HTTP)
 int		kore_auth_run(struct http_request *, struct kore_auth *);
+int		kore_auth_cookie(struct http_request *, struct kore_auth *);
+int		kore_auth_header(struct http_request *, struct kore_auth *);
+int		kore_auth_request(struct http_request *, struct kore_auth *);
 void		kore_auth_init(void);
 int		kore_auth_new(const char *);
 struct kore_auth	*kore_auth_lookup(const char *);
@@ -577,8 +600,13 @@ void		kore_timer_remove(struct kore_timer *);
 struct kore_timer	*kore_timer_add(void (*cb)(void *, u_int64_t),
 			    u_int64_t, void *, int);
 
-int		kore_sockopt(int, int, int);
 void		kore_listener_cleanup(void);
+void		kore_listener_accept(void *, int);
+void		kore_listener_free(struct listener *);
+struct listener	*kore_listener_alloc(int, const char *);
+
+int		kore_sockopt(int, int, int);
+int		kore_server_bind_unix(const char *, const char *);
 int		kore_server_bind(const char *, const char *, const char *);
 #if !defined(KORE_NO_TLS)
 int		kore_tls_sni_cb(SSL *, int *, void *);
@@ -589,6 +617,7 @@ void			kore_connection_init(void);
 void			kore_connection_cleanup(void);
 void			kore_connection_prune(int);
 struct connection	*kore_connection_new(void *);
+void			kore_connection_event(void *, int);
 int			kore_connection_nonblock(int, int);
 void			kore_connection_check_timeout(u_int64_t);
 int			kore_connection_handle(struct connection *);
@@ -638,7 +667,7 @@ long long	kore_strtonum(const char *, int, long long, long long, int *);
 double		kore_strtodouble(const char *, long double, long double, int *);
 int		kore_base64_encode(const void *, size_t, char **);
 int		kore_base64_decode(const char *, u_int8_t **, size_t *);
-void		*kore_mem_find(void *, size_t, void *, size_t);
+void		*kore_mem_find(void *, size_t, const void *, size_t);
 char		*kore_text_trim(char *, size_t);
 char		*kore_read_line(FILE *, char *, size_t);
 
@@ -672,7 +701,8 @@ extern char	*kore_filemap_index;
 
 void			kore_fileref_init(void);
 struct kore_fileref	*kore_fileref_get(const char *);
-struct kore_fileref	*kore_fileref_create(const char *, int, off_t, time_t);
+struct kore_fileref	*kore_fileref_create(const char *, int, off_t,
+			    struct timespec *);
 void			kore_fileref_release(struct kore_fileref *);
 
 void		kore_domain_init(void);
@@ -688,7 +718,6 @@ void		kore_domain_closelogs(void);
 void		*kore_module_getsym(const char *, struct kore_runtime **);
 void		kore_domain_load_crl(void);
 void		kore_domain_keymgr_init(void);
-void		kore_module_load(const char *, const char *, int);
 void		kore_domain_callback(void (*cb)(struct kore_domain *));
 void		kore_domain_tlsinit(struct kore_domain *, const void *, size_t);
 #if !defined(KORE_NO_HTTP)
@@ -700,6 +729,8 @@ struct kore_module_handle	*kore_module_handler_find(const char *,
 #endif
 
 struct kore_runtime_call	*kore_runtime_getcall(const char *);
+struct kore_module		*kore_module_load(const char *,
+				    const char *, int);
 
 void	kore_runtime_execute(struct kore_runtime_call *);
 int	kore_runtime_onload(struct kore_runtime_call *, int);
@@ -730,6 +761,7 @@ struct kore_validator	*kore_validator_lookup(const char *);
 #endif
 
 void		fatal(const char *, ...) __attribute__((noreturn));
+void		fatalx(const char *, ...) __attribute__((noreturn));
 void		kore_debug_internal(char *, int, const char *, ...);
 
 u_int16_t	net_read16(u_int8_t *);
@@ -772,12 +804,16 @@ void		kore_buf_cleanup(struct kore_buf *);
 char	*kore_buf_stringify(struct kore_buf *, size_t *);
 void	kore_buf_appendf(struct kore_buf *, const char *, ...);
 void	kore_buf_appendv(struct kore_buf *, const char *, va_list);
-void	kore_buf_replace_string(struct kore_buf *, char *, void *, size_t);
+void	kore_buf_replace_string(struct kore_buf *,
+	    const char *, const void *, size_t);
 
 void	kore_keymgr_run(void);
 void	kore_keymgr_cleanup(int);
 
+void	kore_worker_teardown(void);
+void	kore_parent_teardown(void);
 void	kore_worker_configure(void);
+void	kore_parent_daemonized(void);
 void	kore_parent_configure(int, char **);
 
 #if defined(__cplusplus)

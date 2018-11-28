@@ -210,6 +210,9 @@ struct http_file {
 #define HTTP_REQUEST_NO_CONTENT_LENGTH	0x0080
 #define HTTP_REQUEST_AUTHED		0x0100
 
+#define HTTP_VERSION_1_1		0x1000
+#define HTTP_VERSION_1_0		0x2000
+
 #define HTTP_VALIDATOR_IS_REQUEST	0x8000
 
 #define HTTP_BODY_DIGEST_LEN		32
@@ -243,12 +246,11 @@ struct http_request {
 	size_t				state_len;
 	char				*query_string;
 	struct kore_module_handle	*hdlr;
-
-	u_int8_t	http_body_digest[HTTP_BODY_DIGEST_LEN];
-
 #if defined(KORE_USE_PYTHON)
 	void				*py_coro;
 #endif
+
+	u_int8_t	http_body_digest[HTTP_BODY_DIGEST_LEN];
 
 	LIST_HEAD(, kore_task)		tasks;
 	LIST_HEAD(, kore_pgsql)		pgsqls;
@@ -262,6 +264,8 @@ struct http_request {
 	TAILQ_ENTRY(http_request)	list;
 	TAILQ_ENTRY(http_request)	olist;
 };
+
+#define KORE_HTTP_STATE(f)		{ #f, f }
 
 struct http_state {
 	const char		*name;

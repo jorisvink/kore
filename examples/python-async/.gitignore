@@ -1,0 +1,6 @@
+*.o
+.flavor
+.objs
+python-async.so
+assets.h
+cert

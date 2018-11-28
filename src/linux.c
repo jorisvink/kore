@@ -96,9 +96,7 @@ int
 kore_platform_event_wait(u_int64_t timer)
 {
 	u_int32_t		r;
-	struct connection	*c;
-	struct listener		*l;
-	u_int8_t		type;
+	struct kore_event	*evt;
 	int			n, i;
 
 	n = epoll_wait(efd, events, event_count, timer);
@@ -117,78 +115,21 @@ kore_platform_event_wait(u_int64_t timer)
 		if (events[i].data.ptr == NULL)
 			fatal("events[%d].data.ptr == NULL", i);
 
-		type = *(u_int8_t *)events[i].data.ptr;
+		r = 0;
+		evt = (struct kore_event *)events[i].data.ptr;
+
+		if (events[i].events & EPOLLIN)
+			evt->flags |= KORE_EVENT_READ;
+
+		if (events[i].events & EPOLLOUT)
+			evt->flags |= KORE_EVENT_WRITE;
 
 		if (events[i].events & EPOLLERR ||
-		    events[i].events & EPOLLHUP) {
-			switch (type) {
-			case KORE_TYPE_LISTENER:
-				fatal("failed on listener socket");
-				/* NOTREACHED */
-#if defined(KORE_USE_PGSQL)
-			case KORE_TYPE_PGSQL_CONN:
-				kore_pgsql_handle(events[i].data.ptr, 1);
-				break;
-#endif
-#if defined(KORE_USE_TASKS)
-			case KORE_TYPE_TASK:
-				kore_task_handle(events[i].data.ptr, 1);
-				break;
-#endif
-			default:
-				c = (struct connection *)events[i].data.ptr;
-				kore_connection_disconnect(c);
-				break;
-			}
+		    events[i].events & EPOLLHUP ||
+		    events[i].events & EPOLLRDHUP)
+			r = 1;
 
-			continue;
-		}
-
-		switch (type) {
-		case KORE_TYPE_LISTENER:
-			l = (struct listener *)events[i].data.ptr;
-
-			while (worker_active_connections <
-			    worker_max_connections) {
-				if (worker_accept_threshold != 0 &&
-				    r >= worker_accept_threshold)
-					break;
-
-				if (!kore_connection_accept(l, &c))
-					break;
-
-				if (c == NULL)
-					break;
-
-				r++;
-				kore_platform_event_all(c->fd, c);
-			}
-			break;
-		case KORE_TYPE_CONNECTION:
-			c = (struct connection *)events[i].data.ptr;
-			if (events[i].events & EPOLLIN &&
-			    !(c->flags & CONN_READ_BLOCK))
-				c->flags |= CONN_READ_POSSIBLE;
-			if (events[i].events & EPOLLOUT &&
-			    !(c->flags & CONN_WRITE_BLOCK))
-				c->flags |= CONN_WRITE_POSSIBLE;
-
-			if (c->handle != NULL && !c->handle(c))
-				kore_connection_disconnect(c);
-			break;
-#if defined(KORE_USE_PGSQL)
-		case KORE_TYPE_PGSQL_CONN:
-			kore_pgsql_handle(events[i].data.ptr, 0);
-			break;
-#endif
-#if defined(KORE_USE_TASKS)
-		case KORE_TYPE_TASK:
-			kore_task_handle(events[i].data.ptr, 0);
-			break;
-#endif
-		default:
-			fatal("wrong type in event %d", type);
-		}
+		evt->handle(events[i].data.ptr, r);
 	}
 
 	return (r);
@@ -224,13 +165,13 @@ kore_platform_event_schedule(int fd, int type, int flags, void *udata)
 void
 kore_platform_schedule_read(int fd, void *data)
 {
-	kore_platform_event_schedule(fd, EPOLLIN, 0, data);
+	kore_platform_event_schedule(fd, EPOLLIN | EPOLLET, 0, data);
 }
 
 void
 kore_platform_schedule_write(int fd, void *data)
 {
-	kore_platform_event_schedule(fd, EPOLLOUT, 0, data);
+	kore_platform_event_schedule(fd, EPOLLOUT | EPOLLET, 0, data);
 }
 
 void
@@ -288,7 +229,7 @@ resend:
 	sent = sendfile(c->fd, nb->file_ref->fd, &nb->fd_off, len);
 	if (sent == -1) {
 		if (errno == EAGAIN) {
-			c->flags &= ~CONN_WRITE_POSSIBLE;
+			c->evt.flags &= ~KORE_EVENT_WRITE;
 			return (KORE_RESULT_OK);
 		}
 

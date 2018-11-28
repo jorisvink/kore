@@ -52,6 +52,7 @@ extern u_int32_t	asset_len_builtin_kore_conf;
 
 static int		configure_include(char *);
 static int		configure_bind(char *);
+static int		configure_bind_unix(char *);
 static int		configure_domain(char *);
 static int		configure_root(char *);
 static int		configure_runas(char *);
@@ -62,6 +63,10 @@ static int		configure_max_connections(char *);
 static int		configure_accept_threshold(char *);
 static int		configure_set_affinity(char *);
 static int		configure_socket_backlog(char *);
+
+#if defined(KORE_USE_PLATFORM_PLEDGE)
+static int		configure_add_pledge(char *);
+#endif
 
 #if !defined(KORE_NO_TLS)
 static int		configure_rand_file(char *);
@@ -126,6 +131,7 @@ static struct {
 } config_names[] = {
 	{ "include",			configure_include },
 	{ "bind",			configure_bind },
+	{ "bind_unix",			configure_bind_unix },
 	{ "load",			configure_load },
 #if defined(KORE_USE_PYTHON)
 	{ "python_path",		configure_python_path },
@@ -142,6 +148,9 @@ static struct {
 	{ "worker_set_affinity",	configure_set_affinity },
 	{ "pidfile",			configure_pidfile },
 	{ "socket_backlog",		configure_socket_backlog },
+#if defined(KORE_USE_PLATFORM_PLEDGE)
+	{ "pledge",			configure_add_pledge },
+#endif
 #if !defined(KORE_NO_TLS)
 	{ "tls_version",		configure_tls_version },
 	{ "tls_cipher",			configure_tls_cipher },
@@ -229,8 +238,11 @@ kore_parse_config(void)
 		if (getcwd(path, sizeof(path)) == NULL)
 			fatal("getcwd: %s", errno_s);
 		kore_root_path = kore_strdup(path);
-		kore_log(LOG_NOTICE,
-		    "privsep: no root path set, using working directory");
+
+		if (!kore_quiet) {
+			kore_log(LOG_NOTICE, "privsep: no root path set, "
+			    "using working directory");
+		}
 	}
 
 	if (getuid() != 0 && skip_chroot == 0) {
@@ -246,12 +258,15 @@ kore_parse_config(void)
 	}
 
 	if (skip_runas) {
-		kore_log(LOG_WARNING, "privsep: will not change user");
+		if (!kore_quiet)
+			kore_log(LOG_WARNING, "privsep: will not change user");
 	} else {
 #if !defined(KORE_NO_TLS)
 		if (keymgr_runas_user == NULL) {
-			kore_log(LOG_NOTICE,
-			    "privsep: no keymgr_runas set, using 'runas` user");
+			if (!kore_quiet) {
+				kore_log(LOG_NOTICE, "privsep: no keymgr_runas "
+				    "set, using 'runas` user");
+			}
 			keymgr_runas_user = kore_strdup(kore_runas_user);
 		}
 #endif
@@ -259,13 +274,15 @@ kore_parse_config(void)
 
 #if !defined(KORE_NO_TLS)
 	if (keymgr_root_path == NULL) {
-		kore_log(LOG_NOTICE,
-		    "privsep: no keymgr_root set, using 'root` directory");
+		if (!kore_quiet) {
+			kore_log(LOG_NOTICE, "privsep: no keymgr_root set, "
+			    "using 'root` directory");
+		}
 		keymgr_root_path = kore_strdup(kore_root_path);
 	}
 #endif
 
-	if (skip_chroot)
+	if (skip_chroot && !kore_quiet)
 		kore_log(LOG_WARNING, "privsep: will not chroot");
 }
 
@@ -368,6 +385,18 @@ configure_bind(char *options)
 }
 
 static int
+configure_bind_unix(char *options)
+{
+	char		*argv[3];
+
+	kore_split_string(options, " ", argv, 3);
+	if (argv[0] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	return (kore_server_bind_unix(argv[0], argv[1]));
+}
+
+static int
 configure_load(char *options)
 {
 	char		*argv[3];
@@ -425,10 +454,10 @@ config_file_write(void)
 static int
 configure_tls_version(char *version)
 {
-	if (!strcmp(version, "1.2")) {
+	if (!strcmp(version, "1.3")) {
+		tls_version = KORE_TLS_VERSION_1_3;
+	} else if (!strcmp(version, "1.2")) {
 		tls_version = KORE_TLS_VERSION_1_2;
-	} else if (!strcmp(version, "1.0")) {
-		tls_version = KORE_TLS_VERSION_1_0;
 	} else if (!strcmp(version, "both")) {
 		tls_version = KORE_TLS_VERSION_BOTH;
 	} else {
@@ -1375,6 +1404,16 @@ configure_python_import(char *module)
 		return (KORE_RESULT_ERROR);
 
 	kore_module_load(argv[0], argv[1], KORE_MODULE_PYTHON);
+	return (KORE_RESULT_OK);
+}
+#endif
+
+#if defined(KORE_USE_PLATFORM_PLEDGE)
+static int
+configure_add_pledge(char *pledge)
+{
+	kore_platform_add_pledge(pledge);
+
 	return (KORE_RESULT_OK);
 }
 #endif

@@ -52,7 +52,6 @@ static void	pgsql_conn_release(struct kore_pgsql *);
 static void	pgsql_conn_cleanup(struct pgsql_conn *);
 static void	pgsql_read_result(struct kore_pgsql *);
 static void	pgsql_schedule(struct kore_pgsql *);
-static void	pgsql_rollback_state(struct kore_pgsql *, void *);
 
 static struct pgsql_conn	*pgsql_conn_create(struct kore_pgsql *,
 				    struct pgsql_db *);
@@ -309,6 +308,9 @@ kore_pgsql_handle(void *c, int err)
 		return;
 	}
 
+	if (!(conn->evt.flags & KORE_EVENT_READ))
+		fatal("%s: read event not set", __func__);
+
 	pgsql = conn->job->pgsql;
 
 	if (!PQconsumeInput(conn->db)) {
@@ -372,7 +374,6 @@ kore_pgsql_continue(struct kore_pgsql *pgsql)
 void
 kore_pgsql_cleanup(struct kore_pgsql *pgsql)
 {
-	kore_debug("kore_pgsql_cleanup(%p)", pgsql);
 	pgsql_queue_remove(pgsql);
 
 	if (pgsql->result != NULL)
@@ -436,7 +437,7 @@ pgsql_conn_next(struct kore_pgsql *pgsql, struct pgsql_db *db)
 {
 	PGTransactionStatusType		state;
 	struct pgsql_conn		*conn;
-	struct kore_pgsql		*rollback;
+	struct kore_pgsql		rollback;
 
 rescan:
 	conn = NULL;
@@ -454,21 +455,16 @@ rescan:
 			conn->flags &= ~PGSQL_CONN_FREE;
 			TAILQ_REMOVE(&pgsql_conn_free, conn, list);
 
-			rollback = kore_malloc(sizeof(*rollback));
-			kore_pgsql_init(rollback);
-			kore_pgsql_bind_callback(rollback,
-			    pgsql_rollback_state, NULL);
-			rollback->flags |= KORE_PGSQL_ASYNC;
+			kore_pgsql_init(&rollback);
+			rollback.conn = conn;
+			rollback.flags = KORE_PGSQL_SYNC;
 
-			rollback->conn = conn;
-			rollback->conn->job = kore_pool_get(&pgsql_job_pool);
-			rollback->conn->job->pgsql = rollback;
-
-			if (!kore_pgsql_query(rollback, "ROLLBACK")) {
-				kore_pgsql_logerror(rollback);
-				kore_pgsql_cleanup(rollback);
-				kore_free(rollback);
+			if (!kore_pgsql_query(&rollback, "ROLLBACK")) {
+				kore_pgsql_logerror(&rollback);
+				kore_pgsql_cleanup(&rollback);
 				pgsql_conn_cleanup(conn);
+			} else {
+				kore_pgsql_cleanup(&rollback);
 			}
 
 			goto rescan;
@@ -604,14 +600,14 @@ pgsql_conn_create(struct kore_pgsql *pgsql, struct pgsql_db *db)
 
 	db->conn_count++;
 
-	conn = kore_malloc(sizeof(*conn));
+	conn = kore_calloc(1, sizeof(*conn));
 	conn->job = NULL;
 	conn->flags = PGSQL_CONN_FREE;
-	conn->type = KORE_TYPE_PGSQL_CONN;
 	conn->name = kore_strdup(db->name);
 	TAILQ_INSERT_TAIL(&pgsql_conn_free, conn, list);
 
-	kore_debug("pgsql_conn_create(): %p", conn);
+	conn->evt.type = KORE_TYPE_PGSQL_CONN;
+	conn->evt.handle = kore_pgsql_handle;
 
 	conn->db = PQconnectdb(db->conn_string);
 	if (conn->db == NULL || (PQstatus(conn->db) != CONNECTION_OK)) {
@@ -667,7 +663,6 @@ pgsql_conn_cleanup(struct pgsql_conn *conn)
 	struct kore_pgsql	*pgsql;
 	struct pgsql_db		*pgsqldb;
 
-	kore_debug("pgsql_conn_cleanup(): %p", conn);
 	if (conn->flags & PGSQL_CONN_FREE)
 		TAILQ_REMOVE(&pgsql_conn_free, conn, list);
 
@@ -688,7 +683,7 @@ pgsql_conn_cleanup(struct pgsql_conn *conn)
 		PQfinish(conn->db);
 
 	LIST_FOREACH(pgsqldb, &pgsql_db_conn_strings, rlist) {
-		if (strcmp(pgsqldb->name, conn->name)) {
+		if (!strcmp(pgsqldb->name, conn->name)) {
 			pgsqldb->conn_count--;
 			break;
 		}
@@ -758,26 +753,5 @@ pgsql_cancel(struct kore_pgsql *pgsql)
 		if (!PQcancel(cancel, buf, sizeof(buf)))
 			kore_log(LOG_ERR, "failed to cancel: %s", buf);
 		PQfreeCancel(cancel);
-	}
-}
-
-static void
-pgsql_rollback_state(struct kore_pgsql *pgsql, void *arg)
-{
-	struct pgsql_conn	*conn;
-
-	switch (pgsql->state) {
-	case KORE_PGSQL_STATE_ERROR:
-		conn = pgsql->conn;
-		kore_pgsql_logerror(pgsql);
-		kore_pgsql_cleanup(pgsql);
-		pgsql_conn_cleanup(conn);
-		break;
-	case KORE_PGSQL_STATE_COMPLETE:
-		kore_pgsql_cleanup(pgsql);
-		break;
-	default:
-		kore_pgsql_continue(pgsql);
-		break;
 	}
 }

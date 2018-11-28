@@ -116,7 +116,8 @@ static const char http_field_content[] = {
 static int	http_body_recv(struct netbuf *);
 static void	http_error_response(struct connection *, int);
 static void	http_write_response_cookie(struct http_cookie *);
-static void	http_argument_add(struct http_request *, char *, char *, int);
+static void	http_argument_add(struct http_request *, char *, char *,
+		    int, int);
 static void	http_response_normal(struct http_request *,
 		    struct connection *, int, const void *, size_t);
 static void	multipart_add_field(struct http_request *, struct kore_buf *,
@@ -390,7 +391,10 @@ http_request_free(struct http_request *req)
 #endif
 
 #if defined(KORE_USE_PYTHON)
-	Py_XDECREF(req->py_coro);
+	if (req->py_coro != NULL) {
+		kore_python_coro_delete(req->py_coro);
+		req->py_coro = NULL;
+	}
 #endif
 #if defined(KORE_USE_PGSQL)
 	while (!LIST_EMPTY(&(req->pgsqls))) {
@@ -568,14 +572,14 @@ http_response_fileref(struct http_request *req, int status,
 
 	if (http_request_header(req, "if-modified-since", &modified)) {
 		mtime = kore_date_to_time(modified);
-		if (mtime == ref->mtime) {
+		if (mtime == ref->mtime_sec) {
 			kore_fileref_release(ref);
 			http_response(req, HTTP_STATUS_NOT_MODIFIED, NULL, 0);
 			return;
 		}
 	}
 
-	if ((tm = gmtime(&ref->mtime)) != NULL) {
+	if ((tm = gmtime(&ref->mtime_sec)) != NULL) {
 		if (strftime(tbuf, sizeof(tbuf),
 		    "%a, %d %b %Y %H:%M:%S GMT", tm) > 0) {
 			http_response_header(req, "last-modified", tbuf);
@@ -1118,7 +1122,7 @@ http_populate_post(struct http_request *req)
 	for (i = 0; i < v; i++) {
 		kore_split_string(args[i], "=", val, 3);
 		if (val[0] != NULL && val[1] != NULL)
-			http_argument_add(req, val[0], val[1], 0);
+			http_argument_add(req, val[0], val[1], 0, 1);
 	}
 
 out:
@@ -1140,7 +1144,7 @@ http_populate_qs(struct http_request *req)
 	for (i = 0; i < v; i++) {
 		kore_split_string(args[i], "=", val, 3);
 		if (val[0] != NULL && val[1] != NULL)
-			http_argument_add(req, val[0], val[1], 1);
+			http_argument_add(req, val[0], val[1], 1, 1);
 	}
 
 	kore_free(query);
@@ -1211,7 +1215,7 @@ http_body_rewind(struct http_request *req)
 			    req->http_body_path, errno_s);
 			return (KORE_RESULT_ERROR);
 		}
-	} else {
+	} else if (req->http_body != NULL) {
 		kore_buf_reset(req->http_body);
 	}
 
@@ -1384,8 +1388,15 @@ http_request_new(struct connection *c, const char *host,
 	}
 
 	if (strcasecmp(version, "http/1.1")) {
-		http_error_response(c, 505);
-		return (NULL);
+		if (strcasecmp(version, "http/1.0")) {
+			http_error_response(c, 505);
+			return (NULL);
+		}
+
+		flags = HTTP_VERSION_1_0;
+		c->flags |= CONN_CLOSE_EMPTY;
+	} else {
+		flags = HTTP_VERSION_1_1;
 	}
 
 	if ((p = strchr(path, '?')) != NULL) {
@@ -1397,7 +1408,7 @@ http_request_new(struct connection *c, const char *host,
 
 	hp = NULL;
 
-	switch (c->addrtype) {
+	switch (c->family) {
 	case AF_INET6:
 		if (*host == '[') {
 			if ((hp = strrchr(host, ']')) == NULL) {
@@ -1430,28 +1441,36 @@ http_request_new(struct connection *c, const char *host,
 
 	if (!strcasecmp(method, "get")) {
 		m = HTTP_METHOD_GET;
-		flags = HTTP_REQUEST_COMPLETE;
+		flags |= HTTP_REQUEST_COMPLETE;
 	} else if (!strcasecmp(method, "delete")) {
 		m = HTTP_METHOD_DELETE;
-		flags = HTTP_REQUEST_COMPLETE;
+		flags |= HTTP_REQUEST_COMPLETE;
 	} else if (!strcasecmp(method, "post")) {
 		m = HTTP_METHOD_POST;
-		flags = HTTP_REQUEST_EXPECT_BODY;
+		flags |= HTTP_REQUEST_EXPECT_BODY;
 	} else if (!strcasecmp(method, "put")) {
 		m = HTTP_METHOD_PUT;
-		flags = HTTP_REQUEST_EXPECT_BODY;
+		flags |= HTTP_REQUEST_EXPECT_BODY;
 	} else if (!strcasecmp(method, "head")) {
 		m = HTTP_METHOD_HEAD;
-		flags = HTTP_REQUEST_COMPLETE;
+		flags |= HTTP_REQUEST_COMPLETE;
 	} else if (!strcasecmp(method, "options")) {
 		m = HTTP_METHOD_OPTIONS;
-		flags = HTTP_REQUEST_COMPLETE;
+		flags |= HTTP_REQUEST_COMPLETE;
 	} else if (!strcasecmp(method, "patch")) {
 		m = HTTP_METHOD_PATCH;
-		flags = HTTP_REQUEST_EXPECT_BODY;
+		flags |= HTTP_REQUEST_EXPECT_BODY;
 	} else {
 		http_error_response(c, 400);
 		return (NULL);
+	}
+
+	if (flags & HTTP_VERSION_1_0) {
+		if (m != HTTP_METHOD_GET && m != HTTP_METHOD_POST &&
+		    m != HTTP_METHOD_HEAD) {
+			http_error_response(c, HTTP_STATUS_METHOD_NOT_ALLOWED);
+			return (NULL);
+		}
 	}
 
 	if (!(hdlr->methods & m)) {
@@ -1479,12 +1498,12 @@ http_request_new(struct connection *c, const char *host,
 	req->http_body_offset = 0;
 	req->http_body_path = NULL;
 
+	req->host = host;
+	req->path = path;
+
 #if defined(KORE_USE_PYTHON)
 	req->py_coro = NULL;
 #endif
-
-	req->host = host;
-	req->path = path;
 
 	if (qsoff > 0) {
 		req->query_string = path + qsoff;
@@ -1675,7 +1694,7 @@ multipart_add_field(struct http_request *req, struct kore_buf *in,
 
 	data->offset -= 2;
 	string = kore_buf_stringify(data, NULL);
-	http_argument_add(req, name, string, 0);
+	http_argument_add(req, name, string, 0, 0);
 	kore_buf_free(data);
 }
 
@@ -1706,12 +1725,14 @@ multipart_file_add(struct http_request *req, struct kore_buf *in,
 }
 
 static void
-http_argument_add(struct http_request *req, char *name, char *value, int qs)
+http_argument_add(struct http_request *req, char *name, char *value, int qs,
+    int decode)
 {
 	struct http_arg			*q;
 	struct kore_handler_params	*p;
 
-	http_argument_urldecode(name);
+	if (decode)
+		http_argument_urldecode(name);
 
 	TAILQ_FOREACH(p, &(req->hdlr->params), list) {
 		if (qs == 1 && !(p->flags & KORE_PARAMS_QUERY_STRING))
@@ -1725,7 +1746,9 @@ http_argument_add(struct http_request *req, char *name, char *value, int qs)
 		if (strcmp(p->name, name))
 			continue;
 
-		http_argument_urldecode(value);
+		if (decode)
+			http_argument_urldecode(value);
+
 		if (!kore_validator_check(req, p->validator, value))
 			break;
 
@@ -1812,12 +1835,22 @@ http_response_normal(struct http_request *req, struct connection *c,
 	struct http_cookie	*ck;
 	struct http_header	*hdr;
 	const char		*conn;
+	char			version;
 	int			connection_close;
 
 	kore_buf_reset(header_buf);
 
-	kore_buf_appendf(header_buf, "HTTP/1.1 %d %s\r\n",
-	    status, http_status_text(status));
+	if (req != NULL) {
+		if (req->flags & HTTP_VERSION_1_0)
+			version = '0';
+		else
+			version = '1';
+	} else {
+		version = '1';
+	}
+
+	kore_buf_appendf(header_buf, "HTTP/1.%c %d %s\r\n",
+	    version, status, http_status_text(status));
 	kore_buf_append(header_buf, http_version, http_version_len);
 
 	if (c->flags & CONN_CLOSE_EMPTY)

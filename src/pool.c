@@ -21,6 +21,8 @@
 
 #include "kore.h"
 
+#define POOL_MIN_ELEMENTS		16
+
 #define POOL_ELEMENT_BUSY		0
 #define POOL_ELEMENT_FREE		1
 
@@ -38,6 +40,9 @@ kore_pool_init(struct kore_pool *pool, const char *name,
 {
 	kore_debug("kore_pool_init(%p, %s, %zu, %zu)", pool, name, len, elm);
 
+	if (elm < POOL_MIN_ELEMENTS)
+		elm = POOL_MIN_ELEMENTS;
+
 	if ((pool->name = strdup(name)) == NULL)
 		fatal("kore_pool_init: strdup %s", errno_s);
 
@@ -45,6 +50,7 @@ kore_pool_init(struct kore_pool *pool, const char *name,
 	pool->elms = 0;
 	pool->inuse = 0;
 	pool->elen = len;
+	pool->growth = elm * 0.25f;
 	pool->slen = pool->elen + sizeof(struct kore_pool_entry);
 
 	LIST_INIT(&(pool->regions));
@@ -79,7 +85,7 @@ kore_pool_get(struct kore_pool *pool)
 #endif
 
 	if (LIST_EMPTY(&(pool->freelist)))
-		pool_region_create(pool, pool->elms);
+		pool_region_create(pool, pool->growth);
 
 	entry = LIST_FIRST(&(pool->freelist));
 	if (entry->state != POOL_ELEMENT_FREE)

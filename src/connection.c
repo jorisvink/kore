@@ -74,9 +74,11 @@ kore_connection_new(void *owner)
 	c->disconnect = NULL;
 	c->hdlr_extra = NULL;
 	c->proto = CONN_PROTO_UNKNOWN;
-	c->type = KORE_TYPE_CONNECTION;
 	c->idle_timer.start = 0;
 	c->idle_timer.length = KORE_IDLE_TIMER_MAX;
+
+	c->evt.type = KORE_TYPE_CONNECTION;
+	c->evt.handle = kore_connection_event;
 
 #if !defined(KORE_NO_HTTP)
 	c->ws_connect = NULL;
@@ -102,13 +104,23 @@ kore_connection_accept(struct listener *listener, struct connection **out)
 	*out = NULL;
 	c = kore_connection_new(listener);
 
-	c->addrtype = listener->addrtype;
-	if (c->addrtype == AF_INET) {
+	c->family = listener->family;
+
+	switch (c->family) {
+	case AF_INET:
 		len = sizeof(struct sockaddr_in);
 		s = (struct sockaddr *)&(c->addr.ipv4);
-	} else {
+		break;
+	case AF_INET6:
 		len = sizeof(struct sockaddr_in6);
 		s = (struct sockaddr *)&(c->addr.ipv6);
+		break;
+	case AF_UNIX:
+		len = sizeof(struct sockaddr_un);
+		s = (struct sockaddr *)&(c->addr.sun);
+		break;
+	default:
+		fatal("unknown family type %d", c->family);
 	}
 
 	if ((c->fd = accept(listener->fd, s, &len)) == -1) {
@@ -117,7 +129,13 @@ kore_connection_accept(struct listener *listener, struct connection **out)
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (!kore_connection_nonblock(c->fd, 1)) {
+	if (!kore_connection_nonblock(c->fd, listener->family != AF_UNIX)) {
+		close(c->fd);
+		kore_pool_put(&connection_pool, c);
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (fcntl(c->fd, F_SETFD, FD_CLOEXEC) == -1) {
 		close(c->fd);
 		kore_pool_put(&connection_pool, c);
 		return (KORE_RESULT_ERROR);
@@ -206,6 +224,20 @@ kore_connection_disconnect(struct connection *c)
 		TAILQ_REMOVE(&connections, c, list);
 		TAILQ_INSERT_TAIL(&disconnected, c, list);
 	}
+}
+
+void
+kore_connection_event(void *arg, int error)
+{
+	struct connection	*c = arg;
+
+	if (error) {
+		kore_connection_disconnect(c);
+		return;
+	}
+
+	if (!c->handle(c))
+		kore_connection_disconnect(c);
 }
 
 int
@@ -303,12 +335,12 @@ kore_connection_handle(struct connection *c)
 		/* FALLTHROUGH */
 #endif /* !KORE_NO_TLS */
 	case CONN_STATE_ESTABLISHED:
-		if (c->flags & CONN_READ_POSSIBLE) {
+		if (c->evt.flags & KORE_EVENT_READ) {
 			if (!net_recv_flush(c))
 				return (KORE_RESULT_ERROR);
 		}
 
-		if (c->flags & CONN_WRITE_POSSIBLE) {
+		if (c->evt.flags & KORE_EVENT_WRITE) {
 			if (!net_send_flush(c))
 				return (KORE_RESULT_ERROR);
 		}

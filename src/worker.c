@@ -52,7 +52,7 @@
 #define WAIT_ANY		(-1)
 #endif
 
-#define WORKER_LOCK_TIMEOUT	500
+#define WORKER_LOCK_TIMEOUT	100
 
 #if !defined(KORE_NO_TLS)
 #define WORKER_SOLO_COUNT	2
@@ -80,6 +80,7 @@ static void	worker_entropy_recv(struct kore_msg *, const void *);
 static void	worker_certificate_recv(struct kore_msg *, const void *);
 #endif
 
+static u_int64_t			next_lock;
 static struct kore_worker		*kore_workers;
 static int				worker_no_lock;
 static int				shm_accept_key;
@@ -88,9 +89,9 @@ static struct wlock			*accept_lock;
 extern volatile sig_atomic_t	sig_recv;
 struct kore_worker		*worker = NULL;
 u_int8_t			worker_set_affinity = 1;
-u_int32_t			worker_accept_threshold = 0;
-u_int32_t			worker_rlimit_nofiles = 1024;
-u_int32_t			worker_max_connections = 250;
+u_int32_t			worker_accept_threshold = 16;
+u_int32_t			worker_rlimit_nofiles = 768;
+u_int32_t			worker_max_connections = 512;
 u_int32_t			worker_active_connections = 0;
 
 void
@@ -102,7 +103,7 @@ kore_worker_init(void)
 	worker_no_lock = 0;
 
 	if (worker_count == 0)
-		worker_count = 1;
+		worker_count = cpu_count;
 
 #if !defined(KORE_NO_TLS)
 	/* account for the key manager. */
@@ -184,7 +185,11 @@ kore_worker_shutdown(void)
 	struct kore_worker	*kw;
 	u_int16_t		id, done;
 
-	kore_log(LOG_NOTICE, "waiting for workers to drain and shutdown");
+	if (!kore_quiet) {
+		kore_log(LOG_NOTICE,
+		    "waiting for workers to drain and shutdown");
+	}
+
 	for (;;) {
 		done = 0;
 		for (id = 0; id < worker_count; id++) {
@@ -227,30 +232,30 @@ kore_worker_privdrop(const char *runas, const char *root)
 	struct passwd		*pw = NULL;
 
 	if (root == NULL)
-		fatal("no root directory for kore_worker_privdrop");
+		fatalx("no root directory for kore_worker_privdrop");
 
 	/* Must happen before chroot. */
 	if (skip_runas == 0) {
 		if (runas == NULL)
-			fatal("no runas user given and -r not specified");
+			fatalx("no runas user given and -r not specified");
 		pw = getpwnam(runas);
 		if (pw == NULL) {
-			fatal("cannot getpwnam(\"%s\") for user: %s",
+			fatalx("cannot getpwnam(\"%s\") for user: %s",
 			    runas, errno_s);
 		}
 	}
 
 	if (skip_chroot == 0) {
 		if (chroot(root) == -1) {
-			fatal("cannot chroot(\"%s\"): %s",
+			fatalx("cannot chroot(\"%s\"): %s",
 			    root, errno_s);
 		}
 
 		if (chdir("/") == -1)
-			fatal("cannot chdir(\"/\"): %s", errno_s);
+			fatalx("cannot chdir(\"/\"): %s", errno_s);
 	} else {
 		if (chdir(root) == -1)
-			fatal("cannot chdir(\"/\"): %s", errno_s);
+			fatalx("cannot chdir(\"%s\"): %s", root, errno_s);
 	}
 
 	if (getrlimit(RLIMIT_NOFILE, &rl) == -1) {
@@ -279,8 +284,13 @@ kore_worker_privdrop(const char *runas, const char *root)
 		    setresgid(pw->pw_gid, pw->pw_gid, pw->pw_gid) ||
 		    setresuid(pw->pw_uid, pw->pw_uid, pw->pw_uid))
 #endif
-			fatal("cannot drop privileges");
+			fatalx("cannot drop privileges");
 	}
+
+#if defined(KORE_USE_PLATFORM_PLEDGE)
+	kore_platform_pledge();
+#endif
+
 }
 
 void
@@ -288,9 +298,9 @@ kore_worker_entry(struct kore_worker *kw)
 {
 	struct kore_runtime_call	*rcall;
 	char				buf[16];
+	u_int64_t			now, next_prune;
 	int				quit, had_lock, r;
 	u_int64_t			timerwait, netwait;
-	u_int64_t			now, next_prune, next_lock;
 #if !defined(KORE_NO_TLS)
 	u_int64_t			last_seed;
 #endif
@@ -317,10 +327,13 @@ kore_worker_entry(struct kore_worker *kw)
 		exit(0);
 	}
 #endif
+	net_init();
+	kore_connection_init();
+	kore_platform_event_init();
+	kore_msg_worker_init();
 
 	kore_worker_privdrop(kore_runas_user, kore_root_path);
 
-	net_init();
 #if !defined(KORE_NO_HTTP)
 	http_init();
 	kore_filemap_resolve_paths();
@@ -328,7 +341,6 @@ kore_worker_entry(struct kore_worker *kw)
 #endif
 	kore_timer_init();
 	kore_fileref_init();
-	kore_connection_init();
 	kore_domain_load_crl();
 	kore_domain_keymgr_init();
 
@@ -337,9 +349,6 @@ kore_worker_entry(struct kore_worker *kw)
 	next_lock = 0;
 	next_prune = 0;
 	worker_active_connections = 0;
-
-	kore_platform_event_init();
-	kore_msg_worker_init();
 
 #if defined(KORE_USE_PGSQL)
 	kore_pgsql_sys_init();
@@ -362,7 +371,10 @@ kore_worker_entry(struct kore_worker *kw)
 	if (nlisteners == 0)
 		worker_no_lock = 1;
 
-	kore_log(LOG_NOTICE, "worker %d started (cpu#%d)", kw->id, kw->cpu);
+	if (!kore_quiet) {
+		kore_log(LOG_NOTICE,
+		    "worker %d started (cpu#%d)", kw->id, kw->cpu);
+	}
 
 	rcall = kore_runtime_getcall("kore_worker_configure");
 	if (rcall != NULL) {
@@ -374,23 +386,6 @@ kore_worker_entry(struct kore_worker *kw)
 	worker->restarted = 0;
 
 	for (;;) {
-		if (sig_recv != 0) {
-			switch (sig_recv) {
-			case SIGHUP:
-				kore_module_reload(1);
-				break;
-			case SIGQUIT:
-			case SIGINT:
-			case SIGTERM:
-				quit = 1;
-				break;
-			default:
-				break;
-			}
-
-			sig_recv = 0;
-		}
-
 		netwait = 100;
 		now = kore_time_ms();
 
@@ -441,8 +436,33 @@ kore_worker_entry(struct kore_worker *kw)
 			}
 		}
 
+		if (sig_recv != 0) {
+			switch (sig_recv) {
+			case SIGHUP:
+				kore_module_reload(1);
+				break;
+			case SIGQUIT:
+			case SIGINT:
+			case SIGTERM:
+				quit = 1;
+				break;
+			case SIGCHLD:
+#if defined(KORE_USE_PYTHON)
+				kore_python_proc_reap();
+#endif
+				break;
+			default:
+				break;
+			}
+
+			sig_recv = 0;
+		}
+
 #if !defined(KORE_NO_HTTP)
 		http_process();
+#endif
+#if defined(KORE_USE_PYTHON)
+		kore_python_coro_run();
 #endif
 
 		if (next_prune <= now) {
@@ -453,6 +473,12 @@ kore_worker_entry(struct kore_worker *kw)
 
 		if (quit)
 			break;
+	}
+
+	rcall = kore_runtime_getcall("kore_worker_teardown");
+	if (rcall != NULL) {
+		kore_runtime_execute(rcall);
+		kore_free(rcall);
 	}
 
 	kore_platform_event_cleanup();
@@ -505,8 +531,10 @@ kore_worker_wait(int final)
 		if (kw->pid != pid)
 			continue;
 
-		kore_log(LOG_NOTICE, "worker %d (%d)-> status %d",
-		    kw->id, pid, status);
+		if (final == 0 || (final == 1 && !kore_quiet)) {
+			kore_log(LOG_NOTICE, "worker %d (%d)-> status %d",
+			    kw->id, pid, status);
+		}
 
 		if (final) {
 			kw->pid = 0;
@@ -574,6 +602,7 @@ kore_worker_make_busy(void)
 	if (worker->has_lock) {
 		worker_unlock();
 		worker->has_lock = 0;
+		next_lock = kore_time_ms() + WORKER_LOCK_TIMEOUT;
 	}
 }
 

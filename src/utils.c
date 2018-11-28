@@ -45,6 +45,8 @@ static struct {
 	{ NULL,		0 },
 };
 
+static void	fatal_log(const char *, va_list);
+
 static char b64table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 #if defined(KORE_DEBUG)
@@ -541,12 +543,12 @@ kore_base64_decode(const char *in, u_int8_t **out, size_t *olen)
 }
 
 void *
-kore_mem_find(void *src, size_t slen, void *needle, size_t len)
+kore_mem_find(void *src, size_t slen, const void *needle, size_t len)
 {
 	size_t		pos;
 
 	for (pos = 0; pos < slen; pos++) {
-		if ( *((u_int8_t *)src + pos) != *(u_int8_t *)needle)
+		if ( *((u_int8_t *)src + pos) != *(const u_int8_t *)needle)
 			continue;
 
 		if ((slen - pos) < len)
@@ -607,13 +609,38 @@ kore_read_line(FILE *fp, char *in, size_t len)
 void
 fatal(const char *fmt, ...)
 {
-	va_list			args;
+	va_list		args;
+
+	va_start(args, fmt);
+	fatal_log(fmt, args);
+	va_end(args);
+
+	exit(1);
+}
+
+void
+fatalx(const char *fmt, ...)
+{
+	va_list		args;
+
+	/* In case people call fatalx() from the parent context. */
+	if (worker != NULL)
+		kore_msg_send(KORE_MSG_PARENT, KORE_MSG_SHUTDOWN, NULL, 0);
+
+	va_start(args, fmt);
+	fatal_log(fmt, args);
+	va_end(args);
+
+	exit(1);
+}
+
+static void
+fatal_log(const char *fmt, va_list args)
+{
 	char			buf[2048];
 	extern const char	*__progname;
 
-	va_start(args, fmt);
 	(void)vsnprintf(buf, sizeof(buf), fmt, args);
-	va_end(args);
 
 	if (!foreground)
 		kore_log(LOG_ERR, "%s", buf);
@@ -624,5 +651,4 @@ fatal(const char *fmt, ...)
 #endif
 
 	printf("%s: %s\n", __progname, buf);
-	exit(1);
 }

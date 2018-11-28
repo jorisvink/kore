@@ -14,9 +14,38 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#define CORO_STATE_RUNNABLE		1
+#define CORO_STATE_SUSPENDED		2
+
+struct python_coro {
+	u_int64_t			id;
+	int				state;
+	PyObject			*obj;
+	struct pysocket_op		*sockop;
+	struct pygather_op		*gatherop;
+	struct http_request		*request;
+	PyObject			*exception;
+	char				*exception_msg;
+	TAILQ_ENTRY(python_coro)	list;
+};
+
+TAILQ_HEAD(coro_list, python_coro);
+
 static PyObject		*python_kore_log(PyObject *, PyObject *);
+static PyObject		*python_kore_time(PyObject *, PyObject *);
+static PyObject		*python_kore_lock(PyObject *, PyObject *);
+static PyObject		*python_kore_proc(PyObject *, PyObject *);
+static PyObject		*python_kore_bind(PyObject *, PyObject *);
+static PyObject		*python_kore_timer(PyObject *, PyObject *);
 static PyObject		*python_kore_fatal(PyObject *, PyObject *);
-static PyObject		*python_kore_listen(PyObject *, PyObject *);
+static PyObject		*python_kore_queue(PyObject *, PyObject *);
+static PyObject		*python_kore_gather(PyObject *, PyObject *);
+static PyObject		*python_kore_fatalx(PyObject *, PyObject *);
+static PyObject		*python_kore_suspend(PyObject *, PyObject *);
+static PyObject		*python_kore_shutdown(PyObject *, PyObject *);
+static PyObject		*python_kore_bind_unix(PyObject *, PyObject *);
+static PyObject		*python_kore_task_create(PyObject *, PyObject *);
+static PyObject		*python_kore_socket_wrap(PyObject *, PyObject *);
 
 #if defined(KORE_USE_PGSQL)
 static PyObject		*python_kore_pgsql_register(PyObject *, PyObject *);
@@ -31,8 +60,20 @@ static PyObject		*python_websocket_broadcast(PyObject *, PyObject *);
 
 static struct PyMethodDef pykore_methods[] = {
 	METHOD("log", python_kore_log, METH_VARARGS),
+	METHOD("time", python_kore_time, METH_NOARGS),
+	METHOD("lock", python_kore_lock, METH_NOARGS),
+	METHOD("proc", python_kore_proc, METH_VARARGS),
+	METHOD("bind", python_kore_bind, METH_VARARGS),
+	METHOD("timer", python_kore_timer, METH_VARARGS),
+	METHOD("queue", python_kore_queue, METH_VARARGS),
+	METHOD("gather", python_kore_gather, METH_VARARGS),
 	METHOD("fatal", python_kore_fatal, METH_VARARGS),
-	METHOD("listen", python_kore_listen, METH_VARARGS),
+	METHOD("fatalx", python_kore_fatalx, METH_VARARGS),
+	METHOD("suspend", python_kore_suspend, METH_VARARGS),
+	METHOD("shutdown", python_kore_shutdown, METH_NOARGS),
+	METHOD("bind_unix", python_kore_bind_unix, METH_VARARGS),
+	METHOD("task_create", python_kore_task_create, METH_VARARGS),
+	METHOD("socket_wrap", python_kore_socket_wrap, METH_VARARGS),
 	METHOD("websocket_broadcast", python_websocket_broadcast, METH_VARARGS),
 #if defined(KORE_USE_PGSQL)
 	METHOD("register_database", python_kore_pgsql_register, METH_VARARGS),
@@ -42,6 +83,384 @@ static struct PyMethodDef pykore_methods[] = {
 
 static struct PyModuleDef pykore_module = {
 	PyModuleDef_HEAD_INIT, "kore", NULL, -1, pykore_methods
+};
+
+#define PYSUSPEND_OP_INIT	1
+#define PYSUSPEND_OP_WAIT	2
+#define PYSUSPEND_OP_CONTINUE	3
+
+struct pysuspend_op {
+	PyObject_HEAD
+	int			state;
+	int			delay;
+	struct python_coro	*coro;
+	struct kore_timer	*timer;
+};
+
+static void	pysuspend_op_dealloc(struct pysuspend_op *);
+
+static PyObject	*pysuspend_op_await(PyObject *);
+static PyObject	*pysuspend_op_iternext(struct pysuspend_op *);
+
+static PyAsyncMethods pysuspend_op_async = {
+	(unaryfunc)pysuspend_op_await,
+	NULL,
+	NULL
+};
+
+static PyTypeObject pysuspend_op_type = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "kore.suspend",
+	.tp_doc = "suspension operation",
+	.tp_as_async = &pysuspend_op_async,
+	.tp_iternext = (iternextfunc)pysuspend_op_iternext,
+	.tp_basicsize = sizeof(struct pysuspend_op),
+	.tp_dealloc = (destructor)pysuspend_op_dealloc,
+	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+};
+
+struct pytimer {
+	PyObject_HEAD
+	int			flags;
+	struct kore_timer	*run;
+	PyObject		*callable;
+};
+
+static PyObject	*pytimer_close(struct pytimer *, PyObject *);
+
+static PyMethodDef pytimer_methods[] = {
+	METHOD("close", pytimer_close, METH_NOARGS),
+	METHOD(NULL, NULL, -1)
+};
+
+static void	pytimer_dealloc(struct pytimer *);
+
+static PyTypeObject pytimer_type = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "kore.timer",
+	.tp_doc = "kore timer implementation",
+	.tp_methods = pytimer_methods,
+	.tp_basicsize = sizeof(struct pytimer),
+	.tp_dealloc = (destructor)pytimer_dealloc,
+	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+};
+
+struct pysocket {
+	PyObject_HEAD
+	int			fd;
+	int			family;
+	int			protocol;
+	PyObject		*socket;
+	socklen_t		addr_len;
+	union {
+		struct sockaddr_in	ipv4;
+		struct sockaddr_un	sun;
+	} addr;
+};
+
+static PyObject *pysocket_send(struct pysocket *, PyObject *);
+static PyObject *pysocket_recv(struct pysocket *, PyObject *);
+static PyObject *pysocket_close(struct pysocket *, PyObject *);
+static PyObject *pysocket_accept(struct pysocket *, PyObject *);
+static PyObject *pysocket_connect(struct pysocket *, PyObject *);
+
+static PyMethodDef pysocket_methods[] = {
+	METHOD("recv", pysocket_recv, METH_VARARGS),
+	METHOD("send", pysocket_send, METH_VARARGS),
+	METHOD("close", pysocket_close, METH_NOARGS),
+	METHOD("accept", pysocket_accept, METH_NOARGS),
+	METHOD("connect", pysocket_connect, METH_VARARGS),
+	METHOD(NULL, NULL, -1),
+};
+
+static void	pysocket_dealloc(struct pysocket *);
+
+static PyTypeObject pysocket_type = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "kore.socket",
+	.tp_doc = "kore socket implementation",
+	.tp_methods = pysocket_methods,
+	.tp_basicsize = sizeof(struct pysocket),
+	.tp_dealloc = (destructor)pysocket_dealloc,
+	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+};
+
+#define PYSOCKET_TYPE_ACCEPT	1
+#define PYSOCKET_TYPE_CONNECT	2
+#define PYSOCKET_TYPE_RECV	3
+#define PYSOCKET_TYPE_SEND	4
+
+struct pysocket_data {
+	struct kore_event	evt;
+	int			fd;
+	int			eof;
+	int			type;
+	void			*self;
+	struct python_coro	*coro;
+	int			state;
+	size_t			length;
+	struct kore_buf		buffer;
+	struct pysocket		*socket;
+};
+
+struct pysocket_op {
+	PyObject_HEAD
+	struct pysocket_data	data;
+};
+
+static void	pysocket_op_dealloc(struct pysocket_op *);
+
+static PyObject	*pysocket_op_await(PyObject *);
+static PyObject	*pysocket_op_iternext(struct pysocket_op *);
+
+static PyAsyncMethods pysocket_op_async = {
+	(unaryfunc)pysocket_op_await,
+	NULL,
+	NULL
+};
+
+static PyTypeObject pysocket_op_type = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "kore.socketop",
+	.tp_doc = "socket operation",
+	.tp_as_async = &pysocket_op_async,
+	.tp_iternext = (iternextfunc)pysocket_op_iternext,
+	.tp_basicsize = sizeof(struct pysocket_op),
+	.tp_dealloc = (destructor)pysocket_op_dealloc,
+	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+};
+
+struct pyqueue_waiting {
+	struct python_coro		*coro;
+	struct pyqueue_op		*op;
+	TAILQ_ENTRY(pyqueue_waiting)	list;
+};
+
+struct pyqueue_object {
+	PyObject			*obj;
+	TAILQ_ENTRY(pyqueue_object)	list;
+};
+
+struct pyqueue {
+	PyObject_HEAD
+	TAILQ_HEAD(, pyqueue_object)	objects;
+	TAILQ_HEAD(, pyqueue_waiting)	waiting;
+};
+
+static PyObject *pyqueue_pop(struct pyqueue *, PyObject *);
+static PyObject *pyqueue_push(struct pyqueue *, PyObject *);
+static PyObject *pyqueue_popnow(struct pyqueue *, PyObject *);
+
+static PyMethodDef pyqueue_methods[] = {
+	METHOD("pop", pyqueue_pop, METH_NOARGS),
+	METHOD("push", pyqueue_push, METH_VARARGS),
+	METHOD("popnow", pyqueue_popnow, METH_NOARGS),
+	METHOD(NULL, NULL, -1)
+};
+
+static void	pyqueue_dealloc(struct pyqueue *);
+
+static PyTypeObject pyqueue_type = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "kore.queue",
+	.tp_doc = "queue",
+	.tp_methods = pyqueue_methods,
+	.tp_basicsize = sizeof(struct pyqueue),
+	.tp_dealloc = (destructor)pyqueue_dealloc,
+	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+};
+
+struct pyqueue_op {
+	PyObject_HEAD
+	struct pyqueue		*queue;
+	struct pyqueue_waiting	*waiting;
+};
+
+static void	pyqueue_op_dealloc(struct pyqueue_op *);
+
+static PyObject	*pyqueue_op_await(PyObject *);
+static PyObject	*pyqueue_op_iternext(struct pyqueue_op *);
+
+static PyAsyncMethods pyqueue_op_async = {
+	(unaryfunc)pyqueue_op_await,
+	NULL,
+	NULL
+};
+
+static PyTypeObject pyqueue_op_type = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "kore.queueop",
+	.tp_doc = "queue waitable",
+	.tp_as_async = &pyqueue_op_async,
+	.tp_iternext = (iternextfunc)pyqueue_op_iternext,
+	.tp_basicsize = sizeof(struct pyqueue_op),
+	.tp_dealloc = (destructor)pyqueue_op_dealloc,
+	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+};
+
+struct pylock {
+	PyObject_HEAD
+	struct python_coro		*owner;
+	TAILQ_HEAD(, pylock_op)		ops;
+};
+
+static PyObject *pylock_aexit(struct pylock *, PyObject *);
+static PyObject *pylock_aenter(struct pylock *, PyObject *);
+
+static PyMethodDef pylock_methods[] = {
+	METHOD("__aexit__", pylock_aexit, METH_VARARGS),
+	METHOD("__aenter__", pylock_aenter, METH_NOARGS),
+	METHOD(NULL, NULL, -1)
+};
+
+static void	pylock_dealloc(struct pylock *);
+
+static PyTypeObject pylock_type = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "kore.lock",
+	.tp_doc = "locking mechanism",
+	.tp_methods = pylock_methods,
+	.tp_basicsize = sizeof(struct pylock),
+	.tp_dealloc = (destructor)pylock_dealloc,
+	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+};
+
+struct pylock_op {
+	PyObject_HEAD
+	int			locking;
+	int			active;
+	struct pylock		*lock;
+	struct python_coro	*coro;
+	TAILQ_ENTRY(pylock_op)	list;
+};
+
+static void	pylock_op_dealloc(struct pylock_op *);
+
+static PyObject	*pylock_op_await(PyObject *);
+static PyObject	*pylock_op_iternext(struct pylock_op *);
+
+static PyAsyncMethods pylock_op_async = {
+	(unaryfunc)pylock_op_await,
+	NULL,
+	NULL
+};
+
+static PyTypeObject pylock_op_type = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "kore.lockop",
+	.tp_doc = "lock awaitable",
+	.tp_as_async = &pylock_op_async,
+	.tp_iternext = (iternextfunc)pylock_op_iternext,
+	.tp_basicsize = sizeof(struct pylock_op),
+	.tp_dealloc = (destructor)pylock_op_dealloc,
+	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+};
+
+struct pyproc {
+	PyObject_HEAD
+	pid_t			pid;
+	int			reaped;
+	int			status;
+	struct pysocket		*in;
+	struct pysocket		*out;
+	struct python_coro	*coro;
+	struct kore_timer	*timer;
+	TAILQ_ENTRY(pyproc)	list;
+};
+
+static void	pyproc_dealloc(struct pyproc *);
+
+static PyObject	*pyproc_kill(struct pyproc *, PyObject *);
+static PyObject	*pyproc_reap(struct pyproc *, PyObject *);
+static PyObject	*pyproc_recv(struct pyproc *, PyObject *);
+static PyObject	*pyproc_send(struct pyproc *, PyObject *);
+static PyObject	*pyproc_close_stdin(struct pyproc *, PyObject *);
+
+static PyMethodDef pyproc_methods[] = {
+	METHOD("kill", pyproc_kill, METH_NOARGS),
+	METHOD("reap", pyproc_reap, METH_NOARGS),
+	METHOD("recv", pyproc_recv, METH_VARARGS),
+	METHOD("send", pyproc_send, METH_VARARGS),
+	METHOD("close_stdin", pyproc_close_stdin, METH_NOARGS),
+	METHOD(NULL, NULL, -1),
+};
+
+static PyTypeObject pyproc_type = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "kore.proc",
+	.tp_doc = "async process",
+	.tp_methods = pyproc_methods,
+	.tp_basicsize = sizeof(struct pyproc),
+	.tp_dealloc = (destructor)pyproc_dealloc,
+	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+};
+
+struct pyproc_op {
+	PyObject_HEAD
+	struct pyproc		*proc;
+};
+
+static void	pyproc_op_dealloc(struct pyproc_op *);
+
+static PyObject	*pyproc_op_await(PyObject *);
+static PyObject	*pyproc_op_iternext(struct pyproc_op *);
+
+static PyAsyncMethods pyproc_op_async = {
+	(unaryfunc)pyproc_op_await,
+	NULL,
+	NULL
+};
+
+static PyTypeObject pyproc_op_type = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "kore.proc_op",
+	.tp_doc = "proc reaper awaitable",
+	.tp_as_async = &pyproc_op_async,
+	.tp_iternext = (iternextfunc)pyproc_op_iternext,
+	.tp_basicsize = sizeof(struct pyproc_op),
+	.tp_dealloc = (destructor)pyproc_op_dealloc,
+	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+};
+
+struct pygather_coro {
+	struct python_coro		*coro;
+	PyObject			*result;
+	TAILQ_ENTRY(pygather_coro)	list;
+};
+
+struct pygather_result {
+	PyObject			*obj;
+	TAILQ_ENTRY(pygather_result)	list;
+};
+
+struct pygather_op {
+	PyObject_HEAD
+	int				count;
+	struct python_coro		*coro;
+	TAILQ_HEAD(, pygather_result)	results;
+	TAILQ_HEAD(, pygather_coro)	coroutines;
+};
+
+static void	pygather_op_dealloc(struct pygather_op *);
+
+static PyObject	*pygather_op_await(PyObject *);
+static PyObject	*pygather_op_iternext(struct pygather_op *);
+
+static PyAsyncMethods pygather_op_async = {
+	(unaryfunc)pygather_op_await,
+	NULL,
+	NULL
+};
+
+static PyTypeObject pygather_op_type = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "kore.pygather_op",
+	.tp_doc = "coroutine gathering",
+	.tp_as_async = &pygather_op_async,
+	.tp_iternext = (iternextfunc)pygather_op_iternext,
+	.tp_basicsize = sizeof(struct pygather_op),
+	.tp_dealloc = (destructor)pygather_op_dealloc,
+	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
 };
 
 struct pyconnection {
@@ -61,9 +480,16 @@ static PyMethodDef pyconnection_methods[] = {
 static PyObject	*pyconnection_get_fd(struct pyconnection *, void *);
 static PyObject	*pyconnection_get_addr(struct pyconnection *, void *);
 
+#if !defined(KORE_NO_TLS)
+static PyObject	*pyconnection_get_peer_x509(struct pyconnection *, void *);
+#endif
+
 static PyGetSetDef pyconnection_getset[] = {
 	GETTER("fd", pyconnection_get_fd),
 	GETTER("addr", pyconnection_get_addr),
+#if !defined(KORE_NO_TLS)
+	GETTER("x509", pyconnection_get_peer_x509),
+#endif
 	GETTER(NULL, NULL),
 };
 

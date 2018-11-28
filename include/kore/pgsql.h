@@ -31,7 +31,7 @@ extern "C" {
 #endif
 
 struct pgsql_conn {
-	u_int8_t			type;
+	struct kore_event		evt;
 	u_int8_t			flags;
 	char				*name;
 

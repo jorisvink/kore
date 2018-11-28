@@ -23,10 +23,6 @@
 
 TAILQ_HEAD(, kore_auth)		auth_list;
 
-static int	kore_auth_cookie(struct http_request *, struct kore_auth *);
-static int	kore_auth_header(struct http_request *, struct kore_auth *);
-static int	kore_auth_request(struct http_request *, struct kore_auth *);
-
 void
 kore_auth_init(void)
 {
@@ -103,7 +99,7 @@ kore_auth_run(struct http_request *req, struct kore_auth *auth)
 	return (KORE_RESULT_ERROR);
 }
 
-static int
+int
 kore_auth_cookie(struct http_request *req, struct kore_auth *auth)
 {
 	const char	*hdr;
@@ -144,7 +140,7 @@ kore_auth_cookie(struct http_request *req, struct kore_auth *auth)
 	return (i);
 }
 
-static int
+int
 kore_auth_header(struct http_request *req, struct kore_auth *auth)
 {
 	const char	*header;
@@ -155,7 +151,7 @@ kore_auth_header(struct http_request *req, struct kore_auth *auth)
 	return (kore_validator_check(req, auth->validator, header));
 }
 
-static int
+int
 kore_auth_request(struct http_request *req, struct kore_auth *auth)
 {
 	int		ret;

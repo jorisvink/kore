@@ -35,7 +35,7 @@ struct http_request;
 #endif
 
 struct kore_task {
-	u_int8_t		type;
+	struct kore_event	evt;
 	int			state;
 	int			result;
 	pthread_rwlock_t	lock;
@@ -65,11 +65,11 @@ struct kore_task_thread {
 };
 
 void		kore_task_init(void);
+void		kore_task_handle(void *, int);
 void		kore_task_run(struct kore_task *);
 void		kore_task_finish(struct kore_task *);
 void		kore_task_destroy(struct kore_task *);
 int		kore_task_finished(struct kore_task *);
-void		kore_task_handle(struct kore_task *, int);
 
 #if !defined(KORE_NO_HTTP)
 void		kore_task_bind_request(struct kore_task *,
