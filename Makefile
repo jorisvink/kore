@@ -185,7 +185,6 @@ clean:
 	find . -type f -name \*.o -exec rm {} \;
 	rm -rf $(KORE) $(OBJDIR) kore.features
 	$(MAKE) -C kodev clean
-	$(MAKE) -C examples clean
 
 releng-build-examples:
 	rm -rf /tmp/kore_releng
