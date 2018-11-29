@@ -171,6 +171,7 @@ extern const char *__progname;
 
 /* XXX */
 static struct python_coro		*coro_running = NULL;
+static PyObject				*python_tracer = NULL;
 
 void
 kore_python_init(void)
@@ -287,7 +288,7 @@ void
 kore_python_log_error(const char *function)
 {
 	const char	*sval;
-	PyObject	*repr, *type, *value, *traceback;
+	PyObject	*ret, *repr, *type, *value, *traceback;
 
 	if (!PyErr_Occurred() || PyErr_ExceptionMatches(PyExc_StopIteration))
 		return;
@@ -310,6 +311,13 @@ kore_python_log_error(const char *function)
 	 */
 	if (coro_running != NULL && coro_running->gatherop != NULL) {
 		PyErr_SetObject(PyExc_StopIteration, value);
+	} else if (python_tracer != NULL) {
+		/*
+		 * Call the user-supplied tracer callback.
+		 */
+		ret = PyObject_CallFunctionObjArgs(python_tracer,
+		    type, value, traceback, NULL);
+		Py_XDECREF(ret);
 	} else {
 		if ((repr = PyObject_Repr(value)) == NULL)
 			sval = "unknown";
@@ -1025,6 +1033,30 @@ python_kore_queue(PyObject *self, PyObject *args)
 	TAILQ_INIT(&queue->waiting);
 
 	return ((PyObject *)queue);
+}
+
+static PyObject *
+python_kore_tracer(PyObject *self, PyObject *args)
+{
+	PyObject		*obj;
+
+	if (python_tracer != NULL) {
+		PyErr_SetString(PyExc_RuntimeError, "tracer already set");
+		return (NULL);
+	}
+
+	if (!PyArg_ParseTuple(args, "O", &obj))
+		return (NULL);
+
+	if (!PyCallable_Check(obj)) {
+		PyErr_SetString(PyExc_RuntimeError, "object not callable");
+		Py_DECREF(obj);
+		return (NULL);
+	}
+
+	python_tracer = obj;
+
+	Py_RETURN_TRUE;
 }
 
 static PyObject *
