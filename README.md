@@ -106,7 +106,7 @@ If you want to signup to those mailing lists send an empty email to
 	listname+subscribe@kore.io
 
 
-Other mailboxes:
+Other mailboxes (these are **not** mailing lists):
 
 **security@kore.io** - Mail this email if you think you found a security problem.
 

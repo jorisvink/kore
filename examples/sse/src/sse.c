@@ -91,9 +91,6 @@ subscribe(struct http_request *req)
 	/* Set a disconnection method so we know when this client goes away. */
 	req->owner->disconnect = sse_disconnect;
 
-	/* We do not expect any more data to arrive. */
-	req->owner->flags |= CONN_READ_BLOCK;
-
 	/* Allocate a state to be carried by our connection. */
 	state = kore_malloc(sizeof(*state));
 	req->owner->hdlr_extra = state;

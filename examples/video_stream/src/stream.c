@@ -20,6 +20,7 @@
 #include <sys/queue.h>
 
 #include <fcntl.h>
+#include <stdint.h>
 
 #include <kore/kore.h>
 #include <kore/http.h>
@@ -83,8 +84,8 @@ video_stream(struct http_request *req)
 		return (KORE_RESULT_OK);
 	}
 
-	kore_log(LOG_NOTICE, "%p: opened %s (%s) for streaming (%lld ref:%d)",
-	    (void *)req->owner, v->path, ctype, v->size, v->ref);
+	kore_log(LOG_NOTICE, "%p: opened %s (%s) for streaming (%jd ref:%d)",
+	    (void *)req->owner, v->path, ctype, (intmax_t)v->size, v->ref);
 
 	if (http_request_header(req, "range", &header)) {
 		if ((bytes = strchr(header, '=')) == NULL) {
@@ -138,8 +139,9 @@ video_stream(struct http_request *req)
 			return (KORE_RESULT_OK);
 		}
 
-		kore_log(LOG_NOTICE, "%p: %s sending: %lld-%lld/%lld",
-		    (void *)req->owner, v->path, start, end - 1, v->size);
+		kore_log(LOG_NOTICE, "%p: %s sending: %jd-%jd/%jd",
+		    (void *)req->owner, v->path, (intmax_t)start,
+		    (intmax_t)end - 1, (intmax_t)v->size);
 		http_response_header(req, "content-range", rb);
 	} else {
 		start = 0;

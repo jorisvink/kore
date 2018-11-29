@@ -186,4 +186,11 @@ clean:
 	rm -rf $(KORE) $(OBJDIR) kore.features
 	$(MAKE) -C kodev clean
 
+releng-build-examples:
+	rm -rf /tmp/kore_releng
+	$(MAKE) clean
+	$(MAKE) PYTHON=1 PGSQL=1 TASKS=1 PREFIX=/tmp/kore_releng
+	$(MAKE) install PREFIX=/tmp/kore_releng
+	$(MAKE) -C examples
+
 .PHONY: all clean force
