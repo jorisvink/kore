@@ -139,8 +139,9 @@ video_stream(struct http_request *req)
 			return (KORE_RESULT_OK);
 		}
 
-		kore_log(LOG_NOTICE, "%p: %s sending: %lld-%lld/%lld",
-		    (void *)req->owner, v->path, start, end - 1, v->size);
+		kore_log(LOG_NOTICE, "%p: %s sending: %jd-%jd/%jd",
+		    (void *)req->owner, v->path, (intmax_t)start,
+		    (intmax_t)end - 1, (intmax_t)v->size);
 		http_response_header(req, "content-range", rb);
 	} else {
 		start = 0;
