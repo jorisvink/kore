@@ -1,5 +1,0 @@
-*.o
-.objs
-ktunnel.so
-assets.h
-cert
