@@ -5,9 +5,12 @@
 # Kore must be built with PGSQL=1 TASKS=1 PYTHON=1 to get all
 # of the below examples to build correctly.
 #
+# Don't run this directly, run it from the top level as
+# $ make releng-build-examples
+#
 
 CURDIR=		$(shell pwd)
-KODEV=		../kodev/kodev
+KODEV=		/tmp/kore_releng/bin/kodev
 
 EXAMPLES=	cookies \
 		cpp \
@@ -32,12 +35,16 @@ EXAMPLES=	cookies \
 		video_stream \
 		websocket \
 
-all: $(KODEV)
+all:
 	@for example in $(EXAMPLES); do \
 		cd $$example; \
-		../$(KODEV) clean && ../$(KODEV) build || exit 1; \
+		$(KODEV) clean && $(KODEV) build || exit 1; \
 		cd $(CURDIR); \
 	done
 
-$(KODEV):
-	$(MAKE) -C $(KORE_ROOT)/kodev
+clean:
+	@for example in $(EXAMPLES); do \
+		cd $$example; \
+		$(KODEV) clean; \
+		cd $(CURDIR); \
+	done
