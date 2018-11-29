@@ -1054,6 +1054,7 @@ python_kore_tracer(PyObject *self, PyObject *args)
 		return (NULL);
 	}
 
+	Py_INCREF(obj);
 	python_tracer = obj;
 
 	Py_RETURN_TRUE;
