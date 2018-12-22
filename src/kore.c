@@ -656,7 +656,9 @@ kore_server_start(int argc, char *argv[])
 	worker_max_connections = tmp;
 
 	kore_timer_init();
+#if !defined(KORE_NO_HTTP)
 	kore_timer_add(kore_accesslog_run, 10, NULL, 0);
+#endif
 
 	while (quit != 1) {
 		if (sig_recv != 0) {
@@ -696,7 +698,9 @@ kore_server_start(int argc, char *argv[])
 	}
 
 	now = kore_time_ms();
+#if !defined(KORE_NO_HTTP)
 	kore_accesslog_gather(NULL, now, 1);
+#endif
 
 	kore_platform_event_cleanup();
 	kore_connection_cleanup();
