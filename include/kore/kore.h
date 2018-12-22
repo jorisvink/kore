@@ -373,8 +373,8 @@ struct kore_module_handle {
  * logs when it reached at least 75% of that or if its been > 1 second since
  * it was last synced.
  */
-#define KORE_ACCESSLOG_BUFLEN		131072
-#define KORE_ACCESSLOG_SYNC		98304
+#define KORE_ACCESSLOG_BUFLEN		131072U
+#define KORE_ACCESSLOG_SYNC		98304U
 
 struct kore_alog_header {
 	u_int16_t		domain;
