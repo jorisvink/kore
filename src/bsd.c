@@ -114,7 +114,7 @@ kore_platform_event_cleanup(void)
 	}
 }
 
-int
+void
 kore_platform_event_wait(u_int64_t timer)
 {
 	u_int32_t		r;
@@ -127,7 +127,7 @@ kore_platform_event_wait(u_int64_t timer)
 	n = kevent(kfd, NULL, 0, events, event_count, &timeo);
 	if (n == -1) {
 		if (errno == EINTR)
-			return (0);
+			return;
 		fatal("kevent(): %s", errno_s);
 	}
 
@@ -135,11 +135,12 @@ kore_platform_event_wait(u_int64_t timer)
 		kore_debug("main(): %d sockets available", n);
 
 	for (i = 0; i < n; i++) {
-		if (events[i].udata == NULL)
-			fatal("events[%d].udata == NULL", i);
+		evt = (struct kore_event *)events[i].udata;
+
+		if (evt == NULL)
+			fatal("evt == NULL");
 
 		r = 0;
-		evt = (struct kore_event *)events[i].udata;
 
 		if (events[i].filter == EVFILT_READ)
 			evt->flags |= KORE_EVENT_READ;
@@ -150,10 +151,8 @@ kore_platform_event_wait(u_int64_t timer)
 		if (events[i].flags & EV_EOF || events[i].flags & EV_ERROR)
 			r = 1;
 
-		evt->handle(events[i].udata, r);
+		evt->handle(evt, r);
 	}
-
-	return (r);
 }
 
 void
@@ -257,7 +256,7 @@ kore_platform_sendfile(struct connection *c, struct netbuf *nb)
 	nb->fd_off += len;
 
 	if (len == 0 || nb->fd_off == nb->fd_len) {
-		net_remove_netbuf(&(c->send_queue), nb);
+		net_remove_netbuf(c, nb);
 		c->snb = NULL;
 	}
 

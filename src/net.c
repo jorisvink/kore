@@ -138,6 +138,7 @@ net_send_stream(struct connection *c, void *data, size_t len,
 	nb->flags  = NETBUF_IS_STREAM;
 
 	TAILQ_INSERT_TAIL(&(c->send_queue), nb, list);
+
 	if (out != NULL)
 		*out = nb;
 }
@@ -243,7 +244,7 @@ net_send(struct connection *c)
 
 	if (c->snb->s_off == c->snb->b_len ||
 	    (c->snb->flags & NETBUF_FORCE_REMOVE)) {
-		net_remove_netbuf(&(c->send_queue), c->snb);
+		net_remove_netbuf(c, c->snb);
 		c->snb = NULL;
 	}
 
@@ -300,9 +301,9 @@ net_recv_flush(struct connection *c)
 }
 
 void
-net_remove_netbuf(struct netbuf_head *list, struct netbuf *nb)
+net_remove_netbuf(struct connection *c, struct netbuf *nb)
 {
-	kore_debug("net_remove_netbuf(%p, %p)", list, nb);
+	kore_debug("net_remove_netbuf(%p, %p)", c, nb);
 
 	if (nb->type == NETBUF_RECV)
 		fatal("net_remove_netbuf(): cannot remove recv netbuf");
@@ -322,7 +323,8 @@ net_remove_netbuf(struct netbuf_head *list, struct netbuf *nb)
 	if (nb->flags & NETBUF_IS_FILEREF)
 		kore_fileref_release(nb->file_ref);
 
-	TAILQ_REMOVE(list, nb, list);
+	TAILQ_REMOVE(&(c->send_queue), nb, list);
+
 	kore_pool_put(&nb_pool, nb);
 }
 

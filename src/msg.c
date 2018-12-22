@@ -37,7 +37,6 @@ static void		msg_disconnected_worker(struct connection *);
 static void		msg_type_shutdown(struct kore_msg *, const void *);
 
 #if !defined(KORE_NO_HTTP)
-static void		msg_type_accesslog(struct kore_msg *, const void *);
 static void		msg_type_websocket(struct kore_msg *, const void *);
 #endif
 
@@ -59,10 +58,6 @@ kore_msg_parent_init(void)
 	}
 
 	kore_msg_register(KORE_MSG_SHUTDOWN, msg_type_shutdown);
-
-#if !defined(KORE_NO_HTTP)
-	kore_msg_register(KORE_MSG_ACCESSLOG, msg_type_accesslog);
-#endif
 }
 
 void
@@ -230,13 +225,6 @@ msg_type_shutdown(struct kore_msg *msg, const void *data)
 }
 
 #if !defined(KORE_NO_HTTP)
-static void
-msg_type_accesslog(struct kore_msg *msg, const void *data)
-{
-	if (kore_accesslog_write(data, msg->length) == -1)
-		kore_log(LOG_WARNING, "failed to write to accesslog");
-}
-
 static void
 msg_type_websocket(struct kore_msg *msg, const void *data)
 {

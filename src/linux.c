@@ -92,7 +92,7 @@ kore_platform_event_cleanup(void)
 	}
 }
 
-int
+void
 kore_platform_event_wait(u_int64_t timer)
 {
 	u_int32_t		r;
@@ -102,7 +102,7 @@ kore_platform_event_wait(u_int64_t timer)
 	n = epoll_wait(efd, events, event_count, timer);
 	if (n == -1) {
 		if (errno == EINTR)
-			return (0);
+			return;
 		fatal("epoll_wait(): %s", errno_s);
 	}
 
@@ -131,8 +131,6 @@ kore_platform_event_wait(u_int64_t timer)
 
 		evt->handle(events[i].data.ptr, r);
 	}
-
-	return (r);
 }
 
 void
@@ -240,7 +238,7 @@ resend:
 		goto resend;
 
 	if (sent == 0 || nb->fd_off == nb->fd_len) {
-		net_remove_netbuf(&(c->send_queue), nb);
+		net_remove_netbuf(c, nb);
 		c->snb = NULL;
 	}
 

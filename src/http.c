@@ -338,7 +338,7 @@ http_process_request(struct http_request *req)
 		fatal("A page handler returned an unknown result: %d", r);
 	}
 
-	if (req->hdlr->dom->accesslog != -1)
+	if (req->hdlr->dom->accesslog)
 		kore_accesslog(req);
 
 	req->flags |= HTTP_REQUEST_DELETE;
@@ -1394,7 +1394,6 @@ http_request_new(struct connection *c, const char *host,
 		}
 
 		flags = HTTP_VERSION_1_0;
-		c->flags |= CONN_CLOSE_EMPTY;
 	} else {
 		flags = HTTP_VERSION_1_1;
 	}
@@ -1853,10 +1852,12 @@ http_response_normal(struct http_request *req, struct connection *c,
 	    version, status, http_status_text(status));
 	kore_buf_append(header_buf, http_version, http_version_len);
 
-	if (c->flags & CONN_CLOSE_EMPTY)
+	if ((c->flags & CONN_CLOSE_EMPTY) ||
+	    (req->flags & HTTP_VERSION_1_0)) {
 		connection_close = 1;
-	else
+	} else {
 		connection_close = 0;
+	}
 
 	if (connection_close == 0 && req != NULL) {
 		if (http_request_header(req, "connection", &conn)) {

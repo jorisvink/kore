@@ -39,6 +39,7 @@
 #include "http.h"
 #endif
 
+#define KORE_DOMAIN_CACHE	16
 #define SSL_SESSION_ID		"kore_ssl_sessionid"
 
 struct kore_domain_h		domains;
@@ -121,10 +122,18 @@ static RSA_METHOD	keymgr_rsa = {
 #endif /* OPENSSL_VERSION_NUMBER */
 #endif /* KORE_NO_TLS */
 
+static u_int16_t		domain_id = 0;
+static struct kore_domain	*cached[KORE_DOMAIN_CACHE];
+
 void
 kore_domain_init(void)
 {
+	int		i;
+
 	TAILQ_INIT(&domains);
+
+	for (i = 0; i < KORE_DOMAIN_CACHE; i++)
+		cached[i] = NULL;
 
 #if !defined(KORE_NO_TLS)
 #if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
@@ -191,7 +200,11 @@ kore_domain_new(char *domain)
 	kore_debug("kore_domain_new(%s)", domain);
 
 	dom = kore_malloc(sizeof(*dom));
+	dom->id = domain_id++;
+	dom->logbuf = NULL;
 	dom->accesslog = -1;
+	dom->logwarn = 0;
+	dom->logerr = 0;
 #if !defined(KORE_NO_TLS)
 	dom->cafile = NULL;
 	dom->certkey = NULL;
@@ -205,6 +218,12 @@ kore_domain_new(char *domain)
 #if !defined(KORE_NO_HTTP)
 	TAILQ_INIT(&(dom->handlers));
 #endif
+
+	if (dom->id < KORE_DOMAIN_CACHE) {
+		if (cached[dom->id] != NULL)
+			fatal("non free domain cache slot");
+		cached[dom->id] = dom;
+	}
 
 	TAILQ_INSERT_TAIL(&domains, dom, list);
 
@@ -444,6 +463,26 @@ kore_domain_lookup(const char *domain)
 	return (NULL);
 }
 
+struct kore_domain *
+kore_domain_byid(u_int16_t id)
+{
+	struct kore_domain	*dom;
+
+	if (id < KORE_DOMAIN_CACHE)
+		return (cached[id]);
+
+	TAILQ_FOREACH(dom, &domains, list) {
+		if (dom->id == id)
+			return (dom);
+	}
+
+	return (NULL);
+}
+
+/*
+ * Called by the worker processes to close the file descriptor towards
+ * the accesslog as they do not need it locally.
+ */
 void
 kore_domain_closelogs(void)
 {
@@ -452,6 +491,10 @@ kore_domain_closelogs(void)
 	TAILQ_FOREACH(dom, &domains, list) {
 		if (dom->accesslog != -1) {
 			(void)close(dom->accesslog);
+			/* turn into flag to indicate accesslogs are active. */
+			dom->accesslog = 1;
+		} else {
+			dom->accesslog = 0;
 		}
 	}
 }

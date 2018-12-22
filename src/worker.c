@@ -98,6 +98,7 @@ void
 kore_worker_init(void)
 {
 	size_t			len;
+	struct kore_worker	*kw;
 	u_int16_t		i, cpu;
 
 	worker_no_lock = 0;
@@ -131,6 +132,12 @@ kore_worker_init(void)
 
 	if (worker_count > cpu_count) {
 		kore_debug("kore_worker_init(): more workers than cpu's");
+	}
+
+	/* Setup log buffers. */
+	for (i = 0; i < worker_count; i++) {
+		kw = WORKER(i);
+		kw->lb.offset = 0;
 	}
 
 	cpu = 0;
@@ -298,8 +305,8 @@ kore_worker_entry(struct kore_worker *kw)
 {
 	struct kore_runtime_call	*rcall;
 	char				buf[16];
+	int				quit, had_lock;
 	u_int64_t			now, next_prune;
-	int				quit, had_lock, r;
 	u_int64_t			timerwait, netwait;
 #if !defined(KORE_NO_TLS)
 	u_int64_t			last_seed;
@@ -421,8 +428,9 @@ kore_worker_entry(struct kore_worker *kw)
 		if (timerwait < netwait)
 			netwait = timerwait;
 
-		r = kore_platform_event_wait(netwait);
-		if (worker->has_lock && r > 0) {
+		kore_platform_event_wait(netwait);
+
+		if (worker->has_lock) {
 			if (netwait > 10)
 				now = kore_time_ms();
 			if (worker_acceptlock_release(now))
@@ -458,6 +466,9 @@ kore_worker_entry(struct kore_worker *kw)
 			sig_recv = 0;
 		}
 
+		if (quit)
+			break;
+
 #if !defined(KORE_NO_HTTP)
 		http_process();
 #endif
@@ -470,9 +481,6 @@ kore_worker_entry(struct kore_worker *kw)
 			kore_connection_prune(KORE_CONNECTION_PRUNE_DISCONNECT);
 			next_prune = now + 500;
 		}
-
-		if (quit)
-			break;
 	}
 
 	rcall = kore_runtime_getcall("kore_worker_teardown");
