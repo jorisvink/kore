@@ -338,7 +338,7 @@ http_process_request(struct http_request *req)
 		fatal("A page handler returned an unknown result: %d", r);
 	}
 
-	if (req->hdlr->dom->accesslog != -1)
+	if (req->hdlr->dom->accesslog)
 		kore_accesslog(req);
 
 	req->flags |= HTTP_REQUEST_DELETE;

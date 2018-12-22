@@ -215,7 +215,6 @@ main(int argc, char *argv[])
 	kore_platform_init();
 
 #if !defined(KORE_NO_HTTP)
-	kore_accesslog_init();
 	if (http_body_disk_offload > 0) {
 		if (mkdir(http_body_disk_path, 0700) == -1 && errno != EEXIST) {
 			printf("can't create http_body_disk_path '%s': %s\n",
@@ -599,6 +598,7 @@ kore_server_start(int argc, char *argv[])
 	u_int32_t			tmp;
 	int				quit;
 	struct kore_runtime_call	*rcall;
+	u_int64_t			now, netwait, timerwait;
 
 	if (foreground == 0) {
 		if (daemon(1, 0) == -1)
@@ -655,6 +655,9 @@ kore_server_start(int argc, char *argv[])
 	quit = 0;
 	worker_max_connections = tmp;
 
+	kore_timer_init();
+	kore_timer_add(kore_accesslog_run, 10, NULL, 0);
+
 	while (quit != 1) {
 		if (sig_recv != 0) {
 			switch (sig_recv) {
@@ -681,9 +684,19 @@ kore_server_start(int argc, char *argv[])
 			sig_recv = 0;
 		}
 
-		kore_platform_event_wait(100);
+		netwait = 100;
+		now = kore_time_ms();
+
+		timerwait = kore_timer_run(now);
+		if (timerwait < netwait)
+			netwait = timerwait;
+
+		kore_platform_event_wait(netwait);
 		kore_connection_prune(KORE_CONNECTION_PRUNE_DISCONNECT);
 	}
+
+	now = kore_time_ms();
+	kore_accesslog_gather(NULL, now, 1);
 
 	kore_platform_event_cleanup();
 	kore_connection_cleanup();

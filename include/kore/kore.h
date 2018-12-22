@@ -368,6 +368,19 @@ struct kore_module_handle {
 };
 #endif
 
+/*
+ * The workers get a 128KB log buffer per worker, and parent will fetch their
+ * logs when it reached at least 75% of that or if its been > 1 second since
+ * it was last synced.
+ */
+#define KORE_ACCESSLOG_BUFLEN		131072
+#define KORE_ACCESSLOG_SYNC		98304
+
+struct kore_alog_header {
+	u_int16_t		domain;
+	u_int16_t		loglen;
+} __attribute__((packed));
+
 struct kore_worker {
 	u_int8_t			id;
 	u_int8_t			cpu;
@@ -378,11 +391,22 @@ struct kore_worker {
 	int				restarted;
 	u_int64_t			time_locked;
 	struct kore_module_handle	*active_hdlr;
+
+	/* Used by the workers to store accesslogs. */
+	struct {
+		int			lock;
+		size_t			offset;
+		char			buf[KORE_ACCESSLOG_BUFLEN];
+	} lb;
 };
 
 struct kore_domain {
+	u_int16_t				id;
 	char					*domain;
 	int					accesslog;
+	struct kore_buf				*logbuf;
+	int					logerr;
+	u_int64_t				logwarn;
 #if !defined(KORE_NO_TLS)
 	char					*cafile;
 	char					*crlfile;
@@ -462,15 +486,14 @@ struct kore_timer {
 #define KORE_WORKER_KEYMGR	0
 
 /* Reserved message ids, registered on workers. */
-#define KORE_MSG_ACCESSLOG		1
-#define KORE_MSG_WEBSOCKET		2
-#define KORE_MSG_KEYMGR_REQ		3
-#define KORE_MSG_KEYMGR_RESP		4
-#define KORE_MSG_SHUTDOWN		5
-#define KORE_MSG_ENTROPY_REQ		6
-#define KORE_MSG_ENTROPY_RESP		7
-#define KORE_MSG_CERTIFICATE		8
-#define KORE_MSG_CERTIFICATE_REQ	9
+#define KORE_MSG_WEBSOCKET		1
+#define KORE_MSG_KEYMGR_REQ		2
+#define KORE_MSG_KEYMGR_RESP		3
+#define KORE_MSG_SHUTDOWN		4
+#define KORE_MSG_ENTROPY_REQ		4
+#define KORE_MSG_ENTROPY_RESP		6
+#define KORE_MSG_CERTIFICATE		7
+#define KORE_MSG_CERTIFICATE_REQ	8
 
 /* Predefined message targets. */
 #define KORE_MSG_PARENT		1000
@@ -514,6 +537,8 @@ extern char	*kore_pidfile;
 extern char	*kore_root_path;
 extern char	*kore_runas_user;
 extern char	*kore_tls_cipher_list;
+
+extern volatile sig_atomic_t	sig_recv;
 
 #if !defined(KORE_NO_TLS)
 extern int	tls_version;
@@ -564,7 +589,7 @@ void		kore_platform_disable_read(int);
 void		kore_platform_disable_write(int);
 void		kore_platform_enable_accept(void);
 void		kore_platform_disable_accept(void);
-int		kore_platform_event_wait(u_int64_t);
+void		kore_platform_event_wait(u_int64_t);
 void		kore_platform_event_all(int, void *);
 void		kore_platform_schedule_read(int, void *);
 void		kore_platform_schedule_write(int, void *);
@@ -580,9 +605,10 @@ void		kore_platform_pledge(void);
 void		kore_platform_add_pledge(const char *);
 #endif
 
-void		kore_accesslog_init(void);
+void		kore_accesslog_init(u_int16_t);
 void		kore_accesslog_worker_init(void);
-int		kore_accesslog_write(const void *, u_int32_t);
+void		kore_accesslog_run(void *, u_int64_t);
+void		kore_accesslog_gather(void *, u_int64_t, int);
 
 #if !defined(KORE_NO_HTTP)
 int		kore_auth_run(struct http_request *, struct kore_auth *);
@@ -748,6 +774,7 @@ void	kore_runtime_wsmessage(struct kore_runtime_call *,
 	    struct connection *, u_int8_t, const void *, size_t);
 #endif
 
+struct kore_domain		*kore_domain_byid(u_int16_t);
 struct kore_domain		*kore_domain_lookup(const char *);
 
 #if !defined(KORE_NO_HTTP)
@@ -783,7 +810,7 @@ int		net_write(struct connection *, size_t, size_t *);
 int		net_write_tls(struct connection *, size_t, size_t *);
 void		net_recv_reset(struct connection *, size_t,
 		    int (*cb)(struct netbuf *));
-void		net_remove_netbuf(struct netbuf_head *, struct netbuf *);
+void		net_remove_netbuf(struct connection *, struct netbuf *);
 void		net_recv_queue(struct connection *, size_t, int,
 		    int (*cb)(struct netbuf *));
 void		net_recv_expand(struct connection *c, size_t,
