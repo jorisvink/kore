@@ -1618,6 +1618,40 @@ pysocket_send(struct pysocket *sock, PyObject *args)
 }
 
 static PyObject *
+pysocket_sendto(struct pysocket *sock, PyObject *args)
+{
+	Py_buffer		buf;
+	struct pysocket_op	*op;
+	const char		*ip;
+	PyObject		*ret;
+	int			port;
+
+	if (sock->family != AF_INET) {
+		PyErr_SetString(PyExc_RuntimeError,
+		    "sendto only supported on AF_INET sockets");
+		return (NULL);
+	}
+
+	if (!PyArg_ParseTuple(args, "siy*", &ip, &port, &buf))
+		return (NULL);
+
+	if (port <= 0 || port >= USHRT_MAX) {
+		PyErr_SetString(PyExc_RuntimeError, "invalid port");
+		return (NULL);
+	}
+
+	ret = pysocket_op_create(sock, PYSOCKET_TYPE_SENDTO, buf.buf, buf.len);
+
+	op = (struct pysocket_op *)ret;
+
+	op->data.sendaddr.sin_family = AF_INET;
+	op->data.sendaddr.sin_port = htons(port);
+	op->data.sendaddr.sin_addr.s_addr = inet_addr(ip);
+
+	return (ret);
+}
+
+static PyObject *
 pysocket_recv(struct pysocket *sock, PyObject *args)
 {
 	Py_ssize_t	len;
@@ -1626,6 +1660,23 @@ pysocket_recv(struct pysocket *sock, PyObject *args)
 		return (NULL);
 
 	return (pysocket_op_create(sock, PYSOCKET_TYPE_RECV, NULL, len));
+}
+
+static PyObject *
+pysocket_recvfrom(struct pysocket *sock, PyObject *args)
+{
+	Py_ssize_t	len;
+
+	if (sock->family != AF_INET) {
+		PyErr_SetString(PyExc_RuntimeError,
+		    "recvfrom only supported on AF_INET sockets");
+		return (NULL);
+	}
+
+	if (!PyArg_ParseTuple(args, "n", &len))
+		return (NULL);
+
+	return (pysocket_op_create(sock, PYSOCKET_TYPE_RECVFROM, NULL, len));
 }
 
 static PyObject *
@@ -1708,9 +1759,11 @@ pysocket_op_dealloc(struct pysocket_op *op)
 	switch (op->data.type) {
 	case PYSOCKET_TYPE_RECV:
 	case PYSOCKET_TYPE_ACCEPT:
+	case PYSOCKET_TYPE_RECVFROM:
 		kore_platform_disable_read(op->data.fd);
 		break;
 	case PYSOCKET_TYPE_SEND:
+	case PYSOCKET_TYPE_SENDTO:
 	case PYSOCKET_TYPE_CONNECT:
 		kore_platform_disable_write(op->data.fd);
 		break;
@@ -1720,6 +1773,7 @@ pysocket_op_dealloc(struct pysocket_op *op)
 #endif
 
 	if (op->data.type == PYSOCKET_TYPE_RECV ||
+	    op->data.type == PYSOCKET_TYPE_RECVFROM ||
 	    op->data.type == PYSOCKET_TYPE_SEND)
 		kore_buf_cleanup(&op->data.buffer);
 
@@ -1768,11 +1822,13 @@ pysocket_op_create(struct pysocket *sock, int type, const void *ptr, size_t len)
 
 	switch (type) {
 	case PYSOCKET_TYPE_RECV:
+	case PYSOCKET_TYPE_RECVFROM:
 		op->data.evt.flags |= KORE_EVENT_READ;
 		kore_buf_init(&op->data.buffer, len);
 		kore_platform_schedule_read(op->data.fd, &op->data);
 		break;
 	case PYSOCKET_TYPE_SEND:
+	case PYSOCKET_TYPE_SENDTO:
 		op->data.evt.flags |= KORE_EVENT_WRITE;
 		kore_buf_init(&op->data.buffer, len);
 		kore_buf_append(&op->data.buffer, ptr, len);
@@ -1832,9 +1888,11 @@ pysocket_op_iternext(struct pysocket_op *op)
 		ret = pysocket_async_accept(op);
 		break;
 	case PYSOCKET_TYPE_RECV:
+	case PYSOCKET_TYPE_RECVFROM:
 		ret = pysocket_async_recv(op);
 		break;
 	case PYSOCKET_TYPE_SEND:
+	case PYSOCKET_TYPE_SENDTO:
 		ret = pysocket_async_send(op);
 		break;
 	default:
@@ -1907,16 +1965,27 @@ static PyObject *
 pysocket_async_recv(struct pysocket_op *op)
 {
 	ssize_t		ret;
-	const char	*ptr;
-	PyObject	*bytes;
+	u_int16_t	port;
+	socklen_t	socklen;
+	const char	*ptr, *ip;
+	PyObject	*bytes, *result, *tuple;
 
 	if (!(op->data.evt.flags & KORE_EVENT_READ)) {
 		Py_RETURN_NONE;
 	}
 
 	for (;;) {
-		ret = read(op->data.fd, op->data.buffer.data,
-		    op->data.buffer.length);
+		if (op->data.type == PYSOCKET_TYPE_RECV) {
+			ret = read(op->data.fd, op->data.buffer.data,
+			    op->data.buffer.length);
+		} else {
+			socklen = sizeof(op->data.sendaddr);
+			ret = recvfrom(op->data.fd, op->data.buffer.data,
+			    op->data.buffer.length, 0,
+			    (struct sockaddr *)&op->data.sendaddr,
+			    &socklen);
+		}
+
 		if (ret == -1) {
 			if (errno == EINTR)
 				continue;
@@ -1931,18 +2000,35 @@ pysocket_async_recv(struct pysocket_op *op)
 		break;
 	}
 
-	if (ret == 0) {
+	if (op->data.type == PYSOCKET_TYPE_RECV && ret == 0) {
 		PyErr_SetNone(PyExc_StopIteration);
 		return (NULL);
 	}
 
 	ptr = (const char *)op->data.buffer.data;
+	if ((bytes = PyBytes_FromStringAndSize(ptr, ret)) == NULL)
+		return (NULL);
 
-	bytes = PyBytes_FromStringAndSize(ptr, ret);
-	if (bytes != NULL) {
+	if (op->data.type == PYSOCKET_TYPE_RECV) {
 		PyErr_SetObject(PyExc_StopIteration, bytes);
 		Py_DECREF(bytes);
+		return (NULL);
 	}
+
+	port = ntohs(op->data.sendaddr.sin_port);
+	ip = inet_ntoa(op->data.sendaddr.sin_addr);
+
+	if ((tuple = Py_BuildValue("(sHN)", ip, port, bytes)) == NULL)
+		return (NULL);
+
+	result = PyObject_CallFunctionObjArgs(PyExc_StopIteration, tuple, NULL);
+	if (result == NULL) {
+		Py_DECREF(tuple);
+		return (NULL);
+	}
+
+	PyErr_SetObject(PyExc_StopIteration, result);
+	Py_DECREF(result);
 
 	return (NULL);
 }
@@ -1957,9 +2043,18 @@ pysocket_async_send(struct pysocket_op *op)
 	}
 
 	for (;;) {
-		ret = write(op->data.fd,
-		    op->data.buffer.data + op->data.buffer.offset,
-		    op->data.buffer.length - op->data.buffer.offset);
+		if (op->data.type == PYSOCKET_TYPE_SEND) {
+			ret = write(op->data.fd,
+			    op->data.buffer.data + op->data.buffer.offset,
+			    op->data.buffer.length - op->data.buffer.offset);
+		} else {
+			ret = sendto(op->data.fd,
+			    op->data.buffer.data + op->data.buffer.offset,
+			    op->data.buffer.length - op->data.buffer.offset,
+			    0, (const struct sockaddr *)&op->data.sendaddr,
+			    sizeof(op->data.sendaddr));
+		}
+
 		if (ret == -1) {
 			if (errno == EINTR)
 				continue;
