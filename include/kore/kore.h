@@ -40,6 +40,7 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <signal.h>
 #include <string.h>
 #include <syslog.h>
 #include <unistd.h>
