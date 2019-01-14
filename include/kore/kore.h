@@ -40,6 +40,7 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <signal.h>
 #include <string.h>
 #include <syslog.h>
 #include <unistd.h>
@@ -410,7 +411,9 @@ struct kore_domain {
 #if !defined(KORE_NO_TLS)
 	char					*cafile;
 	char					*crlfile;
+	time_t					crl_mtime;
 	char					*certfile;
+	time_t					cert_mtime;
 	char					*certkey;
 	SSL_CTX					*ssl_ctx;
 	int					x509_verify_depth;
@@ -494,6 +497,7 @@ struct kore_timer {
 #define KORE_MSG_ENTROPY_RESP		6
 #define KORE_MSG_CERTIFICATE		7
 #define KORE_MSG_CERTIFICATE_REQ	8
+#define KORE_MSG_CRL			9
 
 /* Predefined message targets. */
 #define KORE_MSG_PARENT		1000
@@ -746,6 +750,7 @@ void		kore_domain_load_crl(void);
 void		kore_domain_keymgr_init(void);
 void		kore_domain_callback(void (*cb)(struct kore_domain *));
 void		kore_domain_tlsinit(struct kore_domain *, const void *, size_t);
+void		kore_domain_crl_add(struct kore_domain *, const void *, size_t);
 #if !defined(KORE_NO_HTTP)
 int		kore_module_handler_new(const char *, const char *,
 		    const char *, const char *, int);

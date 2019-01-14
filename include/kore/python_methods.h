@@ -164,14 +164,18 @@ static PyObject *pysocket_send(struct pysocket *, PyObject *);
 static PyObject *pysocket_recv(struct pysocket *, PyObject *);
 static PyObject *pysocket_close(struct pysocket *, PyObject *);
 static PyObject *pysocket_accept(struct pysocket *, PyObject *);
+static PyObject *pysocket_sendto(struct pysocket *, PyObject *);
 static PyObject *pysocket_connect(struct pysocket *, PyObject *);
+static PyObject *pysocket_recvfrom(struct pysocket *, PyObject *);
 
 static PyMethodDef pysocket_methods[] = {
 	METHOD("recv", pysocket_recv, METH_VARARGS),
 	METHOD("send", pysocket_send, METH_VARARGS),
 	METHOD("close", pysocket_close, METH_NOARGS),
 	METHOD("accept", pysocket_accept, METH_NOARGS),
+	METHOD("sendto", pysocket_sendto, METH_VARARGS),
 	METHOD("connect", pysocket_connect, METH_VARARGS),
+	METHOD("recvfrom", pysocket_recvfrom, METH_VARARGS),
 	METHOD(NULL, NULL, -1),
 };
 
@@ -191,6 +195,8 @@ static PyTypeObject pysocket_type = {
 #define PYSOCKET_TYPE_CONNECT	2
 #define PYSOCKET_TYPE_RECV	3
 #define PYSOCKET_TYPE_SEND	4
+#define PYSOCKET_TYPE_RECVFROM	5
+#define PYSOCKET_TYPE_SENDTO	6
 
 struct pysocket_data {
 	struct kore_event	evt;
@@ -202,6 +208,7 @@ struct pysocket_data {
 	int			state;
 	size_t			length;
 	struct kore_buf		buffer;
+	struct sockaddr_in	sendaddr;
 	struct pysocket		*socket;
 };
 
