@@ -56,7 +56,6 @@ int				tls_version = KORE_TLS_VERSION_BOTH;
 #if !defined(KORE_NO_TLS)
 static BIO	*domain_bio_mem(const void *, size_t);
 static int	domain_x509_verify(int, X509_STORE_CTX *);
-static void	domain_load_crl(struct kore_domain *);
 static X509	*domain_load_certificate_chain(SSL_CTX *, const void *, size_t);
 
 static void	keymgr_init(void);
@@ -211,6 +210,9 @@ kore_domain_new(char *domain)
 	dom->ssl_ctx = NULL;
 	dom->certfile = NULL;
 	dom->crlfile = NULL;
+
+	dom->crl_mtime = 0;
+	dom->cert_mtime = 0;
 	dom->x509_verify_depth = 1;
 #endif
 	dom->domain = kore_strdup(domain);
@@ -436,6 +438,57 @@ kore_domain_tlsinit(struct kore_domain *dom, const void *pem, size_t pemlen)
 
 	X509_free(x509);
 }
+
+void
+kore_domain_crl_add(struct kore_domain *dom, const void *pem, size_t pemlen)
+{
+	int			err;
+	BIO			*in;
+	X509_CRL		*crl;
+	X509_STORE		*store;
+
+	ERR_clear_error();
+	in = domain_bio_mem(pem, pemlen);
+
+	if ((store = SSL_CTX_get_cert_store(dom->ssl_ctx)) == NULL) {
+		BIO_free(in);
+		kore_log(LOG_ERR, "SSL_CTX_get_cert_store(): %s", ssl_errno_s);
+		return;
+	}
+
+	for (;;) {
+		crl = PEM_read_bio_X509_CRL(in, NULL, NULL, NULL);
+		if (crl == NULL) {
+			err = ERR_GET_REASON(ERR_peek_last_error());
+			if (err == PEM_R_NO_START_LINE) {
+				ERR_clear_error();
+				break;
+			}
+
+			kore_log(LOG_WARNING, "failed to read CRL %s: %s",
+			    dom->crlfile, ssl_errno_s);
+			continue;
+		}
+
+		if (!X509_STORE_add_crl(store, crl)) {
+			err = ERR_GET_REASON(ERR_peek_last_error());
+			if (err == X509_R_CERT_ALREADY_IN_HASH_TABLE) {
+				X509_CRL_free(crl);
+				continue;
+			}
+
+			kore_log(LOG_WARNING, "failed to add CRL %s: %s",
+			    dom->crlfile, ssl_errno_s);
+			X509_CRL_free(crl);
+			continue;
+		}
+	}
+
+	BIO_free(in);
+
+	X509_STORE_set_flags(store,
+	    X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
+}
 #endif
 
 void
@@ -500,17 +553,6 @@ kore_domain_closelogs(void)
 }
 
 void
-kore_domain_load_crl(void)
-{
-#if !defined(KORE_NO_TLS)
-	struct kore_domain	*dom;
-
-	TAILQ_FOREACH(dom, &domains, list)
-		domain_load_crl(dom);
-#endif
-}
-
-void
 kore_domain_keymgr_init(void)
 {
 #if !defined(KORE_NO_TLS)
@@ -518,38 +560,6 @@ kore_domain_keymgr_init(void)
 	kore_msg_register(KORE_MSG_KEYMGR_RESP, keymgr_msg_response);
 #endif
 }
-
-#if !defined(KORE_NO_TLS)
-static void
-domain_load_crl(struct kore_domain *dom)
-{
-	X509_STORE		*store;
-
-	if (dom->cafile == NULL)
-		return;
-
-	if (dom->crlfile == NULL) {
-		kore_log(LOG_WARNING, "WARNING: no CRL configured for '%s'",
-		    dom->domain);
-		return;
-	}
-
-	ERR_clear_error();
-	if ((store = SSL_CTX_get_cert_store(dom->ssl_ctx)) == NULL) {
-		kore_log(LOG_ERR, "SSL_CTX_get_cert_store(): %s", ssl_errno_s);
-		return;
-	}
-
-	if (!X509_STORE_load_locations(store, dom->crlfile, NULL)) {
-		kore_log(LOG_ERR, "X509_STORE_load_locations(): %s",
-		    ssl_errno_s);
-		return;
-	}
-
-	X509_STORE_set_flags(store,
-	    X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
-}
-#endif
 
 #if !defined(KORE_NO_TLS)
 static void

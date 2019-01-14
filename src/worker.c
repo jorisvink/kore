@@ -77,7 +77,9 @@ static inline int	worker_acceptlock_release(u_int64_t);
 
 #if !defined(KORE_NO_TLS)
 static void	worker_entropy_recv(struct kore_msg *, const void *);
-static void	worker_certificate_recv(struct kore_msg *, const void *);
+static void	worker_keymgr_response(struct kore_msg *, const void *);
+static int	worker_keymgr_response_verify(struct kore_msg *, const void *,
+		    struct kore_domain **);
 #endif
 
 static u_int64_t			next_lock;
@@ -348,7 +350,6 @@ kore_worker_entry(struct kore_worker *kw)
 #endif
 	kore_timer_init();
 	kore_fileref_init();
-	kore_domain_load_crl();
 	kore_domain_keymgr_init();
 
 	quit = 0;
@@ -367,8 +368,9 @@ kore_worker_entry(struct kore_worker *kw)
 
 #if !defined(KORE_NO_TLS)
 	last_seed = 0;
+	kore_msg_register(KORE_MSG_CRL, worker_keymgr_response);
 	kore_msg_register(KORE_MSG_ENTROPY_RESP, worker_entropy_recv);
-	kore_msg_register(KORE_MSG_CERTIFICATE, worker_certificate_recv);
+	kore_msg_register(KORE_MSG_CERTIFICATE, worker_keymgr_response);
 	if (worker->restarted) {
 		kore_msg_send(KORE_WORKER_KEYMGR,
 		    KORE_MSG_CERTIFICATE_REQ, NULL, 0);
@@ -711,29 +713,54 @@ worker_entropy_recv(struct kore_msg *msg, const void *data)
 }
 
 static void
-worker_certificate_recv(struct kore_msg *msg, const void *data)
+worker_keymgr_response(struct kore_msg *msg, const void *data)
+{
+	struct kore_domain		*dom;
+	const struct kore_x509_msg	*req;
+
+	if (!worker_keymgr_response_verify(msg, data, &dom))
+		return;
+
+	req = (const struct kore_x509_msg *)data;
+
+	switch (msg->id) {
+	case KORE_MSG_CERTIFICATE:
+		kore_domain_tlsinit(dom, req->data, req->data_len);
+		break;
+	case KORE_MSG_CRL:
+		kore_domain_crl_add(dom, req->data, req->data_len);
+		break;
+	default:
+		kore_log(LOG_WARNING, "unknown keymgr request %u", msg->id);
+		break;
+	}
+}
+
+static int
+worker_keymgr_response_verify(struct kore_msg *msg, const void *data,
+    struct kore_domain **out)
 {
 	struct kore_domain		*dom;
 	const struct kore_x509_msg	*req;
 
 	if (msg->length < sizeof(*req)) {
 		kore_log(LOG_WARNING,
-		    "short KORE_MSG_CERTIFICATE message (%zu)", msg->length);
-		return;
+		    "short keymgr message (%zu)", msg->length);
+		return (KORE_RESULT_ERROR);
 	}
 
 	req = (const struct kore_x509_msg *)data;
 	if (msg->length != (sizeof(*req) + req->data_len)) {
 		kore_log(LOG_WARNING,
-		    "invalid KORE_MSG_CERTIFICATE payload (%zu)", msg->length);
-		return;
+		    "invalid keymgr payload (%zu)", msg->length);
+		return (KORE_RESULT_ERROR);
 	}
 
 	if (req->domain_len > KORE_DOMAINNAME_LEN) {
 		kore_log(LOG_WARNING,
-		    "invalid KORE_MSG_CERTIFICATE domain (%u)",
+		    "invalid keymgr domain (%u)",
 		    req->domain_len);
-		return;
+		return (KORE_RESULT_ERROR);
 	}
 
 	dom = NULL;
@@ -744,11 +771,12 @@ worker_certificate_recv(struct kore_msg *msg, const void *data)
 
 	if (dom == NULL) {
 		kore_log(LOG_WARNING,
-		    "got KORE_MSG_CERTIFICATE for domain that does not exist");
-		return;
+		    "got keymgr response for domain that does not exist");
+		return (KORE_RESULT_ERROR);
 	}
 
-	/* reinitialize the domain TLS context. */
-	kore_domain_tlsinit(dom, req->data, req->data_len);
+	*out = dom;
+
+	return (KORE_RESULT_OK);
 }
 #endif

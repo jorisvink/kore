@@ -72,6 +72,8 @@ static void	keymgr_msg_recv(struct kore_msg *, const void *);
 static void	keymgr_entropy_request(struct kore_msg *, const void *);
 static void	keymgr_certificate_request(struct kore_msg *, const void *);
 static void	keymgr_submit_certificates(struct kore_domain *, u_int16_t);
+static void	keymgr_submit_file(u_int8_t, struct kore_domain *,
+		    const char *, u_int16_t, time_t *, int);
 
 static void	keymgr_rsa_encrypt(struct kore_msg *, const void *,
 		    struct key *);
@@ -180,7 +182,7 @@ keymgr_reload(void)
 {
 	struct kore_domain	*dom;
 
-	kore_log(LOG_INFO, "(re)loading certificates and keys");
+	kore_log(LOG_INFO, "(re)loading certificates, keys and CRLs");
 
 	kore_keymgr_cleanup(0);
 	TAILQ_INIT(&keys);
@@ -195,6 +197,19 @@ keymgr_reload(void)
 static void
 keymgr_submit_certificates(struct kore_domain *dom, u_int16_t dst)
 {
+	keymgr_submit_file(KORE_MSG_CERTIFICATE,
+	    dom, dom->certfile, dst, &dom->cert_mtime, 0);
+
+	if (dom->crlfile != NULL) {
+		keymgr_submit_file(KORE_MSG_CRL,
+		    dom, dom->crlfile, dst, &dom->crl_mtime, 1);
+	}
+}
+
+static void
+keymgr_submit_file(u_int8_t id, struct kore_domain *dom,
+    const char *file, u_int16_t dst, time_t *mtime, int can_fail)
+{
 	int				fd;
 	struct stat			st;
 	ssize_t				ret;
@@ -202,17 +217,29 @@ keymgr_submit_certificates(struct kore_domain *dom, u_int16_t dst)
 	struct kore_x509_msg		*msg;
 	u_int8_t			*payload;
 
-	if ((fd = open(dom->certfile, O_RDONLY)) == -1)
-		fatal("open(%s): %s", dom->certfile, errno_s);
-	if (fstat(fd, &st) == -1)
-		fatal("stat(%s): %s", dom->certfile, errno_s);
-	if (!S_ISREG(st.st_mode))
-		fatal("%s is not a file", dom->certfile);
+	if ((fd = open(file, O_RDONLY)) == -1) {
+		if (errno == ENOENT && can_fail)
+			return;
+		fatal("open(%s): %s", file, errno_s);
+	}
 
-	if (st.st_size <= 0 || st.st_size > (1024 * 1024 * 5)) {
-		fatal("%s length is not valid (%jd)", dom->certfile,
+	if (fstat(fd, &st) == -1)
+		fatal("stat(%s): %s", file, errno_s);
+
+	if (!S_ISREG(st.st_mode))
+		fatal("%s is not a file", file);
+
+	if (st.st_size <= 0 || st.st_size > (1024 * 1024 * 10)) {
+		fatal("%s length is not valid (%jd)", file,
 		    (intmax_t)st.st_size);
 	}
+
+	if (st.st_mtime == *mtime) {
+		close(fd);
+		return;
+	}
+
+	*mtime = st.st_mtime;
 
 	len = sizeof(*msg) + st.st_size;
 	payload = kore_calloc(1, len);
@@ -225,15 +252,17 @@ keymgr_submit_certificates(struct kore_domain *dom, u_int16_t dst)
 
 	msg->data_len = st.st_size;
 	ret = read(fd, &msg->data[0], msg->data_len);
+	if (ret == -1)
+		fatal("failed to read from %s: %s", file, errno_s);
 	if (ret == 0)
-		fatal("eof while reading %s", dom->certfile);
+		fatal("eof while reading %s", file);
 
 	if ((size_t)ret != msg->data_len) {
 		fatal("bad read on %s: expected %zu, got %zd",
-		    dom->certfile, msg->data_len, ret);
+		    file, msg->data_len, ret);
 	}
 
-	kore_msg_send(dst, KORE_MSG_CERTIFICATE, payload, len);
+	kore_msg_send(dst, id, payload, len);
 	kore_free(payload);
 	close(fd);
 }
