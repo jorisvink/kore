@@ -306,7 +306,12 @@ kore_connection_handle(struct connection *c)
 		}
 
 		r = SSL_get_verify_result(c->ssl);
-		if (r != X509_V_OK) {
+		switch (r) {
+		case X509_V_OK:
+		case X509_V_ERR_CRL_NOT_YET_VALID:
+		case X509_V_ERR_CRL_HAS_EXPIRED:
+			break;
+		default:
 			kore_debug("SSL_get_verify_result(): %d, %s",
 			    r, ssl_errno_s);
 			return (KORE_RESULT_ERROR);
