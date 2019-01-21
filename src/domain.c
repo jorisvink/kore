@@ -210,9 +210,6 @@ kore_domain_new(char *domain)
 	dom->ssl_ctx = NULL;
 	dom->certfile = NULL;
 	dom->crlfile = NULL;
-
-	dom->crl_mtime = 0;
-	dom->cert_mtime = 0;
 	dom->x509_verify_depth = 1;
 #endif
 	dom->domain = kore_strdup(domain);

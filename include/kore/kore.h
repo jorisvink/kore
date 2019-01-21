@@ -411,9 +411,7 @@ struct kore_domain {
 #if !defined(KORE_NO_TLS)
 	char					*cafile;
 	char					*crlfile;
-	time_t					crl_mtime;
 	char					*certfile;
-	time_t					cert_mtime;
 	char					*certkey;
 	SSL_CTX					*ssl_ctx;
 	int					x509_verify_depth;

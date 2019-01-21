@@ -73,7 +73,7 @@ static void	keymgr_entropy_request(struct kore_msg *, const void *);
 static void	keymgr_certificate_request(struct kore_msg *, const void *);
 static void	keymgr_submit_certificates(struct kore_domain *, u_int16_t);
 static void	keymgr_submit_file(u_int8_t, struct kore_domain *,
-		    const char *, u_int16_t, time_t *, int);
+		    const char *, u_int16_t, int);
 
 static void	keymgr_rsa_encrypt(struct kore_msg *, const void *,
 		    struct key *);
@@ -197,18 +197,15 @@ keymgr_reload(void)
 static void
 keymgr_submit_certificates(struct kore_domain *dom, u_int16_t dst)
 {
-	keymgr_submit_file(KORE_MSG_CERTIFICATE,
-	    dom, dom->certfile, dst, &dom->cert_mtime, 0);
+	keymgr_submit_file(KORE_MSG_CERTIFICATE, dom, dom->certfile, dst, 0);
 
-	if (dom->crlfile != NULL) {
-		keymgr_submit_file(KORE_MSG_CRL,
-		    dom, dom->crlfile, dst, &dom->crl_mtime, 1);
-	}
+	if (dom->crlfile != NULL)
+		keymgr_submit_file(KORE_MSG_CRL, dom, dom->crlfile, dst, 1);
 }
 
 static void
 keymgr_submit_file(u_int8_t id, struct kore_domain *dom,
-    const char *file, u_int16_t dst, time_t *mtime, int can_fail)
+    const char *file, u_int16_t dst, int can_fail)
 {
 	int				fd;
 	struct stat			st;
@@ -233,13 +230,6 @@ keymgr_submit_file(u_int8_t id, struct kore_domain *dom,
 		fatal("%s length is not valid (%jd)", file,
 		    (intmax_t)st.st_size);
 	}
-
-	if (st.st_mtime == *mtime) {
-		close(fd);
-		return;
-	}
-
-	*mtime = st.st_mtime;
 
 	len = sizeof(*msg) + st.st_size;
 	payload = kore_calloc(1, len);

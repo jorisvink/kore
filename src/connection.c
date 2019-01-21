@@ -305,13 +305,6 @@ kore_connection_handle(struct connection *c)
 			c->cert = NULL;
 		}
 
-		r = SSL_get_verify_result(c->ssl);
-		if (r != X509_V_OK) {
-			kore_debug("SSL_get_verify_result(): %d, %s",
-			    r, ssl_errno_s);
-			return (KORE_RESULT_ERROR);
-		}
-
 		if (c->owner != NULL) {
 			listener = (struct listener *)c->owner;
 			if (listener->connect != NULL) {

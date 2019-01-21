@@ -1484,7 +1484,7 @@ pytimer_run(void *arg, u_int64_t now)
 
 	PyErr_Clear();
 	ret = PyObject_CallObject(timer->callable, NULL);
-	Py_DECREF(ret);
+	Py_XDECREF(ret);
 
 	if (timer->flags & KORE_TIMER_ONESHOT) {
 		timer->run = NULL;
