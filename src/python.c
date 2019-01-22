@@ -2233,8 +2233,9 @@ pyqueue_op_iternext(struct pyqueue_op *op)
 	kore_pool_put(&queue_object_pool, object);
 
 	TAILQ_FOREACH(waiting, &op->queue->waiting, list) {
-		if (waiting->coro == coro_running) {
+		if (waiting->coro->id == coro_running->id) {
 			TAILQ_REMOVE(&op->queue->waiting, waiting, list);
+			waiting->op->waiting = NULL;
 			kore_pool_put(&queue_wait_pool, waiting);
 			break;
 		}
