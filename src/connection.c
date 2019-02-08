@@ -281,6 +281,7 @@ kore_connection_handle(struct connection *c)
 			switch (r) {
 			case SSL_ERROR_WANT_READ:
 			case SSL_ERROR_WANT_WRITE:
+				kore_connection_start_idletimer(c);
 				return (KORE_RESULT_OK);
 			default:
 				kore_debug("SSL_accept(): %s", ssl_errno_s);
@@ -309,6 +310,7 @@ kore_connection_handle(struct connection *c)
 			listener = (struct listener *)c->owner;
 			if (listener->connect != NULL) {
 				kore_runtime_connect(listener->connect, c);
+				kore_connection_start_idletimer(c);
 				return (KORE_RESULT_OK);
 			}
 		}
