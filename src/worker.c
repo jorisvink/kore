@@ -88,7 +88,6 @@ static int				worker_no_lock;
 static int				shm_accept_key;
 static struct wlock			*accept_lock;
 
-extern volatile sig_atomic_t	sig_recv;
 struct kore_worker		*worker = NULL;
 u_int8_t			worker_set_affinity = 1;
 u_int32_t			worker_accept_threshold = 16;

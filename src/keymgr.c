@@ -60,7 +60,6 @@ struct key {
 char				*rand_file = NULL;
 
 static TAILQ_HEAD(, key)	keys;
-extern volatile sig_atomic_t	sig_recv;
 static int			initialized = 0;
 
 static void	keymgr_reload(void);
