@@ -280,7 +280,7 @@ kore_worker_privdrop(const char *runas, const char *root)
 	rl.rlim_cur = worker_rlimit_nofiles;
 	rl.rlim_max = worker_rlimit_nofiles;
 	if (setrlimit(RLIMIT_NOFILE, &rl) == -1) {
-		kore_log(LOG_ERR, "setrlimit(RLIMIT_NOFILE, %d): %s",
+		kore_log(LOG_ERR, "setrlimit(RLIMIT_NOFILE, %u): %s",
 		    worker_rlimit_nofiles, errno_s);
 	}
 
