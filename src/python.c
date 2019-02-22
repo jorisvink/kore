@@ -20,6 +20,7 @@
 #include <sys/socket.h>
 #include <sys/wait.h>
 
+#include <ctype.h>
 #include <libgen.h>
 #include <signal.h>
 
@@ -37,6 +38,7 @@ static PyMODINIT_FUNC	python_module_init(void);
 static PyObject		*python_import(const char *);
 static PyObject		*pyconnection_alloc(struct connection *);
 static PyObject		*python_callable(PyObject *, const char *);
+static void		python_split_arguments(char *, char **, size_t);
 
 static int		pyhttp_response_sent(struct netbuf *);
 static PyObject		*pyhttp_file_alloc(struct http_file *);
@@ -411,6 +413,53 @@ python_module_free(struct kore_module *module)
 	kore_free(module->path);
 	Py_DECREF(module->handle);
 	kore_free(module);
+}
+
+static void
+python_split_arguments(char *args, char **argv, size_t elm)
+{
+	size_t		idx;
+	char		*p, *line, *end;
+
+	if (elm <= 1)
+		fatal("not enough elements (%zu)", elm);
+
+	idx = 0;
+	line = args;
+
+	for (p = line; *p != '\0'; p++) {
+		if (idx >= elm - 1)
+			break;
+
+		if (*p == ' ') {
+			*p = '\0';
+			if (*line != '\0')
+				argv[idx++] = line;
+			line = p + 1;
+			continue;
+		}
+
+		if (*p != '"')
+			continue;
+
+		line = p + 1;
+		if ((end = strchr(line, '"')) == NULL)
+			break;
+
+		*end = '\0';
+		argv[idx++] = line;
+		line = end + 1;
+
+		while (isspace(*(unsigned char *)line))
+			line++;
+
+		p = line;
+	}
+
+	if (idx < elm - 1 && *line != '\0')
+		argv[idx++] = line;
+
+	argv[idx] = NULL;
 }
 
 static void
@@ -1221,7 +1270,7 @@ python_kore_proc(PyObject *self, PyObject *args)
 {
 	const char		*cmd;
 	struct pyproc		*proc;
-	char			*copy, *argv[30];
+	char			*copy, *argv[32];
 	int			timeo, in_pipe[2], out_pipe[2];
 
 	timeo = -1;
@@ -1290,9 +1339,9 @@ python_kore_proc(PyObject *self, PyObject *args)
 			fatal("dup2: %s", errno_s);
 
 		copy = kore_strdup(cmd);
-		kore_split_string(copy, " ", argv, 30);
+		python_split_arguments(copy, argv, 32);
 		(void)execve(argv[0], argv, NULL);
-		printf("kore.proc failed to execute %s (%s)\n",
+		kore_log(LOG_ERR, "kore.proc failed to execute %s (%s)",
 		    argv[0], errno_s);
 		exit(1);
 	}
