@@ -50,6 +50,7 @@ static int			python_coro_run(struct python_coro *);
 static void			python_coro_wakeup(struct python_coro *);
 
 static void		pysocket_evt_handle(void *, int);
+static void		pysocket_op_timeout(void *, u_int64_t);
 static PyObject		*pysocket_op_create(struct pysocket *,
 			    int, const void *, size_t);
 
@@ -1703,12 +1704,28 @@ pysocket_sendto(struct pysocket *sock, PyObject *args)
 static PyObject *
 pysocket_recv(struct pysocket *sock, PyObject *args)
 {
-	Py_ssize_t	len;
+	Py_ssize_t		len;
+	struct pysocket_op	*op;
+	PyObject		*obj;
+	int			timeo;
 
-	if (!PyArg_ParseTuple(args, "n", &len))
+	timeo = -1;
+
+	if (!PyArg_ParseTuple(args, "n|i", &len, &timeo))
 		return (NULL);
 
-	return (pysocket_op_create(sock, PYSOCKET_TYPE_RECV, NULL, len));
+	obj = pysocket_op_create(sock, PYSOCKET_TYPE_RECV, NULL, len);
+	if (obj == NULL)
+		return (NULL);
+
+	op = (struct pysocket_op *)obj;
+
+	if (timeo != -1) {
+		op->data.timer = kore_timer_add(pysocket_op_timeout,
+		    timeo, op, KORE_TIMER_ONESHOT);
+	}
+
+	return (obj);
 }
 
 static PyObject *
@@ -1826,6 +1843,11 @@ pysocket_op_dealloc(struct pysocket_op *op)
 	    op->data.type == PYSOCKET_TYPE_SEND)
 		kore_buf_cleanup(&op->data.buffer);
 
+	if (op->data.timer != NULL) {
+		kore_timer_remove(op->data.timer);
+		op->data.timer = NULL;
+	}
+
 	op->data.coro->sockop = NULL;
 	Py_DECREF(op->data.socket);
 
@@ -1860,6 +1882,7 @@ pysocket_op_create(struct pysocket *sock, int type, const void *ptr, size_t len)
 	op->data.eof = 0;
 	op->data.self = op;
 	op->data.type = type;
+	op->data.timer = NULL;
 	op->data.socket = sock;
 	op->data.evt.flags = 0;
 	op->data.coro = coro_running;
@@ -1950,6 +1973,23 @@ pysocket_op_iternext(struct pysocket_op *op)
 	}
 
 	return (ret);
+}
+
+static void
+pysocket_op_timeout(void *arg, u_int64_t now)
+{
+	struct pysocket_op	*op = arg;
+
+	op->data.eof = 1;
+	op->data.timer = NULL;
+
+	op->data.coro->exception = PyExc_TimeoutError;
+	op->data.coro->exception_msg = "timeout before operation completed";
+
+	if (op->data.coro->request != NULL)
+		http_request_wakeup(op->data.coro->request);
+	else
+		python_coro_wakeup(op->data.coro);
 }
 
 static PyObject *

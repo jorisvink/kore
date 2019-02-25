@@ -210,6 +210,7 @@ struct pysocket_data {
 	struct kore_buf		buffer;
 	struct sockaddr_in	sendaddr;
 	struct pysocket		*socket;
+	struct kore_timer	*timer;
 };
 
 struct pysocket_op {

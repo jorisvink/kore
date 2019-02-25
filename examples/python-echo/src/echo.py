@@ -40,13 +40,21 @@ class EchoServer:
                 kore.fatal("exception %s" % e)
 
     # Each client will run as this co-routine.
+    # In this case we pass a timeout of 1 second to the recv() call
+    # which will throw a TimeoutError exception in case the timeout
+    # is hit before data is read from the socket.
+    #
+    # This timeout argument is optional. If none is specified the call
+    # will wait until data becomes available.
     async def handle_client(self, client):
         while True:
             try:
-                data = await client.recv(1024)
+                data = await client.recv(1024, 1000)
                 if data is None:
                     break
                 await client.send(data)
+            except TimeoutError as e:
+                print("timed out reading (%s)" % e)
             except Exception as e:
                 print("client got exception %s" % e)
         client.close()
