@@ -2574,17 +2574,33 @@ pyproc_reap(struct pyproc *proc, PyObject *args)
 static PyObject *
 pyproc_recv(struct pyproc *proc, PyObject *args)
 {
-	Py_ssize_t	len;
+	Py_ssize_t		len;
+	struct pysocket_op	*op;
+	PyObject		*obj;
+	int			timeo;
+
+	timeo = -1;
 
 	if (proc->out == NULL) {
 		PyErr_SetString(PyExc_RuntimeError, "stdout closed");
 		return (NULL);
 	}
 
-	if (!PyArg_ParseTuple(args, "n", &len))
+	if (!PyArg_ParseTuple(args, "n|i", &len, &timeo))
 		return (NULL);
 
-	return (pysocket_op_create(proc->out, PYSOCKET_TYPE_RECV, NULL, len));
+	obj = pysocket_op_create(proc->out, PYSOCKET_TYPE_RECV, NULL, len);
+	if (obj == NULL)
+		return (NULL);
+
+	op = (struct pysocket_op *)obj;
+
+	if (timeo != -1) {
+		op->data.timer = kore_timer_add(pysocket_op_timeout,
+		    timeo, op, KORE_TIMER_ONESHOT);
+	}
+
+	return (obj);
 }
 
 static PyObject *

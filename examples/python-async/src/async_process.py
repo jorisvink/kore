@@ -41,9 +41,16 @@ async def async_proc(req):
 
         # Read until EOF (None is returned)
         while True:
-            chunk = await proc.recv(1024)
-            if chunk is None:
-                break
+            try:
+                # Read from the process, with an optional 1 second timeout.
+                # The recv() call will throw a TimeoutError exception if
+                # the timeout has elapsed before any data was read.
+                chunk = await proc.recv(1024, 1000)
+                if chunk is None:
+                    break
+            except TimeoutError as e:
+                print("recv() timed out: %s" % e)
+                continue
             stdout += chunk.decode()
 
         # Reap the process.
