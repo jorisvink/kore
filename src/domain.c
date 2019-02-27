@@ -156,8 +156,11 @@ kore_domain_init(void)
 #endif
 
 #if !defined(TLS1_3_VERSION)
-	kore_log(LOG_NOTICE, "%s has no TLS 1.3 - will only use TLS 1.2",
-	    OPENSSL_VERSION_TEXT);
+	if (!kore_quiet) {
+		kore_log(LOG_NOTICE,
+		    "%s has no TLS 1.3 - will only use TLS 1.2",
+		    OPENSSL_VERSION_TEXT);
+	}
 #endif
 
 #endif
