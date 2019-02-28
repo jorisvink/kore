@@ -1672,21 +1672,27 @@ pysocket_sendto(struct pysocket *sock, PyObject *args)
 {
 	Py_buffer		buf;
 	struct pysocket_op	*op;
-	const char		*ip;
 	PyObject		*ret;
 	int			port;
+	const char		*ip, *sockaddr;
 
-	if (sock->family != AF_INET) {
-		PyErr_SetString(PyExc_RuntimeError,
-		    "sendto only supported on AF_INET sockets");
-		return (NULL);
-	}
+	switch (sock->family) {
+	case AF_INET:
+		if (!PyArg_ParseTuple(args, "siy*", &ip, &port, &buf))
+			return (NULL);
 
-	if (!PyArg_ParseTuple(args, "siy*", &ip, &port, &buf))
-		return (NULL);
-
-	if (port <= 0 || port >= USHRT_MAX) {
-		PyErr_SetString(PyExc_RuntimeError, "invalid port");
+		if (port <= 0 || port >= USHRT_MAX) {
+			PyErr_SetString(PyExc_RuntimeError, "invalid port");
+			return (NULL);
+		}
+		break;
+	
+	case AF_UNIX:
+		if (!PyArg_ParseTuple(args, "sy*", &sockaddr, &buf))
+			return (NULL);
+		break;
+	default:
+		PyErr_SetString(PyExc_RuntimeError, "unsupported family");
 		return (NULL);
 	}
 
@@ -1694,9 +1700,23 @@ pysocket_sendto(struct pysocket *sock, PyObject *args)
 
 	op = (struct pysocket_op *)ret;
 
-	op->data.sendaddr.sin_family = AF_INET;
-	op->data.sendaddr.sin_port = htons(port);
-	op->data.sendaddr.sin_addr.s_addr = inet_addr(ip);
+	switch (sock->family) {
+	case AF_INET:
+		op->data.sendaddr.ipv4.sin_family = AF_INET;
+		op->data.sendaddr.ipv4.sin_port = htons(port);
+		op->data.sendaddr.ipv4.sin_addr.s_addr = inet_addr(ip);
+		break;
+	case AF_UNIX:
+		op->data.sendaddr.sun.sun_family = AF_UNIX;
+		size_t maxwrite = sizeof(op->data.sendaddr.sun.sun_path);
+		if(kore_strlcpy(op->data.sendaddr.sun.sun_path, sockaddr,
+		    maxwrite) >= maxwrite)
+			fatal("pysocket_sendto: failed to write path");
+		break;
+	default:
+		PyErr_SetString(PyExc_RuntimeError, "unsupported family");
+		return (NULL);
+	}
 
 	return (ret);
 }
@@ -1732,12 +1752,6 @@ static PyObject *
 pysocket_recvfrom(struct pysocket *sock, PyObject *args)
 {
 	Py_ssize_t	len;
-
-	if (sock->family != AF_INET) {
-		PyErr_SetString(PyExc_RuntimeError,
-		    "recvfrom only supported on AF_INET sockets");
-		return (NULL);
-	}
 
 	if (!PyArg_ParseTuple(args, "n", &len))
 		return (NULL);
@@ -2056,6 +2070,7 @@ pysocket_async_recv(struct pysocket_op *op)
 	ssize_t		ret;
 	u_int16_t	port;
 	socklen_t	socklen;
+	struct sockaddr *sendaddr;
 	const char	*ptr, *ip;
 	PyObject	*bytes, *result, *tuple;
 
@@ -2068,10 +2083,23 @@ pysocket_async_recv(struct pysocket_op *op)
 			ret = read(op->data.fd, op->data.buffer.data,
 			    op->data.buffer.length);
 		} else {
-			socklen = sizeof(op->data.sendaddr);
+			switch(op->data.socket->family) {
+			case AF_INET:
+				socklen = sizeof(op->data.sendaddr.ipv4);
+				sendaddr = (struct sockaddr *)&op->data.sendaddr.ipv4;
+				break;
+			case AF_UNIX:
+				socklen = sizeof(op->data.sendaddr.sun);
+				sendaddr = (struct sockaddr *)&op->data.sendaddr.sun;
+				break;
+			default:
+				PyErr_SetString(PyExc_RuntimeError, "Unsupported family");
+				return (NULL);
+			}
+
 			ret = recvfrom(op->data.fd, op->data.buffer.data,
 			    op->data.buffer.length, 0,
-			    (struct sockaddr *)&op->data.sendaddr,
+			    sendaddr,
 			    &socklen);
 		}
 
@@ -2104,11 +2132,23 @@ pysocket_async_recv(struct pysocket_op *op)
 		return (NULL);
 	}
 
-	port = ntohs(op->data.sendaddr.sin_port);
-	ip = inet_ntoa(op->data.sendaddr.sin_addr);
+	switch(op->data.socket->family) {
+	case AF_INET:
+		port = ntohs(op->data.sendaddr.ipv4.sin_port);
+		ip = inet_ntoa(op->data.sendaddr.ipv4.sin_addr);
 
-	if ((tuple = Py_BuildValue("(sHN)", ip, port, bytes)) == NULL)
+		if ((tuple = Py_BuildValue("(sHN)", ip, port, bytes)) == NULL)
+			return (NULL);
+		break;
+	case AF_UNIX:
+		if ((tuple = Py_BuildValue("(sN)",
+		    op->data.sendaddr.sun.sun_path, bytes)) == NULL)
+			return (NULL);
+		break;
+	default:
+		PyErr_SetString(PyExc_RuntimeError, "Unsupported family");
 		return (NULL);
+	}
 
 	result = PyObject_CallFunctionObjArgs(PyExc_StopIteration, tuple, NULL);
 	if (result == NULL) {
@@ -2125,7 +2165,9 @@ pysocket_async_recv(struct pysocket_op *op)
 static PyObject *
 pysocket_async_send(struct pysocket_op *op)
 {
-	ssize_t		ret;
+	ssize_t		      ret;
+	const struct sockaddr *sendaddr;
+	socklen_t             socklen;
 
 	if (!(op->data.evt.flags & KORE_EVENT_WRITE)) {
 		Py_RETURN_NONE;
@@ -2137,11 +2179,24 @@ pysocket_async_send(struct pysocket_op *op)
 			    op->data.buffer.data + op->data.buffer.offset,
 			    op->data.buffer.length - op->data.buffer.offset);
 		} else {
+			switch(op->data.socket->family) {
+			case AF_INET:
+				socklen = sizeof(op->data.sendaddr.ipv4);
+				sendaddr = (struct sockaddr *)&op->data.sendaddr.ipv4;
+				break;
+			case AF_UNIX:
+				socklen = sizeof(op->data.sendaddr.sun);
+				sendaddr = (struct sockaddr *)&op->data.sendaddr.sun;
+				break;
+			default:
+				PyErr_SetString(PyExc_RuntimeError, "unsupported family");
+				return (NULL);
+			}
+
 			ret = sendto(op->data.fd,
 			    op->data.buffer.data + op->data.buffer.offset,
 			    op->data.buffer.length - op->data.buffer.offset,
-			    0, (const struct sockaddr *)&op->data.sendaddr,
-			    sizeof(op->data.sendaddr));
+			    0, sendaddr, socklen);
 		}
 
 		if (ret == -1) {

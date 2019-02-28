@@ -208,7 +208,10 @@ struct pysocket_data {
 	int			state;
 	size_t			length;
 	struct kore_buf		buffer;
-	struct sockaddr_in	sendaddr;
+	union {
+		struct sockaddr_in	ipv4;
+		struct sockaddr_un	sun;
+	} sendaddr;
 	struct pysocket		*socket;
 	struct kore_timer	*timer;
 };
