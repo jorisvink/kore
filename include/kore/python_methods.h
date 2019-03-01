@@ -199,21 +199,22 @@ static PyTypeObject pysocket_type = {
 #define PYSOCKET_TYPE_SENDTO	6
 
 struct pysocket_data {
-	struct kore_event	evt;
-	int			fd;
-	int			eof;
-	int			type;
-	void			*self;
-	struct python_coro	*coro;
-	int			state;
-	size_t			length;
-	struct kore_buf		buffer;
+	struct kore_event		evt;
+	int				fd;
+	int				eof;
+	int				type;
+	void				*self;
+	struct python_coro		*coro;
+	int				state;
+	size_t				length;
+	struct kore_buf			buffer;
+	struct pysocket			*socket;
+	struct kore_timer		*timer;
+
 	union {
 		struct sockaddr_in	ipv4;
 		struct sockaddr_un	sun;
 	} sendaddr;
-	struct pysocket		*socket;
-	struct kore_timer	*timer;
 };
 
 struct pysocket_op {
