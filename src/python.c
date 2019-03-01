@@ -2141,7 +2141,6 @@ pysocket_async_recv(struct pysocket_op *op)
 			return (NULL);
 		break;
 	case AF_UNIX:
-		printf("'%s'\n", op->data.sendaddr.sun.sun_path);
 		if ((tuple = Py_BuildValue("(sN)",
 		    op->data.sendaddr.sun.sun_path, bytes)) == NULL)
 			return (NULL);
