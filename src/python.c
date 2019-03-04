@@ -2117,6 +2117,14 @@ pysocket_async_recv(struct pysocket_op *op)
 		break;
 	}
 
+	op->data.coro->exception = NULL;
+	op->data.coro->exception_msg = NULL;
+
+	if (op->data.timer != NULL) {
+		kore_timer_remove(op->data.timer);
+		op->data.timer = NULL;
+	}
+
 	if (op->data.type == PYSOCKET_TYPE_RECV && ret == 0) {
 		PyErr_SetNone(PyExc_StopIteration);
 		return (NULL);
