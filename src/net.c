@@ -15,6 +15,7 @@
  */
 
 #include <sys/param.h>
+#include <sys/types.h>
 
 #if defined(__linux__)
 #include <endian.h>

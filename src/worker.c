@@ -15,6 +15,7 @@
  */
 
 #include <sys/param.h>
+#include <sys/types.h>
 #include <sys/shm.h>
 #include <sys/wait.h>
 #include <sys/time.h>

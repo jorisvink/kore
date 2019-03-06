@@ -21,6 +21,7 @@
  */
 
 #include <sys/param.h>
+#include <sys/types.h>
 
 #if !defined(KORE_NO_TLS)
 #include <openssl/x509.h>
