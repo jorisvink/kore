@@ -2016,7 +2016,7 @@ pysocket_async_connect(struct pysocket_op *op)
 	if (connect(op->data.fd, (struct sockaddr *)&op->data.socket->addr,
 	    op->data.socket->addr_len) == -1) {
 		if (errno != EALREADY && errno != EINPROGRESS &&
-		    errno != EISCONN) {
+		    errno != EISCONN && errno != EAGAIN) {
 			PyErr_SetString(PyExc_RuntimeError, errno_s);
 			return (NULL);
 		}
