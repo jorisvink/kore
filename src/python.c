@@ -1657,6 +1657,13 @@ pysocket_alloc(void)
 static void
 pysocket_dealloc(struct pysocket *sock)
 {
+	if (sock->scheduled) {
+		kore_platform_disable_read(sock->fd);
+#if !defined(__linux__)
+		kore_platform_disable_write(sock->fd);
+#endif
+	}
+
 	if (sock->socket != NULL) {
 		Py_DECREF(sock->socket);
 	} else if (sock->fd != -1) {
