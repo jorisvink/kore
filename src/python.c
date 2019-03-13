@@ -2255,7 +2255,8 @@ pysocket_evt_handle(void *arg, int eof)
 	struct pysocket_event		*event = arg;
 	struct pysocket			*socket = event->s;
 
-	if ((event->evt.flags & KORE_EVENT_READ) && socket->recvop != NULL) {
+	if ((eof || (event->evt.flags & KORE_EVENT_READ)) &&
+	    socket->recvop != NULL) {
 		if (socket->recvop->coro->request != NULL)
 			http_request_wakeup(socket->recvop->coro->request);
 		else
@@ -2263,7 +2264,8 @@ pysocket_evt_handle(void *arg, int eof)
 		socket->recvop->eof = eof;
 	}
 
-	if ((event->evt.flags & KORE_EVENT_WRITE) && socket->sendop != NULL) {
+	if ((eof || (event->evt.flags & KORE_EVENT_WRITE)) &&
+	    socket->sendop != NULL) {
 		if (socket->sendop->coro->request != NULL)
 			http_request_wakeup(socket->sendop->coro->request);
 		else
