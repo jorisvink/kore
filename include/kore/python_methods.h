@@ -147,13 +147,28 @@ static PyTypeObject pytimer_type = {
 	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
 };
 
+/* XXX */
+struct pysocket;
+struct pysocket_op;
+
+struct pysocket_event {
+	struct kore_event	evt;
+	struct pysocket		*s;
+};
+
 struct pysocket {
 	PyObject_HEAD
 	int			fd;
 	int			family;
 	int			protocol;
+	int			scheduled;
 	PyObject		*socket;
 	socklen_t		addr_len;
+
+	struct pysocket_event	event;
+	struct pysocket_op	*recvop;
+	struct pysocket_op	*sendop;
+
 	union {
 		struct sockaddr_in	ipv4;
 		struct sockaddr_un	sun;
@@ -198,9 +213,8 @@ static PyTypeObject pysocket_type = {
 #define PYSOCKET_TYPE_RECVFROM	5
 #define PYSOCKET_TYPE_SENDTO	6
 
-struct pysocket_data {
-	struct kore_event		evt;
-	int				fd;
+struct pysocket_op {
+	PyObject_HEAD
 	int				eof;
 	int				type;
 	void				*self;
@@ -215,11 +229,6 @@ struct pysocket_data {
 		struct sockaddr_in	ipv4;
 		struct sockaddr_un	sun;
 	} sendaddr;
-};
-
-struct pysocket_op {
-	PyObject_HEAD
-	struct pysocket_data	data;
 };
 
 static void	pysocket_op_dealloc(struct pysocket_op *);
