@@ -2445,7 +2445,7 @@ pylock_dealloc(struct pylock *lock)
 		Py_DECREF((PyObject *)op);
 	}
 
-	PyObject_Del((PyObject *)op);
+	PyObject_Del((PyObject *)lock);
 }
 
 static PyObject *
@@ -2571,8 +2571,6 @@ pylock_op_iternext(struct pylock_op *op)
 	op->active = 0;
 	TAILQ_REMOVE(&op->lock->ops, op, list);
 	PyErr_SetNone(PyExc_StopIteration);
-
-	Py_DECREF((PyObject *)op);
 
 	return (NULL);
 }
