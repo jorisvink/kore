@@ -22,6 +22,7 @@
 #endif
 
 #include <sys/param.h>
+#include <sys/types.h>
 #include <sys/time.h>
 #include <sys/queue.h>
 #include <sys/un.h>
