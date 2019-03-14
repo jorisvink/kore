@@ -2267,6 +2267,26 @@ pysocket_async_recv(struct pysocket_op *op)
 			return (NULL);
 		break;
 	case AF_UNIX:
+		if (socklen < sizeof(sa_family_t)) {
+			if ((tuple = Py_BuildValue("(ON)",
+			    Py_None, bytes)) == NULL)
+				return (NULL);
+			break;
+		}
+
+		if (socklen > sizeof(struct sockaddr_un)) {
+			PyErr_SetString(PyExc_RuntimeError,
+					"Socklen longer than sockaddr_un");
+			return (NULL);
+		}
+
+#if defined(__linux__)
+		if (op->sendaddr.sun.sun_path[0] == '\0') {
+			op->sendaddr.sun.sun_path[0] = '@';
+			op->sendaddr.sun.sun_path[socklen - sizeof(sa_family_t)] = '\0';
+		}
+#endif
+
 		if ((tuple = Py_BuildValue("(sN)",
 		    op->sendaddr.sun.sun_path, bytes)) == NULL)
 			return (NULL);
@@ -2313,6 +2333,14 @@ pysocket_async_send(struct pysocket_op *op)
 				break;
 			case AF_UNIX:
 				socklen = sizeof(op->sendaddr.sun);
+#if defined(__linux__)
+				if (op->sendaddr.sun.sun_path[0] == '@') {
+					socklen = sizeof(sa_family_t) +
+					    strlen(op->sendaddr.sun.sun_path);
+					op->sendaddr.sun.sun_path[0] = '\0';
+				}
+#endif
+
 				break;
 			default:
 				fatal("non AF_INET/AF_UNIX in %s", __func__);
