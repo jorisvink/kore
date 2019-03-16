@@ -17,6 +17,7 @@
 
 #include <sys/param.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
 #include <sys/un.h>
@@ -1369,8 +1370,15 @@ python_kore_proc(PyObject *self, PyObject *args)
 static PyObject *
 python_import(const char *path)
 {
+	struct stat	st;
 	PyObject	*module;
 	char		*dir, *file, *copy, *p;
+
+	if (stat(path, &st) == -1)
+		fatal("python_import: stat(%s): %s", path, errno_s);
+
+	if (!S_ISDIR(st.st_mode) && !S_ISREG(st.st_mode))
+		fatal("python_import: '%s' is not a file or directory", path);
 
 	copy = kore_strdup(path);
 
@@ -1383,6 +1391,10 @@ python_import(const char *path)
 		*p = '\0';
 
 	python_append_path(dir);
+
+	if (S_ISDIR(st.st_mode))
+		python_append_path(path);
+
 	module = PyImport_ImportModule(file);
 	if (module == NULL)
 		PyErr_Print();
