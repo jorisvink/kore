@@ -21,6 +21,7 @@ struct python_coro {
 	u_int64_t			id;
 	int				state;
 	PyObject			*obj;
+	PyObject			*result;
 	struct pysocket_op		*sockop;
 	struct pygather_op		*gatherop;
 	struct http_request		*request;

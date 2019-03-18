@@ -80,6 +80,7 @@ static void	python_append_path(const char *);
 static void	python_push_integer(PyObject *, const char *, long);
 static void	python_push_type(const char *, PyObject *, PyTypeObject *);
 
+static int	python_validator_check(PyObject *);
 static int	python_runtime_http_request(void *, struct http_request *);
 static int	python_runtime_validator(void *, struct http_request *,
 		    const void *);
@@ -286,6 +287,7 @@ kore_python_coro_delete(void *obj)
 	else
 		TAILQ_REMOVE(&coro_suspended, coro, list);
 
+	Py_XDECREF(coro->result);
 	kore_pool_put(&coro_pool, coro);
 }
 
@@ -505,6 +507,7 @@ python_coro_create(PyObject *obj, struct http_request *req)
 	coro = kore_pool_get(&coro_pool);
 	coro_count++;
 
+	coro->result = NULL;
 	coro->sockop = NULL;
 	coro->gatherop = NULL;
 	coro->exception = NULL;
@@ -527,6 +530,7 @@ static int
 python_coro_run(struct python_coro *coro)
 {
 	PyObject	*item;
+	PyObject	*type, *traceback;
 
 	if (coro->state != CORO_STATE_RUNNABLE)
 		fatal("non-runnable coro attempted to run");
@@ -538,7 +542,15 @@ python_coro_run(struct python_coro *coro)
 
 		item = _PyGen_Send((PyGenObject *)coro->obj, NULL);
 		if (item == NULL) {
-			kore_python_log_error("coroutine");
+			if (PyErr_Occurred() &&
+			    PyErr_ExceptionMatches(PyExc_StopIteration)) {
+				PyErr_Fetch(&type, &coro->result, &traceback);
+				Py_DECREF(type);
+				Py_XDECREF(traceback);
+			} else {
+				kore_python_log_error("coroutine");
+			}
+
 			coro_running = NULL;
 			return (KORE_RESULT_OK);
 		}
@@ -651,28 +663,48 @@ python_runtime_http_request(void *addr, struct http_request *req)
 static int
 python_runtime_validator(void *addr, struct http_request *req, const void *data)
 {
-	int		ret;
-	PyObject	*pyret, *pyreq, *args, *callable, *arg;
+	int			ret;
+	struct python_coro	*coro;
+	PyObject		*pyret, *pyreq, *args, *callable, *arg;
+
+	if (req->py_coro != NULL) {
+		coro = req->py_coro;
+		python_coro_wakeup(coro);
+		if (python_coro_run(coro) == KORE_RESULT_OK) {
+			ret = python_validator_check(coro->result);
+			kore_python_coro_delete(coro);
+			req->py_coro = NULL;
+			return (ret);
+		}
+
+		return (KORE_RESULT_RETRY);
+	}
 
 	callable = (PyObject *)addr;
 
-	if ((pyreq = pyhttp_request_alloc(req)) == NULL)
-		fatal("python_runtime_validator: pyreq alloc failed");
-
 	if (req->flags & HTTP_VALIDATOR_IS_REQUEST) {
 		if ((arg = pyhttp_request_alloc(data)) == NULL)
-			fatal("python_runtime_validator: pyreq failed");
+			fatal("%s: pyreq failed", __func__);
+
+		if ((args = PyTuple_New(1)) == NULL)
+			fatal("%s: PyTuple_New failed", __func__);
+
+		if (PyTuple_SetItem(args, 0, arg) != 0)
+			fatal("%s: PyTuple_SetItem failed", __func__);
 	} else {
+		if ((pyreq = pyhttp_request_alloc(req)) == NULL)
+			fatal("%s: pyreq alloc failed", __func__);
+
 		if ((arg = PyUnicode_FromString(data)) == NULL)
 			fatal("python_runtime_validator: PyUnicode failed");
+
+		if ((args = PyTuple_New(2)) == NULL)
+			fatal("%s: PyTuple_New failed", __func__);
+
+		if (PyTuple_SetItem(args, 0, pyreq) != 0 ||
+		    PyTuple_SetItem(args, 1, arg) != 0)
+			fatal("%s: PyTuple_SetItem failed", __func__);
 	}
-
-	if ((args = PyTuple_New(2)) == NULL)
-		fatal("python_runtime_validator: PyTuple_New failed");
-
-	if (PyTuple_SetItem(args, 0, pyreq) != 0 ||
-	    PyTuple_SetItem(args, 1, arg) != 0)
-		fatal("python_runtime_vaildator: PyTuple_SetItem failed");
 
 	PyErr_Clear();
 	pyret = PyObject_Call(callable, args, NULL);
@@ -683,11 +715,51 @@ python_runtime_validator(void *addr, struct http_request *req, const void *data)
 		fatal("failed to execute python call");
 	}
 
-	if (!PyLong_Check(pyret))
-		fatal("python_runtime_validator: unexpected return type");
+	if (PyCoro_CheckExact(pyret)) {
+		coro = python_coro_create(pyret, req);
+		req->py_coro = coro;
+		if (python_coro_run(coro) == KORE_RESULT_OK) {
+			ret = python_validator_check(coro->result);
+			kore_python_coro_delete(coro);
+			req->py_coro = NULL;
+			return (ret);
+		}
+		http_request_sleep(req);
+		return (KORE_RESULT_RETRY);
+	}
 
-	ret = (int)PyLong_AsLong(pyret);
+	ret = python_validator_check(pyret);
 	Py_DECREF(pyret);
+
+	return (ret);
+}
+
+static int
+python_validator_check(PyObject *obj)
+{
+	int	ret;
+
+	if (obj == NULL)
+		return (KORE_RESULT_ERROR);
+
+	if (!PyLong_Check(obj)) {
+		kore_log(LOG_WARNING,
+		    "invalid return value from authenticator (not an int)");
+		ret = KORE_RESULT_ERROR;
+	} else {
+		ret = (int)PyLong_AsLong(obj);
+	}
+
+	switch (ret) {
+	case KORE_RESULT_OK:
+	case KORE_RESULT_ERROR:
+		break;
+	default:
+		kore_log(LOG_WARNING,
+		    "unsupported authenticator return value '%d'", ret);
+		ret = KORE_RESULT_ERROR;
+		break;
+	}
 
 	return (ret);
 }
