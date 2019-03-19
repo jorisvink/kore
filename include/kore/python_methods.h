@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2018 Joris Vink <joris@coders.se>
+ * Copyright (c) 2017-2019 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -21,6 +21,7 @@ struct python_coro {
 	u_int64_t			id;
 	int				state;
 	PyObject			*obj;
+	PyObject			*result;
 	struct pysocket_op		*sockop;
 	struct pygather_op		*gatherop;
 	struct http_request		*request;
@@ -147,13 +148,28 @@ static PyTypeObject pytimer_type = {
 	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
 };
 
+/* XXX */
+struct pysocket;
+struct pysocket_op;
+
+struct pysocket_event {
+	struct kore_event	evt;
+	struct pysocket		*s;
+};
+
 struct pysocket {
 	PyObject_HEAD
 	int			fd;
 	int			family;
 	int			protocol;
+	int			scheduled;
 	PyObject		*socket;
 	socklen_t		addr_len;
+
+	struct pysocket_event	event;
+	struct pysocket_op	*recvop;
+	struct pysocket_op	*sendop;
+
 	union {
 		struct sockaddr_in	ipv4;
 		struct sockaddr_un	sun;
@@ -198,23 +214,22 @@ static PyTypeObject pysocket_type = {
 #define PYSOCKET_TYPE_RECVFROM	5
 #define PYSOCKET_TYPE_SENDTO	6
 
-struct pysocket_data {
-	struct kore_event	evt;
-	int			fd;
-	int			eof;
-	int			type;
-	void			*self;
-	struct python_coro	*coro;
-	int			state;
-	size_t			length;
-	struct kore_buf		buffer;
-	struct sockaddr_in	sendaddr;
-	struct pysocket		*socket;
-};
-
 struct pysocket_op {
 	PyObject_HEAD
-	struct pysocket_data	data;
+	int				eof;
+	int				type;
+	void				*self;
+	struct python_coro		*coro;
+	int				state;
+	size_t				length;
+	struct kore_buf			buffer;
+	struct pysocket			*socket;
+	struct kore_timer		*timer;
+
+	union {
+		struct sockaddr_in	ipv4;
+		struct sockaddr_un	sun;
+	} sendaddr;
 };
 
 static void	pysocket_op_dealloc(struct pysocket_op *);

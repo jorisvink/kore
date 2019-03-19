@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2018 Joris Vink <joris@coders.se>
+ * Copyright (c) 2013-2019 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -22,6 +22,7 @@
 #endif
 
 #include <sys/param.h>
+#include <sys/types.h>
 #include <sys/time.h>
 #include <sys/queue.h>
 #include <sys/un.h>

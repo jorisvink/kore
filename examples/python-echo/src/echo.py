@@ -22,6 +22,7 @@ class EchoServer:
     def __init__(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.setblocking(False)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind(("127.0.0.1", 6969))
         sock.listen()
 
@@ -40,13 +41,21 @@ class EchoServer:
                 kore.fatal("exception %s" % e)
 
     # Each client will run as this co-routine.
+    # In this case we pass a timeout of 1 second to the recv() call
+    # which will throw a TimeoutError exception in case the timeout
+    # is hit before data is read from the socket.
+    #
+    # This timeout argument is optional. If none is specified the call
+    # will wait until data becomes available.
     async def handle_client(self, client):
         while True:
             try:
-                data = await client.recv(1024)
+                data = await client.recv(1024, 1000)
                 if data is None:
                     break
                 await client.send(data)
+            except TimeoutError as e:
+                print("timed out reading (%s)" % e)
             except Exception as e:
                 print("client got exception %s" % e)
         client.close()

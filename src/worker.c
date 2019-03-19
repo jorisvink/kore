@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2018 Joris Vink <joris@coders.se>
+ * Copyright (c) 2013-2019 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -15,6 +15,7 @@
  */
 
 #include <sys/param.h>
+#include <sys/types.h>
 #include <sys/shm.h>
 #include <sys/wait.h>
 #include <sys/time.h>
@@ -88,7 +89,6 @@ static int				worker_no_lock;
 static int				shm_accept_key;
 static struct wlock			*accept_lock;
 
-extern volatile sig_atomic_t	sig_recv;
 struct kore_worker		*worker = NULL;
 u_int8_t			worker_set_affinity = 1;
 u_int32_t			worker_accept_threshold = 16;
@@ -280,7 +280,7 @@ kore_worker_privdrop(const char *runas, const char *root)
 	rl.rlim_cur = worker_rlimit_nofiles;
 	rl.rlim_max = worker_rlimit_nofiles;
 	if (setrlimit(RLIMIT_NOFILE, &rl) == -1) {
-		kore_log(LOG_ERR, "setrlimit(RLIMIT_NOFILE, %d): %s",
+		kore_log(LOG_ERR, "setrlimit(RLIMIT_NOFILE, %u): %s",
 		    worker_rlimit_nofiles, errno_s);
 	}
 

@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2016 Stanislav Yudin <stan@endlessinsomnia.com>
- * Copyright (c) 2017-2018 Joris Vink <joris@coders.se>
+ * Copyright (c) 2017-2019 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -17,9 +17,12 @@
 
 #include <sys/param.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
+#include <sys/un.h>
 
+#include <ctype.h>
 #include <libgen.h>
 #include <signal.h>
 
@@ -37,6 +40,7 @@ static PyMODINIT_FUNC	python_module_init(void);
 static PyObject		*python_import(const char *);
 static PyObject		*pyconnection_alloc(struct connection *);
 static PyObject		*python_callable(PyObject *, const char *);
+static void		python_split_arguments(char *, char **, size_t);
 
 static int		pyhttp_response_sent(struct netbuf *);
 static PyObject		*pyhttp_file_alloc(struct http_file *);
@@ -48,6 +52,7 @@ static int			python_coro_run(struct python_coro *);
 static void			python_coro_wakeup(struct python_coro *);
 
 static void		pysocket_evt_handle(void *, int);
+static void		pysocket_op_timeout(void *, u_int64_t);
 static PyObject		*pysocket_op_create(struct pysocket *,
 			    int, const void *, size_t);
 
@@ -75,6 +80,7 @@ static void	python_append_path(const char *);
 static void	python_push_integer(PyObject *, const char *, long);
 static void	python_push_type(const char *, PyObject *, PyTypeObject *);
 
+static int	python_validator_check(PyObject *);
 static int	python_runtime_http_request(void *, struct http_request *);
 static int	python_runtime_validator(void *, struct http_request *,
 		    const void *);
@@ -281,6 +287,7 @@ kore_python_coro_delete(void *obj)
 	else
 		TAILQ_REMOVE(&coro_suspended, coro, list);
 
+	Py_XDECREF(coro->result);
 	kore_pool_put(&coro_pool, coro);
 }
 
@@ -414,6 +421,53 @@ python_module_free(struct kore_module *module)
 }
 
 static void
+python_split_arguments(char *args, char **argv, size_t elm)
+{
+	size_t		idx;
+	char		*p, *line, *end;
+
+	if (elm <= 1)
+		fatal("not enough elements (%zu)", elm);
+
+	idx = 0;
+	line = args;
+
+	for (p = line; *p != '\0'; p++) {
+		if (idx >= elm - 1)
+			break;
+
+		if (*p == ' ') {
+			*p = '\0';
+			if (*line != '\0')
+				argv[idx++] = line;
+			line = p + 1;
+			continue;
+		}
+
+		if (*p != '"')
+			continue;
+
+		line = p + 1;
+		if ((end = strchr(line, '"')) == NULL)
+			break;
+
+		*end = '\0';
+		argv[idx++] = line;
+		line = end + 1;
+
+		while (isspace(*(unsigned char *)line))
+			line++;
+
+		p = line;
+	}
+
+	if (idx < elm - 1 && *line != '\0')
+		argv[idx++] = line;
+
+	argv[idx] = NULL;
+}
+
+static void
 python_module_reload(struct kore_module *module)
 {
 	PyObject	*handle;
@@ -453,6 +507,7 @@ python_coro_create(PyObject *obj, struct http_request *req)
 	coro = kore_pool_get(&coro_pool);
 	coro_count++;
 
+	coro->result = NULL;
 	coro->sockop = NULL;
 	coro->gatherop = NULL;
 	coro->exception = NULL;
@@ -475,6 +530,7 @@ static int
 python_coro_run(struct python_coro *coro)
 {
 	PyObject	*item;
+	PyObject	*type, *traceback;
 
 	if (coro->state != CORO_STATE_RUNNABLE)
 		fatal("non-runnable coro attempted to run");
@@ -486,7 +542,15 @@ python_coro_run(struct python_coro *coro)
 
 		item = _PyGen_Send((PyGenObject *)coro->obj, NULL);
 		if (item == NULL) {
-			kore_python_log_error("coroutine");
+			if (PyErr_Occurred() &&
+			    PyErr_ExceptionMatches(PyExc_StopIteration)) {
+				PyErr_Fetch(&type, &coro->result, &traceback);
+				Py_DECREF(type);
+				Py_XDECREF(traceback);
+			} else {
+				kore_python_log_error("coroutine");
+			}
+
 			coro_running = NULL;
 			return (KORE_RESULT_OK);
 		}
@@ -599,28 +663,48 @@ python_runtime_http_request(void *addr, struct http_request *req)
 static int
 python_runtime_validator(void *addr, struct http_request *req, const void *data)
 {
-	int		ret;
-	PyObject	*pyret, *pyreq, *args, *callable, *arg;
+	int			ret;
+	struct python_coro	*coro;
+	PyObject		*pyret, *pyreq, *args, *callable, *arg;
+
+	if (req->py_coro != NULL) {
+		coro = req->py_coro;
+		python_coro_wakeup(coro);
+		if (python_coro_run(coro) == KORE_RESULT_OK) {
+			ret = python_validator_check(coro->result);
+			kore_python_coro_delete(coro);
+			req->py_coro = NULL;
+			return (ret);
+		}
+
+		return (KORE_RESULT_RETRY);
+	}
 
 	callable = (PyObject *)addr;
 
-	if ((pyreq = pyhttp_request_alloc(req)) == NULL)
-		fatal("python_runtime_validator: pyreq alloc failed");
-
 	if (req->flags & HTTP_VALIDATOR_IS_REQUEST) {
 		if ((arg = pyhttp_request_alloc(data)) == NULL)
-			fatal("python_runtime_validator: pyreq failed");
+			fatal("%s: pyreq failed", __func__);
+
+		if ((args = PyTuple_New(1)) == NULL)
+			fatal("%s: PyTuple_New failed", __func__);
+
+		if (PyTuple_SetItem(args, 0, arg) != 0)
+			fatal("%s: PyTuple_SetItem failed", __func__);
 	} else {
+		if ((pyreq = pyhttp_request_alloc(req)) == NULL)
+			fatal("%s: pyreq alloc failed", __func__);
+
 		if ((arg = PyUnicode_FromString(data)) == NULL)
 			fatal("python_runtime_validator: PyUnicode failed");
+
+		if ((args = PyTuple_New(2)) == NULL)
+			fatal("%s: PyTuple_New failed", __func__);
+
+		if (PyTuple_SetItem(args, 0, pyreq) != 0 ||
+		    PyTuple_SetItem(args, 1, arg) != 0)
+			fatal("%s: PyTuple_SetItem failed", __func__);
 	}
-
-	if ((args = PyTuple_New(2)) == NULL)
-		fatal("python_runtime_validator: PyTuple_New failed");
-
-	if (PyTuple_SetItem(args, 0, pyreq) != 0 ||
-	    PyTuple_SetItem(args, 1, arg) != 0)
-		fatal("python_runtime_vaildator: PyTuple_SetItem failed");
 
 	PyErr_Clear();
 	pyret = PyObject_Call(callable, args, NULL);
@@ -631,11 +715,51 @@ python_runtime_validator(void *addr, struct http_request *req, const void *data)
 		fatal("failed to execute python call");
 	}
 
-	if (!PyLong_Check(pyret))
-		fatal("python_runtime_validator: unexpected return type");
+	if (PyCoro_CheckExact(pyret)) {
+		coro = python_coro_create(pyret, req);
+		req->py_coro = coro;
+		if (python_coro_run(coro) == KORE_RESULT_OK) {
+			ret = python_validator_check(coro->result);
+			kore_python_coro_delete(coro);
+			req->py_coro = NULL;
+			return (ret);
+		}
+		http_request_sleep(req);
+		return (KORE_RESULT_RETRY);
+	}
 
-	ret = (int)PyLong_AsLong(pyret);
+	ret = python_validator_check(pyret);
 	Py_DECREF(pyret);
+
+	return (ret);
+}
+
+static int
+python_validator_check(PyObject *obj)
+{
+	int	ret;
+
+	if (obj == NULL)
+		return (KORE_RESULT_ERROR);
+
+	if (!PyLong_Check(obj)) {
+		kore_log(LOG_WARNING,
+		    "invalid return value from authenticator (not an int)");
+		ret = KORE_RESULT_ERROR;
+	} else {
+		ret = (int)PyLong_AsLong(obj);
+	}
+
+	switch (ret) {
+	case KORE_RESULT_OK:
+	case KORE_RESULT_ERROR:
+		break;
+	default:
+		kore_log(LOG_WARNING,
+		    "unsupported authenticator return value '%d'", ret);
+		ret = KORE_RESULT_ERROR;
+		break;
+	}
 
 	return (ret);
 }
@@ -1221,7 +1345,7 @@ python_kore_proc(PyObject *self, PyObject *args)
 {
 	const char		*cmd;
 	struct pyproc		*proc;
-	char			*copy, *argv[30];
+	char			*copy, *argv[32];
 	int			timeo, in_pipe[2], out_pipe[2];
 
 	timeo = -1;
@@ -1290,9 +1414,9 @@ python_kore_proc(PyObject *self, PyObject *args)
 			fatal("dup2: %s", errno_s);
 
 		copy = kore_strdup(cmd);
-		kore_split_string(copy, " ", argv, 30);
+		python_split_arguments(copy, argv, 32);
 		(void)execve(argv[0], argv, NULL);
-		printf("kore.proc failed to execute %s (%s)\n",
+		kore_log(LOG_ERR, "kore.proc failed to execute %s (%s)",
 		    argv[0], errno_s);
 		exit(1);
 	}
@@ -1318,8 +1442,15 @@ python_kore_proc(PyObject *self, PyObject *args)
 static PyObject *
 python_import(const char *path)
 {
+	struct stat	st;
 	PyObject	*module;
 	char		*dir, *file, *copy, *p;
+
+	if (stat(path, &st) == -1)
+		fatal("python_import: stat(%s): %s", path, errno_s);
+
+	if (!S_ISDIR(st.st_mode) && !S_ISREG(st.st_mode))
+		fatal("python_import: '%s' is not a file or directory", path);
 
 	copy = kore_strdup(path);
 
@@ -1332,6 +1463,10 @@ python_import(const char *path)
 		*p = '\0';
 
 	python_append_path(dir);
+
+	if (S_ISDIR(st.st_mode))
+		python_append_path(path);
+
 	module = PyImport_ImportModule(file);
 	if (module == NULL)
 		PyErr_Print();
@@ -1589,7 +1724,16 @@ pysocket_alloc(void)
 	sock->fd = -1;
 	sock->family = -1;
 	sock->protocol = -1;
+	sock->scheduled = 0;
+
 	sock->socket = NULL;
+	sock->recvop = NULL;
+	sock->sendop = NULL;
+
+	sock->event.s = sock;
+	sock->event.evt.flags = 0;
+	sock->event.evt.type = KORE_TYPE_PYSOCKET;
+	sock->event.evt.handle = pysocket_evt_handle;
 
 	return (sock);
 }
@@ -1597,6 +1741,13 @@ pysocket_alloc(void)
 static void
 pysocket_dealloc(struct pysocket *sock)
 {
+	if (sock->scheduled && sock->fd == -1) {
+		kore_platform_disable_read(sock->fd);
+#if !defined(__linux__)
+		kore_platform_disable_write(sock->fd);
+#endif
+	}
+
 	if (sock->socket != NULL) {
 		Py_DECREF(sock->socket);
 	} else if (sock->fd != -1) {
@@ -1622,21 +1773,25 @@ pysocket_sendto(struct pysocket *sock, PyObject *args)
 {
 	Py_buffer		buf;
 	struct pysocket_op	*op;
-	const char		*ip;
 	PyObject		*ret;
 	int			port;
+	const char		*ip, *sockaddr;
 
-	if (sock->family != AF_INET) {
-		PyErr_SetString(PyExc_RuntimeError,
-		    "sendto only supported on AF_INET sockets");
-		return (NULL);
-	}
-
-	if (!PyArg_ParseTuple(args, "siy*", &ip, &port, &buf))
-		return (NULL);
-
-	if (port <= 0 || port >= USHRT_MAX) {
-		PyErr_SetString(PyExc_RuntimeError, "invalid port");
+	switch (sock->family) {
+	case AF_INET:
+		if (!PyArg_ParseTuple(args, "siy*", &ip, &port, &buf))
+			return (NULL);
+		if (port <= 0 || port >= USHRT_MAX) {
+			PyErr_SetString(PyExc_RuntimeError, "invalid port");
+			return (NULL);
+		}
+		break;
+	case AF_UNIX:
+		if (!PyArg_ParseTuple(args, "sy*", &sockaddr, &buf))
+			return (NULL);
+		break;
+	default:
+		PyErr_SetString(PyExc_RuntimeError, "unsupported family");
 		return (NULL);
 	}
 
@@ -1644,9 +1799,28 @@ pysocket_sendto(struct pysocket *sock, PyObject *args)
 
 	op = (struct pysocket_op *)ret;
 
-	op->data.sendaddr.sin_family = AF_INET;
-	op->data.sendaddr.sin_port = htons(port);
-	op->data.sendaddr.sin_addr.s_addr = inet_addr(ip);
+	switch (sock->family) {
+	case AF_INET:
+		op->sendaddr.ipv4.sin_family = AF_INET;
+		op->sendaddr.ipv4.sin_port = htons(port);
+		op->sendaddr.ipv4.sin_addr.s_addr = inet_addr(ip);
+		break;
+	case AF_UNIX:
+		op->sendaddr.sun.sun_family = AF_UNIX;
+		if (kore_strlcpy(op->sendaddr.sun.sun_path, sockaddr,
+		    sizeof(op->sendaddr.sun.sun_path)) >=
+		    sizeof(op->sendaddr.sun.sun_path)) {
+			Py_DECREF(ret);
+			PyErr_SetString(PyExc_RuntimeError,
+			    "unix socket path too long");
+			return (NULL);
+		}
+		break;
+	default:
+		Py_DECREF(ret);
+		PyErr_SetString(PyExc_RuntimeError, "unsupported family");
+		return (NULL);
+	}
 
 	return (ret);
 }
@@ -1654,24 +1828,34 @@ pysocket_sendto(struct pysocket *sock, PyObject *args)
 static PyObject *
 pysocket_recv(struct pysocket *sock, PyObject *args)
 {
-	Py_ssize_t	len;
+	Py_ssize_t		len;
+	struct pysocket_op	*op;
+	PyObject		*obj;
+	int			timeo;
 
-	if (!PyArg_ParseTuple(args, "n", &len))
+	timeo = -1;
+
+	if (!PyArg_ParseTuple(args, "n|i", &len, &timeo))
 		return (NULL);
 
-	return (pysocket_op_create(sock, PYSOCKET_TYPE_RECV, NULL, len));
+	obj = pysocket_op_create(sock, PYSOCKET_TYPE_RECV, NULL, len);
+	if (obj == NULL)
+		return (NULL);
+
+	op = (struct pysocket_op *)obj;
+
+	if (timeo != -1) {
+		op->timer = kore_timer_add(pysocket_op_timeout,
+		    timeo, op, KORE_TIMER_ONESHOT);
+	}
+
+	return (obj);
 }
 
 static PyObject *
 pysocket_recvfrom(struct pysocket *sock, PyObject *args)
 {
 	Py_ssize_t	len;
-
-	if (sock->family != AF_INET) {
-		PyErr_SetString(PyExc_RuntimeError,
-		    "recvfrom only supported on AF_INET sockets");
-		return (NULL);
-	}
 
 	if (!PyArg_ParseTuple(args, "n", &len))
 		return (NULL);
@@ -1738,6 +1922,14 @@ pysocket_connect(struct pysocket *sock, PyObject *args)
 static PyObject *
 pysocket_close(struct pysocket *sock, PyObject *args)
 {
+	if (sock->scheduled) {
+		sock->scheduled = 0;
+		kore_platform_disable_read(sock->fd);
+#if !defined(__linux__)
+		kore_platform_disable_write(sock->fd);
+#endif
+	}
+
 	if (sock->socket != NULL) {
 		Py_DECREF(sock->socket);
 		sock->socket = NULL;
@@ -1752,33 +1944,35 @@ pysocket_close(struct pysocket *sock, PyObject *args)
 static void
 pysocket_op_dealloc(struct pysocket_op *op)
 {
-#if defined(__linux__)
-	kore_platform_disable_read(op->data.fd);
-	close(op->data.fd);
-#else
-	switch (op->data.type) {
+	if (op->type == PYSOCKET_TYPE_RECV ||
+	    op->type == PYSOCKET_TYPE_RECVFROM ||
+	    op->type == PYSOCKET_TYPE_SEND)
+		kore_buf_cleanup(&op->buffer);
+
+	switch (op->type) {
 	case PYSOCKET_TYPE_RECV:
 	case PYSOCKET_TYPE_ACCEPT:
 	case PYSOCKET_TYPE_RECVFROM:
-		kore_platform_disable_read(op->data.fd);
+		if (op->socket->recvop != op)
+			fatal("recvop mismatch");
+		op->socket->recvop = NULL;
 		break;
 	case PYSOCKET_TYPE_SEND:
 	case PYSOCKET_TYPE_SENDTO:
 	case PYSOCKET_TYPE_CONNECT:
-		kore_platform_disable_write(op->data.fd);
+		if (op->socket->sendop != op)
+			fatal("sendop mismatch");
+		op->socket->sendop = NULL;
 		break;
-	default:
-		fatal("unknown pysocket_op type %u", op->data.type);
 	}
-#endif
 
-	if (op->data.type == PYSOCKET_TYPE_RECV ||
-	    op->data.type == PYSOCKET_TYPE_RECVFROM ||
-	    op->data.type == PYSOCKET_TYPE_SEND)
-		kore_buf_cleanup(&op->data.buffer);
+	if (op->timer != NULL) {
+		kore_timer_remove(op->timer);
+		op->timer = NULL;
+	}
 
-	op->data.coro->sockop = NULL;
-	Py_DECREF(op->data.socket);
+	op->coro->sockop = NULL;
+	Py_DECREF(op->socket);
 
 	PyObject_Del((PyObject *)op);
 }
@@ -1791,60 +1985,69 @@ pysocket_op_create(struct pysocket *sock, int type, const void *ptr, size_t len)
 	if (coro_running->sockop != NULL)
 		fatal("pysocket_op_create: coro has active socketop");
 
+	switch (type) {
+	case PYSOCKET_TYPE_RECV:
+	case PYSOCKET_TYPE_ACCEPT:
+	case PYSOCKET_TYPE_RECVFROM:
+		if (sock->recvop != NULL) {
+			PyErr_SetString(PyExc_RuntimeError,
+			    "only one recv operation can be done per socket");
+			return (NULL);
+		}
+		break;
+	case PYSOCKET_TYPE_SEND:
+	case PYSOCKET_TYPE_SENDTO:
+	case PYSOCKET_TYPE_CONNECT:
+		if (sock->sendop != NULL) {
+			PyErr_SetString(PyExc_RuntimeError,
+			    "only one send operation can be done per socket");
+			return (NULL);
+		}
+		break;
+	default:
+		fatal("unknown pysocket_op type %u", type);
+	}
+
 	op = PyObject_New(struct pysocket_op, &pysocket_op_type);
 	if (op == NULL)
 		return (NULL);
 
-#if defined(__linux__)
-	/*
-	 * Duplicate the socket so each pysocket_op gets its own unique
-	 * descriptor for epoll. This is so we can easily call EPOLL_CTL_DEL
-	 * on the fd when the pysocket_op is finished as our event code
-	 * does not track queued events.
-	 */
-	if ((op->data.fd = dup(sock->fd)) == -1)
-		fatal("dup: %s", errno_s);
-#else
-	op->data.fd = sock->fd;
-#endif
-
-	op->data.eof = 0;
-	op->data.self = op;
-	op->data.type = type;
-	op->data.socket = sock;
-	op->data.evt.flags = 0;
-	op->data.coro = coro_running;
-	op->data.evt.type = KORE_TYPE_PYSOCKET;
-	op->data.evt.handle = pysocket_evt_handle;
+	op->eof = 0;
+	op->self = op;
+	op->type = type;
+	op->timer = NULL;
+	op->socket = sock;
+	op->coro = coro_running;
 
 	coro_running->sockop = op;
-	Py_INCREF(op->data.socket);
+	Py_INCREF(op->socket);
 
 	switch (type) {
 	case PYSOCKET_TYPE_RECV:
 	case PYSOCKET_TYPE_RECVFROM:
-		op->data.evt.flags |= KORE_EVENT_READ;
-		kore_buf_init(&op->data.buffer, len);
-		kore_platform_schedule_read(op->data.fd, &op->data);
+		sock->recvop = op;
+		kore_buf_init(&op->buffer, len);
 		break;
 	case PYSOCKET_TYPE_SEND:
 	case PYSOCKET_TYPE_SENDTO:
-		op->data.evt.flags |= KORE_EVENT_WRITE;
-		kore_buf_init(&op->data.buffer, len);
-		kore_buf_append(&op->data.buffer, ptr, len);
-		kore_buf_reset(&op->data.buffer);
-		kore_platform_schedule_write(op->data.fd, &op->data);
+		sock->sendop = op;
+		kore_buf_init(&op->buffer, len);
+		kore_buf_append(&op->buffer, ptr, len);
+		kore_buf_reset(&op->buffer);
 		break;
 	case PYSOCKET_TYPE_ACCEPT:
-		op->data.evt.flags |= KORE_EVENT_READ;
-		kore_platform_schedule_read(op->data.fd, &op->data);
+		sock->recvop = op;
 		break;
 	case PYSOCKET_TYPE_CONNECT:
-		op->data.evt.flags |= KORE_EVENT_WRITE;
-		kore_platform_schedule_write(op->data.fd, &op->data);
+		sock->sendop = op;
 		break;
 	default:
 		fatal("unknown pysocket_op type %u", type);
+	}
+
+	if (sock->scheduled == 0) {
+		sock->scheduled = 1;
+		kore_platform_event_all(sock->fd, &sock->event);
 	}
 
 	return ((PyObject *)op);
@@ -1862,25 +2065,25 @@ pysocket_op_iternext(struct pysocket_op *op)
 {
 	PyObject		*ret;
 
-	if (op->data.eof) {
-		if (op->data.coro->exception != NULL) {
-			PyErr_SetString(op->data.coro->exception,
-			    op->data.coro->exception_msg);
-			op->data.coro->exception = NULL;
+	if (op->eof) {
+		if (op->coro->exception != NULL) {
+			PyErr_SetString(op->coro->exception,
+			    op->coro->exception_msg);
+			op->coro->exception = NULL;
 			return (NULL);
 		}
 
-		if (op->data.type != PYSOCKET_TYPE_RECV) {
+		if (op->type != PYSOCKET_TYPE_RECV) {
 			PyErr_SetString(PyExc_RuntimeError, "socket EOF");
 			return (NULL);
 		}
 
 		/* Drain the recv socket. */
-		op->data.evt.flags |= KORE_EVENT_READ;
+		op->socket->event.evt.flags |= KORE_EVENT_READ;
 		return (pysocket_async_recv(op));
 	}
 
-	switch (op->data.type) {
+	switch (op->type) {
 	case PYSOCKET_TYPE_CONNECT:
 		ret = pysocket_async_connect(op);
 		break;
@@ -1903,13 +2106,30 @@ pysocket_op_iternext(struct pysocket_op *op)
 	return (ret);
 }
 
+static void
+pysocket_op_timeout(void *arg, u_int64_t now)
+{
+	struct pysocket_op	*op = arg;
+
+	op->eof = 1;
+	op->timer = NULL;
+
+	op->coro->exception = PyExc_TimeoutError;
+	op->coro->exception_msg = "timeout before operation completed";
+
+	if (op->coro->request != NULL)
+		http_request_wakeup(op->coro->request);
+	else
+		python_coro_wakeup(op->coro);
+}
+
 static PyObject *
 pysocket_async_connect(struct pysocket_op *op)
 {
-	if (connect(op->data.fd, (struct sockaddr *)&op->data.socket->addr,
-	    op->data.socket->addr_len) == -1) {
+	if (connect(op->socket->fd, (struct sockaddr *)&op->socket->addr,
+	    op->socket->addr_len) == -1) {
 		if (errno != EALREADY && errno != EINPROGRESS &&
-		    errno != EISCONN) {
+		    errno != EISCONN && errno != EAGAIN) {
 			PyErr_SetString(PyExc_RuntimeError, errno_s);
 			return (NULL);
 		}
@@ -1929,15 +2149,20 @@ pysocket_async_accept(struct pysocket_op *op)
 	int			fd;
 	struct pysocket		*sock;
 
-	if ((sock = pysocket_alloc() ) == NULL)
+	if (!(op->socket->event.evt.flags & KORE_EVENT_READ)) {
+		Py_RETURN_NONE;
+	}
+
+	if ((sock = pysocket_alloc()) == NULL)
 		return (NULL);
 
 	sock->addr_len = sizeof(sock->addr);
 
-	if ((fd = accept(op->data.fd,
+	if ((fd = accept(op->socket->fd,
 	    (struct sockaddr *)&sock->addr, &sock->addr_len)) == -1) {
 		Py_DECREF((PyObject *)sock);
 		if (errno == EAGAIN || errno == EWOULDBLOCK) {
+			op->socket->event.evt.flags &= ~KORE_EVENT_READ;
 			Py_RETURN_NONE;
 		}
 		PyErr_SetString(PyExc_RuntimeError, errno_s);
@@ -1952,8 +2177,8 @@ pysocket_async_accept(struct pysocket_op *op)
 
 	sock->fd = fd;
 	sock->socket = NULL;
-	sock->family = op->data.socket->family;
-	sock->protocol = op->data.socket->protocol;
+	sock->family = op->socket->family;
+	sock->protocol = op->socket->protocol;
 
 	PyErr_SetObject(PyExc_StopIteration, (PyObject *)sock);
 	Py_DECREF((PyObject *)sock);
@@ -1967,30 +2192,40 @@ pysocket_async_recv(struct pysocket_op *op)
 	ssize_t		ret;
 	u_int16_t	port;
 	socklen_t	socklen;
+	struct sockaddr *sendaddr;
 	const char	*ptr, *ip;
 	PyObject	*bytes, *result, *tuple;
 
-	if (!(op->data.evt.flags & KORE_EVENT_READ)) {
+	if (!(op->socket->event.evt.flags & KORE_EVENT_READ)) {
 		Py_RETURN_NONE;
 	}
 
 	for (;;) {
-		if (op->data.type == PYSOCKET_TYPE_RECV) {
-			ret = read(op->data.fd, op->data.buffer.data,
-			    op->data.buffer.length);
+		if (op->type == PYSOCKET_TYPE_RECV) {
+			ret = read(op->socket->fd, op->buffer.data,
+			    op->buffer.length);
 		} else {
-			socklen = sizeof(op->data.sendaddr);
-			ret = recvfrom(op->data.fd, op->data.buffer.data,
-			    op->data.buffer.length, 0,
-			    (struct sockaddr *)&op->data.sendaddr,
-			    &socklen);
+			sendaddr = (struct sockaddr *)&op->sendaddr;
+			switch (op->socket->family) {
+			case AF_INET:
+				socklen = sizeof(op->sendaddr.ipv4);
+				break;
+			case AF_UNIX:
+				socklen = sizeof(op->sendaddr.sun);
+				break;
+			default:
+				fatal("non AF_INET/AF_UNIX in %s", __func__);
+			}
+
+			ret = recvfrom(op->socket->fd, op->buffer.data,
+			    op->buffer.length, 0, sendaddr, &socklen);
 		}
 
 		if (ret == -1) {
 			if (errno == EINTR)
 				continue;
 			if (errno == EAGAIN || errno == EWOULDBLOCK) {
-				op->data.evt.flags &= ~KORE_EVENT_READ;
+				op->socket->event.evt.flags &= ~KORE_EVENT_READ;
 				Py_RETURN_NONE;
 			}
 			PyErr_SetString(PyExc_RuntimeError, errno_s);
@@ -2000,26 +2235,46 @@ pysocket_async_recv(struct pysocket_op *op)
 		break;
 	}
 
-	if (op->data.type == PYSOCKET_TYPE_RECV && ret == 0) {
+	op->coro->exception = NULL;
+	op->coro->exception_msg = NULL;
+
+	if (op->timer != NULL) {
+		kore_timer_remove(op->timer);
+		op->timer = NULL;
+	}
+
+	if (op->type == PYSOCKET_TYPE_RECV && ret == 0) {
 		PyErr_SetNone(PyExc_StopIteration);
 		return (NULL);
 	}
 
-	ptr = (const char *)op->data.buffer.data;
+	ptr = (const char *)op->buffer.data;
 	if ((bytes = PyBytes_FromStringAndSize(ptr, ret)) == NULL)
 		return (NULL);
 
-	if (op->data.type == PYSOCKET_TYPE_RECV) {
+	if (op->type == PYSOCKET_TYPE_RECV) {
 		PyErr_SetObject(PyExc_StopIteration, bytes);
 		Py_DECREF(bytes);
 		return (NULL);
 	}
 
-	port = ntohs(op->data.sendaddr.sin_port);
-	ip = inet_ntoa(op->data.sendaddr.sin_addr);
+	switch(op->socket->family) {
+	case AF_INET:
+		port = ntohs(op->sendaddr.ipv4.sin_port);
+		ip = inet_ntoa(op->sendaddr.ipv4.sin_addr);
 
-	if ((tuple = Py_BuildValue("(sHN)", ip, port, bytes)) == NULL)
+		if ((tuple = Py_BuildValue("(sHN)", ip, port, bytes)) == NULL)
+			return (NULL);
+		break;
+	case AF_UNIX:
+		if ((tuple = Py_BuildValue("(sN)",
+		    op->sendaddr.sun.sun_path, bytes)) == NULL)
+			return (NULL);
+		break;
+	default:
+		PyErr_SetString(PyExc_RuntimeError, "Unsupported family");
 		return (NULL);
+	}
 
 	result = PyObject_CallFunctionObjArgs(PyExc_StopIteration, tuple, NULL);
 	if (result == NULL) {
@@ -2036,30 +2291,45 @@ pysocket_async_recv(struct pysocket_op *op)
 static PyObject *
 pysocket_async_send(struct pysocket_op *op)
 {
-	ssize_t		ret;
+	ssize_t			ret;
+	socklen_t		socklen;
+	const struct sockaddr	*sendaddr;
 
-	if (!(op->data.evt.flags & KORE_EVENT_WRITE)) {
+	if (!(op->socket->event.evt.flags & KORE_EVENT_WRITE)) {
 		Py_RETURN_NONE;
 	}
 
 	for (;;) {
-		if (op->data.type == PYSOCKET_TYPE_SEND) {
-			ret = write(op->data.fd,
-			    op->data.buffer.data + op->data.buffer.offset,
-			    op->data.buffer.length - op->data.buffer.offset);
+		if (op->type == PYSOCKET_TYPE_SEND) {
+			ret = write(op->socket->fd,
+			    op->buffer.data + op->buffer.offset,
+			    op->buffer.length - op->buffer.offset);
 		} else {
-			ret = sendto(op->data.fd,
-			    op->data.buffer.data + op->data.buffer.offset,
-			    op->data.buffer.length - op->data.buffer.offset,
-			    0, (const struct sockaddr *)&op->data.sendaddr,
-			    sizeof(op->data.sendaddr));
+			sendaddr = (const struct sockaddr *)&op->sendaddr;
+
+			switch (op->socket->family) {
+			case AF_INET:
+				socklen = sizeof(op->sendaddr.ipv4);
+				break;
+			case AF_UNIX:
+				socklen = sizeof(op->sendaddr.sun);
+				break;
+			default:
+				fatal("non AF_INET/AF_UNIX in %s", __func__);
+			}
+
+			ret = sendto(op->socket->fd,
+			    op->buffer.data + op->buffer.offset,
+			    op->buffer.length - op->buffer.offset,
+			    0, sendaddr, socklen);
 		}
 
 		if (ret == -1) {
 			if (errno == EINTR)
 				continue;
 			if (errno == EAGAIN || errno == EWOULDBLOCK) {
-				op->data.evt.flags &= ~KORE_EVENT_WRITE;
+				op->socket->event.evt.flags &=
+				    ~KORE_EVENT_WRITE;
 				Py_RETURN_NONE;
 			}
 			PyErr_SetString(PyExc_RuntimeError, errno_s);
@@ -2068,9 +2338,9 @@ pysocket_async_send(struct pysocket_op *op)
 		break;
 	}
 
-	op->data.buffer.offset += (size_t)ret;
+	op->buffer.offset += (size_t)ret;
 
-	if (op->data.buffer.offset == op->data.buffer.length) {
+	if (op->buffer.offset == op->buffer.length) {
 		PyErr_SetNone(PyExc_StopIteration);
 		return (NULL);
 	}
@@ -2081,25 +2351,26 @@ pysocket_async_send(struct pysocket_op *op)
 static void
 pysocket_evt_handle(void *arg, int eof)
 {
-	struct pysocket_data		*data = arg;
-	struct python_coro		*coro = data->coro;
+	struct pysocket_event		*event = arg;
+	struct pysocket			*socket = event->s;
 
-	if (coro->sockop == NULL)
-		fatal("pysocket_evt_handle: sockop == NULL");
+	if ((eof || (event->evt.flags & KORE_EVENT_READ)) &&
+	    socket->recvop != NULL) {
+		if (socket->recvop->coro->request != NULL)
+			http_request_wakeup(socket->recvop->coro->request);
+		else
+			python_coro_wakeup(socket->recvop->coro);
+		socket->recvop->eof = eof;
+	}
 
-	/*
-	 * If we are a coroutine tied to an HTTP request wake-up the
-	 * HTTP request instead. That in turn will wakeup the coro and
-	 * continue it.
-	 *
-	 * Otherwise just wakeup the coroutine so it will run next tick.
-	 */
-	if (coro->request != NULL)
-		http_request_wakeup(coro->request);
-	else
-		python_coro_wakeup(coro);
-
-	coro->sockop->data.eof = eof;
+	if ((eof || (event->evt.flags & KORE_EVENT_WRITE)) &&
+	    socket->sendop != NULL) {
+		if (socket->sendop->coro->request != NULL)
+			http_request_wakeup(socket->sendop->coro->request);
+		else
+			python_coro_wakeup(socket->sendop->coro);
+		socket->sendop->eof = eof;
+	}
 }
 
 static void
@@ -2258,7 +2529,7 @@ pylock_dealloc(struct pylock *lock)
 		Py_DECREF((PyObject *)op);
 	}
 
-	PyObject_Del((PyObject *)op);
+	PyObject_Del((PyObject *)lock);
 }
 
 static PyObject *
@@ -2385,8 +2656,6 @@ pylock_op_iternext(struct pylock_op *op)
 	TAILQ_REMOVE(&op->lock->ops, op, list);
 	PyErr_SetNone(PyExc_StopIteration);
 
-	Py_DECREF((PyObject *)op);
-
 	return (NULL);
 }
 
@@ -2398,7 +2667,7 @@ pyproc_timeout(void *arg, u_int64_t now)
 	proc->timer = NULL;
 
 	if (proc->coro->sockop != NULL)
-		proc->coro->sockop->data.eof = 1;
+		proc->coro->sockop->eof = 1;
 
 	proc->coro->exception = PyExc_TimeoutError;
 	proc->coro->exception_msg = "timeout before process exited";
@@ -2485,17 +2754,33 @@ pyproc_reap(struct pyproc *proc, PyObject *args)
 static PyObject *
 pyproc_recv(struct pyproc *proc, PyObject *args)
 {
-	Py_ssize_t	len;
+	Py_ssize_t		len;
+	struct pysocket_op	*op;
+	PyObject		*obj;
+	int			timeo;
+
+	timeo = -1;
 
 	if (proc->out == NULL) {
 		PyErr_SetString(PyExc_RuntimeError, "stdout closed");
 		return (NULL);
 	}
 
-	if (!PyArg_ParseTuple(args, "n", &len))
+	if (!PyArg_ParseTuple(args, "n|i", &len, &timeo))
 		return (NULL);
 
-	return (pysocket_op_create(proc->out, PYSOCKET_TYPE_RECV, NULL, len));
+	obj = pysocket_op_create(proc->out, PYSOCKET_TYPE_RECV, NULL, len);
+	if (obj == NULL)
+		return (NULL);
+
+	op = (struct pysocket_op *)obj;
+
+	if (timeo != -1) {
+		op->timer = kore_timer_add(pysocket_op_timeout,
+		    timeo, op, KORE_TIMER_ONESHOT);
+	}
+
+	return (obj);
 }
 
 static PyObject *

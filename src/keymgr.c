@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2018 Joris Vink <joris@coders.se>
+ * Copyright (c) 2017-2019 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -60,7 +60,6 @@ struct key {
 char				*rand_file = NULL;
 
 static TAILQ_HEAD(, key)	keys;
-extern volatile sig_atomic_t	sig_recv;
 static int			initialized = 0;
 
 static void	keymgr_reload(void);
@@ -107,7 +106,7 @@ kore_keymgr_run(void)
 	if (rand_file != NULL) {
 		keymgr_load_randfile();
 		keymgr_save_randfile();
-	} else {
+	} else if (!kore_quiet) {
 		kore_log(LOG_WARNING, "no rand_file location specified");
 	}
 
@@ -122,7 +121,8 @@ kore_keymgr_run(void)
 		fatal("failed to pledge keymgr process");
 #endif
 
-	kore_log(LOG_NOTICE, "key manager started");
+	if (!kore_quiet)
+		kore_log(LOG_NOTICE, "key manager started");
 
 	while (quit != 1) {
 		now = kore_time_ms();
@@ -162,7 +162,7 @@ kore_keymgr_cleanup(int final)
 {
 	struct key		*key, *next;
 
-	if (final)
+	if (final && !kore_quiet)
 		kore_log(LOG_NOTICE, "cleaning up keys");
 
 	if (initialized == 0)
@@ -182,7 +182,8 @@ keymgr_reload(void)
 {
 	struct kore_domain	*dom;
 
-	kore_log(LOG_INFO, "(re)loading certificates, keys and CRLs");
+	if (!kore_quiet)
+		kore_log(LOG_INFO, "(re)loading certificates, keys and CRLs");
 
 	kore_keymgr_cleanup(0);
 	TAILQ_INIT(&keys);

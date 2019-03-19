@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2018 Joris Vink <joris@coders.se>
+ * Copyright (c) 2013-2019 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -21,6 +21,7 @@
  */
 
 #include <sys/param.h>
+#include <sys/types.h>
 
 #if !defined(KORE_NO_TLS)
 #include <openssl/x509.h>
@@ -156,8 +157,11 @@ kore_domain_init(void)
 #endif
 
 #if !defined(TLS1_3_VERSION)
-	kore_log(LOG_NOTICE, "%s has no TLS 1.3 - will only use TLS 1.2",
-	    OPENSSL_VERSION_TEXT);
+	if (!kore_quiet) {
+		kore_log(LOG_NOTICE,
+		    "%s has no TLS 1.3 - will only use TLS 1.2",
+		    OPENSSL_VERSION_TEXT);
+	}
 #endif
 
 #endif
