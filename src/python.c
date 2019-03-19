@@ -2190,6 +2190,7 @@ static PyObject *
 pysocket_async_recv(struct pysocket_op *op)
 {
 	ssize_t		ret;
+	size_t		len;
 	u_int16_t	port;
 	socklen_t	socklen;
 	struct sockaddr *sendaddr;
@@ -2217,6 +2218,7 @@ pysocket_async_recv(struct pysocket_op *op)
 				fatal("non AF_INET/AF_UNIX in %s", __func__);
 			}
 
+			memset(sendaddr, 0, socklen);
 			ret = recvfrom(op->socket->fd, op->buffer.data,
 			    op->buffer.length, 0, sendaddr, &socklen);
 		}
@@ -2267,25 +2269,20 @@ pysocket_async_recv(struct pysocket_op *op)
 			return (NULL);
 		break;
 	case AF_UNIX:
-		if (socklen < sizeof(sa_family_t)) {
+		len = strlen(op->sendaddr.sun.sun_path);
+#if defined(__linux__)
+		if (len == 0 && socklen > 0) {
+			len = socklen - sizeof(sa_family_t);
+			op->sendaddr.sun.sun_path[0] = '@';
+			op->sendaddr.sun.sun_path[len] = '\0';
+		}
+#endif
+		if (len == 0) {
 			if ((tuple = Py_BuildValue("(ON)",
 			    Py_None, bytes)) == NULL)
 				return (NULL);
 			break;
 		}
-
-		if (socklen > sizeof(struct sockaddr_un)) {
-			PyErr_SetString(PyExc_RuntimeError,
-					"Socklen longer than sockaddr_un");
-			return (NULL);
-		}
-
-#if defined(__linux__)
-		if (op->sendaddr.sun.sun_path[0] == '\0') {
-			op->sendaddr.sun.sun_path[0] = '@';
-			op->sendaddr.sun.sun_path[socklen - sizeof(sa_family_t)] = '\0';
-		}
-#endif
 
 		if ((tuple = Py_BuildValue("(sN)",
 		    op->sendaddr.sun.sun_path, bytes)) == NULL)
@@ -2340,7 +2337,6 @@ pysocket_async_send(struct pysocket_op *op)
 					op->sendaddr.sun.sun_path[0] = '\0';
 				}
 #endif
-
 				break;
 			default:
 				fatal("non AF_INET/AF_UNIX in %s", __func__);
