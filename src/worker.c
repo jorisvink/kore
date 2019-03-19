@@ -382,7 +382,8 @@ kore_worker_entry(struct kore_worker *kw)
 
 	if (!kore_quiet) {
 		kore_log(LOG_NOTICE,
-		    "worker %d started (cpu#%d)", kw->id, kw->cpu);
+		    "worker %d started (cpu#%d, pid#%d)",
+		    kw->id, kw->cpu, kw->pid);
 	}
 
 	rcall = kore_runtime_getcall("kore_worker_configure");
