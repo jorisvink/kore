@@ -542,7 +542,7 @@ python_coro_run(struct python_coro *coro)
 
 		item = _PyGen_Send((PyGenObject *)coro->obj, NULL);
 		if (item == NULL) {
-			if (PyErr_Occurred() &&
+			if (coro->gatherop == NULL && PyErr_Occurred() &&
 			    PyErr_ExceptionMatches(PyExc_StopIteration)) {
 				PyErr_Fetch(&type, &coro->result, &traceback);
 				Py_DECREF(type);
