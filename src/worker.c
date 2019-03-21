@@ -53,8 +53,6 @@
 #define WAIT_ANY		(-1)
 #endif
 
-#define WORKER_LOCK_TIMEOUT	100
-
 #if !defined(KORE_NO_TLS)
 #define WORKER_SOLO_COUNT	2
 #else
@@ -74,7 +72,8 @@ static int	worker_trylock(void);
 static void	worker_unlock(void);
 
 static inline int	worker_acceptlock_obtain(void);
-static inline int	worker_acceptlock_release(void);
+static inline void	worker_acceptlock_release(void);
+static void		worker_accept_avail(struct kore_msg *, const void *);
 
 #if !defined(KORE_NO_TLS)
 static void	worker_entropy_recv(struct kore_msg *, const void *);
@@ -83,7 +82,7 @@ static int	worker_keymgr_response_verify(struct kore_msg *, const void *,
 		    struct kore_domain **);
 #endif
 
-static u_int64_t			next_lock;
+static int				accept_avail;
 static struct kore_worker		*kore_workers;
 static int				worker_no_lock;
 static int				shm_accept_key;
@@ -353,8 +352,8 @@ kore_worker_entry(struct kore_worker *kw)
 
 	quit = 0;
 	had_lock = 0;
-	next_lock = 0;
 	next_prune = 0;
+	accept_avail = 1;
 	worker_active_connections = 0;
 
 #if defined(KORE_USE_PGSQL)
@@ -375,6 +374,8 @@ kore_worker_entry(struct kore_worker *kw)
 		    KORE_MSG_CERTIFICATE_REQ, NULL, 0);
 	}
 #endif
+
+	kore_msg_register(KORE_MSG_ACCEPT_AVAILABLE, worker_accept_avail);
 
 	if (nlisteners == 0)
 		worker_no_lock = 1;
@@ -405,14 +406,13 @@ kore_worker_entry(struct kore_worker *kw)
 		}
 #endif
 
-		if (!worker->has_lock && next_lock <= now) {
+		if (!worker->has_lock && accept_avail) {
+			accept_avail = 0;
 			if (worker_acceptlock_obtain()) {
 				if (had_lock == 0) {
 					kore_platform_enable_accept();
 					had_lock = 1;
 				}
-			} else {
-				next_lock = now + WORKER_LOCK_TIMEOUT / 2;
 			}
 		}
 
@@ -420,10 +420,8 @@ kore_worker_entry(struct kore_worker *kw)
 		kore_platform_event_wait(netwait);
 		now = kore_time_ms();
 
-		if (worker->has_lock) {
-			if (worker_acceptlock_release())
-				next_lock = now + WORKER_LOCK_TIMEOUT;
-		}
+		if (worker->has_lock)
+			worker_acceptlock_release();
 
 		if (!worker->has_lock) {
 			if (had_lock == 1) {
@@ -600,25 +598,26 @@ kore_worker_make_busy(void)
 	if (worker->has_lock) {
 		worker_unlock();
 		worker->has_lock = 0;
-		next_lock = kore_time_ms() + WORKER_LOCK_TIMEOUT;
+		kore_msg_send(KORE_MSG_WORKER_ALL,
+		    KORE_MSG_ACCEPT_AVAILABLE, NULL, 0);
 	}
 }
 
-static inline int
+static inline void
 worker_acceptlock_release(void)
 {
 	if (worker_count == WORKER_SOLO_COUNT || worker_no_lock == 1)
-		return (0);
+		return;
 
 	if (worker->has_lock != 1)
-		return (0);
+		return;
 
 	if (worker_active_connections < worker_max_connections) {
 #if !defined(KORE_NO_HTTP)
 		if (http_request_count < http_request_limit)
-			return (0);
+			return;
 #else
-		return (0);
+		return;
 #endif
 	}
 
@@ -629,7 +628,7 @@ worker_acceptlock_release(void)
 	worker_unlock();
 	worker->has_lock = 0;
 
-	return (1);
+	kore_msg_send(KORE_MSG_WORKER_ALL, KORE_MSG_ACCEPT_AVAILABLE, NULL, 0);
 }
 
 static inline int
@@ -682,6 +681,12 @@ worker_unlock(void)
 	accept_lock->current = 0;
 	if (!__sync_bool_compare_and_swap(&(accept_lock->lock), 1, 0))
 		kore_log(LOG_NOTICE, "worker_unlock(): wasnt locked");
+}
+
+static void
+worker_accept_avail(struct kore_msg *msg, const void *data)
+{
+	accept_avail = 1;
 }
 
 #if !defined(KORE_NO_TLS)

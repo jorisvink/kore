@@ -498,6 +498,7 @@ struct kore_timer {
 #define KORE_MSG_CERTIFICATE		7
 #define KORE_MSG_CERTIFICATE_REQ	8
 #define KORE_MSG_CRL			9
+#define KORE_MSG_ACCEPT_AVAILABLE	10
 
 /* Predefined message targets. */
 #define KORE_MSG_PARENT		1000
