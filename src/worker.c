@@ -73,8 +73,8 @@ struct wlock {
 static int	worker_trylock(void);
 static void	worker_unlock(void);
 
-static inline int	worker_acceptlock_obtain(u_int64_t);
-static inline int	worker_acceptlock_release(u_int64_t);
+static inline int	worker_acceptlock_obtain(void);
+static inline int	worker_acceptlock_release(void);
 
 #if !defined(KORE_NO_TLS)
 static void	worker_entropy_recv(struct kore_msg *, const void *);
@@ -308,8 +308,7 @@ kore_worker_entry(struct kore_worker *kw)
 	struct kore_runtime_call	*rcall;
 	char				buf[16];
 	int				quit, had_lock;
-	u_int64_t			now, next_prune;
-	u_int64_t			timerwait, netwait;
+	u_int64_t			netwait, now, next_prune;
 #if !defined(KORE_NO_TLS)
 	u_int64_t			last_seed;
 #endif
@@ -396,7 +395,6 @@ kore_worker_entry(struct kore_worker *kw)
 	worker->restarted = 0;
 
 	for (;;) {
-		netwait = 100;
 		now = kore_time_ms();
 
 #if !defined(KORE_NO_TLS)
@@ -408,7 +406,7 @@ kore_worker_entry(struct kore_worker *kw)
 #endif
 
 		if (!worker->has_lock && next_lock <= now) {
-			if (worker_acceptlock_obtain(now)) {
+			if (worker_acceptlock_obtain()) {
 				if (had_lock == 0) {
 					kore_platform_enable_accept();
 					had_lock = 1;
@@ -418,25 +416,12 @@ kore_worker_entry(struct kore_worker *kw)
 			}
 		}
 
-		if (!worker->has_lock) {
-			if (worker_active_connections > 0) {
-				if (next_lock > now)
-					netwait = next_lock - now;
-			} else {
-				netwait = 10;
-			}
-		}
-
-		timerwait = kore_timer_run(now);
-		if (timerwait < netwait)
-			netwait = timerwait;
-
+		netwait = kore_timer_next_run(now);
 		kore_platform_event_wait(netwait);
+		now = kore_time_ms();
 
 		if (worker->has_lock) {
-			if (netwait > 10)
-				now = kore_time_ms();
-			if (worker_acceptlock_release(now))
+			if (worker_acceptlock_release())
 				next_lock = now + WORKER_LOCK_TIMEOUT;
 		}
 
@@ -471,6 +456,8 @@ kore_worker_entry(struct kore_worker *kw)
 
 		if (quit)
 			break;
+
+		kore_timer_run(now);
 
 #if !defined(KORE_NO_HTTP)
 		http_process();
@@ -618,7 +605,7 @@ kore_worker_make_busy(void)
 }
 
 static inline int
-worker_acceptlock_release(u_int64_t now)
+worker_acceptlock_release(void)
 {
 	if (worker_count == WORKER_SOLO_COUNT || worker_no_lock == 1)
 		return (0);
@@ -637,7 +624,6 @@ worker_acceptlock_release(u_int64_t now)
 
 #if defined(WORKER_DEBUG)
 	kore_log(LOG_DEBUG, "worker busy, releasing lock");
-	kore_log(LOG_DEBUG, "had lock for %lu ms", now - worker->time_locked);
 #endif
 
 	worker_unlock();
@@ -647,7 +633,7 @@ worker_acceptlock_release(u_int64_t now)
 }
 
 static inline int
-worker_acceptlock_obtain(u_int64_t now)
+worker_acceptlock_obtain(void)
 {
 	int		r;
 
@@ -671,7 +657,6 @@ worker_acceptlock_obtain(u_int64_t now)
 	if (worker_trylock()) {
 		r = 1;
 		worker->has_lock = 1;
-		worker->time_locked = now;
 #if defined(WORKER_DEBUG)
 		kore_log(LOG_DEBUG, "got lock");
 #endif

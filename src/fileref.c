@@ -28,25 +28,28 @@
 /* cached filerefs expire after 30 seconds of inactivity. */
 #define FILEREF_EXPIRATION		(1000 * 30)
 
+static void	fileref_timer_prime(void);
 static void	fileref_drop(struct kore_fileref *);
 static void	fileref_soft_remove(struct kore_fileref *);
 static void	fileref_expiration_check(void *, u_int64_t);
 
 static TAILQ_HEAD(, kore_fileref)	refs;
 static struct kore_pool			ref_pool;
+static struct kore_timer		*ref_timer = NULL;
 
 void
 kore_fileref_init(void)
 {
 	TAILQ_INIT(&refs);
 	kore_pool_init(&ref_pool, "ref_pool", sizeof(struct kore_fileref), 100);
-	kore_timer_add(fileref_expiration_check, 10000, NULL, 0);
 }
 
 struct kore_fileref *
 kore_fileref_create(const char *path, int fd, off_t size, struct timespec *ts)
 {
 	struct kore_fileref	*ref;
+
+	fileref_timer_prime();
 
 	if ((ref = kore_fileref_get(path)) != NULL)
 		return (ref);
@@ -152,6 +155,15 @@ kore_fileref_release(struct kore_fileref *ref)
 }
 
 static void
+fileref_timer_prime(void)
+{
+	if (ref_timer != NULL)
+		return;
+
+	ref_timer = kore_timer_add(fileref_expiration_check, 10000, NULL, 0);
+}
+
+static void
 fileref_soft_remove(struct kore_fileref *ref)
 {
 	if (ref->flags & KORE_FILEREF_SOFT_REMOVED)
@@ -173,6 +185,7 @@ fileref_expiration_check(void *arg, u_int64_t now)
 {
 	struct kore_fileref	*ref, *next;
 
+	printf("ref timer run\n");
 	for (ref = TAILQ_FIRST(&refs); ref != NULL; ref = next) {
 		next = TAILQ_NEXT(ref, list);
 
@@ -187,6 +200,12 @@ fileref_expiration_check(void *arg, u_int64_t now)
 #endif
 
 		fileref_drop(ref);
+	}
+
+	if (TAILQ_EMPTY(&refs)) {
+		/* remove the timer. */
+		ref_timer->flags |= KORE_TIMER_ONESHOT;
+		ref_timer = NULL;
 	}
 }
 

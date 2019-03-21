@@ -598,7 +598,7 @@ kore_server_start(int argc, char *argv[])
 	u_int32_t			tmp;
 	int				quit;
 	struct kore_runtime_call	*rcall;
-	u_int64_t			now, netwait, timerwait;
+	u_int64_t			netwait;
 
 	if (foreground == 0) {
 		if (daemon(1, 0) == -1)
@@ -657,7 +657,7 @@ kore_server_start(int argc, char *argv[])
 
 	kore_timer_init();
 #if !defined(KORE_NO_HTTP)
-	kore_timer_add(kore_accesslog_run, 10, NULL, 0);
+	kore_timer_add(kore_accesslog_run, 100, NULL, 0);
 #endif
 
 	while (quit != 1) {
@@ -686,20 +686,14 @@ kore_server_start(int argc, char *argv[])
 			sig_recv = 0;
 		}
 
-		netwait = 100;
-		now = kore_time_ms();
-
-		timerwait = kore_timer_run(now);
-		if (timerwait < netwait)
-			netwait = timerwait;
-
+		netwait = kore_timer_next_run(kore_time_ms());
 		kore_platform_event_wait(netwait);
 		kore_connection_prune(KORE_CONNECTION_PRUNE_DISCONNECT);
+		kore_timer_run(kore_time_ms());
 	}
 
-	now = kore_time_ms();
 #if !defined(KORE_NO_HTTP)
-	kore_accesslog_gather(NULL, now, 1);
+	kore_accesslog_gather(NULL, kore_time_ms(), 1);
 #endif
 
 	kore_platform_event_cleanup();

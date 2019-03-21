@@ -75,6 +75,7 @@ extern int daemon(int, int);
 #define KORE_TLS_VERSION_1_2	1
 #define KORE_TLS_VERSION_BOTH	2
 
+#define KORE_WAIT_INFINITE	(u_int64_t)-1
 #define KORE_RESEED_TIME	(1800 * 1000)
 
 #define errno_s			strerror(errno)
@@ -624,7 +625,8 @@ struct kore_auth	*kore_auth_lookup(const char *);
 #endif
 
 void		kore_timer_init(void);
-u_int64_t	kore_timer_run(u_int64_t);
+void		kore_timer_run(u_int64_t);
+u_int64_t	kore_timer_next_run(u_int64_t);
 void		kore_timer_remove(struct kore_timer *);
 struct kore_timer	*kore_timer_add(void (*cb)(void *, u_int64_t),
 			    u_int64_t, void *, int);

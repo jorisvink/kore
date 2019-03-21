@@ -119,12 +119,18 @@ kore_platform_event_wait(u_int64_t timer)
 {
 	u_int32_t		r;
 	struct kore_event	*evt;
-	struct timespec		timeo;
 	int			n, i;
+	struct timespec		timeo, *ts;
 
-	timeo.tv_sec = timer / 1000;
-	timeo.tv_nsec = (timer % 1000) * 1000000;
-	n = kevent(kfd, NULL, 0, events, event_count, &timeo);
+	if (timer == KORE_WAIT_INFINITE) {
+		ts = NULL;
+	} else {
+		timeo.tv_sec = timer / 1000;
+		timeo.tv_nsec = (timer % 1000) * 1000000;
+		ts = &timeo;
+	}
+
+	n = kevent(kfd, NULL, 0, events, event_count, ts);
 	if (n == -1) {
 		if (errno == EINTR)
 			return;

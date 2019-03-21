@@ -97,9 +97,14 @@ kore_platform_event_wait(u_int64_t timer)
 {
 	u_int32_t		r;
 	struct kore_event	*evt;
-	int			n, i;
+	int			n, i, timeo;
 
-	n = epoll_wait(efd, events, event_count, timer);
+	if (timer == KORE_WAIT_INFINITE)
+		timeo = -1;
+	else
+		timeo = timer;
+
+	n = epoll_wait(efd, events, event_count, timeo);
 	if (n == -1) {
 		if (errno == EINTR)
 			return;

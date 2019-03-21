@@ -61,18 +61,32 @@ kore_timer_remove(struct kore_timer *timer)
 }
 
 u_int64_t
+kore_timer_next_run(u_int64_t now)
+{
+	struct kore_timer	*timer;
+
+	if ((timer = TAILQ_FIRST(&kore_timers)) != NULL) {
+		if (timer->nextrun > now)
+			return (timer->nextrun - now);
+		return (0);
+	}
+
+	return (KORE_WAIT_INFINITE);
+}
+
+void
 kore_timer_run(u_int64_t now)
 {
-	struct kore_timer	*timer, *t;
-	u_int64_t		next_timer;
+	struct kore_timer	*timer, *t, *prev;
 
-	next_timer = 1000;
+	prev = NULL;
 
 	while ((timer = TAILQ_FIRST(&kore_timers)) != NULL) {
-		if (timer->nextrun > now) {
-			next_timer = timer->nextrun - now;
+		if (timer == prev)
 			break;
-		}
+
+		if (timer->nextrun > now)
+			break;
 
 		TAILQ_REMOVE(&kore_timers, timer, list);
 		timer->cb(timer->arg, now);
@@ -80,6 +94,7 @@ kore_timer_run(u_int64_t now)
 		if (timer->flags & KORE_TIMER_ONESHOT) {
 			kore_free(timer);
 		} else {
+			prev = timer;
 			timer->nextrun = now + timer->interval;
 			TAILQ_FOREACH(t, &kore_timers, list) {
 				if (t->nextrun > timer->nextrun) {
@@ -92,9 +107,4 @@ kore_timer_run(u_int64_t now)
 				TAILQ_INSERT_TAIL(&kore_timers, timer, list);
 		}
 	}
-
-	if (next_timer > 1)
-		next_timer -= 1;
-
-	return (next_timer);
 }
