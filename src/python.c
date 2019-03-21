@@ -1935,8 +1935,9 @@ pysocket_close(struct pysocket *sock, PyObject *args)
 		sock->socket = NULL;
 	} else if (sock->fd != -1) {
 		(void)close(sock->fd);
-		sock->fd = -1;
 	}
+
+	sock->fd = -1;
 
 	Py_RETURN_TRUE;
 }
