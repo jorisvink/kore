@@ -2066,6 +2066,11 @@ pysocket_op_iternext(struct pysocket_op *op)
 {
 	PyObject		*ret;
 
+	if (op->socket->fd == -1) {
+		PyErr_SetNone(PyExc_StopIteration);
+		return (NULL);
+	}
+
 	if (op->eof) {
 		if (op->coro->exception != NULL) {
 			PyErr_SetString(op->coro->exception,
