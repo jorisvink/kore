@@ -205,8 +205,6 @@ static void		cli_create_help(void);
 static void		file_create_src(void);
 static void		file_create_config(void);
 static void		file_create_gitignore(void);
-static void		file_create_pyko_src(void);
-static void		file_create_pyko_config(void);
 
 static struct cmd cmds[] = {
 	{ "help",	"this help text",			cli_help },
@@ -233,18 +231,6 @@ static const char *gen_dirs[] = {
 	"conf",
 	"assets",
 	NULL
-};
-
-static const char *pyko_gen_dirs[] = {
-	"cert",
-	NULL
-};
-
-static struct filegen pyko_gen_files[] = {
-	{ file_create_pyko_src },
-	{ file_create_pyko_config },
-	{ file_create_gitignore },
-	{ NULL }
 };
 
 static const char *http_serveable_function =
@@ -319,44 +305,6 @@ static const char *build_data =
 	"#	You can specify additional flags here which are only\n"
 	"#	included if you build with the \"prod\" flavor.\n"
 	"#}\n";
-
-static const char *pyko_config_data =
-	"# %s configuration\n"
-	"\n"
-	"tls_dhparam\tdh2048.pem\n"
-	"\n"
-	"domain * {\n"
-	"\tcertfile\tcert/server.pem\n"
-	"\tcertkey\t\tcert/key.pem\n"
-	"\n"
-	"\tstatic\t/\tpage\n"
-	"}\n";
-
-static const char *pyko_init_data =
-	"import os\n"
-	"import kore\n"
-	"from handlers import *\n"
-	"\n"
-	"ip = os.getenv('PYKO_IP')\n"
-	"if ip is None:\n"
-	"\tip = '127.0.0.1'\n"
-	"\n"
-	"port = os.getenv('PYKO_PORT')\n"
-	"if port is None:\n"
-	"\tport = '8888'\n"
-	"\n"
-	"kore.listen(ip, port)\n"
-	"\n"
-	"def kore_worker_configure():\n"
-	"\tconninfo = os.getenv('PYKO_CONNINFO')\n"
-	"\tif conninfo is not None:\n"
-	"\t\tkore.register_database('appdb', conninfo)\n";
-
-static const char *pyko_handlers_data =
-	"import kore\n"
-	"\n"
-	"def page(req):\n"
-	"\treq.response(200, b'')\n";
 
 static const char *dh2048_data =
 	"-----BEGIN DH PARAMETERS-----\n"
@@ -464,8 +412,6 @@ cli_create_help(void)
 	printf("Synopsis:\n");
 	printf("  Create a new application skeleton directory structure.\n");
 	printf("\n");
-	printf("  Optional flags:\n");
-	printf("\t-p = generate a application for use with pyko\n");
 
 	exit(1);
 }
@@ -473,20 +419,15 @@ cli_create_help(void)
 static void
 cli_create(int argc, char **argv)
 {
+	int			i, ch;
 	char			*fpath;
 	const char		**dirs;
 	struct filegen		*files;
-	int			i, ch, pyko;
-
-	pyko = 0;
 
 	while ((ch = getopt(argc, argv, "hp")) != -1) {
 		switch (ch) {
 		case 'h':
 			cli_create_help();
-			break;
-		case 'p':
-			pyko = 1;
 			break;
 		default:
 			cli_create_help();
@@ -503,13 +444,8 @@ cli_create(int argc, char **argv)
 	appl = argv[0];
 	cli_mkdir(appl, 0755);
 
-	if (pyko) {
-		dirs = pyko_gen_dirs;
-		files = pyko_gen_files;
-	} else {
-		dirs = gen_dirs;
-		files = gen_files;
-	}
+	dirs = gen_dirs;
+	files = gen_files;
 
 	for (i = 0; dirs[i] != NULL; i++) {
 		(void)cli_vasprintf(&fpath, "%s/%s", appl, dirs[i]);
@@ -810,33 +746,6 @@ cli_info(int argc, char **argv)
 		printf("kore features\t %.*s\n", (int)len, features);
 		free(features);
 	}
-}
-
-static void
-file_create_pyko_src(void)
-{
-	char		*name;
-
-	(void)cli_vasprintf(&name, "%s/__init__.py", appl);
-	cli_file_create(name, pyko_init_data, strlen(pyko_init_data));
-	free(name);
-
-	(void)cli_vasprintf(&name, "%s/handlers.py", appl);
-	cli_file_create(name, pyko_handlers_data, strlen(pyko_handlers_data));
-	free(name);
-}
-
-static void
-file_create_pyko_config(void)
-{
-	int		l;
-	char		*name, *data;
-
-	(void)cli_vasprintf(&name, "%s/kore.conf", appl);
-	l = cli_vasprintf(&data, pyko_config_data, appl);
-	cli_file_create(name, data, l);
-	free(name);
-	free(data);
 }
 
 static void
