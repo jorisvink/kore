@@ -545,68 +545,62 @@ kore_worker_reap(void)
 			continue;
 
 		if (!kore_quiet) {
-			kore_log(LOG_NOTICE, "worker %d (%d)-> status %d",
+			kore_log(LOG_NOTICE,
+			    "worker %d (%d) exited with status %d",
 			    kw->id, pid, status);
 		}
 
-		if (WEXITSTATUS(status) || WTERMSIG(status) ||
-		    WCOREDUMP(status)) {
-			func = "none";
+		func = "none";
 #if !defined(KORE_NO_HTTP)
-			if (kw->active_hdlr != NULL)
-				func = kw->active_hdlr->func;
+		if (kw->active_hdlr != NULL)
+			func = kw->active_hdlr->func;
 #endif
-			kore_log(LOG_NOTICE,
-			    "worker %d (pid: %d) (hdlr: %s) gone",
-			    kw->id, kw->pid, func);
+		kore_log(LOG_NOTICE,
+		    "worker %d (pid: %d) (hdlr: %s) gone",
+		    kw->id, kw->pid, func);
 
 #if !defined(KORE_NO_TLS)
-			if (id == KORE_WORKER_KEYMGR) {
-				kore_log(LOG_CRIT, "keymgr gone, stopping");
-				kw->pid = 0;
-				if (raise(SIGTERM) != 0) {
-					kore_log(LOG_WARNING,
-					    "failed to raise SIGTERM signal");
-				}
-				break;
+		if (id == KORE_WORKER_KEYMGR) {
+			kore_log(LOG_CRIT, "keymgr gone, stopping");
+			kw->pid = 0;
+			if (raise(SIGTERM) != 0) {
+				kore_log(LOG_WARNING,
+				    "failed to raise SIGTERM signal");
 			}
+			break;
+		}
 #endif
 
-			if (kw->pid == accept_lock->current &&
-			    worker_no_lock == 0)
-				worker_unlock();
+		if (kw->pid == accept_lock->current &&
+		    worker_no_lock == 0)
+			worker_unlock();
 
 #if !defined(KORE_NO_HTTP)
-			if (kw->active_hdlr != NULL) {
-				kw->active_hdlr->errors++;
-				kore_log(LOG_NOTICE,
-				    "hdlr %s has caused %d error(s)",
-				    kw->active_hdlr->func,
-				    kw->active_hdlr->errors);
-			}
+		if (kw->active_hdlr != NULL) {
+			kw->active_hdlr->errors++;
+			kore_log(LOG_NOTICE,
+			    "hdlr %s has caused %d error(s)",
+			    kw->active_hdlr->func,
+			    kw->active_hdlr->errors);
+		}
 #endif
 
-			if (worker_policy == KORE_WORKER_POLICY_TERMINATE) {
-				kw->pid = 0;
-				kore_log(LOG_NOTICE,
-				    "worker policy is 'terminate', stopping");
-				if (raise(SIGTERM) != 0) {
-					kore_log(LOG_WARNING,
-					    "failed to raise SIGTERM signal");
-				}
-				break;
-			}
-
-			kore_log(LOG_NOTICE, "restarting worker %d", kw->id);
-			kw->restarted = 1;
-			kore_msg_parent_remove(kw);
-			kore_worker_spawn(kw->id, kw->cpu);
-			kore_msg_parent_add(kw);
-		} else {
+		if (worker_policy == KORE_WORKER_POLICY_TERMINATE) {
+			kw->pid = 0;
 			kore_log(LOG_NOTICE,
-			    "worker %d (pid: %d) signaled us (%d)",
-			    kw->id, kw->pid, status);
+			    "worker policy is 'terminate', stopping");
+			if (raise(SIGTERM) != 0) {
+				kore_log(LOG_WARNING,
+				    "failed to raise SIGTERM signal");
+			}
+			break;
 		}
+
+		kore_log(LOG_NOTICE, "restarting worker %d", kw->id);
+		kw->restarted = 1;
+		kore_msg_parent_remove(kw);
+		kore_worker_spawn(kw->id, kw->cpu);
+		kore_msg_parent_add(kw);
 
 		break;
 	}
