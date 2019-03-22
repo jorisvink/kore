@@ -53,6 +53,14 @@ workers		4
 # before releasing the lock to others.
 #worker_accept_threshold		16
 
+# What should the Kore parent process do if a worker
+# process unexpectly exits. The default policy is that
+# the worker process is automatically restarted.
+#
+# If you want the kore server to exit if a worker dies
+# you can swap the policy to "terminate-server".
+#worker_death_policy		restart-worker
+
 # Workers bind themselves to a single CPU by default.
 # Turn this off by setting this option to 0
 #worker_set_affinity		1

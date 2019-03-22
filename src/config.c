@@ -62,6 +62,7 @@ static int		configure_pidfile(char *);
 static int		configure_rlimit_nofiles(char *);
 static int		configure_max_connections(char *);
 static int		configure_accept_threshold(char *);
+static int		configure_death_policy(char *);
 static int		configure_set_affinity(char *);
 static int		configure_socket_backlog(char *);
 
@@ -146,6 +147,7 @@ static struct {
 	{ "worker_max_connections",	configure_max_connections },
 	{ "worker_rlimit_nofiles",	configure_rlimit_nofiles },
 	{ "worker_accept_threshold",	configure_accept_threshold },
+	{ "worker_death_policy",	configure_death_policy },
 	{ "worker_set_affinity",	configure_set_affinity },
 	{ "pidfile",			configure_pidfile },
 	{ "socket_backlog",		configure_socket_backlog },
@@ -1306,6 +1308,21 @@ configure_accept_threshold(char *option)
 	worker_accept_threshold = kore_strtonum(option, 0, 1, UINT_MAX, &err);
 	if (err != KORE_RESULT_OK) {
 		printf("bad value for worker_accept_threshold: %s\n", option);
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_death_policy(char *option)
+{
+	if (!strcmp(option, "restart")) {
+		worker_policy = KORE_WORKER_POLICY_RESTART;
+	} else if (!strcmp(option, "terminate")) {
+		worker_policy = KORE_WORKER_POLICY_TERMINATE;
+	} else {
+		printf("bad value for worker_death_policy: %s\n", option);
 		return (KORE_RESULT_ERROR);
 	}
 

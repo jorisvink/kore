@@ -94,6 +94,7 @@ u_int32_t			worker_accept_threshold = 16;
 u_int32_t			worker_rlimit_nofiles = 768;
 u_int32_t			worker_max_connections = 512;
 u_int32_t			worker_active_connections = 0;
+int				worker_policy = KORE_WORKER_POLICY_RESTART;
 
 void
 kore_worker_init(void)
@@ -191,6 +192,8 @@ void
 kore_worker_shutdown(void)
 {
 	struct kore_worker	*kw;
+	pid_t			pid;
+	int			status;
 	u_int16_t		id, done;
 
 	if (!kore_quiet) {
@@ -199,12 +202,20 @@ kore_worker_shutdown(void)
 	}
 
 	for (;;) {
+		for (id = 0; id < worker_count; id++) {
+			kw = WORKER(id);
+			if (kw->pid != 0) {
+				pid = waitpid(kw->pid, &status, 0);
+				if (pid == -1)
+					continue;
+				kw->pid = 0;
+			}
+		}
+
 		done = 0;
 		for (id = 0; id < worker_count; id++) {
 			kw = WORKER(id);
-			if (kw->pid != 0)
-				kore_worker_wait(1);
-			else
+			if (kw->pid == 0)
 				done++;
 		}
 
@@ -501,7 +512,7 @@ kore_worker_entry(struct kore_worker *kw)
 }
 
 void
-kore_worker_wait(int final)
+kore_worker_reap(void)
 {
 	u_int16_t		id;
 	pid_t			pid;
@@ -509,14 +520,20 @@ kore_worker_wait(int final)
 	const char		*func;
 	int			status;
 
-	if (final)
-		pid = waitpid(WAIT_ANY, &status, 0);
-	else
+	for (;;) {
 		pid = waitpid(WAIT_ANY, &status, WNOHANG);
 
-	if (pid == -1) {
-		kore_debug("waitpid(): %s", errno_s);
-		return;
+		if (pid == -1) {
+			if (errno == ECHILD)
+				return;
+			if (errno == EINTR)
+				continue;
+			kore_log(LOG_ERR,
+			    "failed to wait for children: %s", errno_s);
+			return;
+		}
+
+		break;
 	}
 
 	if (pid == 0)
@@ -527,14 +544,9 @@ kore_worker_wait(int final)
 		if (kw->pid != pid)
 			continue;
 
-		if (final == 0 || (final == 1 && !kore_quiet)) {
+		if (!kore_quiet) {
 			kore_log(LOG_NOTICE, "worker %d (%d)-> status %d",
 			    kw->id, pid, status);
-		}
-
-		if (final) {
-			kw->pid = 0;
-			break;
 		}
 
 		if (WEXITSTATUS(status) || WTERMSIG(status) ||
@@ -573,6 +585,17 @@ kore_worker_wait(int final)
 				    kw->active_hdlr->errors);
 			}
 #endif
+
+			if (worker_policy == KORE_WORKER_POLICY_TERMINATE) {
+				kw->pid = 0;
+				kore_log(LOG_NOTICE,
+				    "worker policy is 'terminate', stopping");
+				if (raise(SIGTERM) != 0) {
+					kore_log(LOG_WARNING,
+					    "failed to raise SIGTERM signal");
+				}
+				break;
+			}
 
 			kore_log(LOG_NOTICE, "restarting worker %d", kw->id);
 			kw->restarted = 1;

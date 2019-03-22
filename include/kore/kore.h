@@ -486,7 +486,9 @@ struct kore_timer {
 	TAILQ_ENTRY(kore_timer)	list;
 };
 
-#define KORE_WORKER_KEYMGR	0
+#define KORE_WORKER_KEYMGR		0
+#define KORE_WORKER_POLICY_RESTART	1
+#define KORE_WORKER_POLICY_TERMINATE	2
 
 /* Reserved message ids, registered on workers. */
 #define KORE_MSG_WEBSOCKET		1
@@ -557,6 +559,7 @@ extern u_int8_t			nlisteners;
 extern u_int16_t		cpu_count;
 extern u_int8_t			worker_count;
 extern const char		*kore_version;
+extern int			worker_policy;
 extern u_int8_t			worker_set_affinity;
 extern u_int32_t		worker_rlimit_nofiles;
 extern u_int32_t		worker_max_connections;
@@ -575,7 +578,7 @@ extern struct kore_pool		nb_pool;
 void		kore_signal(int);
 void		kore_shutdown(void);
 void		kore_signal_setup(void);
-void		kore_worker_wait(int);
+void		kore_worker_reap(void);
 void		kore_worker_init(void);
 void		kore_worker_make_busy(void);
 void		kore_worker_shutdown(void);

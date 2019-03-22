@@ -596,9 +596,9 @@ static void
 kore_server_start(int argc, char *argv[])
 {
 	u_int32_t			tmp;
-	int				quit;
 	struct kore_runtime_call	*rcall;
 	u_int64_t			netwait;
+	int				quit, last_sig;
 
 	if (foreground == 0) {
 		if (daemon(1, 0) == -1)
@@ -662,6 +662,8 @@ kore_server_start(int argc, char *argv[])
 
 	while (quit != 1) {
 		if (sig_recv != 0) {
+			last_sig = sig_recv;
+
 			switch (sig_recv) {
 			case SIGHUP:
 				kore_worker_dispatch_signal(sig_recv);
@@ -677,13 +679,16 @@ kore_server_start(int argc, char *argv[])
 				kore_worker_dispatch_signal(sig_recv);
 				break;
 			case SIGCHLD:
-				kore_worker_wait(0);
+				kore_worker_reap();
 				break;
 			default:
 				break;
 			}
 
-			sig_recv = 0;
+			if (sig_recv == last_sig)
+				sig_recv = 0;
+			else
+				continue;
 		}
 
 		netwait = kore_timer_next_run(kore_time_ms());
