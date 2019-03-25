@@ -50,6 +50,7 @@ static struct python_coro	*python_coro_create(PyObject *,
 				    struct http_request *);
 static int			python_coro_run(struct python_coro *);
 static void			python_coro_wakeup(struct python_coro *);
+static void			python_coro_suspend(struct python_coro *);
 
 static void		pysocket_evt_handle(void *, int);
 static void		pysocket_op_timeout(void *, u_int64_t);
@@ -238,11 +239,9 @@ void
 kore_python_coro_run(void)
 {
 	struct pygather_op	*op;
-	struct python_coro	*coro, *next;
+	struct python_coro	*coro;
 
-	for (coro = TAILQ_FIRST(&coro_runnable); coro != NULL; coro = next) {
-		next = TAILQ_NEXT(coro, list);
-
+	while ((coro = TAILQ_FIRST(&coro_runnable)) != NULL) {
 		if (coro->state != CORO_STATE_RUNNABLE)
 			fatal("non-runnable coro on coro_runnable");
 
@@ -563,10 +562,7 @@ python_coro_run(struct python_coro *coro)
 		Py_DECREF(item);
 	}
 
-	coro->state = CORO_STATE_SUSPENDED;
-	TAILQ_REMOVE(&coro_runnable, coro, list);
-	TAILQ_INSERT_HEAD(&coro_suspended, coro, list);
-
+	python_coro_suspend(coro);
 	coro_running = NULL;
 
 	if (coro->request != NULL)
@@ -584,6 +580,17 @@ python_coro_wakeup(struct python_coro *coro)
 	coro->state = CORO_STATE_RUNNABLE;
 	TAILQ_REMOVE(&coro_suspended, coro, list);
 	TAILQ_INSERT_HEAD(&coro_runnable, coro, list);
+}
+
+static void
+python_coro_suspend(struct python_coro *coro)
+{
+	if (coro->state != CORO_STATE_RUNNABLE)
+		return;
+
+	coro->state = CORO_STATE_SUSPENDED;
+	TAILQ_REMOVE(&coro_runnable, coro, list);
+	TAILQ_INSERT_HEAD(&coro_suspended, coro, list);
 }
 
 static void
@@ -1185,12 +1192,13 @@ python_kore_tracer(PyObject *self, PyObject *args)
 }
 
 static PyObject *
-python_kore_gather(PyObject *self, PyObject *args)
+python_kore_gather(PyObject *self, PyObject *args, PyObject *kwargs)
 {
 	struct pygather_op	*op;
 	PyObject		*obj;
 	struct pygather_coro	*coro;
 	Py_ssize_t		sz, idx;
+	int			concurrency;
 
 	if (coro_running == NULL) {
 		PyErr_SetString(PyExc_RuntimeError,
@@ -1205,12 +1213,33 @@ python_kore_gather(PyObject *self, PyObject *args)
 		return (NULL);
 	}
 
+	if (kwargs != NULL &&
+	    (obj = PyDict_GetItemString(kwargs, "concurrency")) != NULL) {
+		if (!PyLong_Check(obj)) {
+			PyErr_SetString(PyExc_TypeError,
+			    "concurrency level must be an integer");
+			return (NULL);
+		}
+
+		PyErr_Clear();
+		concurrency = (int)PyLong_AsLong(obj);
+		if (concurrency == -1 && PyErr_Occurred())
+			return (NULL);
+
+		if (concurrency == 0)
+			concurrency = sz;
+	} else {
+		concurrency = sz;
+	}
+
 	op = PyObject_New(struct pygather_op, &pygather_op_type);
 	if (op == NULL)
 		return (NULL);
 
+	op->running = 0;
 	op->count = (int)sz;
 	op->coro = coro_running;
+	op->concurrency = concurrency;
 
 	TAILQ_INIT(&op->results);
 	TAILQ_INIT(&op->coroutines);
@@ -1230,11 +1259,14 @@ python_kore_gather(PyObject *self, PyObject *args)
 		Py_INCREF(obj);
 
 		coro = kore_pool_get(&gather_coro_pool);
-
 		coro->coro = python_coro_create(obj, NULL);
 		coro->coro->gatherop = op;
-
 		TAILQ_INSERT_TAIL(&op->coroutines, coro, list);
+
+		if (idx > concurrency - 1)
+			python_coro_suspend(coro->coro);
+		else
+			op->running++;
 	}
 
 	return ((PyObject *)op);
@@ -2908,6 +2940,10 @@ pygather_reap_coro(struct pygather_op *op, struct python_coro *reap)
 	if (coro == NULL)
 		fatal("coroutine %" PRIu64 " not found in gather", reap->id);
 
+	op->running--;
+	if (op->running < 0)
+		fatal("gatherop: running miscount (%d)", op->running);
+
 	result = kore_pool_get(&gather_result_pool);
 	result->obj = NULL;
 
@@ -2974,10 +3010,21 @@ static PyObject *
 pygather_op_iternext(struct pygather_op *op)
 {
 	int				idx;
+	struct pygather_coro		*coro;
 	struct pygather_result		*res, *next;
 	PyObject			*list, *obj;
 
 	if (!TAILQ_EMPTY(&op->coroutines)) {
+		if (op->running > 0)
+			Py_RETURN_NONE;
+
+		TAILQ_FOREACH(coro, &op->coroutines, list) {
+			if (op->running >= op->concurrency)
+				break;
+			python_coro_wakeup(coro->coro);
+			op->running++;
+		}
+
 		Py_RETURN_NONE;
 	}
 

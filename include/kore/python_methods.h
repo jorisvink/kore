@@ -41,13 +41,13 @@ static PyObject		*python_kore_timer(PyObject *, PyObject *);
 static PyObject		*python_kore_fatal(PyObject *, PyObject *);
 static PyObject		*python_kore_queue(PyObject *, PyObject *);
 static PyObject		*python_kore_tracer(PyObject *, PyObject *);
-static PyObject		*python_kore_gather(PyObject *, PyObject *);
 static PyObject		*python_kore_fatalx(PyObject *, PyObject *);
 static PyObject		*python_kore_suspend(PyObject *, PyObject *);
 static PyObject		*python_kore_shutdown(PyObject *, PyObject *);
 static PyObject		*python_kore_bind_unix(PyObject *, PyObject *);
 static PyObject		*python_kore_task_create(PyObject *, PyObject *);
 static PyObject		*python_kore_socket_wrap(PyObject *, PyObject *);
+static PyObject		*python_kore_gather(PyObject *, PyObject *, PyObject *);
 
 #if defined(KORE_USE_PGSQL)
 static PyObject		*python_kore_pgsql_register(PyObject *, PyObject *);
@@ -69,7 +69,7 @@ static struct PyMethodDef pykore_methods[] = {
 	METHOD("timer", python_kore_timer, METH_VARARGS),
 	METHOD("queue", python_kore_queue, METH_VARARGS),
 	METHOD("tracer", python_kore_tracer, METH_VARARGS),
-	METHOD("gather", python_kore_gather, METH_VARARGS),
+	METHOD("gather", python_kore_gather, METH_VARARGS | METH_KEYWORDS),
 	METHOD("fatal", python_kore_fatal, METH_VARARGS),
 	METHOD("fatalx", python_kore_fatalx, METH_VARARGS),
 	METHOD("suspend", python_kore_suspend, METH_VARARGS),
@@ -460,6 +460,8 @@ struct pygather_result {
 struct pygather_op {
 	PyObject_HEAD
 	int				count;
+	int				running;
+	int				concurrency;
 	struct python_coro		*coro;
 	TAILQ_HEAD(, pygather_result)	results;
 	TAILQ_HEAD(, pygather_coro)	coroutines;
