@@ -234,11 +234,6 @@ kore_parse_config(void)
 	kore_parse_config_file(fp);
 	(void)fclose(fp);
 
-#if !defined(KORE_NO_TLS)
-	if (tls_dhparam == NULL)
-		fatal("incomplete TLS setup: no DH parameters provided");
-#endif
-
 	if (!kore_module_loaded())
 		fatal("no application module was loaded");
 
