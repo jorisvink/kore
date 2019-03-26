@@ -234,6 +234,11 @@ kore_parse_config(void)
 	kore_parse_config_file(fp);
 	(void)fclose(fp);
 
+#if !defined(KORE_NO_TLS)
+	if (tls_dhparam == NULL)
+		fatal("incomplete TLS setup: no DH parameters provided");
+#endif
+
 	if (!kore_module_loaded())
 		fatal("no application module was loaded");
 
@@ -323,8 +328,16 @@ kore_parse_config_file(FILE *fp)
 		}
 #endif
 
-		if (!strcmp(p, "}") && current_domain != NULL)
+		if (!strcmp(p, "}") && current_domain != NULL) {
+#if !defined(KORE_NO_TLS)
+			if (current_domain->certfile == NULL ||
+			    current_domain->certkey == NULL) {
+				fatal("incomplete TLS setup for '%s'",
+				    current_domain->domain);
+			}
+#endif
 			current_domain = NULL;
+		}
 
 		if (!strcmp(p, "}")) {
 			lineno++;
