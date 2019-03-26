@@ -143,7 +143,6 @@ kore_domain_init(void)
 			fatal("failed to allocate RSA method");
 	}
 
-
 	RSA_meth_set_init(keymgr_rsa_meth, keymgr_rsa_init);
 	RSA_meth_set_finish(keymgr_rsa_meth, keymgr_rsa_finish);
 	RSA_meth_set_priv_enc(keymgr_rsa_meth, keymgr_rsa_privenc);
