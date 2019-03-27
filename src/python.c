@@ -1773,7 +1773,7 @@ pysocket_alloc(void)
 static void
 pysocket_dealloc(struct pysocket *sock)
 {
-	if (sock->scheduled && sock->fd == -1) {
+	if (sock->scheduled && sock->fd != -1) {
 		kore_platform_disable_read(sock->fd);
 #if !defined(__linux__)
 		kore_platform_disable_write(sock->fd);
