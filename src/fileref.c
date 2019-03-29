@@ -185,7 +185,6 @@ fileref_expiration_check(void *arg, u_int64_t now)
 {
 	struct kore_fileref	*ref, *next;
 
-	printf("ref timer run\n");
 	for (ref = TAILQ_FIRST(&refs); ref != NULL; ref = next) {
 		next = TAILQ_NEXT(ref, list);
 
