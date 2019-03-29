@@ -19,9 +19,7 @@
 #include <sys/types.h>
 #include <sys/mman.h>
 
-#if !defined(__MACH__) && !defined(__linux__)
-#include <sys/stdint.h>
-#endif
+#include <stdint.h>
 
 #include "kore.h"
 
