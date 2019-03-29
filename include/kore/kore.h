@@ -578,6 +578,8 @@ extern struct kore_pool		nb_pool;
 void		kore_signal(int);
 void		kore_shutdown(void);
 void		kore_signal_setup(void);
+void		kore_proctitle(const char *);
+
 void		kore_worker_reap(void);
 void		kore_worker_init(void);
 void		kore_worker_make_busy(void);

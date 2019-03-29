@@ -21,6 +21,7 @@
 #include <sys/socket.h>
 #include <sys/resource.h>
 
+#include <libgen.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <netdb.h>
@@ -39,6 +40,7 @@
 volatile sig_atomic_t	sig_recv;
 struct listener_head	listeners;
 u_int8_t		nlisteners;
+int			kore_argc = 0;
 pid_t			kore_pid = -1;
 u_int16_t		cpu_count = 1;
 int			foreground = 0;
@@ -47,12 +49,15 @@ int			kore_quiet = 0;
 int			skip_runas = 0;
 int			skip_chroot = 0;
 u_int8_t		worker_count = 0;
+char			**kore_argv = NULL;
+char			*kore_progname = NULL;
 char			*kore_root_path = NULL;
 char			*kore_runas_user = NULL;
 u_int32_t		kore_socket_backlog = 5000;
 char			*kore_pidfile = KORE_PIDFILE_DEFAULT;
 char			*kore_tls_cipher_list = KORE_DEFAULT_CIPHER_LIST;
 
+extern char		**environ;
 extern char		*__progname;
 
 static void	usage(void);
@@ -126,6 +131,8 @@ main(int argc, char *argv[])
 	int				ch, flags;
 
 	flags = 0;
+	kore_argc = argc;
+	kore_argv = argv;
 
 #if !defined(KORE_SINGLE_BINARY)
 	while ((ch = getopt(argc, argv, "c:dfhnqrv")) != -1) {
@@ -167,10 +174,11 @@ main(int argc, char *argv[])
 		}
 	}
 
+	kore_mem_init();
+	kore_progname = kore_strdup(argv[0]);
+
 	argc -= optind;
 	argv += optind;
-
-	kore_mem_init();
 
 #if !defined(KORE_SINGLE_BINARY)
 	if (argc > 0)
@@ -581,6 +589,34 @@ kore_shutdown(void)
 	fatal("kore_shutdown: called from parent");
 }
 
+void
+kore_proctitle(const char *title)
+{
+	char		*p;
+	size_t		len;
+	int		i, slen;
+
+	len = 0;
+
+	for (i = 0; environ[i] != NULL; i++) {
+		p = kore_strdup(environ[i]);
+		len += strlen(environ[i]) + 1;
+		environ[i] = p;
+	}
+
+	for (i = 0; kore_argv[i] != NULL; i++)
+		len += strlen(kore_argv[i]) + 1;
+
+	kore_argv[1] = NULL;
+
+	slen = snprintf(kore_argv[0], len, "%s %s",
+	    basename(kore_progname), title);
+	if (slen == -1 || (size_t)slen >= len)
+		fatal("proctitle '%s' too large", title);
+
+	memset(kore_argv[0] + slen, 0, len - slen);
+}
+
 static void
 kore_server_sslstart(void)
 {
@@ -639,7 +675,7 @@ kore_server_start(int argc, char *argv[])
 	}
 #endif
 
-	kore_platform_proctitle("kore [parent]");
+	kore_platform_proctitle("[parent]");
 	kore_msg_init();
 	kore_worker_init();
 

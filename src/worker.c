@@ -325,10 +325,10 @@ kore_worker_entry(struct kore_worker *kw)
 
 	worker = kw;
 
-	(void)snprintf(buf, sizeof(buf), "kore [wrk %d]", kw->id);
+	(void)snprintf(buf, sizeof(buf), "[wrk %d]", kw->id);
 #if !defined(KORE_NO_TLS)
 	if (kw->id == KORE_WORKER_KEYMGR)
-		(void)snprintf(buf, sizeof(buf), "kore [keymgr]");
+		(void)snprintf(buf, sizeof(buf), "[keymgr]");
 #endif
 	kore_platform_proctitle(buf);
 

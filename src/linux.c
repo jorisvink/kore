@@ -211,9 +211,7 @@ kore_platform_disable_accept(void)
 void
 kore_platform_proctitle(char *title)
 {
-	if (prctl(PR_SET_NAME, title) == -1) {
-		kore_debug("prctl(): %s", errno_s);
-	}
+	kore_proctitle(title);
 }
 
 #if defined(KORE_USE_PLATFORM_SENDFILE)

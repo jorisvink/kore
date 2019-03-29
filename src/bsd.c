@@ -223,7 +223,9 @@ kore_platform_disable_write(int fd)
 void
 kore_platform_proctitle(char *title)
 {
-#ifndef __MACH__
+#ifdef __MACH__
+	kore_proctitle(title);
+#else
 	setproctitle("%s", title);
 #endif
 }
