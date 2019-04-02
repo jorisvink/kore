@@ -1106,6 +1106,8 @@ http_populate_post(struct http_request *req)
 		body = NULL;
 		req->http_body->offset = req->content_length;
 		string = kore_buf_stringify(req->http_body, NULL);
+		req->http_body_length = 0;
+		req->http_body_offset = 0;
 	} else {
 		body = kore_buf_alloc(128);
 		for (;;) {
