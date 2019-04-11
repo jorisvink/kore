@@ -150,13 +150,16 @@ static struct kore_pool			http_body_path;
 
 u_int32_t	http_request_count = 0;
 u_int32_t	http_request_ms = HTTP_REQUEST_MS;
+u_int16_t	http_body_timeout = HTTP_BODY_TIMEOUT;
 u_int32_t	http_request_limit = HTTP_REQUEST_LIMIT;
 u_int64_t	http_hsts_enable = HTTP_HSTS_ENABLE;
 u_int16_t	http_header_max = HTTP_HEADER_MAX_LEN;
 u_int16_t	http_keepalive_time = HTTP_KEEPALIVE_TIME;
+u_int16_t	http_header_timeout = HTTP_HEADER_TIMEOUT;
+
 size_t		http_body_max = HTTP_BODY_MAX_LEN;
-u_int64_t	http_body_disk_offload = HTTP_BODY_DISK_OFFLOAD;
 char		*http_body_disk_path = HTTP_BODY_DISK_PATH;
+u_int64_t	http_body_disk_offload = HTTP_BODY_DISK_OFFLOAD;
 
 void
 http_parent_init(void)
@@ -231,6 +234,21 @@ http_server_version(const char *version)
 		fatal("http_server_version(): http_version buffer too small");
 
 	http_version_len = l;
+}
+
+int
+http_check_timeout(struct connection *c, u_int64_t now)
+{
+	if (c->http_timeout == 0)
+		return (KORE_RESULT_OK);
+
+	if ((now - c->http_start) >= c->http_timeout) {
+		http_error_response(c, 408);
+		kore_connection_disconnect(c);
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
 }
 
 void
@@ -834,7 +852,9 @@ http_header_recv(struct netbuf *nb)
 			c->rnb->extra = req;
 			http_request_sleep(req);
 			req->content_length = bytes_left;
+			c->http_timeout = http_body_timeout * 1000;
 		} else {
+			c->http_timeout = 0;
 			req->flags |= HTTP_REQUEST_COMPLETE;
 			req->flags &= ~HTTP_REQUEST_EXPECT_BODY;
 			SHA256_Final(req->http_body_digest, &req->hashctx);
@@ -844,6 +864,8 @@ http_header_recv(struct netbuf *nb)
 				return (KORE_RESULT_OK);
 			}
 		}
+	} else {
+		c->http_timeout = 0;
 	}
 
 	return (KORE_RESULT_OK);
@@ -1919,6 +1941,8 @@ http_response_normal(struct http_request *req, struct connection *c,
 		net_send_queue(c, d, len);
 
 	if (!(c->flags & CONN_CLOSE_EMPTY)) {
+		c->http_start = kore_time_ms();
+		c->http_timeout = http_header_timeout * 1000;
 		net_recv_reset(c, http_header_max, http_header_recv);
 		(void)net_recv_flush(c);
 	}

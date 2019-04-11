@@ -91,7 +91,9 @@ static int		configure_static_handler(char *);
 static int		configure_dynamic_handler(char *);
 static int		configure_accesslog(char *);
 static int		configure_http_header_max(char *);
+static int		configure_http_header_timeout(char *);
 static int		configure_http_body_max(char *);
+static int		configure_http_body_timeout(char *);
 static int		configure_filemap_ext(char *);
 static int		configure_filemap_index(char *);
 static int		configure_http_media_type(char *);
@@ -176,7 +178,9 @@ static struct {
 	{ "restrict",			configure_restrict },
 	{ "http_media_type",		configure_http_media_type },
 	{ "http_header_max",		configure_http_header_max },
+	{ "http_header_timeout",	configure_http_header_timeout },
 	{ "http_body_max",		configure_http_body_max },
+	{ "http_body_timeout",		configure_http_body_timeout },
 	{ "http_hsts_enable",		configure_http_hsts_enable },
 	{ "http_keepalive_time",	configure_http_keepalive_time },
 	{ "http_request_ms",		configure_http_request_ms },
@@ -873,6 +877,20 @@ configure_http_header_max(char *option)
 }
 
 static int
+configure_http_header_timeout(char *option)
+{
+	int		err;
+
+	http_header_timeout = kore_strtonum(option, 10, 1, 65535, &err);
+	if (err != KORE_RESULT_OK) {
+		printf("bad http_header_timeout value: %s\n", option);
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
 configure_http_body_max(char *option)
 {
 	int		err;
@@ -880,6 +898,20 @@ configure_http_body_max(char *option)
 	http_body_max = kore_strtonum(option, 10, 0, LONG_MAX, &err);
 	if (err != KORE_RESULT_OK) {
 		printf("bad http_body_max value: %s\n", option);
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_http_body_timeout(char *option)
+{
+	int		err;
+
+	http_body_timeout = kore_strtonum(option, 10, 1, 65535, &err);
+	if (err != KORE_RESULT_OK) {
+		printf("bad http_body_timeout value: %s\n", option);
 		return (KORE_RESULT_ERROR);
 	}
 

@@ -108,9 +108,16 @@ workers		4
 # HTTP specific settings.
 #	http_header_max		Maximum size of HTTP headers (in bytes).
 #
+#	http_header_timeout	Timeout in seconds for receiving the
+#				HTTP headers before the connection is closed.
+#
 #	http_body_max		Maximum size of an HTTP body (in bytes).
 #				If set to 0 disallows requests with a body
 #				all together.
+#
+#	http_body_timeout	Timeout in seconds for receiving the
+#				HTTP body in full before the connection
+#				is closed with an 408.
 #
 #	http_body_disk_offload	Number of bytes after which Kore will use
 #				a temporary file to hold the HTTP body
@@ -136,7 +143,9 @@ workers		4
 #				spend inside the HTTP processing loop.
 #
 #http_header_max	4096
+#http_header_timeout	10
 #http_body_max		1024000
+#http_body_timeout	60
 #http_keepalive_time	0
 #http_hsts_enable	31536000
 #http_request_limit	1000

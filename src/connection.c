@@ -84,6 +84,8 @@ kore_connection_new(void *owner)
 	c->ws_connect = NULL;
 	c->ws_message = NULL;
 	c->ws_disconnect = NULL;
+	c->http_start = kore_time_ms();
+	c->http_timeout = http_header_timeout * 1000;
 	TAILQ_INIT(&(c->http_requests));
 #endif
 
@@ -182,13 +184,14 @@ kore_connection_check_timeout(u_int64_t now)
 		next = TAILQ_NEXT(c, list);
 		if (c->proto == CONN_PROTO_MSG)
 			continue;
-		if (!(c->flags & CONN_IDLE_TIMER_ACT))
-			continue;
 #if !defined(KORE_NO_HTTP)
+		if (!http_check_timeout(c, now))
+			continue;
 		if (!TAILQ_EMPTY(&c->http_requests))
 			continue;
 #endif
-		kore_connection_check_idletimer(now, c);
+		if (c->flags & CONN_IDLE_TIMER_ACT)
+			kore_connection_check_idletimer(now, c);
 	}
 }
 
@@ -418,7 +421,7 @@ kore_connection_check_idletimer(u_int64_t now, struct connection *c)
 		d = 0;
 
 	if (d >= c->idle_timer.length) {
-		kore_debug("%p idle for %" PRIu64 " ms, expiring", c, d);
+		printf("%p idle for %" PRIu64 " ms, expiring\n", (void *)c, d);
 		kore_connection_disconnect(c);
 	}
 }

@@ -243,6 +243,8 @@ struct connection {
 	struct netbuf		*rnb;
 
 #if !defined(KORE_NO_HTTP)
+	u_int64_t			http_start;
+	u_int64_t			http_timeout;
 	struct kore_runtime_call	*ws_connect;
 	struct kore_runtime_call	*ws_message;
 	struct kore_runtime_call	*ws_disconnect;

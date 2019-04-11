@@ -51,6 +51,8 @@ extern "C" {
 #define HTTP_BODY_DISK_OFFLOAD	0
 #define HTTP_BODY_PATH_MAX	256
 #define HTTP_BOUNDARY_MAX	80
+#define HTTP_HEADER_TIMEOUT	10
+#define HTTP_BODY_TIMEOUT	60
 
 #define HTTP_ARG_TYPE_RAW	0
 #define HTTP_ARG_TYPE_BYTE	1
@@ -279,7 +281,9 @@ struct http_media_type {
 };
 
 extern size_t		http_body_max;
+extern u_int16_t	http_body_timeout;
 extern u_int16_t	http_header_max;
+extern u_int16_t	http_header_timeout;
 extern u_int32_t	http_request_ms;
 extern u_int64_t	http_hsts_enable;
 extern u_int16_t	http_keepalive_time;
@@ -304,6 +308,7 @@ void		http_request_wakeup(struct http_request *);
 void		http_process_request(struct http_request *);
 int		http_body_rewind(struct http_request *);
 int		http_media_register(const char *, const char *);
+int		http_check_timeout(struct connection *, u_int64_t);
 ssize_t		http_body_read(struct http_request *, void *, size_t);
 int		http_body_digest(struct http_request *, char *, size_t);
 void		http_response(struct http_request *, int, const void *, size_t);
