@@ -421,7 +421,7 @@ kore_connection_check_idletimer(u_int64_t now, struct connection *c)
 		d = 0;
 
 	if (d >= c->idle_timer.length) {
-		printf("%p idle for %" PRIu64 " ms, expiring\n", (void *)c, d);
+		kore_debug("%p idle for %" PRIu64 " ms, expiring", c, d);
 		kore_connection_disconnect(c);
 	}
 }
