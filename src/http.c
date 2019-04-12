@@ -239,10 +239,17 @@ http_server_version(const char *version)
 int
 http_check_timeout(struct connection *c, u_int64_t now)
 {
+	u_int64_t	d;
+
 	if (c->http_timeout == 0)
 		return (KORE_RESULT_OK);
 
-	if ((now - c->http_start) >= c->http_timeout) {
+	if (now > c->http_start)
+		d = now - c->http_start;
+	else
+		d = 0;
+
+	if (d >= c->http_timeout) {
 		http_error_response(c, 408);
 		kore_connection_disconnect(c);
 		return (KORE_RESULT_ERROR);
