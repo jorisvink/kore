@@ -16,6 +16,8 @@
 
 #include <sys/types.h>
 
+#include <inttypes.h>
+
 #include "kore.h"
 #include "http.h"
 #include "curl.h"
