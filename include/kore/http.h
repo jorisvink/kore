@@ -221,6 +221,7 @@ struct http_file {
 #define HTTP_BODY_DIGEST_STRLEN		((HTTP_BODY_DIGEST_LEN * 2) + 1)
 
 struct kore_task;
+struct http_client;
 
 struct http_request {
 	u_int8_t			method;
@@ -254,8 +255,17 @@ struct http_request {
 
 	u_int8_t	http_body_digest[HTTP_BODY_DIGEST_LEN];
 
+#if defined(KORE_USE_CURL)
+	LIST_HEAD(, kore_curl)		chandles;
+#endif
+
+#if defined(KORE_USE_TASKS)
 	LIST_HEAD(, kore_task)		tasks;
+#endif
+
+#if defined(KORE_USE_PGSQL)
 	LIST_HEAD(, kore_pgsql)		pgsqls;
+#endif
 
 	TAILQ_HEAD(, http_cookie)	req_cookies;
 	TAILQ_HEAD(, http_cookie)	resp_cookies;
@@ -291,6 +301,7 @@ extern u_int32_t	http_request_limit;
 extern u_int32_t	http_request_count;
 extern u_int64_t	http_body_disk_offload;
 extern char		*http_body_disk_path;
+extern struct kore_pool	http_header_pool;
 
 void		kore_accesslog(struct http_request *);
 
@@ -302,6 +313,7 @@ void		http_process(void);
 const char	*http_status_text(int);
 const char	*http_method_text(int);
 time_t		http_date_to_time(char *);
+char		*http_validate_header(char *);
 void		http_request_free(struct http_request *);
 void		http_request_sleep(struct http_request *);
 void		http_request_wakeup(struct http_request *);

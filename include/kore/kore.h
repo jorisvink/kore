@@ -164,6 +164,7 @@ TAILQ_HEAD(netbuf_head, netbuf);
 #define KORE_TYPE_PGSQL_CONN	3
 #define KORE_TYPE_TASK		4
 #define KORE_TYPE_PYSOCKET	5
+#define KORE_TYPE_CURL_HANDLE	6
 
 #define CONN_STATE_UNKNOWN		0
 #define CONN_STATE_TLS_SHAKE		1

@@ -33,6 +33,10 @@
 #include "http.h"
 #endif
 
+#if defined(KORE_USE_CURL)
+#include "curl.h"
+#endif
+
 #if defined(KORE_USE_PYTHON)
 #include "python_api.h"
 #endif
@@ -104,6 +108,9 @@ version(void)
 #endif
 #if defined(KORE_NO_HTTP)
 	printf("no-http ");
+#endif
+#if defined(KORE_USE_CURL)
+	printf("curl ");
 #endif
 #if defined(KORE_USE_PGSQL)
 	printf("pgsql ");
@@ -192,6 +199,9 @@ main(int argc, char *argv[])
 	kore_log_init();
 #if !defined(KORE_NO_HTTP)
 	http_parent_init();
+#if defined(KORE_USE_CURL)
+	kore_curl_sysinit();
+#endif
 	kore_auth_init();
 	kore_validator_init();
 	kore_filemap_init();

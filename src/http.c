@@ -43,6 +43,10 @@
 #include "tasks.h"
 #endif
 
+#if defined(KORE_USE_CURL)
+#include "curl.h"
+#endif
+
 static struct {
 	const char	*ext;
 	const char	*type;
@@ -131,7 +135,6 @@ static int	multipart_parse_headers(struct http_request *,
 		    struct kore_buf *, struct kore_buf *,
 		    const char *, const int);
 
-static char			*http_validate_header(char *);
 static struct http_request	*http_request_new(struct connection *,
 				    const char *, const char *, char *,
 				    const char *);
@@ -144,9 +147,10 @@ static TAILQ_HEAD(, http_request)	http_requests;
 static TAILQ_HEAD(, http_request)	http_requests_sleeping;
 static LIST_HEAD(, http_media_type)	http_media_types;
 static struct kore_pool			http_request_pool;
-static struct kore_pool			http_header_pool;
 static struct kore_pool			http_cookie_pool;
 static struct kore_pool			http_body_path;
+
+struct kore_pool			http_header_pool;
 
 u_int32_t	http_request_count = 0;
 u_int32_t	http_request_ms = HTTP_REQUEST_MS;
@@ -394,6 +398,9 @@ http_request_free(struct http_request *req)
 #if defined(KORE_USE_PGSQL)
 	struct kore_pgsql	*pgsql;
 #endif
+#if defined(KORE_USE_CURL)
+	struct kore_curl	*client;
+#endif
 	struct http_file	*f, *fnext;
 	struct http_arg		*q, *qnext;
 	struct http_header	*hdr, *next;
@@ -428,7 +435,12 @@ http_request_free(struct http_request *req)
 		kore_pgsql_cleanup(pgsql);
 	}
 #endif
-
+#if defined(KORE_USE_CURL)
+	while (!LIST_EMPTY(&req->chandles)) {
+		client = LIST_FIRST(&req->chandles);
+		kore_curl_cleanup(client);
+	}
+#endif
 	kore_debug("http_request_free: %p->%p", req->owner, req);
 	kore_free(req->headers);
 
@@ -2208,7 +2220,7 @@ http_media_type(const char *path)
 	return (NULL);
 }
 
-static char *
+char *
 http_validate_header(char *header)
 {
 	u_int8_t	idx;

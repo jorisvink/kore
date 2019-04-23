@@ -41,6 +41,10 @@
 #include "python_api.h"
 #endif
 
+#if defined(KORE_USE_CURL)
+#include "curl.h"
+#endif
+
 /* XXX - This is becoming a clusterfuck. Fix it. */
 
 static int		configure_load(char *);
@@ -129,6 +133,11 @@ static int		configure_python_path(char *);
 static int		configure_python_import(char *);
 #endif
 
+#if defined(KORE_USE_CURL)
+static int		configure_curl_timeout(char *);
+static int		configure_curl_recv_max(char *);
+#endif
+
 static struct {
 	const char		*name;
 	int			(*configure)(char *);
@@ -204,6 +213,10 @@ static struct {
 #endif
 #if defined(KORE_USE_TASKS)
 	{ "task_threads",		configure_task_threads },
+#endif
+#if defined(KORE_USE_CURL)
+	{ "curl_timeout",		configure_curl_timeout },
+	{ "curl_recv_max",		configure_curl_recv_max },
 #endif
 	{ NULL,				NULL },
 };
@@ -1471,6 +1484,36 @@ static int
 configure_add_pledge(char *pledge)
 {
 	kore_platform_add_pledge(pledge);
+
+	return (KORE_RESULT_OK);
+}
+#endif
+
+#if defined(KORE_USE_CURL)
+static int
+configure_curl_recv_max(char *option)
+{
+	int		err;
+
+	kore_curl_recv_max = kore_strtonum64(option, 1, &err);
+	if (err != KORE_RESULT_OK) {
+		printf("bad curl_recv_max value: %s\n", option);
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_curl_timeout(char *option)
+{
+	int		err;
+
+	kore_curl_timeout = kore_strtonum(option, 10, 0, USHRT_MAX, &err);
+	if (err != KORE_RESULT_OK) {
+		printf("bad kore_curl_timeout value: %s\n", option);
+		return (KORE_RESULT_ERROR);
+	}
 
 	return (KORE_RESULT_OK);
 }

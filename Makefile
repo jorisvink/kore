@@ -105,6 +105,16 @@ ifneq ("$(PYTHON)", "")
 	FEATURES_INC+=$(KORE_PYTHON_INC)
 endif
 
+ifneq ("$(CURL)", "")
+	S_SRC+=src/curl.c
+	KORE_CURL_LIB?=$(shell pkg-config --libs libcurl)
+	KORE_CURL_INC?=$(shell pkg-config --cflags libcurl)
+	LDFLAGS+=$(KORE_CURL_LIB)
+	CFLAGS+=$(KORE_CURL_INC) -DKORE_USE_CURL
+	FEATURES+=-DKORE_USE_CURL
+	FEATURES_INC+=$(KORE_CURL_INC)
+endif
+
 ifneq ("$(SANITIZE)", "")
 	CFLAGS+=-fsanitize=$(SANITIZE)
 	LDFLAGS+=-fsanitize=$(SANITIZE)

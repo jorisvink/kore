@@ -33,6 +33,10 @@
 #include "pgsql.h"
 #endif
 
+#if defined(KORE_USE_CURL)
+#include "curl.h"
+#endif
+
 #include "python_api.h"
 #include "python_methods.h"
 
@@ -75,6 +79,12 @@ static void		pygather_reap_coro(struct pygather_op *,
 #if defined(KORE_USE_PGSQL)
 static PyObject		*pykore_pgsql_alloc(struct http_request *,
 			    const char *, const char *);
+#endif
+
+#if defined(KORE_USE_CURL)
+static void		python_curl_callback(struct kore_curl *, void *);
+static PyObject		*pyhttp_client_request(struct pyhttp_client *, int,
+			    PyObject *);
 #endif
 
 static void	python_append_path(const char *);
@@ -962,6 +972,10 @@ python_module_init(void)
 	python_push_type("pyqueue", pykore, &pyqueue_type);
 	python_push_type("pysocket", pykore, &pysocket_type);
 	python_push_type("pyconnection", pykore, &pyconnection_type);
+
+#if defined(KORE_USE_CURL)
+	python_push_type("pyhttpclient", pykore, &pyhttp_client_type);
+#endif
 
 	python_push_type("pyhttp_file", pykore, &pyhttp_file_type);
 	python_push_type("pyhttp_request", pykore, &pyhttp_request_type);
@@ -2337,6 +2351,7 @@ pysocket_async_recv(struct pysocket_op *op)
 		return (NULL);
 	}
 
+	Py_DECREF(tuple);
 	PyErr_SetObject(PyExc_StopIteration, result);
 	Py_DECREF(result);
 
@@ -3741,5 +3756,325 @@ pyhttp_pgsql(struct pyhttp_request *pyreq, PyObject *args)
 	pyreq->data = obj;
 
 	return ((PyObject *)obj);
+}
+#endif
+
+#if defined(KORE_USE_CURL)
+static PyObject *
+python_kore_httpclient(PyObject *self, PyObject *args, PyObject *kwargs)
+{
+	PyObject		*obj;
+	struct pyhttp_client	*client;
+	const char		*url, *v;
+
+	if (!PyArg_ParseTuple(args, "s", &url))
+		return (NULL);
+
+	client = PyObject_New(struct pyhttp_client, &pyhttp_client_type);
+	if (client == NULL)
+		return (NULL);
+
+	client->tlskey = NULL;
+	client->tlscert = NULL;
+	client->url = kore_strdup(url);
+
+	if (kwargs != NULL) {
+		if ((obj = PyDict_GetItemString(kwargs, "tlscert")) != NULL) {
+			if ((v = PyUnicode_AsUTF8(obj)) == NULL) {
+				Py_DECREF((PyObject *)client);
+				return (NULL);
+			}
+
+			client->tlscert = kore_strdup(v);
+		}
+
+		if ((obj = PyDict_GetItemString(kwargs, "tlskey")) != NULL) {
+			if ((v = PyUnicode_AsUTF8(obj)) == NULL) {
+				Py_DECREF((PyObject *)client);
+				return (NULL);
+			}
+
+			client->tlskey = kore_strdup(v);
+		}
+	}
+
+	if ((client->tlscert != NULL && client->tlskey == NULL) ||
+	    (client->tlskey != NULL && client->tlscert == NULL)) {
+		Py_DECREF((PyObject *)client);
+		PyErr_SetString(PyExc_RuntimeError,
+		    "invalid TLS client configuration");
+		return (NULL);
+	}
+
+	return ((PyObject *)client);
+}
+
+static void
+pyhttp_client_dealloc(struct pyhttp_client *client)
+{
+	kore_free(client->url);
+	kore_free(client->tlskey);
+	kore_free(client->tlscert);
+
+	PyObject_Del((PyObject *)client);
+}
+
+static PyObject *
+pyhttp_client_get(struct pyhttp_client *client, PyObject *args,
+    PyObject *kwargs)
+{
+	return (pyhttp_client_request(client, HTTP_METHOD_GET, kwargs));
+}
+
+static PyObject *
+pyhttp_client_put(struct pyhttp_client *client, PyObject *args,
+    PyObject *kwargs)
+{
+	return (pyhttp_client_request(client, HTTP_METHOD_PUT, kwargs));
+}
+
+static PyObject *
+pyhttp_client_post(struct pyhttp_client *client, PyObject *args,
+    PyObject *kwargs)
+{
+	return (pyhttp_client_request(client, HTTP_METHOD_POST, kwargs));
+}
+
+static PyObject *
+pyhttp_client_head(struct pyhttp_client *client, PyObject *args,
+    PyObject *kwargs)
+{
+	return (pyhttp_client_request(client, HTTP_METHOD_HEAD, kwargs));
+}
+
+static PyObject *
+pyhttp_client_patch(struct pyhttp_client *client, PyObject *args,
+    PyObject *kwargs)
+{
+	return (pyhttp_client_request(client, HTTP_METHOD_PATCH, kwargs));
+}
+
+static PyObject *
+pyhttp_client_delete(struct pyhttp_client *client, PyObject *args,
+    PyObject *kwargs)
+{
+	return (pyhttp_client_request(client, HTTP_METHOD_DELETE, kwargs));
+}
+
+static PyObject *
+pyhttp_client_options(struct pyhttp_client *client, PyObject *args,
+    PyObject *kwargs)
+{
+	return (pyhttp_client_request(client, HTTP_METHOD_OPTIONS, kwargs));
+}
+
+static PyObject *
+pyhttp_client_request(struct pyhttp_client *client, int m, PyObject *kwargs)
+{
+	struct pyhttp_client_op		*op;
+	char				*ptr;
+	const char			*k, *v;
+	Py_ssize_t			length, idx;
+	PyObject			*data, *headers, *key, *item;
+
+	ptr = NULL;
+	length = 0;
+	headers = NULL;
+
+	if (kwargs != NULL &&
+	    ((headers = PyDict_GetItemString(kwargs, "headers")) != NULL)) {
+		if (!PyDict_CheckExact(headers)) {
+			PyErr_SetString(PyExc_RuntimeError,
+			    "header keyword must be a dict");
+			return (NULL);
+		}
+	}
+
+	switch (m) {
+	case HTTP_METHOD_GET:
+	case HTTP_METHOD_HEAD:
+	case HTTP_METHOD_DELETE:
+	case HTTP_METHOD_OPTIONS:
+		break;
+	case HTTP_METHOD_PUT:
+	case HTTP_METHOD_POST:
+	case HTTP_METHOD_PATCH:
+		length = -1;
+
+		if (kwargs == NULL) {
+			PyErr_Format(PyExc_RuntimeError,
+			    "no keyword arguments given, but body expected ",
+			    http_method_text(m));
+			return (NULL);
+		}
+
+		if ((data = PyDict_GetItemString(kwargs, "body")) == NULL)
+			return (NULL);
+
+		if (PyBytes_AsStringAndSize(data, &ptr, &length) == -1)
+			return (NULL);
+
+		if (length < 0) {
+			PyErr_SetString(PyExc_TypeError, "invalid length");
+			return (NULL);
+		}
+		break;
+	default:
+		fatal("%s: unknown method %d", __func__, m);
+	}
+
+	op = PyObject_New(struct pyhttp_client_op, &pyhttp_client_op_type);
+	if (op == NULL)
+		return (NULL);
+
+	if (!kore_curl_init(&op->curl, client->url)) {
+		Py_DECREF((PyObject *)op);
+		PyErr_SetString(PyExc_RuntimeError, "failed to setup call");
+		return (NULL);
+	}
+
+	op->headers = 0;
+	op->coro = coro_running;
+	op->state = PYHTTP_CLIENT_OP_RUN;
+
+	Py_INCREF(client);
+
+	kore_curl_http_setup(&op->curl, m, ptr, length);
+	kore_curl_bind_callback(&op->curl, python_curl_callback, op);
+
+	/* Go in with our own bare hands. */
+	if (client->tlskey != NULL && client->tlscert != NULL) {
+		 curl_easy_setopt(op->curl.handle, CURLOPT_SSLCERT,
+		    client->tlscert);
+		 curl_easy_setopt(op->curl.handle, CURLOPT_SSLKEY,
+		    client->tlskey);
+	}
+
+	if (headers != NULL) {
+		idx = 0;
+		while (PyDict_Next(headers, &idx, &key, &item)) {
+			if ((k = PyUnicode_AsUTF8(key)) == NULL) {
+				Py_DECREF((PyObject *)op);
+				return (NULL);
+			}
+
+			if ((v = PyUnicode_AsUTF8(item)) == NULL) {
+				Py_DECREF((PyObject *)op);
+				return (NULL);
+			}
+
+			kore_curl_http_set_header(&op->curl, k, v);
+		}
+	}
+
+	if (kwargs != NULL &&
+	    ((item = PyDict_GetItemString(kwargs, "return_headers")) != NULL)) {
+		if (item == Py_True) {
+			op->headers = 1;
+		} else if (item == Py_False) {
+			op->headers = 0;
+		} else {
+			Py_DECREF((PyObject *)op);
+			PyErr_SetString(PyExc_RuntimeError,
+			    "return_headers not True or False");
+			return (NULL);
+		}
+	}
+
+	return ((PyObject *)op);
+}
+
+static void
+pyhttp_client_op_dealloc(struct pyhttp_client_op *op)
+{
+	kore_curl_cleanup(&op->curl);
+	PyObject_Del((PyObject *)op);
+}
+
+static PyObject *
+pyhttp_client_op_await(PyObject *op)
+{
+	Py_INCREF(op);
+	return (op);
+}
+
+static PyObject *
+pyhttp_client_op_iternext(struct pyhttp_client_op *op)
+{
+	size_t			len;
+	struct http_header	*hdr;
+	const u_int8_t		*response;
+	PyObject		*result, *tuple, *dict, *value;
+
+	if (op->state == PYHTTP_CLIENT_OP_RUN) {
+		kore_curl_run(&op->curl);
+		op->state = PYHTTP_CLIENT_OP_RESULT;
+		Py_RETURN_NONE;
+	}
+
+	if (!kore_curl_success(&op->curl)) {
+		PyErr_Format(PyExc_RuntimeError, "request to '%s' failed: %s",
+		    op->curl.url, op->curl.errbuf);
+		return (NULL);
+	}
+
+	kore_curl_response_as_bytes(&op->curl, &response, &len);
+
+	if (op->headers) {
+		kore_curl_http_parse_headers(&op->curl);
+
+		if ((dict = PyDict_New()) == NULL)
+			return (NULL);
+
+		TAILQ_FOREACH(hdr, &op->curl.http.resp_hdrs, list) {
+			value = PyUnicode_FromString(hdr->value);
+			if (value == NULL) {
+				Py_DECREF(dict);
+				return (NULL);
+			}
+
+			if (PyDict_SetItemString(dict,
+			    hdr->header, value) == -1) {
+				Py_DECREF(dict);
+				Py_DECREF(value);
+				return (NULL);
+			}
+
+			Py_DECREF(value);
+		}
+
+		if ((tuple = Py_BuildValue("(iOy#)", op->curl.http.status,
+		    dict, (const char *)response, len)) == NULL)
+			return (NULL);
+
+		Py_DECREF(dict);
+	} else {
+		if ((tuple = Py_BuildValue("(iy#)", op->curl.http.status,
+		    (const char *)response, len)) == NULL)
+			return (NULL);
+	}
+
+	result = PyObject_CallFunctionObjArgs(PyExc_StopIteration, tuple, NULL);
+	if (result == NULL) {
+		Py_DECREF(tuple);
+		return (NULL);
+	}
+
+	Py_DECREF(tuple);
+	PyErr_SetObject(PyExc_StopIteration, result);
+	Py_DECREF(result);
+
+	return (NULL);
+}
+
+static void
+python_curl_callback(struct kore_curl *curl, void *arg)
+{
+	struct pyhttp_client_op		*op = arg;
+
+	if (op->coro->request != NULL)
+		http_request_wakeup(op->coro->request);
+	else
+		python_coro_wakeup(op->coro);
 }
 #endif

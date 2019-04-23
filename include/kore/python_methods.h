@@ -53,6 +53,11 @@ static PyObject		*python_kore_gather(PyObject *, PyObject *, PyObject *);
 static PyObject		*python_kore_pgsql_register(PyObject *, PyObject *);
 #endif
 
+#if defined(KORE_USE_CURL)
+static PyObject		*python_kore_httpclient(PyObject *,
+			    PyObject *, PyObject *);
+#endif
+
 static PyObject		*python_websocket_broadcast(PyObject *, PyObject *);
 
 #define METHOD(n, c, a)		{ n, (PyCFunction)c, a, NULL }
@@ -80,6 +85,10 @@ static struct PyMethodDef pykore_methods[] = {
 	METHOD("websocket_broadcast", python_websocket_broadcast, METH_VARARGS),
 #if defined(KORE_USE_PGSQL)
 	METHOD("register_database", python_kore_pgsql_register, METH_VARARGS),
+#endif
+#if defined(KORE_USE_CURL)
+	METHOD("httpclient", python_kore_httpclient,
+	    METH_VARARGS | METH_KEYWORDS),
 #endif
 	{ NULL, NULL, 0, NULL }
 };
@@ -638,6 +647,85 @@ static PyTypeObject pyhttp_file_type = {
 	.tp_basicsize = sizeof(struct pyhttp_file),
 	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
 };
+
+#if defined(KORE_USE_CURL)
+struct pyhttp_client {
+	PyObject_HEAD
+	char			*url;
+	char			*tlscert;
+	char			*tlskey;
+};
+
+#define PYHTTP_CLIENT_OP_RUN	1
+#define PYHTTP_CLIENT_OP_RESULT	2
+
+struct pyhttp_client_op {
+	PyObject_HEAD
+	int			state;
+	int			headers;
+	struct kore_curl	curl;
+	struct python_coro	*coro;
+};
+
+static PyObject	*pyhttp_client_op_await(PyObject *);
+static PyObject	*pyhttp_client_op_iternext(struct pyhttp_client_op *);
+
+static void	pyhttp_client_dealloc(struct pyhttp_client *);
+static void	pyhttp_client_op_dealloc(struct pyhttp_client_op *);
+
+static PyObject *pyhttp_client_get(struct pyhttp_client *,
+		    PyObject *, PyObject *);
+static PyObject *pyhttp_client_put(struct pyhttp_client *,
+		    PyObject *, PyObject *);
+static PyObject *pyhttp_client_post(struct pyhttp_client *,
+		    PyObject *, PyObject *);
+static PyObject *pyhttp_client_head(struct pyhttp_client *,
+		    PyObject *, PyObject *);
+static PyObject *pyhttp_client_patch(struct pyhttp_client *,
+		    PyObject *, PyObject *);
+static PyObject *pyhttp_client_delete(struct pyhttp_client *,
+		    PyObject *, PyObject *);
+static PyObject *pyhttp_client_options(struct pyhttp_client *,
+		    PyObject *, PyObject *);
+
+static PyMethodDef pyhttp_client_methods[] = {
+	METHOD("get", pyhttp_client_get, METH_VARARGS | METH_KEYWORDS),
+	METHOD("put", pyhttp_client_put, METH_VARARGS | METH_KEYWORDS),
+	METHOD("post", pyhttp_client_post, METH_VARARGS | METH_KEYWORDS),
+	METHOD("head", pyhttp_client_head, METH_VARARGS | METH_KEYWORDS),
+	METHOD("patch", pyhttp_client_patch, METH_VARARGS | METH_KEYWORDS),
+	METHOD("delete", pyhttp_client_delete, METH_VARARGS | METH_KEYWORDS),
+	METHOD("options", pyhttp_client_options, METH_VARARGS | METH_KEYWORDS),
+	METHOD(NULL, NULL, -1)
+};
+
+static PyTypeObject pyhttp_client_type = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "kore.httpclient",
+	.tp_doc = "An asynchronous HTTP client",
+	.tp_methods = pyhttp_client_methods,
+	.tp_basicsize = sizeof(struct pyhttp_client),
+	.tp_dealloc = (destructor)pyhttp_client_dealloc,
+	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+};
+
+static PyAsyncMethods pyhttp_client_op_async = {
+	(unaryfunc)pyhttp_client_op_await,
+	NULL,
+	NULL
+};
+
+static PyTypeObject pyhttp_client_op_type = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "kore.httpclientop",
+	.tp_doc = "Asynchronous HTTP client operation",
+	.tp_as_async = &pyhttp_client_op_async,
+	.tp_iternext = (iternextfunc)pyhttp_client_op_iternext,
+	.tp_basicsize = sizeof(struct pyhttp_client_op),
+	.tp_dealloc = (destructor)pyhttp_client_op_dealloc,
+	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+};
+#endif
 
 #if defined(KORE_USE_PGSQL)
 

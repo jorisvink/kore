@@ -639,7 +639,7 @@ static void
 fatal_log(const char *fmt, va_list args)
 {
 	char			buf[2048];
-	extern const char	*__progname;
+	extern const char	*kore_progname;
 
 	(void)vsnprintf(buf, sizeof(buf), fmt, args);
 
@@ -651,5 +651,5 @@ fatal_log(const char *fmt, va_list args)
 		kore_keymgr_cleanup(1);
 #endif
 
-	printf("%s: %s\n", __progname, buf);
+	printf("%s: %s\n", kore_progname, buf);
 }
