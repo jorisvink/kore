@@ -652,8 +652,9 @@ static PyTypeObject pyhttp_file_type = {
 struct pyhttp_client {
 	PyObject_HEAD
 	char			*url;
-	char			*tlscert;
 	char			*tlskey;
+	char			*tlscert;
+	char			*cabundle;
 	int			tlsverify;
 };
 

@@ -3774,9 +3774,11 @@ python_kore_httpclient(PyObject *self, PyObject *args, PyObject *kwargs)
 	if (client == NULL)
 		return (NULL);
 
-	client->tlsverify = 1;
 	client->tlskey = NULL;
 	client->tlscert = NULL;
+	client->cabundle = NULL;
+
+	client->tlsverify = 1;
 	client->url = kore_strdup(url);
 
 	if (kwargs != NULL) {
@@ -3796,6 +3798,15 @@ python_kore_httpclient(PyObject *self, PyObject *args, PyObject *kwargs)
 			}
 
 			client->tlskey = kore_strdup(v);
+		}
+
+		if ((obj = PyDict_GetItemString(kwargs, "cabundle")) != NULL) {
+			if ((v = PyUnicode_AsUTF8(obj)) == NULL) {
+				Py_DECREF((PyObject *)client);
+				return (NULL);
+			}
+
+			client->cabundle = kore_strdup(v);
 		}
 
 		if ((obj = PyDict_GetItemString(kwargs, "tlsverify")) != NULL) {
@@ -3829,6 +3840,7 @@ pyhttp_client_dealloc(struct pyhttp_client *client)
 	kore_free(client->url);
 	kore_free(client->tlskey);
 	kore_free(client->tlscert);
+	kore_free(client->cabundle);
 
 	PyObject_Del((PyObject *)client);
 }
@@ -3969,6 +3981,11 @@ pyhttp_client_request(struct pyhttp_client *client, int m, PyObject *kwargs)
 			curl_easy_setopt(op->curl.handle,
 			    CURLOPT_SSL_VERIFYPEER, 0);
 		}
+	}
+
+	if (client->cabundle != NULL) {
+		curl_easy_setopt(op->curl.handle, CURLOPT_CAINFO,
+		    client->cabundle);
 	}
 
 	if (headers != NULL) {
