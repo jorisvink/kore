@@ -564,6 +564,7 @@ curl_timer(CURLM *mctx, long timeout, void *arg)
 static void
 curl_event_handle(void *arg, int eof)
 {
+	CURLMcode		res;
 	int			flags;
 	ssize_t			bytes;
 	char			buf[32];
@@ -580,7 +581,9 @@ curl_event_handle(void *arg, int eof)
 	if (eof)
 		flags = CURL_CSELECT_ERR;
 
-	curl_multi_socket_action(multi, fdc->fd, flags, &running);
+	res = curl_multi_socket_action(multi, fdc->fd, flags, &running);
+	if (res != CURLM_OK)
+		fatal("curl_multi_socket_action: %s", curl_multi_strerror(res));
 
 	/*
 	 * XXX - libcurl doesn't work with edge triggered i/o so check
