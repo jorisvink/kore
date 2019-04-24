@@ -3799,9 +3799,9 @@ python_kore_httpclient(PyObject *self, PyObject *args, PyObject *kwargs)
 		}
 
 		if ((obj = PyDict_GetItemString(kwargs, "tlsverify")) != NULL) {
-			if (item == Py_True) {
+			if (obj == Py_True) {
 				client->tlsverify = 1;
-			} else if (item == Py_False) {
+			} else if (obj == Py_False) {
 				client->tlsverify = 0;
 			} else {
 				Py_DECREF((PyObject *)client);
