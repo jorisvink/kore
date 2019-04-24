@@ -3774,6 +3774,7 @@ python_kore_httpclient(PyObject *self, PyObject *args, PyObject *kwargs)
 	if (client == NULL)
 		return (NULL);
 
+	client->tlsverify = 1;
 	client->tlskey = NULL;
 	client->tlscert = NULL;
 	client->url = kore_strdup(url);
@@ -3795,6 +3796,19 @@ python_kore_httpclient(PyObject *self, PyObject *args, PyObject *kwargs)
 			}
 
 			client->tlskey = kore_strdup(v);
+		}
+
+		if ((obj = PyDict_GetItemString(kwargs, "tlsverify")) != NULL) {
+			if (item == Py_True) {
+				client->tlsverify = 1;
+			} else if (item == Py_False) {
+				client->tlsverify = 0;
+			} else {
+				Py_DECREF((PyObject *)client);
+				PyErr_SetString(PyExc_RuntimeError,
+				    "tlsverify not True or False");
+				return (NULL);
+			}
 		}
 	}
 
@@ -3948,6 +3962,13 @@ pyhttp_client_request(struct pyhttp_client *client, int m, PyObject *kwargs)
 		    client->tlscert);
 		 curl_easy_setopt(op->curl.handle, CURLOPT_SSLKEY,
 		    client->tlskey);
+
+		if (client->tlsverify == 0) {
+			curl_easy_setopt(op->curl.handle,
+			    CURLOPT_SSL_VERIFYHOST, 0);
+			curl_easy_setopt(op->curl.handle,
+			    CURLOPT_SSL_VERIFYPEER, 0);
+		}
 	}
 
 	if (headers != NULL) {

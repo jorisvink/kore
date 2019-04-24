@@ -654,6 +654,7 @@ struct pyhttp_client {
 	char			*url;
 	char			*tlscert;
 	char			*tlskey;
+	int			tlsverify;
 };
 
 #define PYHTTP_CLIENT_OP_RUN	1
