@@ -78,7 +78,8 @@ static void		pygather_reap_coro(struct pygather_op *,
 
 #if defined(KORE_USE_PGSQL)
 static PyObject		*pykore_pgsql_alloc(struct http_request *,
-			    const char *, const char *);
+			    const char *, const char *, PyObject *);
+static int		pykore_pgsql_params(struct pykore_pgsql *, PyObject *);
 #endif
 
 #if defined(KORE_USE_CURL)
@@ -3572,6 +3573,8 @@ pyhttp_file_get_filename(struct pyhttp_file *pyfile, void *closure)
 static void
 pykore_pgsql_dealloc(struct pykore_pgsql *pysql)
 {
+	Py_ssize_t	i;
+
 	kore_free(pysql->db);
 	kore_free(pysql->query);
 	kore_pgsql_cleanup(&pysql->sql);
@@ -3579,12 +3582,22 @@ pykore_pgsql_dealloc(struct pykore_pgsql *pysql)
 	if (pysql->result != NULL)
 		Py_DECREF(pysql->result);
 
+	for (i = 0; i < pysql->param.count; i++)
+		Py_DECREF(pysql->param.objs[i]);
+
+	kore_free(pysql->param.objs);
+	kore_free(pysql->param.values);
+	kore_free(pysql->param.lengths);
+	kore_free(pysql->param.formats);
+
 	PyObject_Del((PyObject *)pysql);
 }
 
 static PyObject *
-pykore_pgsql_alloc(struct http_request *req, const char *db, const char *query)
+pykore_pgsql_alloc(struct http_request *req, const char *db, const char *query, 
+    PyObject *kwargs)
 {
+	PyObject		*obj;
 	struct pykore_pgsql	*pysql;
 
 	pysql = PyObject_New(struct pykore_pgsql, &pykore_pgsql_type);
@@ -3597,9 +3610,103 @@ pykore_pgsql_alloc(struct http_request *req, const char *db, const char *query)
 	pysql->query = kore_strdup(query);
 	pysql->state = PYKORE_PGSQL_PREINIT;
 
+	pysql->binary = 0;
+	pysql->param.objs = 0;
+	pysql->param.count = 0;
+	pysql->param.values = NULL;
+	pysql->param.lengths = NULL;
+	pysql->param.formats = NULL;
+
 	memset(&pysql->sql, 0, sizeof(pysql->sql));
 
+	if (kwargs != NULL) {
+		if ((obj = PyDict_GetItemString(kwargs, "params")) != NULL) {
+			if (!pykore_pgsql_params(pysql, obj)) {
+				Py_DECREF((PyObject *)pysql);
+				return (NULL);
+			}
+		}
+
+		if ((obj = PyDict_GetItemString(kwargs, "binary")) != NULL) {
+			if (obj == Py_True) {
+				pysql->binary = 1;
+			} else if (obj == Py_False) {
+				pysql->binary = 0;
+			} else {
+				Py_DECREF((PyObject *)pysql);
+				PyErr_SetString(PyExc_RuntimeError,
+				    "pgsql: binary not True or False");
+				return (NULL);
+			}
+		}
+	}
+
 	return ((PyObject *)pysql);
+}
+
+static int
+pykore_pgsql_params(struct pykore_pgsql *op, PyObject *list)
+{
+	union { const char *cp; char *p; }	ptr;
+	PyObject				*item;
+	int					format;
+	Py_ssize_t				i, len, vlen;
+
+	if (!PyList_CheckExact(list)) {
+		if (list == Py_None)
+			return (KORE_RESULT_OK);
+
+		PyErr_SetString(PyExc_RuntimeError,
+		    "pgsql: params keyword must be a list");
+		return (KORE_RESULT_ERROR);
+	}
+
+	len = PyList_Size(list);
+	if (len == 0)
+		return (KORE_RESULT_OK);
+
+	if (len > INT_MAX) {
+		PyErr_SetString(PyExc_RuntimeError,
+		    "pgsql: list length too large");
+		return (KORE_RESULT_ERROR);
+	}
+
+	op->param.count = len;
+	op->param.lengths = kore_calloc(len, sizeof(int));
+	op->param.formats = kore_calloc(len, sizeof(int));
+	op->param.values = kore_calloc(len, sizeof(char *));
+	op->param.objs = kore_calloc(len, sizeof(PyObject *));
+
+	for (i = 0; i < len; i++) {
+		if ((item = PyList_GetItem(list, i)) == NULL)
+			return (KORE_RESULT_ERROR);
+
+		if (PyUnicode_CheckExact(item)) {
+			format = 0;
+			ptr.cp = PyUnicode_AsUTF8AndSize(item, &vlen);
+		} else if (PyBytes_CheckExact(item)) {
+			format = 1;
+			if (PyBytes_AsStringAndSize(item, &ptr.p, &vlen) == -1)
+				ptr.p = NULL;
+		} else {
+			PyErr_Format(PyExc_RuntimeError,
+			    "pgsql: item %zu is not a string or bytes", i);
+			return (KORE_RESULT_ERROR);
+		}
+
+		if (ptr.cp == NULL)
+			return (KORE_RESULT_ERROR);
+
+		op->param.lengths[i] = vlen;
+		op->param.values[i] = ptr.cp;
+		op->param.formats[i] = format;
+
+		/* Hold on to it since we are directly referencing its data. */
+		op->param.objs[i] = item;
+		Py_INCREF(item);
+	}
+
+	return (KORE_RESULT_OK);
 }
 
 static PyObject *
@@ -3616,15 +3723,18 @@ pykore_pgsql_iternext(struct pykore_pgsql *pysql)
 		    KORE_PGSQL_ASYNC)) {
 			if (pysql->sql.state == KORE_PGSQL_STATE_INIT)
 				break;
-			kore_pgsql_logerror(&pysql->sql);
-			PyErr_SetString(PyExc_RuntimeError, "pgsql error");
+			PyErr_Format(PyExc_RuntimeError, "pgsql error: %s",
+			    pysql->sql.error);
 			return (NULL);
 		}
 		/* fallthrough */
 	case PYKORE_PGSQL_QUERY:
-		if (!kore_pgsql_query(&pysql->sql, pysql->query)) {
-			kore_pgsql_logerror(&pysql->sql);
-			PyErr_SetString(PyExc_RuntimeError, "pgsql error");
+		if (!kore_pgsql_query_param_fields(&pysql->sql,
+		    pysql->query, pysql->binary,
+		    pysql->param.count, pysql->param.values,
+		    pysql->param.lengths, pysql->param.formats)) {
+			PyErr_Format(PyExc_RuntimeError,
+			    "pgsql error: %s", pysql->sql.error);
 			return (NULL);
 		}
 		pysql->state = PYKORE_PGSQL_WAIT;
@@ -3645,9 +3755,8 @@ wait_again:
 			}
 			return (NULL);
 		case KORE_PGSQL_STATE_ERROR:
-			kore_pgsql_logerror(&pysql->sql);
-			PyErr_SetString(PyExc_RuntimeError,
-			    "failed to perform query");
+			PyErr_Format(PyExc_RuntimeError,
+			    "failed to perform query: %s", pysql->sql.error);
 			return (NULL);
 		case KORE_PGSQL_STATE_RESULT:
 			if (!pykore_pgsql_result(pysql))
@@ -3674,13 +3783,13 @@ pykore_pgsql_await(PyObject *obj)
 	return (obj);
 }
 
-int
+static int
 pykore_pgsql_result(struct pykore_pgsql *pysql)
 {
 	const char	*val;
 	char		key[64];
 	PyObject	*list, *pyrow, *pyval;
-	int		rows, row, field, fields;
+	int		rows, row, field, fields, len;
 
 	if ((list = PyList_New(0)) == NULL) {
 		PyErr_SetNone(PyExc_MemoryError);
@@ -3699,8 +3808,14 @@ pykore_pgsql_result(struct pykore_pgsql *pysql)
 
 		for (field = 0; field < fields; field++) {
 			val = kore_pgsql_getvalue(&pysql->sql, row, field);
+			len = kore_pgsql_getlength(&pysql->sql, row, field);
 
-			pyval = PyUnicode_FromString(val);
+			if (kore_pgsql_column_binary(&pysql->sql, field)) {
+				pyval = PyBytes_FromStringAndSize(val, len);
+			} else {
+				pyval = PyUnicode_FromString(val);
+			}
+
 			if (pyval == NULL) {
 				Py_DECREF(pyrow);
 				Py_DECREF(list);
@@ -3741,7 +3856,7 @@ pykore_pgsql_result(struct pykore_pgsql *pysql)
 }
 
 static PyObject *
-pyhttp_pgsql(struct pyhttp_request *pyreq, PyObject *args)
+pyhttp_pgsql(struct pyhttp_request *pyreq, PyObject *args, PyObject *kwargs)
 {
 	PyObject			*obj;
 	const char			*db, *query;
@@ -3749,7 +3864,7 @@ pyhttp_pgsql(struct pyhttp_request *pyreq, PyObject *args)
 	if (!PyArg_ParseTuple(args, "ss", &db, &query))
 		return (NULL);
 
-	if ((obj = pykore_pgsql_alloc(pyreq->req, db, query)) == NULL)
+	if ((obj = pykore_pgsql_alloc(pyreq->req, db, query, kwargs)) == NULL)
 		return (PyErr_NoMemory());
 
 	Py_INCREF(obj);

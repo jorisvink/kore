@@ -202,10 +202,10 @@ kore_pgsql_query(struct kore_pgsql *pgsql, const char *query)
 
 int
 kore_pgsql_v_query_params(struct kore_pgsql *pgsql,
-    const char *query, int result, int count, va_list args)
+    const char *query, int binary, int count, va_list args)
 {
-	u_int8_t	i;
-	char		**values;
+	int		i;
+	const char	**values;
 	int		*lengths, *formats, ret;
 
 	if (pgsql->conn == NULL) {
@@ -229,33 +229,9 @@ kore_pgsql_v_query_params(struct kore_pgsql *pgsql,
 		values = NULL;
 	}
 
-	ret = KORE_RESULT_ERROR;
+	ret = kore_pgsql_query_param_fields(pgsql, query, binary, count,
+	    values, lengths, formats);
 
-	if (pgsql->flags & KORE_PGSQL_SYNC) {
-		pgsql->result = PQexecParams(pgsql->conn->db, query, count,
-		    NULL, (const char * const *)values, lengths, formats,
-		    result);
-
-		if ((PQresultStatus(pgsql->result) != PGRES_TUPLES_OK) &&
-		    (PQresultStatus(pgsql->result) != PGRES_COMMAND_OK)) {
-			pgsql_set_error(pgsql, PQerrorMessage(pgsql->conn->db));
-			goto cleanup;
-		}
-
-		pgsql->state = KORE_PGSQL_STATE_DONE;
-	} else {
-		if (!PQsendQueryParams(pgsql->conn->db, query, count, NULL,
-		    (const char * const *)values, lengths, formats, result)) {
-			pgsql_set_error(pgsql, PQerrorMessage(pgsql->conn->db));
-			goto cleanup;
-		}
-
-		pgsql_schedule(pgsql);
-	}
-
-	ret = KORE_RESULT_OK;
-
-cleanup:
 	kore_free(values);
 	kore_free(lengths);
 	kore_free(formats);
@@ -264,14 +240,48 @@ cleanup:
 }
 
 int
+kore_pgsql_query_param_fields(struct kore_pgsql *pgsql, const char *query,
+    int binary, int count, const char **values, int *lengths, int *formats)
+{
+	if (pgsql->conn == NULL) {
+		pgsql_set_error(pgsql, "no connection was set before query");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (pgsql->flags & KORE_PGSQL_SYNC) {
+		pgsql->result = PQexecParams(pgsql->conn->db, query, count,
+		    NULL, (const char * const *)values, lengths, formats,
+		    binary);
+
+		if ((PQresultStatus(pgsql->result) != PGRES_TUPLES_OK) &&
+		    (PQresultStatus(pgsql->result) != PGRES_COMMAND_OK)) {
+			pgsql_set_error(pgsql, PQerrorMessage(pgsql->conn->db));
+			return (KORE_RESULT_ERROR);
+		}
+
+		pgsql->state = KORE_PGSQL_STATE_DONE;
+	} else {
+		if (!PQsendQueryParams(pgsql->conn->db, query, count, NULL,
+		    (const char * const *)values, lengths, formats, binary)) {
+			pgsql_set_error(pgsql, PQerrorMessage(pgsql->conn->db));
+			return (KORE_RESULT_ERROR);
+		}
+
+		pgsql_schedule(pgsql);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+int
 kore_pgsql_query_params(struct kore_pgsql *pgsql,
-    const char *query, int result, int count, ...)
+    const char *query, int binary, int count, ...)
 {
 	int		ret;
 	va_list		args;
 
 	va_start(args, count);
-	ret = kore_pgsql_v_query_params(pgsql, query, result, count, args);
+	ret = kore_pgsql_v_query_params(pgsql, query, binary, count, args);
 	va_end(args);
 
 	return (ret);
@@ -430,6 +440,12 @@ char *
 kore_pgsql_getvalue(struct kore_pgsql *pgsql, int row, int col)
 {
 	return (PQgetvalue(pgsql->result, row, col));
+}
+
+int
+kore_pgsql_column_binary(struct kore_pgsql *pgsql, int col)
+{
+	return (PQfformat(pgsql->result, col));
 }
 
 static struct pgsql_conn *
