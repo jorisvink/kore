@@ -126,7 +126,7 @@ ifeq ("$(OSNAME)", "darwin")
 	LDFLAGS+=-L/opt/local/lib -L/usr/local/opt/openssl/lib
 	S_SRC+=src/bsd.c
 else ifeq ("$(OSNAME)", "linux")
-	CFLAGS+=-D_GNU_SOURCE=1 -D_FORTIFY_SOURCE=2
+	CFLAGS+=-D_GNU_SOURCE=1 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2
 	LDFLAGS+=-ldl
 	S_SRC+=src/linux.c
 else
