@@ -3583,7 +3583,7 @@ pykore_pgsql_dealloc(struct pykore_pgsql *pysql)
 		Py_DECREF(pysql->result);
 
 	for (i = 0; i < pysql->param.count; i++)
-		Py_DECREF(pysql->param.objs[i]);
+		Py_XDECREF(pysql->param.objs[i]);
 
 	kore_free(pysql->param.objs);
 	kore_free(pysql->param.values);
@@ -3611,8 +3611,8 @@ pykore_pgsql_alloc(struct http_request *req, const char *db, const char *query,
 	pysql->state = PYKORE_PGSQL_PREINIT;
 
 	pysql->binary = 0;
-	pysql->param.objs = 0;
 	pysql->param.count = 0;
+	pysql->param.objs = NULL;
 	pysql->param.values = NULL;
 	pysql->param.lengths = NULL;
 	pysql->param.formats = NULL;
