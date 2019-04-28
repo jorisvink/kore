@@ -579,7 +579,7 @@ curl_event_handle(void *arg, int eof)
 		flags |= CURL_CSELECT_OUT;
 
 	if (eof)
-		flags = CURL_CSELECT_ERR;
+		flags |= CURL_CSELECT_ERR;
 
 	res = curl_multi_socket_action(multi, fdc->fd, flags, &running);
 	if (res != CURLM_OK)
