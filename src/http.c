@@ -406,6 +406,9 @@ http_request_free(struct http_request *req)
 	struct http_header	*hdr, *next;
 	struct http_cookie	*ck, *cknext;
 
+	if (req->onfree != NULL)
+		req->onfree(req);
+
 #if defined(KORE_USE_TASKS)
 	pending_tasks = 0;
 	for (t = LIST_FIRST(&(req->tasks)); t != NULL; t = nt) {
@@ -1379,12 +1382,14 @@ http_state_exists(struct http_request *req)
 }
 
 void *
-http_state_create(struct http_request *req, size_t len)
+http_state_create(struct http_request *req, size_t len,
+    void (*onfree)(struct http_request *))
 {
 	if (req->hdlr_extra != NULL)
 		fatal("http_state_create: state already exists");
 
 	req->state_len = len;
+	req->onfree = onfree;
 	req->hdlr_extra = kore_calloc(1, len);
 
 	return (req->hdlr_extra);
@@ -1530,6 +1535,7 @@ http_request_new(struct connection *c, const char *host,
 	req->method = m;
 	req->hdlr = hdlr;
 	req->agent = NULL;
+	req->onfree = NULL;
 	req->referer = NULL;
 	req->flags = flags;
 	req->fsm_state = 0;

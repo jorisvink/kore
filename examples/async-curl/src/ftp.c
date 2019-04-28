@@ -44,7 +44,7 @@ state_setup(struct http_request *req)
 {
 	struct kore_curl	*client;
 
-	client = http_state_create(req, sizeof(*client));
+	client = http_state_create(req, sizeof(*client), NULL);
 
 	if (!kore_curl_init(client,
 	    "http://ftp.eu.openbsd.org/pub/OpenBSD/README")) {

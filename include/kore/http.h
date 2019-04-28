@@ -249,6 +249,8 @@ struct http_request {
 	size_t				state_len;
 	char				*query_string;
 	struct kore_module_handle	*hdlr;
+	void				(*onfree)(struct http_request *);
+
 #if defined(KORE_USE_PYTHON)
 	void				*py_coro;
 #endif
@@ -346,7 +348,8 @@ const char	*http_media_type(const char *);
 void		*http_state_get(struct http_request *);
 int		http_state_exists(struct http_request *);
 void		http_state_cleanup(struct http_request *);
-void		*http_state_create(struct http_request *, size_t);
+void		*http_state_create(struct http_request *, size_t,
+		    void (*onfree)(struct http_request *));
 
 int		http_argument_urldecode(char *);
 int		http_header_recv(struct netbuf *);

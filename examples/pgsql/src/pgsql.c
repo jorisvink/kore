@@ -85,7 +85,7 @@ request_perform_init(struct http_request *req)
 
 	/* Setup our state context (if not yet set). */
 	if (!http_state_exists(req)) {
-		state = http_state_create(req, sizeof(*state));
+		state = http_state_create(req, sizeof(*state), NULL);
 
 		/*
 		 * Initialize the kore_pgsql data structure and bind it
