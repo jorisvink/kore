@@ -63,10 +63,12 @@ char			*kore_tls_cipher_list = KORE_DEFAULT_CIPHER_LIST;
 
 extern char		**environ;
 extern char		*__progname;
+static size_t		proctitle_maxlen = 0;
 
 static void	usage(void);
 static void	version(void);
 static void	kore_write_kore_pid(void);
+static void	kore_proctitle_setup(void);
 static void	kore_server_sslstart(void);
 static void	kore_server_start(int, char *[]);
 
@@ -138,6 +140,7 @@ main(int argc, char *argv[])
 	int				ch, flags;
 
 	flags = 0;
+
 	kore_argc = argc;
 	kore_argv = argv;
 
@@ -183,6 +186,7 @@ main(int argc, char *argv[])
 
 	kore_mem_init();
 	kore_progname = kore_strdup(argv[0]);
+	kore_proctitle_setup();
 
 	argc -= optind;
 	argv += optind;
@@ -602,29 +606,34 @@ kore_shutdown(void)
 void
 kore_proctitle(const char *title)
 {
-	char		*p;
-	size_t		len;
-	int		i, slen;
+	int	len;
 
-	len = 0;
+	kore_argv[1] = NULL;
+
+	len = snprintf(kore_argv[0], proctitle_maxlen, "%s %s",
+	    basename(kore_progname), title);
+	if (len == -1 || (size_t)len >= proctitle_maxlen)
+		fatal("proctitle '%s' too large", title);
+
+	memset(kore_argv[0] + len, 0, proctitle_maxlen - len);
+}
+
+static void
+kore_proctitle_setup(void)
+{
+	int		i;
+	char		*p;
+
+	proctitle_maxlen = 0;
 
 	for (i = 0; environ[i] != NULL; i++) {
 		p = kore_strdup(environ[i]);
-		len += strlen(environ[i]) + 1;
+		proctitle_maxlen += strlen(environ[i]) + 1;
 		environ[i] = p;
 	}
 
 	for (i = 0; kore_argv[i] != NULL; i++)
-		len += strlen(kore_argv[i]) + 1;
-
-	kore_argv[1] = NULL;
-
-	slen = snprintf(kore_argv[0], len, "%s %s",
-	    basename(kore_progname), title);
-	if (slen == -1 || (size_t)slen >= len)
-		fatal("proctitle '%s' too large", title);
-
-	memset(kore_argv[0] + slen, 0, len - slen);
+		proctitle_maxlen += strlen(kore_argv[i]) + 1;
 }
 
 static void
