@@ -77,7 +77,7 @@ kore_curl_sysinit(void)
 	kore_pool_init(&fd_cache_pool, "fd_cache_pool", 100,
 	    sizeof(struct fd_cache));
 
-	len = snprintf(user_agent, sizeof(user_agent), "kore-%s", kore_version);
+	len = snprintf(user_agent, sizeof(user_agent), "kore/%s", kore_version);
 	if (len == -1 || (size_t)len >= sizeof(user_agent))
 		fatal("user-agent string too long");
 }
