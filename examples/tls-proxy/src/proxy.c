@@ -60,11 +60,12 @@ void
 client_setup(struct connection *c)
 {
 	int			i, fd;
+	const char		*name;
 	struct connection	*backend;
 
 	/* Paranoia. */
-	if (c->ssl->session == NULL ||
-	    c->ssl->session->tlsext_hostname == NULL) {
+	name = SSL_get_servername(c->ssl, TLSEXT_NAMETYPE_host_name);
+	if (name == NULL) {
 		kore_connection_disconnect(c);
 		return;
 	}
