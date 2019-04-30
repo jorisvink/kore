@@ -24,7 +24,6 @@ EXAMPLES=	cookies \
 		pgsql \
 		pgsql-sync \
 		pipe_task \
-		python \
 		python-async \
 		python-echo \
 		python-pgsql \
