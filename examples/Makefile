@@ -12,7 +12,8 @@
 CURDIR=		$(shell pwd)
 KODEV=		/tmp/kore_releng/bin/kodev
 
-EXAMPLES=	cookies \
+EXAMPLES=	async-curl \
+		cookies \
 		cpp \
 		generic \
 		headers \
