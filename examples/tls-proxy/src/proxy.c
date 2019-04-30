@@ -72,8 +72,7 @@ client_setup(struct connection *c)
 
 	/* Figure out what backend to use. */
 	for (i = 0; backends[i].name != NULL; i++) {
-		if (!strcasecmp(backends[i].name,
-		    c->ssl->session->tlsext_hostname))
+		if (!strcasecmp(backends[i].name, name))
 			break;
 	}
 
