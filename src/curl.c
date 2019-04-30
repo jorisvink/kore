@@ -42,6 +42,7 @@ static int			running = 0;
 static CURLM			*multi = NULL;
 static struct kore_timer	*timer = NULL;
 static struct kore_pool		fd_cache_pool;
+static char			user_agent[64];
 static LIST_HEAD(, fd_cache)	cache[FD_CACHE_BUCKETS];
 
 u_int16_t	kore_curl_timeout = KORE_CURL_TIMEOUT;
@@ -50,8 +51,8 @@ u_int64_t	kore_curl_recv_max = KORE_CURL_RECV_MAX;
 void
 kore_curl_sysinit(void)
 {
-	int		i;
 	CURLMcode	res;
+	int		i, len;
 
 	if (curl_global_init(CURL_GLOBAL_ALL))
 		fatal("failed to initialize libcurl");
@@ -75,6 +76,10 @@ kore_curl_sysinit(void)
 
 	kore_pool_init(&fd_cache_pool, "fd_cache_pool", 100,
 	    sizeof(struct fd_cache));
+
+	len = snprintf(user_agent, sizeof(user_agent), "kore-%s", kore_version);
+	if (len == -1 || (size_t)len >= sizeof(user_agent))
+		fatal("user-agent string too long");
 }
 
 int
@@ -95,6 +100,7 @@ kore_curl_init(struct kore_curl *client, const char *url)
 	curl_easy_setopt(handle, CURLOPT_URL, url);
 	curl_easy_setopt(handle, CURLOPT_NOSIGNAL, 1);
 	curl_easy_setopt(handle, CURLOPT_PRIVATE, client);
+	curl_easy_setopt(handle, CURLOPT_USERAGENT, user_agent);
 	curl_easy_setopt(handle, CURLOPT_TIMEOUT, kore_curl_timeout);
 	curl_easy_setopt(handle, CURLOPT_ERRORBUFFER, client->errbuf);
 
