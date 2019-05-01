@@ -55,6 +55,9 @@ Requirements
   (note: this requirement drops away when building with NOTLS=1 NOHTTP=1)
   (note: libressl works as a replacement)
 
+Requirement for asynchronous curl (optional)
+* libcurl
+
 Requirements for background tasks (optional)
 * pthreads
 
@@ -75,6 +78,7 @@ $ make
 If you would like to build a specific flavor, you can enable
 those by setting a shell environment variable before running **_make_**.
 
+* CURL=1 (compiles in asynchronous curl support)
 * TASKS=1 (compiles in task support)
 * PGSQL=1 (compiles in pgsql support)
 * DEBUG=1 (enables use of -d for debug)
