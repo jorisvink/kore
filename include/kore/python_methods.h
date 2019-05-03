@@ -547,6 +547,13 @@ struct pyhttp_request {
 	PyObject		*data;
 };
 
+struct pyhttp_iterobj {
+	int			remove;
+	PyObject		*iterator;
+	struct connection	*connection;
+	struct kore_buf		buf;
+};
+
 struct pyhttp_file {
 	PyObject_HEAD
 	struct http_file	*file;

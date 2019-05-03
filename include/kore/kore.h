@@ -183,6 +183,7 @@ TAILQ_HEAD(netbuf_head, netbuf);
 #define CONN_IDLE_TIMER_ACT	0x01
 #define CONN_CLOSE_EMPTY	0x02
 #define CONN_WS_CLOSE_SENT	0x04
+#define CONN_IS_BUSY		0x08
 
 #define KORE_IDLE_TIMER_MAX	5000
 

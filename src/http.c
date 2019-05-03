@@ -1408,6 +1408,15 @@ http_state_cleanup(struct http_request *req)
 	req->hdlr_extra = NULL;
 }
 
+void
+http_start_recv(struct connection *c)
+{
+	c->http_start = kore_time_ms();
+	c->http_timeout = http_header_timeout * 1000;
+	net_recv_reset(c, http_header_max, http_header_recv);
+	(void)net_recv_flush(c);
+}
+
 static struct http_request *
 http_request_new(struct connection *c, const char *host,
     const char *method, char *path, const char *version)
@@ -1965,12 +1974,8 @@ http_response_normal(struct http_request *req, struct connection *c,
 	if (d != NULL && req != NULL && req->method != HTTP_METHOD_HEAD)
 		net_send_queue(c, d, len);
 
-	if (!(c->flags & CONN_CLOSE_EMPTY)) {
-		c->http_start = kore_time_ms();
-		c->http_timeout = http_header_timeout * 1000;
-		net_recv_reset(c, http_header_max, http_header_recv);
-		(void)net_recv_flush(c);
-	}
+	if (!(c->flags & CONN_CLOSE_EMPTY) && !(c->flags & CONN_IS_BUSY))
+		http_start_recv(c);
 
 	if (req != NULL)
 		req->content_length = len;

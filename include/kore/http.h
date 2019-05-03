@@ -316,6 +316,7 @@ const char	*http_status_text(int);
 const char	*http_method_text(int);
 time_t		http_date_to_time(char *);
 char		*http_validate_header(char *);
+void		http_start_recv(struct connection *);
 void		http_request_free(struct http_request *);
 void		http_request_sleep(struct http_request *);
 void		http_request_wakeup(struct http_request *);
