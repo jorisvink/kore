@@ -3141,6 +3141,8 @@ pyhttp_response(struct pyhttp_request *pyreq, PyObject *args)
 
 		http_response_stream(pyreq->req, status, ptr, length,
 		    pyhttp_response_sent, obj);
+	} else if (obj == Py_None) {
+		http_response(pyreq->req, status, NULL, 0);
 	} else {
 		if ((iterator = PyObject_GetIter(obj)) == NULL)
 			return (NULL);
@@ -4010,6 +4012,7 @@ python_kore_httpclient(PyObject *self, PyObject *args, PyObject *kwargs)
 	if (client == NULL)
 		return (NULL);
 
+	client->unix = NULL;
 	client->tlskey = NULL;
 	client->tlscert = NULL;
 	client->cabundle = NULL;
@@ -4045,6 +4048,15 @@ python_kore_httpclient(PyObject *self, PyObject *args, PyObject *kwargs)
 			client->cabundle = kore_strdup(v);
 		}
 
+		if ((obj = PyDict_GetItemString(kwargs, "unix")) != NULL) {
+			if ((v = PyUnicode_AsUTF8(obj)) == NULL) {
+				Py_DECREF((PyObject *)client);
+				return (NULL);
+			}
+
+			client->unix = kore_strdup(v);
+		}
+
 		if ((obj = PyDict_GetItemString(kwargs, "tlsverify")) != NULL) {
 			if (obj == Py_True) {
 				client->tlsverify = 1;
@@ -4074,6 +4086,7 @@ static void
 pyhttp_client_dealloc(struct pyhttp_client *client)
 {
 	kore_free(client->url);
+	kore_free(client->unix);
 	kore_free(client->tlskey);
 	kore_free(client->tlscert);
 	kore_free(client->cabundle);
@@ -4205,6 +4218,21 @@ pyhttp_client_request(struct pyhttp_client *client, int m, PyObject *kwargs)
 	kore_curl_bind_callback(&op->curl, python_curl_callback, op);
 
 	/* Go in with our own bare hands. */
+	if (client->unix != NULL) {
+#if defined(__linux__)
+		if (client->unix[0] == '@') {
+			curl_easy_setopt(op->curl.handle,
+			    CURLOPT_ABSTRACT_UNIX_SOCKET, client->unix + 1);
+		} else {
+			curl_easy_setopt(op->curl.handle,
+			    CURLOPT_UNIX_SOCKET_PATH, client->unix);
+		}
+#else
+		curl_easy_setopt(op->curl.handle, CURLOPT_UNIX_SOCKET_PATH,
+		    client->unix);
+#endif
+	}
+
 	if (client->tlskey != NULL && client->tlscert != NULL) {
 		 curl_easy_setopt(op->curl.handle, CURLOPT_SSLCERT,
 		    client->tlscert);
