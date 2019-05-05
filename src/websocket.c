@@ -105,6 +105,7 @@ kore_websocket_handshake(struct http_request *req, const char *onconnect,
 	req->owner->disconnect = websocket_disconnect;
 	req->owner->rnb->flags &= ~NETBUF_CALL_CB_ALWAYS;
 
+	req->owner->http_timeout = 0;
 	req->owner->idle_timer.start = kore_time_ms();
 	req->owner->idle_timer.length = kore_websocket_timeout;
 
