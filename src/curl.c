@@ -332,10 +332,10 @@ kore_curl_http_setup(struct kore_curl *client, int method, const void *data,
 	if (has_body) {
 		if (method == HTTP_METHOD_PUT) {
 			curl_easy_setopt(client->handle,
-			    CURLOPT_INFILESIZE_LARGE, len);
+			    CURLOPT_INFILESIZE_LARGE, (curl_off_t)len);
 		} else {
 			curl_easy_setopt(client->handle,
-			    CURLOPT_POSTFIELDSIZE_LARGE, len);
+			    CURLOPT_POSTFIELDSIZE_LARGE, (curl_off_t)len);
 		}
 	} else {
 		if (data != NULL || len != 0) {
@@ -432,7 +432,7 @@ curl_socket(CURL *easy, curl_socket_t fd, int action, void *arg, void *sock)
 
 	client = NULL;
 
-	res = curl_easy_getinfo(easy, CURLINFO_PRIVATE, &client);
+	res = curl_easy_getinfo(easy, CURLINFO_PRIVATE, (char **)&client);
 	if (res != CURLE_OK)
 		fatal("curl_easy_getinfo: %s", curl_easy_strerror(res));
 
@@ -503,7 +503,8 @@ curl_process(void)
 
 		handle = msg->easy_handle;
 
-		res = curl_easy_getinfo(handle, CURLINFO_PRIVATE, &client);
+		res = curl_easy_getinfo(handle, CURLINFO_PRIVATE,
+		    (char **)&client);
 		if (res != CURLE_OK)
 			fatal("curl_easy_getinfo: %s", curl_easy_strerror(res));
 

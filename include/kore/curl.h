@@ -28,7 +28,6 @@ extern "C" {
 #define KORE_CURL_TIMEOUT			60
 #define KORE_CURL_RECV_MAX			(1024 * 1024 * 2)
 
-#define KORE_CURL_STATUS_UNKNOWN		0
 #define KORE_CURL_FLAG_HTTP_PARSED_HEADERS	0x0001
 #define KORE_CURL_FLAG_BOUND			0x0002
 
@@ -52,7 +51,7 @@ struct kore_curl {
 
 	/* For the simplified HTTP api. */
 	struct {
-		int				status;
+		long				status;
 		struct curl_slist		*hdrlist;
 
 		struct kore_buf			*tosend;
