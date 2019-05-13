@@ -80,12 +80,13 @@ state_setup(struct http_request *req)
 	/*
 	 * Bind the HTTP client request to our HTTP request so we get woken
 	 * up once a response is available.
+	 *
+	 * This will put us to sleep.
 	 */
 	kore_curl_bind_request(client, req);
 
 	/*
 	 * Now fire off the request onto the event loop.
-	 * This will put us to sleep.
 	 */
 	kore_curl_run(client);
 
