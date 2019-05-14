@@ -60,14 +60,6 @@ Switch between build flavors with the argument being the new flavor.
 Show the help synopsis.
 .RE
 
-.BR \-p
-.RS
-Option used in conjunction with \fBcreate\fR to generate an application for use
-with the
-.BR pyko
-Kore framework.
-.RE
-
 .SH GENERATED FILES
 Executing the
 .BR create
@@ -107,12 +99,6 @@ The key matching the self-signed x509 certificate.
 The 2048-bit DH parameters used by TLS.
 .RE
 .RE
-
-If you specify the
-.BR -p
-flag the generated files will be for use with
-.BR pyko
-instead.
 
 Those files are:
 
@@ -261,12 +247,6 @@ Changing flavor of the build;
 
 .RS
 $ kodev flavor osx
-.RE
-
-Creating a new application 'app' with \fBpyko\fR support;
-
-.RS
-$ kodev create \-p app
 .RE
 
 Building your application;

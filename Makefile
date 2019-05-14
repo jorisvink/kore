@@ -105,6 +105,12 @@ ifneq ("$(PYTHON)", "")
 	FEATURES_INC+=$(KORE_PYTHON_INC)
 endif
 
+OSNAME=$(shell uname -s | sed -e 's/[-_].*//g' | tr A-Z a-z)
+ifeq ("$(OSNAME)", "freebsd")
+	KORE_CURL_LIB=-L/usr/local/lib -lcurl
+	KORE_CURL_INC=-I/usr/local/include
+endif
+
 ifneq ("$(CURL)", "")
 	S_SRC+=src/curl.c
 	KORE_CURL_LIB?=$(shell pkg-config --libs libcurl)
@@ -120,7 +126,6 @@ ifneq ("$(SANITIZE)", "")
 	LDFLAGS+=-fsanitize=$(SANITIZE)
 endif
 
-OSNAME=$(shell uname -s | sed -e 's/[-_].*//g' | tr A-Z a-z)
 ifeq ("$(OSNAME)", "darwin")
 	CFLAGS+=-I/opt/local/include/ -I/usr/local/opt/openssl/include
 	LDFLAGS+=-L/opt/local/lib -L/usr/local/opt/openssl/lib
