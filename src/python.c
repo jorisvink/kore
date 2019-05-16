@@ -1675,6 +1675,8 @@ pytimer_run(void *arg, u_int64_t now)
 	ret = PyObject_CallObject(timer->callable, NULL);
 	Py_XDECREF(ret);
 
+	kore_python_log_error("pytimer_run");
+
 	if (timer->flags & KORE_TIMER_ONESHOT) {
 		timer->run = NULL;
 		Py_DECREF((PyObject *)timer);
@@ -4238,13 +4240,11 @@ pyhttp_client_request(struct pyhttp_client *client, int m, PyObject *kwargs)
 		    client->tlscert);
 		 curl_easy_setopt(op->curl.handle, CURLOPT_SSLKEY,
 		    client->tlskey);
+	}
 
-		if (client->tlsverify == 0) {
-			curl_easy_setopt(op->curl.handle,
-			    CURLOPT_SSL_VERIFYHOST, 0);
-			curl_easy_setopt(op->curl.handle,
-			    CURLOPT_SSL_VERIFYPEER, 0);
-		}
+	if (client->tlsverify == 0) {
+		curl_easy_setopt(op->curl.handle, CURLOPT_SSL_VERIFYHOST, 0);
+		curl_easy_setopt(op->curl.handle, CURLOPT_SSL_VERIFYPEER, 0);
 	}
 
 	if (client->cabundle != NULL) {
