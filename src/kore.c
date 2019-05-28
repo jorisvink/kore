@@ -398,9 +398,10 @@ kore_server_bind_unix(const char *path, const char *ccb)
 #if defined(__linux__)
 	if (sun.sun_path[0] == '@')
 		sun.sun_path[0] = '\0';
-#endif
-
 	socklen = sizeof(sun.sun_family) + len;
+#else
+	socklen = sizeof(sun);
+#endif
 
 	if ((l = kore_listener_alloc(AF_UNIX, ccb)) == NULL)
 		return (KORE_RESULT_ERROR);
