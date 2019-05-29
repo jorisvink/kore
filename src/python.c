@@ -2682,6 +2682,7 @@ pylock_do_release(struct pylock *lock)
 		if (op->locking == 0)
 			continue;
 
+		op->active = 0;
 		TAILQ_REMOVE(&op->lock->ops, op, list);
 
 		if (op->coro->request != NULL)
@@ -2689,7 +2690,6 @@ pylock_do_release(struct pylock *lock)
 		else
 			python_coro_wakeup(op->coro);
 
-		op->active = 0;
 		Py_DECREF((PyObject *)op);
 		break;
 	}
@@ -2733,14 +2733,27 @@ pylock_op_iternext(struct pylock_op *op)
 		pylock_do_release(op->lock);
 	} else {
 		if (op->lock->owner != NULL) {
+			/*
+			 * We could be beat by another coroutine that grabbed
+			 * the lock even if we were the one woken up for it.
+			 */
+			if (op->active == 0) {
+				op->active = 1;
+				TAILQ_INSERT_HEAD(&op->lock->ops, op, list);
+				Py_INCREF((PyObject *)op);
+			}
 			Py_RETURN_NONE;
 		}
 
 		op->lock->owner = coro_running;
 	}
 
-	op->active = 0;
-	TAILQ_REMOVE(&op->lock->ops, op, list);
+	if (op->active) {
+		op->active = 0;
+		TAILQ_REMOVE(&op->lock->ops, op, list);
+		Py_DECREF((PyObject *)op);
+	}
+
 	PyErr_SetNone(PyExc_StopIteration);
 
 	return (NULL);
