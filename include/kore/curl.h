@@ -91,6 +91,8 @@ void	kore_curl_bind_request(struct kore_curl *, struct http_request *);
 void	kore_curl_bind_callback(struct kore_curl *,
 	    void (*cb)(struct kore_curl *, void *), void *);
 
+const char	*kore_curl_strerror(struct kore_curl *);
+
 #if defined(__cplusplus)
 }
 #endif

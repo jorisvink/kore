@@ -244,11 +244,24 @@ kore_curl_success(struct kore_curl *client)
 	return (client->result == CURLE_OK);
 }
 
+const char *
+kore_curl_strerror(struct kore_curl *client)
+{
+	const char	*err;
+
+	if (client->errbuf[0] != '\0')
+		err = &client->errbuf[0];
+	else
+		err = curl_easy_strerror(client->result);
+
+	return (err);
+}
+
 void
 kore_curl_logerror(struct kore_curl *client)
 {
-	kore_log(LOG_NOTICE, "curl error: %s -> %s",
-	    client->url, client->errbuf);
+	kore_log(LOG_NOTICE, "curl error: %s -> %s", client->url,
+	    kore_curl_strerror(client));
 }
 
 void

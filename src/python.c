@@ -4329,7 +4329,7 @@ pyhttp_client_op_iternext(struct pyhttp_client_op *op)
 
 	if (!kore_curl_success(&op->curl)) {
 		PyErr_Format(PyExc_RuntimeError, "request to '%s' failed: %s",
-		    op->curl.url, op->curl.errbuf);
+		    op->curl.url, kore_curl_strerror(&op->curl));
 		return (NULL);
 	}
 
