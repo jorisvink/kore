@@ -669,11 +669,11 @@ python_runtime_http_request(void *addr, struct http_request *req)
 	if (PyCoro_CheckExact(pyret)) {
 		req->py_coro = python_coro_create(pyret, req);
 		if (python_coro_run(req->py_coro) == KORE_RESULT_OK) {
+			http_request_wakeup(req);
 			kore_python_coro_delete(req->py_coro);
 			req->py_coro = NULL;
 			return (KORE_RESULT_OK);
 		}
-		http_request_sleep(req);
 		return (KORE_RESULT_RETRY);
 	}
 
@@ -744,12 +744,12 @@ python_runtime_validator(void *addr, struct http_request *req, const void *data)
 		coro = python_coro_create(pyret, req);
 		req->py_coro = coro;
 		if (python_coro_run(coro) == KORE_RESULT_OK) {
+			http_request_wakeup(req);
 			ret = python_validator_check(coro->result);
 			kore_python_coro_delete(coro);
 			req->py_coro = NULL;
 			return (ret);
 		}
-		http_request_sleep(req);
 		return (KORE_RESULT_RETRY);
 	}
 
