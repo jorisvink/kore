@@ -313,6 +313,9 @@ http_process(void)
 
 		http_process_request(req);
 		total += req->ms;
+
+		if (req->flags & HTTP_REQUEST_DELETE)
+			http_request_free(req);
 	}
 }
 

@@ -669,11 +669,11 @@ python_runtime_http_request(void *addr, struct http_request *req)
 	if (PyCoro_CheckExact(pyret)) {
 		req->py_coro = python_coro_create(pyret, req);
 		if (python_coro_run(req->py_coro) == KORE_RESULT_OK) {
+			http_request_wakeup(req);
 			kore_python_coro_delete(req->py_coro);
 			req->py_coro = NULL;
 			return (KORE_RESULT_OK);
 		}
-		http_request_sleep(req);
 		return (KORE_RESULT_RETRY);
 	}
 
@@ -744,12 +744,12 @@ python_runtime_validator(void *addr, struct http_request *req, const void *data)
 		coro = python_coro_create(pyret, req);
 		req->py_coro = coro;
 		if (python_coro_run(coro) == KORE_RESULT_OK) {
+			http_request_wakeup(req);
 			ret = python_validator_check(coro->result);
 			kore_python_coro_delete(coro);
 			req->py_coro = NULL;
 			return (ret);
 		}
-		http_request_sleep(req);
 		return (KORE_RESULT_RETRY);
 	}
 
@@ -1674,6 +1674,8 @@ pytimer_run(void *arg, u_int64_t now)
 	PyErr_Clear();
 	ret = PyObject_CallObject(timer->callable, NULL);
 	Py_XDECREF(ret);
+
+	kore_python_log_error("pytimer_run");
 
 	if (timer->flags & KORE_TIMER_ONESHOT) {
 		timer->run = NULL;
@@ -2680,6 +2682,7 @@ pylock_do_release(struct pylock *lock)
 		if (op->locking == 0)
 			continue;
 
+		op->active = 0;
 		TAILQ_REMOVE(&op->lock->ops, op, list);
 
 		if (op->coro->request != NULL)
@@ -2687,7 +2690,6 @@ pylock_do_release(struct pylock *lock)
 		else
 			python_coro_wakeup(op->coro);
 
-		op->active = 0;
 		Py_DECREF((PyObject *)op);
 		break;
 	}
@@ -2731,14 +2733,27 @@ pylock_op_iternext(struct pylock_op *op)
 		pylock_do_release(op->lock);
 	} else {
 		if (op->lock->owner != NULL) {
+			/*
+			 * We could be beat by another coroutine that grabbed
+			 * the lock even if we were the one woken up for it.
+			 */
+			if (op->active == 0) {
+				op->active = 1;
+				TAILQ_INSERT_HEAD(&op->lock->ops, op, list);
+				Py_INCREF((PyObject *)op);
+			}
 			Py_RETURN_NONE;
 		}
 
 		op->lock->owner = coro_running;
 	}
 
-	op->active = 0;
-	TAILQ_REMOVE(&op->lock->ops, op, list);
+	if (op->active) {
+		op->active = 0;
+		TAILQ_REMOVE(&op->lock->ops, op, list);
+		Py_DECREF((PyObject *)op);
+	}
+
 	PyErr_SetNone(PyExc_StopIteration);
 
 	return (NULL);
@@ -4238,13 +4253,11 @@ pyhttp_client_request(struct pyhttp_client *client, int m, PyObject *kwargs)
 		    client->tlscert);
 		 curl_easy_setopt(op->curl.handle, CURLOPT_SSLKEY,
 		    client->tlskey);
+	}
 
-		if (client->tlsverify == 0) {
-			curl_easy_setopt(op->curl.handle,
-			    CURLOPT_SSL_VERIFYHOST, 0);
-			curl_easy_setopt(op->curl.handle,
-			    CURLOPT_SSL_VERIFYPEER, 0);
-		}
+	if (client->tlsverify == 0) {
+		curl_easy_setopt(op->curl.handle, CURLOPT_SSL_VERIFYHOST, 0);
+		curl_easy_setopt(op->curl.handle, CURLOPT_SSL_VERIFYPEER, 0);
 	}
 
 	if (client->cabundle != NULL) {
@@ -4316,7 +4329,7 @@ pyhttp_client_op_iternext(struct pyhttp_client_op *op)
 
 	if (!kore_curl_success(&op->curl)) {
 		PyErr_Format(PyExc_RuntimeError, "request to '%s' failed: %s",
-		    op->curl.url, op->curl.errbuf);
+		    op->curl.url, kore_curl_strerror(&op->curl));
 		return (NULL);
 	}
 
