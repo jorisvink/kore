@@ -26,6 +26,10 @@
 #define KORE_PGSQL_ASYNC		0x0002
 #define KORE_PGSQL_SCHEDULED		0x0004
 
+#define KORE_PGSQL_PARAM_BINARY(v, l)	v, l, 1
+#define KORE_PGSQL_PARAM_TEXT_LEN(v, l)	v, l, 0
+#define KORE_PGSQL_PARAM_TEXT(v)	v, strlen(v), 0
+
 #if defined(__cplusplus)
 extern "C" {
 #endif
@@ -81,12 +85,12 @@ int	kore_pgsql_setup(struct kore_pgsql *, const char *, int);
 void	kore_pgsql_handle(void *, int);
 void	kore_pgsql_cleanup(struct kore_pgsql *);
 void	kore_pgsql_continue(struct kore_pgsql *);
-int	kore_pgsql_query(struct kore_pgsql *, const char *);
+int	kore_pgsql_query(struct kore_pgsql *, const void *);
 int	kore_pgsql_query_params(struct kore_pgsql *,
-	    const char *, int, int, ...);
+	    const void *, int, int, ...);
 int	kore_pgsql_v_query_params(struct kore_pgsql *,
-	    const char *, int, int, va_list);
-int	kore_pgsql_query_param_fields(struct kore_pgsql *, const char *,
+	    const void *, int, int, va_list);
+int	kore_pgsql_query_param_fields(struct kore_pgsql *, const void *,
 	    int, int, const char **, int *, int *);
 int	kore_pgsql_register(const char *, const char *);
 int	kore_pgsql_ntuples(struct kore_pgsql *);
