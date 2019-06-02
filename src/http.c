@@ -149,6 +149,7 @@ static LIST_HEAD(, http_media_type)	http_media_types;
 static struct kore_pool			http_request_pool;
 static struct kore_pool			http_cookie_pool;
 static struct kore_pool			http_body_path;
+static struct kore_pool			http_rlq_pool;
 
 struct kore_pool			http_header_pool;
 
@@ -196,6 +197,8 @@ http_init(void)
 	    sizeof(struct http_header), prealloc * HTTP_REQ_HEADER_MAX);
 	kore_pool_init(&http_cookie_pool, "http_cookie_pool",
 		sizeof(struct http_cookie), prealloc * HTTP_MAX_COOKIES);
+	kore_pool_init(&http_rlq_pool, "http_rlq_pool",
+		sizeof(struct http_runlock_queue), http_request_limit);
 
 	kore_pool_init(&http_body_path,
 	    "http_body_path", HTTP_BODY_PATH_MAX, prealloc);
@@ -411,6 +414,11 @@ http_request_free(struct http_request *req)
 
 	if (req->onfree != NULL)
 		req->onfree(req);
+
+	if (req->runlock != NULL) {
+		LIST_REMOVE(req->runlock, list);
+		req->runlock = NULL;
+	}
 
 #if defined(KORE_USE_TASKS)
 	pending_tasks = 0;
@@ -1420,6 +1428,55 @@ http_start_recv(struct connection *c)
 	(void)net_recv_flush(c);
 }
 
+void
+http_runlock_init(struct http_runlock *lock)
+{
+	lock->owner = NULL;
+	LIST_INIT(&lock->queue);
+}
+
+int
+http_runlock_acquire(struct http_runlock *lock, struct http_request *req)
+{
+	if (lock->owner != NULL) {
+		if (req->runlock != NULL)
+			fatal("%s: request already waiting on lock", __func__);
+
+		req->runlock = kore_pool_get(&http_rlq_pool);
+		req->runlock->req = req;
+		LIST_INSERT_HEAD(&lock->queue, req->runlock, list);
+
+		http_request_sleep(req);
+		return (KORE_RESULT_ERROR);
+	}
+
+	lock->owner = req;
+
+	return (KORE_RESULT_OK);
+}
+
+void
+http_runlock_release(struct http_runlock *lock, struct http_request *req)
+{
+	struct http_runlock_queue	*next;
+	struct http_request		*nextreq;
+
+	if (lock->owner != req)
+		fatal("%s: calling request != owner of runlock", __func__);
+
+	lock->owner = NULL;
+
+	if ((next = LIST_FIRST(&lock->queue)) != NULL) {
+		LIST_REMOVE(next, list);
+
+		nextreq = next->req;
+		nextreq->runlock = NULL;
+
+		http_request_wakeup(nextreq);
+		kore_pool_put(&http_rlq_pool, next);
+	}
+}
+
 static struct http_request *
 http_request_new(struct connection *c, const char *host,
     const char *method, char *path, const char *version)
@@ -1549,6 +1606,7 @@ http_request_new(struct connection *c, const char *host,
 	req->agent = NULL;
 	req->onfree = NULL;
 	req->referer = NULL;
+	req->runlock = NULL;
 	req->flags = flags;
 	req->fsm_state = 0;
 	req->http_body = NULL;
