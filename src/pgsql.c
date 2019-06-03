@@ -172,7 +172,7 @@ kore_pgsql_bind_callback(struct kore_pgsql *pgsql,
 }
 
 int
-kore_pgsql_query(struct kore_pgsql *pgsql, const char *query)
+kore_pgsql_query(struct kore_pgsql *pgsql, const void *query)
 {
 	if (pgsql->conn == NULL) {
 		pgsql_set_error(pgsql, "no connection was set before query");
@@ -202,7 +202,7 @@ kore_pgsql_query(struct kore_pgsql *pgsql, const char *query)
 
 int
 kore_pgsql_v_query_params(struct kore_pgsql *pgsql,
-    const char *query, int binary, int count, va_list args)
+    const void *query, int binary, int count, va_list args)
 {
 	int		i;
 	const char	**values;
@@ -240,7 +240,7 @@ kore_pgsql_v_query_params(struct kore_pgsql *pgsql,
 }
 
 int
-kore_pgsql_query_param_fields(struct kore_pgsql *pgsql, const char *query,
+kore_pgsql_query_param_fields(struct kore_pgsql *pgsql, const void *query,
     int binary, int count, const char **values, int *lengths, int *formats)
 {
 	if (pgsql->conn == NULL) {
@@ -275,7 +275,7 @@ kore_pgsql_query_param_fields(struct kore_pgsql *pgsql, const char *query,
 
 int
 kore_pgsql_query_params(struct kore_pgsql *pgsql,
-    const char *query, int binary, int count, ...)
+    const void *query, int binary, int count, ...)
 {
 	int		ret;
 	va_list		args;

@@ -71,6 +71,16 @@ extern "C" {
 #define HTTP_STATE_COMPLETE	2
 #define HTTP_STATE_RETRY	3
 
+struct http_runlock_queue {
+	struct http_request		*req;
+	LIST_ENTRY(http_runlock_queue)	list;
+};
+
+struct http_runlock {
+	struct http_request		*owner;
+	LIST_HEAD(, http_runlock_queue)	queue;
+};
+
 struct http_header {
 	char			*header;
 	char			*value;
@@ -249,6 +259,7 @@ struct http_request {
 	size_t				state_len;
 	char				*query_string;
 	struct kore_module_handle	*hdlr;
+	struct http_runlock_queue	*runlock;
 	void				(*onfree)(struct http_request *);
 
 #if defined(KORE_USE_PYTHON)
@@ -344,6 +355,12 @@ int	 	http_request_cookie(struct http_request *,
 void		http_response_cookie(struct http_request *, const char *,
 		    const char *, const char *, time_t, u_int32_t,
 		    struct http_cookie **);
+
+void		http_runlock_init(struct http_runlock *);
+void		http_runlock_release(struct http_runlock *,
+		    struct http_request *);
+int		http_runlock_acquire(struct http_runlock *,
+		    struct http_request *);
 
 const char	*http_media_type(const char *);
 void		*http_state_get(struct http_request *);
