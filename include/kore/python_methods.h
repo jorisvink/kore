@@ -675,6 +675,7 @@ struct pyhttp_client_op {
 	int			headers;
 	struct kore_curl	curl;
 	struct python_coro	*coro;
+	struct pyhttp_client	*client;
 };
 
 static PyObject	*pyhttp_client_op_await(PyObject *);
