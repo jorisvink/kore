@@ -3159,10 +3159,13 @@ pyhttp_response(struct pyhttp_request *pyreq, PyObject *args)
 	} else if (obj == Py_None) {
 		http_response(pyreq->req, status, NULL, 0);
 	} else {
+		c = pyreq->req->owner;
+		if (c->state == CONN_STATE_DISCONNECTING) {
+			Py_RETURN_FALSE;
+		}
+
 		if ((iterator = PyObject_GetIter(obj)) == NULL)
 			return (NULL);
-
-		c = pyreq->req->owner;
 
 		iterobj = kore_pool_get(&iterobj_pool);
 		iterobj->iterator = iterator;
