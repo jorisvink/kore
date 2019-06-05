@@ -45,6 +45,7 @@ static PyObject		*python_kore_fatalx(PyObject *, PyObject *);
 static PyObject		*python_kore_suspend(PyObject *, PyObject *);
 static PyObject		*python_kore_shutdown(PyObject *, PyObject *);
 static PyObject		*python_kore_bind_unix(PyObject *, PyObject *);
+static PyObject		*python_kore_prerequest(PyObject *, PyObject *);
 static PyObject		*python_kore_task_create(PyObject *, PyObject *);
 static PyObject		*python_kore_socket_wrap(PyObject *, PyObject *);
 static PyObject		*python_kore_gather(PyObject *, PyObject *, PyObject *);
@@ -80,6 +81,7 @@ static struct PyMethodDef pykore_methods[] = {
 	METHOD("suspend", python_kore_suspend, METH_VARARGS),
 	METHOD("shutdown", python_kore_shutdown, METH_NOARGS),
 	METHOD("bind_unix", python_kore_bind_unix, METH_VARARGS),
+	METHOD("prerequest", python_kore_prerequest, METH_VARARGS),
 	METHOD("task_create", python_kore_task_create, METH_VARARGS),
 	METHOD("socket_wrap", python_kore_socket_wrap, METH_VARARGS),
 	METHOD("websocket_broadcast", python_websocket_broadcast, METH_VARARGS),
@@ -544,6 +546,7 @@ static PyTypeObject pyconnection_type = {
 struct pyhttp_request {
 	PyObject_HEAD
 	struct http_request	*req;
+	PyObject		*dict;
 	PyObject		*data;
 };
 
@@ -621,10 +624,13 @@ static PyTypeObject pyhttp_request_type = {
 	PyVarObject_HEAD_INIT(NULL, 0)
 	.tp_name = "kore.http_request",
 	.tp_doc = "struct http_request",
+	.tp_setattro = PyObject_GenericSetAttr,
+	.tp_getattro = PyObject_GenericGetAttr,
 	.tp_getset = pyhttp_request_getset,
 	.tp_methods = pyhttp_request_methods,
 	.tp_dealloc = (destructor)pyhttp_dealloc,
 	.tp_basicsize = sizeof(struct pyhttp_request),
+	.tp_dictoffset = offsetof(struct pyhttp_request, dict),
 	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
 };
 

@@ -40,6 +40,13 @@
 #include "python_api.h"
 #include "python_methods.h"
 
+struct reqcall {
+	PyObject		*f;
+	LIST_ENTRY(reqcall)	list;
+};
+
+LIST_HEAD(reqcall_list, reqcall);
+
 static PyMODINIT_FUNC	python_module_init(void);
 static PyObject		*python_import(const char *);
 static PyObject		*pyconnection_alloc(struct connection *);
@@ -177,6 +184,7 @@ static PyMemAllocatorEx allocator = {
 };
 
 static TAILQ_HEAD(, pyproc)		procs;
+static struct reqcall_list		prereq;
 
 static struct kore_pool			coro_pool;
 static struct kore_pool			iterobj_pool;
@@ -203,6 +211,8 @@ kore_python_init(void)
 
 	coro_id = 0;
 	coro_count = 0;
+
+	LIST_INIT(&prereq);
 
 	TAILQ_INIT(&procs);
 	TAILQ_INIT(&coro_runnable);
@@ -620,6 +630,7 @@ pyconnection_dealloc(struct pyconnection *pyc)
 static void
 pyhttp_dealloc(struct pyhttp_request *pyreq)
 {
+	Py_XDECREF(pyreq->dict);
 	Py_XDECREF(pyreq->data);
 	PyObject_Del((PyObject *)pyreq);
 }
@@ -633,7 +644,8 @@ pyhttp_file_dealloc(struct pyhttp_file *pyfile)
 static int
 python_runtime_http_request(void *addr, struct http_request *req)
 {
-	PyObject	*pyret, *pyreq, *args, *callable;
+	struct reqcall		*rq;
+	PyObject		*pyret, *pyreq, *args, *callable;
 
 	if (req->py_coro != NULL) {
 		python_coro_wakeup(req->py_coro);
@@ -649,6 +661,26 @@ python_runtime_http_request(void *addr, struct http_request *req)
 
 	if ((pyreq = pyhttp_request_alloc(req)) == NULL)
 		fatal("python_runtime_http_request: pyreq alloc failed");
+
+	LIST_FOREACH(rq, &prereq, list) {
+		PyErr_Clear();
+		pyret = PyObject_CallFunctionObjArgs(rq->f, pyreq, NULL);
+
+		if (pyret == NULL) {
+			Py_DECREF(pyreq);
+			kore_python_log_error("prerequest");
+			http_response(req, HTTP_STATUS_INTERNAL_ERROR, NULL, 0);
+			return (KORE_RESULT_OK);
+		}
+
+		if (pyret == Py_False) {
+			Py_DECREF(pyreq);
+			Py_DECREF(pyret);
+			return (KORE_RESULT_OK);
+		}
+
+		Py_DECREF(pyret);
+	}
 
 	if ((args = PyTuple_New(1)) == NULL)
 		fatal("python_runtime_http_request: PyTuple_New failed");
@@ -1101,6 +1133,24 @@ python_kore_bind_unix(PyObject *self, PyObject *args)
 	}
 
 	Py_RETURN_TRUE;
+}
+
+static PyObject *
+python_kore_prerequest(PyObject *self, PyObject *args)
+{
+	PyObject		*f;
+	struct reqcall		*rq;
+
+	if (!PyArg_ParseTuple(args, "O", &f))
+		return (NULL);
+
+	rq = kore_calloc(1, sizeof(*rq));
+	rq->f = f;
+
+	Py_INCREF(f);
+	LIST_INSERT_HEAD(&prereq, rq, list);
+
+	return (f);
 }
 
 static PyObject *
@@ -3110,6 +3160,7 @@ pyhttp_request_alloc(const struct http_request *req)
 	ptr.cp = req;
 	pyreq->req = ptr.p;
 	pyreq->data = NULL;
+	pyreq->dict = NULL;
 
 	return ((PyObject *)pyreq);
 }
