@@ -3159,10 +3159,13 @@ pyhttp_response(struct pyhttp_request *pyreq, PyObject *args)
 	} else if (obj == Py_None) {
 		http_response(pyreq->req, status, NULL, 0);
 	} else {
+		c = pyreq->req->owner;
+		if (c->state == CONN_STATE_DISCONNECTING) {
+			Py_RETURN_FALSE;
+		}
+
 		if ((iterator = PyObject_GetIter(obj)) == NULL)
 			return (NULL);
-
-		c = pyreq->req->owner;
 
 		iterobj = kore_pool_get(&iterobj_pool);
 		iterobj->iterator = iterator;
@@ -4228,6 +4231,7 @@ pyhttp_client_request(struct pyhttp_client *client, int m, PyObject *kwargs)
 	op->state = PYHTTP_CLIENT_OP_RUN;
 
 	Py_INCREF(client);
+	op->client = client;
 
 	kore_curl_http_setup(&op->curl, m, ptr, length);
 	kore_curl_bind_callback(&op->curl, python_curl_callback, op);
@@ -4302,6 +4306,7 @@ pyhttp_client_request(struct pyhttp_client *client, int m, PyObject *kwargs)
 static void
 pyhttp_client_op_dealloc(struct pyhttp_client_op *op)
 {
+	Py_DECREF(op->client);
 	kore_curl_cleanup(&op->curl);
 	PyObject_Del((PyObject *)op);
 }
