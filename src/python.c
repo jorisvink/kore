@@ -42,10 +42,10 @@
 
 struct reqcall {
 	PyObject		*f;
-	LIST_ENTRY(reqcall)	list;
+	TAILQ_ENTRY(reqcall)	list;
 };
 
-LIST_HEAD(reqcall_list, reqcall);
+TAILQ_HEAD(reqcall_list, reqcall);
 
 static PyMODINIT_FUNC	python_module_init(void);
 static PyObject		*python_import(const char *);
@@ -213,7 +213,7 @@ kore_python_init(void)
 	coro_id = 0;
 	coro_count = 0;
 
-	LIST_INIT(&prereq);
+	TAILQ_INIT(&prereq);
 
 	TAILQ_INIT(&procs);
 	TAILQ_INIT(&coro_runnable);
@@ -662,7 +662,7 @@ python_runtime_http_request(void *addr, struct http_request *req)
 
 	switch (req->fsm_state) {
 	case PYHTTP_STATE_INIT:
-		req->py_rqnext = LIST_FIRST(&prereq);
+		req->py_rqnext = TAILQ_FIRST(&prereq);
 		req->fsm_state = PYHTTP_STATE_PREPROCESS;
 		if (req->py_req == NULL) {
 			if ((req->py_req = pyhttp_request_alloc(req)) == NULL)
@@ -1157,7 +1157,7 @@ python_kore_prerequest(PyObject *self, PyObject *args)
 	rq->f = f;
 
 	Py_INCREF(f);
-	LIST_INSERT_HEAD(&prereq, rq, list);
+	TAILQ_INSERT_TAIL(&prereq, rq, list);
 
 	return (f);
 }
@@ -3197,7 +3197,7 @@ pyhttp_preprocess(struct http_request *req)
 	rq = req->py_rqnext;
 
 	while (rq) {
-		req->py_rqnext = LIST_NEXT(rq, list);
+		req->py_rqnext = TAILQ_NEXT(rq, list);
 
 		PyErr_Clear();
 		ret = PyObject_CallFunctionObjArgs(rq->f, req->py_req, NULL);
