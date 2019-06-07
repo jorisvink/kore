@@ -631,7 +631,6 @@ pyconnection_dealloc(struct pyconnection *pyc)
 static void
 pyhttp_dealloc(struct pyhttp_request *pyreq)
 {
-	printf("http request deallocated\n");
 	Py_XDECREF(pyreq->dict);
 	Py_XDECREF(pyreq->data);
 	PyObject_Del((PyObject *)pyreq);
