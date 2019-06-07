@@ -83,6 +83,7 @@ static void		pysuspend_wakeup(void *, u_int64_t);
 static void		pygather_reap_coro(struct pygather_op *,
 			    struct python_coro *);
 
+static int		pyhttp_preprocess(struct http_request *);
 static int		pyhttp_iterobj_chunk_sent(struct netbuf *);
 static int		pyhttp_iterobj_next(struct pyhttp_iterobj *);
 static void		pyhttp_iterobj_disconnect(struct connection *);
@@ -630,6 +631,7 @@ pyconnection_dealloc(struct pyconnection *pyc)
 static void
 pyhttp_dealloc(struct pyhttp_request *pyreq)
 {
+	printf("http request deallocated\n");
 	Py_XDECREF(pyreq->dict);
 	Py_XDECREF(pyreq->data);
 	PyObject_Del((PyObject *)pyreq);
@@ -644,48 +646,55 @@ pyhttp_file_dealloc(struct pyhttp_file *pyfile)
 static int
 python_runtime_http_request(void *addr, struct http_request *req)
 {
-	struct reqcall		*rq;
-	PyObject		*pyret, *pyreq, *args, *callable;
+	int			ret;
+	PyObject		*pyret, *args, *callable;
 
 	if (req->py_coro != NULL) {
 		python_coro_wakeup(req->py_coro);
 		if (python_coro_run(req->py_coro) == KORE_RESULT_OK) {
 			kore_python_coro_delete(req->py_coro);
 			req->py_coro = NULL;
-			return (KORE_RESULT_OK);
+
+			if (req->fsm_state != PYHTTP_STATE_PREPROCESS)
+				return (KORE_RESULT_OK);
 		}
 		return (KORE_RESULT_RETRY);
 	}
 
-	callable = (PyObject *)addr;
-
-	if ((pyreq = pyhttp_request_alloc(req)) == NULL)
-		fatal("python_runtime_http_request: pyreq alloc failed");
-
-	LIST_FOREACH(rq, &prereq, list) {
-		PyErr_Clear();
-		pyret = PyObject_CallFunctionObjArgs(rq->f, pyreq, NULL);
-
-		if (pyret == NULL) {
-			Py_DECREF(pyreq);
-			kore_python_log_error("prerequest");
-			http_response(req, HTTP_STATUS_INTERNAL_ERROR, NULL, 0);
-			return (KORE_RESULT_OK);
+	switch (req->fsm_state) {
+	case PYHTTP_STATE_INIT:
+		req->py_rqnext = LIST_FIRST(&prereq);
+		req->fsm_state = PYHTTP_STATE_PREPROCESS;
+		if (req->py_req == NULL) {
+			if ((req->py_req = pyhttp_request_alloc(req)) == NULL)
+				fatal("%s: pyreq alloc failed", __func__);
 		}
-
-		if (pyret == Py_False) {
-			Py_DECREF(pyreq);
-			Py_DECREF(pyret);
+		/* fallthrough */
+	case PYHTTP_STATE_PREPROCESS:
+		ret = pyhttp_preprocess(req);
+		switch (ret) {
+		case KORE_RESULT_OK:
+			req->fsm_state = PYHTTP_STATE_RUN;
+			break;
+		case KORE_RESULT_RETRY:
+			return (KORE_RESULT_RETRY);
+		case KORE_RESULT_ERROR:
 			return (KORE_RESULT_OK);
+		default:
+			fatal("invalid state pyhttp state %d", req->fsm_state);
 		}
-
-		Py_DECREF(pyret);
+		/* fallthrough */
+	case PYHTTP_STATE_RUN:
+		break;
 	}
+
+	callable = (PyObject *)addr;
 
 	if ((args = PyTuple_New(1)) == NULL)
 		fatal("python_runtime_http_request: PyTuple_New failed");
 
-	if (PyTuple_SetItem(args, 0, pyreq) != 0)
+	Py_INCREF(req->py_req);
+	if (PyTuple_SetItem(args, 0, req->py_req) != 0)
 		fatal("python_runtime_http_request: PyTuple_SetItem failed");
 
 	PyErr_Clear();
@@ -722,7 +731,12 @@ python_runtime_validator(void *addr, struct http_request *req, const void *data)
 {
 	int			ret;
 	struct python_coro	*coro;
-	PyObject		*pyret, *pyreq, *args, *callable, *arg;
+	PyObject		*pyret, *args, *callable, *arg;
+
+	if (req->py_req == NULL) {
+		if ((req->py_req = pyhttp_request_alloc(req)) == NULL)
+			fatal("%s: pyreq alloc failed", __func__);
+	}
 
 	if (req->py_coro != NULL) {
 		coro = req->py_coro;
@@ -740,25 +754,21 @@ python_runtime_validator(void *addr, struct http_request *req, const void *data)
 	callable = (PyObject *)addr;
 
 	if (req->flags & HTTP_VALIDATOR_IS_REQUEST) {
-		if ((arg = pyhttp_request_alloc(data)) == NULL)
-			fatal("%s: pyreq failed", __func__);
-
 		if ((args = PyTuple_New(1)) == NULL)
 			fatal("%s: PyTuple_New failed", __func__);
 
-		if (PyTuple_SetItem(args, 0, arg) != 0)
+		Py_INCREF(req->py_req);
+		if (PyTuple_SetItem(args, 0, req->py_req) != 0)
 			fatal("%s: PyTuple_SetItem failed", __func__);
 	} else {
-		if ((pyreq = pyhttp_request_alloc(req)) == NULL)
-			fatal("%s: pyreq alloc failed", __func__);
-
 		if ((arg = PyUnicode_FromString(data)) == NULL)
 			fatal("python_runtime_validator: PyUnicode failed");
 
 		if ((args = PyTuple_New(2)) == NULL)
 			fatal("%s: PyTuple_New failed", __func__);
 
-		if (PyTuple_SetItem(args, 0, pyreq) != 0 ||
+		Py_INCREF(req->py_req);
+		if (PyTuple_SetItem(args, 0, req->py_req) != 0 ||
 		    PyTuple_SetItem(args, 1, arg) != 0)
 			fatal("%s: PyTuple_SetItem failed", __func__);
 	}
@@ -3177,6 +3187,50 @@ pyhttp_file_alloc(struct http_file *file)
 	pyfile->file = file;
 
 	return ((PyObject *)pyfile);
+}
+
+static int
+pyhttp_preprocess(struct http_request *req)
+{
+	struct reqcall		*rq;
+	PyObject		*ret;
+
+	rq = req->py_rqnext;
+
+	while (rq) {
+		req->py_rqnext = LIST_NEXT(rq, list);
+
+		PyErr_Clear();
+		ret = PyObject_CallFunctionObjArgs(rq->f, req->py_req, NULL);
+
+		if (ret == NULL) {
+			kore_python_log_error("preprocess");
+			http_response(req, HTTP_STATUS_INTERNAL_ERROR, NULL, 0);
+			return (KORE_RESULT_ERROR);
+		}
+
+		if (ret == Py_False) {
+			Py_DECREF(ret);
+			return (KORE_RESULT_ERROR);
+		}
+
+		if (PyCoro_CheckExact(ret)) {
+			req->py_coro = python_coro_create(ret, req);
+			if (python_coro_run(req->py_coro) == KORE_RESULT_OK) {
+				http_request_wakeup(req);
+				kore_python_coro_delete(req->py_coro);
+				req->py_coro = NULL;
+				rq = req->py_rqnext;
+				continue;
+			}
+			return (KORE_RESULT_RETRY);
+		}
+
+		Py_DECREF(ret);
+		rq = req->py_rqnext;
+	}
+
+	return (KORE_RESULT_OK);
 }
 
 static PyObject *

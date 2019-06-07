@@ -543,6 +543,10 @@ static PyTypeObject pyconnection_type = {
 	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
 };
 
+#define PYHTTP_STATE_INIT		0
+#define PYHTTP_STATE_PREPROCESS		1
+#define PYHTTP_STATE_RUN		2
+
 struct pyhttp_request {
 	PyObject_HEAD
 	struct http_request	*req;

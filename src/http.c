@@ -442,6 +442,7 @@ http_request_free(struct http_request *req)
 		kore_python_coro_delete(req->py_coro);
 		req->py_coro = NULL;
 	}
+	Py_XDECREF(req->py_req);
 #endif
 #if defined(KORE_USE_PGSQL)
 	while (!LIST_EMPTY(&(req->pgsqls))) {
@@ -1621,7 +1622,9 @@ http_request_new(struct connection *c, const char *host,
 	req->path = path;
 
 #if defined(KORE_USE_PYTHON)
+	req->py_req = NULL;
 	req->py_coro = NULL;
+	req->py_rqnext = NULL;
 #endif
 
 	if (qsoff > 0) {

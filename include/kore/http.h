@@ -230,6 +230,7 @@ struct http_file {
 #define HTTP_BODY_DIGEST_LEN		32
 #define HTTP_BODY_DIGEST_STRLEN		((HTTP_BODY_DIGEST_LEN * 2) + 1)
 
+struct reqcall;
 struct kore_task;
 struct http_client;
 
@@ -263,7 +264,9 @@ struct http_request {
 	void				(*onfree)(struct http_request *);
 
 #if defined(KORE_USE_PYTHON)
+	void				*py_req;
 	void				*py_coro;
+	struct reqcall			*py_rqnext;
 #endif
 
 	u_int8_t	http_body_digest[HTTP_BODY_DIGEST_LEN];
