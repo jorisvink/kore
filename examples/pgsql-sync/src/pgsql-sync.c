@@ -64,7 +64,7 @@ page(struct http_request *req)
 
 	/*
 	 * Now we can fire off the query, once it returns we either have
-	 * a result on which we can operate or an error occured.
+	 * a result on which we can operate or an error occurred.
 	 */
 	if (!kore_pgsql_query(&sql, "SELECT * FROM coders")) {
 		kore_pgsql_logerror(&sql);

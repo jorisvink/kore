@@ -122,7 +122,7 @@ state_result(struct http_request *req)
 		 */
 		kore_curl_response_as_bytes(client, &body, &len);
 
-		/* We could check the existance of a header: */
+		/* We could check the existence of a header: */
 		if (kore_curl_http_get_header(client, "server", &header))
 			printf("got server header: '%s'\n", header);
 

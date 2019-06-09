@@ -59,7 +59,7 @@ connection_setup(struct connection *c)
  * net_send_flush() or net_recv_flush() if KORE_EVENT_WRITE or
  * KORE_EVENT_READ are set respectively in c->evt.flags.
  * Returning KORE_RESULT_ERROR from this callback will disconnect the
- * connection alltogether.
+ * connection altogether.
  */
 int
 connection_handle(struct connection *c)
