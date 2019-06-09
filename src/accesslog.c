@@ -102,6 +102,9 @@ kore_accesslog(struct http_request *req)
 	else
 		referer = "-";
 
+	if (req->agent == NULL)
+		req->agent = "-";
+
 	cn = "-";
 #if !defined(KORE_NO_TLS)
 	if (req->owner->cert != NULL) {
