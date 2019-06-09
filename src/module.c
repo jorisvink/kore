@@ -80,10 +80,8 @@ kore_module_load(const char *path, const char *onload, int type)
 			fatal("stat(%s): %s", path, errno_s);
 
 		module->path = kore_strdup(path);
-		module->mtime = st.st_mtime;
 	} else {
 		module->path = NULL;
-		module->mtime = 0;
 	}
 
 	switch (module->type) {
@@ -153,9 +151,6 @@ kore_module_reload(int cbs)
 			continue;
 		}
 
-		if (module->mtime == st.st_mtime)
-			continue;
-
 		if (module->ocb != NULL && cbs == 1) {
 			ret = kore_runtime_onload(module->ocb,
 			    KORE_MODULE_UNLOAD);
@@ -166,7 +161,6 @@ kore_module_reload(int cbs)
 			}
 		}
 
-		module->mtime = st.st_mtime;
 		module->fun->reload(module);
 
 		if (module->onload != NULL) {

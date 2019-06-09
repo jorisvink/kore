@@ -350,7 +350,6 @@ struct kore_module {
 	char				*path;
 	char				*onload;
 	int				type;
-	time_t				mtime;
 	struct kore_runtime_call	*ocb;
 
 	struct kore_module_functions	*fun;
