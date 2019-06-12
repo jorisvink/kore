@@ -205,6 +205,8 @@ static void		cli_create_help(void);
 static void		file_create_src(void);
 static void		file_create_config(void);
 static void		file_create_gitignore(void);
+static void		file_create_python_src(void);
+static void		file_create_python_config(void);
 
 static struct cmd cmds[] = {
 	{ "help",	"this help text",			cli_help },
@@ -231,6 +233,18 @@ static const char *gen_dirs[] = {
 	"conf",
 	"assets",
 	NULL
+};
+
+static const char *python_gen_dirs[] = {
+	"cert",
+	NULL
+};
+
+static struct filegen python_gen_files[] = {
+	{ file_create_python_src },
+	{ file_create_python_config },
+	{ file_create_gitignore },
+	{ NULL }
 };
 
 static const char *http_serveable_function =
@@ -305,6 +319,43 @@ static const char *build_data =
 	"#	You can specify additional flags here which are only\n"
 	"#	included if you build with the \"prod\" flavor.\n"
 	"#}\n";
+
+static const char *python_config_data =
+	"# %s configuration\n"
+	"\n"
+	"bind\t\t127.0.0.1 8888\n"
+	"tls_dhparam\tdh2048.pem\n"
+	"\n"
+	"domain * {\n"
+	"\tcertfile\tcert/server.pem\n"
+	"\tcertkey\t\tcert/key.pem\n"
+	"\n"
+	"\tstatic\t/\tkoreapp.index\n"
+	"}\n";
+
+static const char *python_init_data =
+	"from .app import koreapp\n"
+	"\n"
+	"def kore_parent_configure(args):\n"
+	"    koreapp.configure(args)\n"
+	"\n"
+	"def kore_worker_configure():\n"
+	"    return\n";
+
+static const char *python_app_data =
+	"import kore\n"
+	"\n"
+	"class App:\n"
+	"    def __init__(self):\n"
+	"        pass\n"
+	"\n"
+	"    def configure(self, args):\n"
+	"        pass\n"
+	"\n"
+	"    async def index(self, req):\n"
+	"        req.response(200, b'')\n"
+	"\n"
+	"koreapp = App()";
 
 static const char *dh2048_data =
 	"-----BEGIN DH PARAMETERS-----\n"
@@ -412,6 +463,8 @@ cli_create_help(void)
 	printf("Synopsis:\n");
 	printf("  Create a new application skeleton directory structure.\n");
 	printf("\n");
+	printf("  Optional flags:\n");
+	printf("\t-p = generate a python application skeleton\n");
 
 	exit(1);
 }
@@ -419,15 +472,20 @@ cli_create_help(void)
 static void
 cli_create(int argc, char **argv)
 {
-	int			i, ch;
 	char			*fpath;
 	const char		**dirs;
 	struct filegen		*files;
+	int			i, ch, python;
+
+	python = 0;
 
 	while ((ch = getopt(argc, argv, "hp")) != -1) {
 		switch (ch) {
 		case 'h':
 			cli_create_help();
+			break;
+		case 'p':
+			python = 1;
 			break;
 		default:
 			cli_create_help();
@@ -444,8 +502,13 @@ cli_create(int argc, char **argv)
 	appl = argv[0];
 	cli_mkdir(appl, 0755);
 
-	dirs = gen_dirs;
-	files = gen_files;
+	if (python) {
+		dirs = python_gen_dirs;
+		files = python_gen_files;
+	} else {
+		dirs = gen_dirs;
+		files = gen_files;
+	}
 
 	for (i = 0; dirs[i] != NULL; i++) {
 		(void)cli_vasprintf(&fpath, "%s/%s", appl, dirs[i]);
@@ -746,6 +809,33 @@ cli_info(int argc, char **argv)
 		printf("kore features\t %.*s\n", (int)len, features);
 		free(features);
 	}
+}
+
+static void
+file_create_python_src(void)
+{
+	char		*name;
+
+	(void)cli_vasprintf(&name, "%s/__init__.py", appl);
+	cli_file_create(name, python_init_data, strlen(python_init_data));
+	free(name);
+
+	(void)cli_vasprintf(&name, "%s/app.py", appl);
+	cli_file_create(name, python_app_data, strlen(python_app_data));
+	free(name);
+}
+
+static void
+file_create_python_config(void)
+{
+	int		l;
+	char		*name, *data;
+
+	(void)cli_vasprintf(&name, "%s/kore.conf", appl);
+	l = cli_vasprintf(&data, python_config_data, appl);
+	cli_file_create(name, data, l);
+	free(name);
+	free(data);
 }
 
 static void

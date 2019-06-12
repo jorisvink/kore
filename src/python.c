@@ -205,6 +205,10 @@ extern const char *__progname;
 static struct python_coro		*coro_running = NULL;
 static PyObject				*python_tracer = NULL;
 
+#if !defined(KORE_SINGLE_BINARY)
+const char	*kore_pymodule = NULL;
+#endif
+
 void
 kore_python_init(void)
 {

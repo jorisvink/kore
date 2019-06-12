@@ -34,6 +34,10 @@ void		kore_python_log_error(const char *);
 
 PyObject	*kore_python_callable(PyObject *, const char *);
 
+#if !defined(KORE_SINGLE_BINARY)
+extern const char			*kore_pymodule;
+#endif
+
 extern struct kore_module_functions	kore_python_module;
 extern struct kore_runtime		kore_python_runtime;
 

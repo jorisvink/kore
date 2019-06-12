@@ -138,6 +138,10 @@ main(int argc, char *argv[])
 {
 	struct kore_runtime_call	*rcall;
 	int				ch, flags;
+#if !defined(KORE_SINGLE_BINARY) && defined(KORE_USE_PYTHON)
+	struct stat			st;
+	char				pwd[MAXPATHLEN];
+#endif
 
 	flags = 0;
 
@@ -191,7 +195,25 @@ main(int argc, char *argv[])
 	argc -= optind;
 	argv += optind;
 
-#if !defined(KORE_SINGLE_BINARY)
+#if !defined(KORE_SINGLE_BINARY) && defined(KORE_USE_PYTHON)
+	if (argc > 0) {
+		kore_pymodule = argv[0];
+		argc--;
+		argv++;
+	} else {
+		if (getcwd(pwd, sizeof(pwd)) == NULL)
+			fatal("getcwd: %s", errno_s);
+		kore_pymodule = pwd;
+	}
+
+	if (lstat(kore_pymodule, &st) == -1)
+		fatal("failed to stat '%s': %s", kore_pymodule, errno_s);
+
+	if (!S_ISDIR(st.st_mode))
+		fatal("%s: not a directory", kore_pymodule);
+
+	config_file = "kore.conf";
+#elif !defined(KORE_SINGLE_BINARY)
 	if (argc > 0)
 		fatal("did you mean to run `kodev' instead?");
 #endif
@@ -222,6 +244,11 @@ main(int argc, char *argv[])
 
 #if defined(KORE_USE_PYTHON)
 	kore_python_init();
+#if !defined(KORE_SINGLE_BINARY)
+	kore_module_load(kore_pymodule, NULL, KORE_MODULE_PYTHON);
+	if (chdir(kore_pymodule) == -1)
+		fatal("chdir(%s): %s", kore_pymodule, errno_s);
+#endif
 #endif
 
 	kore_parse_config();
