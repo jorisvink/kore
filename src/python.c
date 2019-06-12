@@ -3387,8 +3387,8 @@ pyhttp_iterobj_disconnect(struct connection *c)
 	struct pyhttp_iterobj	*iterobj;
 
 	iterobj = c->hdlr_extra;
-
 	iterobj->remove = 1;
+	c->hdlr_extra = NULL;
 }
 
 static PyObject *
