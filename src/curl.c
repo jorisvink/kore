@@ -33,6 +33,7 @@ struct fd_cache {
 
 static void	curl_process(void);
 static void	curl_event_handle(void *, int);
+static void	curl_timeout(void *, u_int64_t);
 static int	curl_timer(CURLM *, long, void *);
 static int	curl_socket(CURL *, curl_socket_t, int, void *, void *);
 
@@ -43,6 +44,7 @@ static CURLM			*multi = NULL;
 static struct kore_timer	*timer = NULL;
 static struct kore_pool		fd_cache_pool;
 static char			user_agent[64];
+static int			timeout_immediate = 0;
 static LIST_HEAD(, fd_cache)	cache[FD_CACHE_BUCKETS];
 
 u_int16_t	kore_curl_timeout = KORE_CURL_TIMEOUT;
@@ -144,6 +146,13 @@ kore_curl_cleanup(struct kore_curl *client)
 		TAILQ_REMOVE(&client->http.resp_hdrs, hdr, list);
 		kore_pool_put(&http_header_pool, hdr);
 	}
+}
+
+void
+kore_curl_do_timeout(void)
+{
+	while (timeout_immediate)
+		curl_timeout(NULL, kore_time_ms());
 }
 
 size_t
@@ -560,6 +569,8 @@ curl_timeout(void *uarg, u_int64_t now)
 static int
 curl_timer(CURLM *mctx, long timeout, void *arg)
 {
+	timeout_immediate = 0;
+
 	if (timeout < 0) {
 		if (timer != NULL) {
 			kore_timer_remove(timer);
@@ -573,8 +584,10 @@ curl_timer(CURLM *mctx, long timeout, void *arg)
 		timer = NULL;
 	}
 
-	if (timeout == 0)
-		timeout = 10;
+	if (timeout == 0) {
+		timeout_immediate = 1;
+		return (CURLM_OK);
+	}
 
 	timer = kore_timer_add(curl_timeout, timeout, mctx, KORE_TIMER_ONESHOT);
 

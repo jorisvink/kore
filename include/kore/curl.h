@@ -67,6 +67,7 @@ extern u_int16_t	kore_curl_timeout;
 extern u_int64_t	kore_curl_recv_max;
 
 void	kore_curl_sysinit(void);
+void	kore_curl_do_timeout(void);
 void	kore_curl_run(struct kore_curl *);
 void	kore_curl_cleanup(struct kore_curl *);
 int	kore_curl_success(struct kore_curl *);

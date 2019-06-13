@@ -49,6 +49,10 @@
 #include "python_api.h"
 #endif
 
+#if defined(KORE_USE_CURL)
+#include "curl.h"
+#endif
+
 #if !defined(WAIT_ANY)
 #define WAIT_ANY		(-1)
 #endif
@@ -471,14 +475,18 @@ kore_worker_entry(struct kore_worker *kw)
 			break;
 
 		kore_timer_run(now);
-
+#if defined(KORE_USE_CURL)
+		kore_curl_do_timeout();
+#endif
 #if !defined(KORE_NO_HTTP)
 		http_process();
 #endif
 #if defined(KORE_USE_PYTHON)
 		kore_python_coro_run();
 #endif
-
+#if defined(KORE_USE_CURL)
+		kore_curl_do_timeout();
+#endif
 		if (next_prune <= now) {
 			kore_connection_check_timeout(now);
 			kore_connection_prune(KORE_CONNECTION_PRUNE_DISCONNECT);
