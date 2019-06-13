@@ -140,6 +140,7 @@ static void		fatal(const char *, ...) __attribute__((noreturn));
 
 static void		cli_file_close(int);
 static void		cli_run_kore(void);
+static void		cli_run_kore_python(void);
 static void		cli_generate_certs(void);
 static void		cli_compile_kore(void *);
 static void		cli_link_application(void *);
@@ -747,6 +748,11 @@ cli_clean(int argc, char **argv)
 static void
 cli_run(int argc, char **argv)
 {
+	if (cli_file_exists("__init__.py")) {
+		cli_run_kore_python();
+		return;
+	}
+
 	run_after = 1;
 	cli_build(argc, argv);
 
@@ -1532,6 +1538,22 @@ cli_compile_kore(void *arg)
 
 	execvp(args[0], args);
 	fatal("failed to start '%s': %s", args[0], errno_s);
+}
+
+static void
+cli_run_kore_python(void)
+{
+	char		*args[3], *cmd;
+
+	(void)cli_vasprintf(&cmd, "%s/bin/kore", prefix);
+
+	args[0] = cmd;
+	args[1] = "-frn";
+	args[2] = NULL;
+
+	execvp(args[0], args);
+	fatal("failed to start '%s': %s", args[0], errno_s);
+
 }
 
 static void
