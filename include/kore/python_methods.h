@@ -40,6 +40,7 @@ static PyObject		*python_kore_bind(PyObject *, PyObject *);
 static PyObject		*python_kore_timer(PyObject *, PyObject *);
 static PyObject		*python_kore_fatal(PyObject *, PyObject *);
 static PyObject		*python_kore_queue(PyObject *, PyObject *);
+static PyObject		*python_kore_worker(PyObject *, PyObject *);
 static PyObject		*python_kore_tracer(PyObject *, PyObject *);
 static PyObject		*python_kore_fatalx(PyObject *, PyObject *);
 static PyObject		*python_kore_suspend(PyObject *, PyObject *);
@@ -74,6 +75,7 @@ static struct PyMethodDef pykore_methods[] = {
 	METHOD("bind", python_kore_bind, METH_VARARGS),
 	METHOD("timer", python_kore_timer, METH_VARARGS),
 	METHOD("queue", python_kore_queue, METH_VARARGS),
+	METHOD("worker", python_kore_worker, METH_VARARGS),
 	METHOD("tracer", python_kore_tracer, METH_VARARGS),
 	METHOD("gather", python_kore_gather, METH_VARARGS | METH_KEYWORDS),
 	METHOD("fatal", python_kore_fatal, METH_VARARGS),

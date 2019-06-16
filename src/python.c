@@ -1252,6 +1252,16 @@ python_kore_queue(PyObject *self, PyObject *args)
 }
 
 static PyObject *
+python_kore_worker(PyObject *self, PyObject *args)
+{
+	if (worker == NULL) {
+		Py_RETURN_NONE;
+	}
+
+	return (PyLong_FromLong(worker->id));
+}
+
+static PyObject *
 python_kore_tracer(PyObject *self, PyObject *args)
 {
 	PyObject		*obj;
