@@ -3537,7 +3537,7 @@ pyhttp_cookie(struct pyhttp_request *pyreq, PyObject *args)
 	}
 
 	if ((value = PyUnicode_FromString(string)) == NULL)
-		return (PyErr_NoMemory());
+		return (NULL);
 
 	return (value);
 }
