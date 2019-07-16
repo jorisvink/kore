@@ -999,7 +999,7 @@ http_argument_urldecode(char *arg)
 		if (err != KORE_RESULT_OK)
 			return (err);
 
-		if (v <= 0x1f || v == 0x7f || (v >= 0x80 && v <= 0x9f))
+		if (v <= 0x1f || v == 0x7f)
 			return (KORE_RESULT_ERROR);
 
 		*in++ = (char)v;
