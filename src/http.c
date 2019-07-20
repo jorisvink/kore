@@ -1853,8 +1853,10 @@ http_argument_add(struct http_request *req, char *name, char *value, int qs,
 	struct http_arg			*q;
 	struct kore_handler_params	*p;
 
-	if (decode)
-		http_argument_urldecode(name);
+	if (decode) {
+		if (!http_argument_urldecode(name))
+			return;
+	}
 
 	TAILQ_FOREACH(p, &(req->hdlr->params), list) {
 		if (qs == 1 && !(p->flags & KORE_PARAMS_QUERY_STRING))
