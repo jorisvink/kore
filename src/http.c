@@ -1870,8 +1870,10 @@ http_argument_add(struct http_request *req, char *name, char *value, int qs,
 		if (strcmp(p->name, name))
 			continue;
 
-		if (decode)
-			http_argument_urldecode(value);
+		if (decode) {
+			if (!http_argument_urldecode(value))
+				return;
+		}
 
 		if (!kore_validator_check(req, p->validator, value))
 			break;
