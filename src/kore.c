@@ -655,7 +655,8 @@ kore_proctitle_setup(void)
 	proctitle_maxlen = 0;
 
 	for (i = 0; environ[i] != NULL; i++) {
-		p = kore_strdup(environ[i]);
+		if ((p = strdup(environ[i])) == NULL)
+			fatal("strdup");
 		proctitle_maxlen += strlen(environ[i]) + 1;
 		environ[i] = p;
 	}
