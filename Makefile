@@ -7,7 +7,7 @@ KORE=kore
 KODEV=kodev/kodev
 KORE_CRYPTO?=crypto
 INSTALL_DIR=$(PREFIX)/bin
-MAN_DIR=$(PREFIX)/share/man
+MAN_DIR?=$(PREFIX)/share/man
 SHARE_DIR=$(PREFIX)/share/kore
 INCLUDE_DIR=$(PREFIX)/include/kore
 
