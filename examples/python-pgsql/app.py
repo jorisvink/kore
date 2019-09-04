@@ -51,4 +51,5 @@ class KoreApp:
         result = await kore.dbquery("db", "SELECT * FROM pg_sleep(10)")
         req.response(200, json.dumps(result).encode("utf-8"))
 
+# Set the application Kore will run to our class.
 koreapp = KoreApp()
