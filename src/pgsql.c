@@ -632,6 +632,12 @@ pgsql_conn_create(struct kore_pgsql *pgsql, struct pgsql_db *db)
 		return (NULL);
 	}
 
+	if (PQsetnonblocking(conn->db, 1) == -1) {
+		pgsql_set_error(pgsql, PQerrorMessage(conn->db));
+		pgsql_conn_cleanup(conn);
+		return (NULL);
+	}
+
 	return (conn);
 }
 
@@ -715,8 +721,15 @@ pgsql_read_result(struct kore_pgsql *pgsql)
 	PGnotify	*notify;
 
 	if (PQisBusy(pgsql->conn->db)) {
-		pgsql->state = KORE_PGSQL_STATE_WAIT;
-		return;
+		if (!PQconsumeInput(pgsql->conn->db)) {
+			pgsql->state = KORE_PGSQL_STATE_ERROR;
+			pgsql->error = kore_strdup(
+			    PQerrorMessage(pgsql->conn->db));
+			return;
+		} else if (PQisBusy(pgsql->conn->db)) {
+			pgsql->state = KORE_PGSQL_STATE_WAIT;
+			return;
+		}
 	}
 
 	while ((notify = PQnotifies(pgsql->conn->db)) != NULL) {
