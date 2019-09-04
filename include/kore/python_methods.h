@@ -52,6 +52,8 @@ static PyObject		*python_kore_socket_wrap(PyObject *, PyObject *);
 static PyObject		*python_kore_gather(PyObject *, PyObject *, PyObject *);
 
 #if defined(KORE_USE_PGSQL)
+static PyObject		*python_kore_pgsql_query(PyObject *, PyObject *,
+			    PyObject *);
 static PyObject		*python_kore_pgsql_register(PyObject *, PyObject *);
 #endif
 
@@ -88,7 +90,9 @@ static struct PyMethodDef pykore_methods[] = {
 	METHOD("socket_wrap", python_kore_socket_wrap, METH_VARARGS),
 	METHOD("websocket_broadcast", python_websocket_broadcast, METH_VARARGS),
 #if defined(KORE_USE_PGSQL)
-	METHOD("register_database", python_kore_pgsql_register, METH_VARARGS),
+	METHOD("dbsetup", python_kore_pgsql_register, METH_VARARGS),
+	METHOD("dbquery", python_kore_pgsql_query,
+	    METH_VARARGS | METH_KEYWORDS),
 #endif
 #if defined(KORE_USE_CURL)
 	METHOD("httpclient", python_kore_httpclient,
@@ -571,9 +575,6 @@ struct pyhttp_file {
 static void	pyhttp_dealloc(struct pyhttp_request *);
 static void	pyhttp_file_dealloc(struct pyhttp_file *);
 
-#if defined(KORE_USE_PGSQL)
-static PyObject	*pyhttp_pgsql(struct pyhttp_request *, PyObject *, PyObject *);
-#endif
 static PyObject *pyhttp_cookie(struct pyhttp_request *, PyObject *);
 static PyObject	*pyhttp_response(struct pyhttp_request *, PyObject *);
 static PyObject *pyhttp_argument(struct pyhttp_request *, PyObject *);
@@ -589,9 +590,6 @@ static PyObject *pyhttp_websocket_handshake(struct pyhttp_request *,
 		    PyObject *);
 
 static PyMethodDef pyhttp_request_methods[] = {
-#if defined(KORE_USE_PGSQL)
-	METHOD("pgsql", pyhttp_pgsql, METH_VARARGS | METH_KEYWORDS),
-#endif
 	METHOD("cookie", pyhttp_cookie, METH_VARARGS),
 	METHOD("response", pyhttp_response, METH_VARARGS),
 	METHOD("argument", pyhttp_argument, METH_VARARGS),
@@ -759,14 +757,15 @@ static PyTypeObject pyhttp_client_op_type = {
 
 struct pykore_pgsql {
 	PyObject_HEAD
+	struct kore_pgsql	sql;
 	int			state;
 	int			binary;
-	struct kore_pgsql	sql;
 
 	char			*db;
-	struct http_request	*req;
+	struct python_coro	*coro;
 	char			*query;
 	PyObject		*result;
+
 	struct {
 		int		count;
 		const char	**values;
@@ -777,8 +776,6 @@ struct pykore_pgsql {
 };
 
 static void	pykore_pgsql_dealloc(struct pykore_pgsql *);
-static int	pykore_pgsql_result(struct pykore_pgsql *);
-static int	pykore_pgsql_params(struct pykore_pgsql *, PyObject *);
 
 static PyObject	*pykore_pgsql_await(PyObject *);
 static PyObject	*pykore_pgsql_iternext(struct pykore_pgsql *);

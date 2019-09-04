@@ -371,10 +371,6 @@ kore_worker_entry(struct kore_worker *kw)
 	accept_avail = 1;
 	worker_active_connections = 0;
 
-#if defined(KORE_USE_PGSQL)
-	kore_pgsql_sys_init();
-#endif
-
 #if defined(KORE_USE_TASKS)
 	kore_task_init();
 #endif

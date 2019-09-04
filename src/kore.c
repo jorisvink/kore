@@ -37,6 +37,10 @@
 #include "curl.h"
 #endif
 
+#if defined(KORE_USE_PGSQL)
+#include "pgsql.h"
+#endif
+
 #if defined(KORE_USE_PYTHON)
 #include "python_api.h"
 #endif
@@ -227,6 +231,9 @@ main(int argc, char *argv[])
 	http_parent_init();
 #if defined(KORE_USE_CURL)
 	kore_curl_sysinit();
+#endif
+#if defined(KORE_USE_PGSQL)
+	kore_pgsql_sys_init();
 #endif
 	kore_auth_init();
 	kore_validator_init();
