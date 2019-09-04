@@ -1411,6 +1411,21 @@ python_kore_fatalx(PyObject *self, PyObject *args)
 }
 
 static PyObject *
+python_kore_setname(PyObject *self, PyObject *args)
+{
+	const char	*name;
+	extern char	*kore_progname;
+
+	if (!PyArg_ParseTuple(args, "s", &name))
+		return (NULL);
+
+	kore_free(kore_progname);
+	kore_progname = kore_strdup(name);
+
+	Py_RETURN_NONE;
+}
+
+static PyObject *
 python_kore_suspend(PyObject *self, PyObject *args)
 {
 	struct pysuspend_op	*op;

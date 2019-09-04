@@ -335,9 +335,12 @@ static const char *python_config_data =
 	"}\n";
 
 static const char *python_init_data =
+	"import kore\n"
 	"from .app import koreapp\n"
 	"\n"
 	"def kore_parent_configure(args):\n"
+	"    if hasattr(koreapp, \"_appname\"):\n"
+	"        kore.setname(koreapp._appname)\n"
 	"    koreapp.configure(args)\n"
 	"\n"
 	"def kore_worker_configure():\n"
