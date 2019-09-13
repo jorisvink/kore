@@ -323,12 +323,7 @@ kore_pgsql_handle(void *c, int err)
 
 	pgsql = conn->job->pgsql;
 
-	if (!PQconsumeInput(conn->db)) {
-		pgsql->state = KORE_PGSQL_STATE_ERROR;
-		pgsql->error = kore_strdup(PQerrorMessage(conn->db));
-	} else {
-		pgsql_read_result(pgsql);
-	}
+	pgsql_read_result(pgsql);
 
 	if (pgsql->state == KORE_PGSQL_STATE_WAIT) {
 #if !defined(KORE_NO_HTTP)
@@ -632,12 +627,6 @@ pgsql_conn_create(struct kore_pgsql *pgsql, struct pgsql_db *db)
 		return (NULL);
 	}
 
-	if (PQsetnonblocking(conn->db, 1) == -1) {
-		pgsql_set_error(pgsql, PQerrorMessage(conn->db));
-		pgsql_conn_cleanup(conn);
-		return (NULL);
-	}
-
 	return (conn);
 }
 
@@ -718,21 +707,33 @@ pgsql_conn_cleanup(struct pgsql_conn *conn)
 static void
 pgsql_read_result(struct kore_pgsql *pgsql)
 {
-	PGnotify	*notify;
+	struct pgsql_conn	*conn;
+	PGnotify		*notify;
+	int			saved_errno;
 
-	if (PQisBusy(pgsql->conn->db)) {
-		if (!PQconsumeInput(pgsql->conn->db)) {
+	conn = pgsql->conn;
+
+	for (;;) {
+		if (!PQconsumeInput(conn->db)) {
 			pgsql->state = KORE_PGSQL_STATE_ERROR;
-			pgsql->error = kore_strdup(
-			    PQerrorMessage(pgsql->conn->db));
-			return;
-		} else if (PQisBusy(pgsql->conn->db)) {
-			pgsql->state = KORE_PGSQL_STATE_WAIT;
+			pgsql->error = kore_strdup(PQerrorMessage(conn->db));
 			return;
 		}
+
+		saved_errno = errno;
+
+		if (PQisBusy(conn->db)) {
+			if (saved_errno != EAGAIN && saved_errno != EWOULDBLOCK)
+				continue;
+			pgsql->state = KORE_PGSQL_STATE_WAIT;
+			conn->evt.flags &= ~KORE_EVENT_READ; 
+			return;
+		}
+
+		break;
 	}
 
-	while ((notify = PQnotifies(pgsql->conn->db)) != NULL) {
+	while ((notify = PQnotifies(conn->db)) != NULL) {
 		pgsql->state = KORE_PGSQL_STATE_NOTIFY;
 		pgsql->notify.extra = notify->extra;
 		pgsql->notify.channel = notify->relname;
@@ -743,7 +744,7 @@ pgsql_read_result(struct kore_pgsql *pgsql)
 		PQfreemem(notify);
 	}
 
-	pgsql->result = PQgetResult(pgsql->conn->db);
+	pgsql->result = PQgetResult(conn->db);
 	if (pgsql->result == NULL) {
 		pgsql->state = KORE_PGSQL_STATE_DONE;
 		return;
