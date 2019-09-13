@@ -726,7 +726,7 @@ pgsql_read_result(struct kore_pgsql *pgsql)
 			if (saved_errno != EAGAIN && saved_errno != EWOULDBLOCK)
 				continue;
 			pgsql->state = KORE_PGSQL_STATE_WAIT;
-			conn->evt.flags &= ~KORE_EVENT_READ; 
+			conn->evt.flags &= ~KORE_EVENT_READ;
 			return;
 		}
 
