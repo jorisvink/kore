@@ -40,7 +40,7 @@
 #include "python_api.h"
 #include "python_methods.h"
 
-#if defined(PYTHON_CORO_DEBUG)
+#if defined(PYTHON_CORO_TRACE)
 #include <frameobject.h>
 #endif
 
@@ -68,7 +68,7 @@ static int		python_coro_run(struct python_coro *);
 static void		python_coro_wakeup(struct python_coro *);
 static void		python_coro_suspend(struct python_coro *);
 
-#if defined(PYTHON_CORO_DEBUG)
+#if defined(PYTHON_CORO_TRACE)
 static void		python_coro_trace(const char *, struct python_coro *);
 #endif
 
@@ -320,7 +320,7 @@ kore_python_coro_delete(void *obj)
 	coro = obj;
 	coro_count--;
 
-#if defined(PYTHON_CORO_DEBUG)
+#if defined(PYTHON_CORO_TRACE)
 	python_coro_trace("deleted", coro);
 #endif
 
@@ -569,7 +569,7 @@ python_coro_create(PyObject *obj, struct http_request *req)
 	if (coro->request != NULL)
 		http_request_sleep(coro->request);
 
-#if defined(PYTHON_CORO_DEBUG)
+#if defined(PYTHON_CORO_TRACE)
 	python_coro_trace("created", coro);
 #endif
 
@@ -588,7 +588,7 @@ python_coro_run(struct python_coro *coro)
 	coro_running = coro;
 
 	for (;;) {
-#if defined(PYTHON_CORO_DEBUG)
+#if defined(PYTHON_CORO_TRACE)
 		python_coro_trace("running", coro);
 #endif
 
@@ -635,7 +635,7 @@ python_coro_wakeup(struct python_coro *coro)
 	TAILQ_REMOVE(&coro_suspended, coro, list);
 	TAILQ_INSERT_TAIL(&coro_runnable, coro, list);
 
-#if defined(PYTHON_CORO_DEBUG)
+#if defined(PYTHON_CORO_TRACE)
 	python_coro_trace("wokeup", coro);
 #endif
 }
@@ -650,12 +650,12 @@ python_coro_suspend(struct python_coro *coro)
 	TAILQ_REMOVE(&coro_runnable, coro, list);
 	TAILQ_INSERT_TAIL(&coro_suspended, coro, list);
 
-#if defined(PYTHON_CORO_DEBUG)
+#if defined(PYTHON_CORO_TRACE)
 	python_coro_trace("suspended", coro);
 #endif
 }
 
-#if defined(PYTHON_CORO_DEBUG)
+#if defined(PYTHON_CORO_TRACE)
 static void
 python_coro_trace(const char *label, struct python_coro *coro)
 {
