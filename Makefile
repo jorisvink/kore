@@ -96,6 +96,9 @@ ifneq ("$(JSONRPC)", "")
 endif
 
 ifneq ("$(PYTHON)", "")
+	ifneq ("$(DEBUG)", "")
+		CFLAGS+=-DPYTHON_CORO_TRACE
+	endif
 	S_SRC+=src/python.c
 	KORE_PYTHON_LIB?=$(shell python3-config --ldflags)
 	KORE_PYTHON_INC?=$(shell python3-config --includes)
