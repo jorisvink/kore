@@ -551,7 +551,7 @@ python_coro_create(PyObject *obj, struct http_request *req)
 	coro->id = coro_id++;
 	coro->state = CORO_STATE_RUNNABLE;
 
-	TAILQ_INSERT_HEAD(&coro_runnable, coro, list);
+	TAILQ_INSERT_TAIL(&coro_runnable, coro, list);
 
 	if (coro->request != NULL)
 		http_request_sleep(coro->request);
@@ -613,7 +613,7 @@ python_coro_wakeup(struct python_coro *coro)
 
 	coro->state = CORO_STATE_RUNNABLE;
 	TAILQ_REMOVE(&coro_suspended, coro, list);
-	TAILQ_INSERT_HEAD(&coro_runnable, coro, list);
+	TAILQ_INSERT_TAIL(&coro_runnable, coro, list);
 }
 
 static void
@@ -624,7 +624,7 @@ python_coro_suspend(struct python_coro *coro)
 
 	coro->state = CORO_STATE_SUSPENDED;
 	TAILQ_REMOVE(&coro_runnable, coro, list);
-	TAILQ_INSERT_HEAD(&coro_suspended, coro, list);
+	TAILQ_INSERT_TAIL(&coro_suspended, coro, list);
 }
 
 static void
