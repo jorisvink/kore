@@ -22,6 +22,7 @@
 #undef _XOPEN_SOURCE
 
 #include <Python.h>
+#include <frameobject.h>
 
 void		kore_python_init(void);
 void		kore_python_preinit(void);

@@ -40,6 +40,10 @@
 #include "python_api.h"
 #include "python_methods.h"
 
+#if defined(PYTHON_CORO_DEBUG)
+#include <frameobject.h>
+#endif
+
 struct reqcall {
 	PyObject		*f;
 	TAILQ_ENTRY(reqcall)	list;
@@ -59,9 +63,14 @@ static PyObject		*pyhttp_request_alloc(const struct http_request *);
 
 static struct python_coro	*python_coro_create(PyObject *,
 				    struct http_request *);
-static int			python_coro_run(struct python_coro *);
-static void			python_coro_wakeup(struct python_coro *);
-static void			python_coro_suspend(struct python_coro *);
+
+static int		python_coro_run(struct python_coro *);
+static void		python_coro_wakeup(struct python_coro *);
+static void		python_coro_suspend(struct python_coro *);
+
+#if defined(PYTHON_CORO_DEBUG)
+static void		python_coro_trace(const char *, struct python_coro *);
+#endif
 
 static void		pysocket_evt_handle(void *, int);
 static void		pysocket_op_timeout(void *, u_int64_t);
@@ -571,8 +580,11 @@ python_coro_run(struct python_coro *coro)
 	coro_running = coro;
 
 	for (;;) {
-		PyErr_Clear();
+#if defined(PYTHON_CORO_DEBUG)
+		python_coro_trace("running", coro);
+#endif
 
+		PyErr_Clear();
 		item = _PyGen_Send((PyGenObject *)coro->obj, NULL);
 		if (item == NULL) {
 			if (coro->gatherop == NULL && PyErr_Occurred() &&
@@ -614,6 +626,10 @@ python_coro_wakeup(struct python_coro *coro)
 	coro->state = CORO_STATE_RUNNABLE;
 	TAILQ_REMOVE(&coro_suspended, coro, list);
 	TAILQ_INSERT_TAIL(&coro_runnable, coro, list);
+
+#if defined(PYTHON_CORO_DEBUG)
+	python_coro_trace("wokeup", coro);
+#endif
 }
 
 static void
@@ -625,7 +641,38 @@ python_coro_suspend(struct python_coro *coro)
 	coro->state = CORO_STATE_SUSPENDED;
 	TAILQ_REMOVE(&coro_runnable, coro, list);
 	TAILQ_INSERT_TAIL(&coro_suspended, coro, list);
+
+#if defined(PYTHON_CORO_DEBUG)
+	python_coro_trace("suspended", coro);
+#endif
 }
+
+#if defined(PYTHON_CORO_DEBUG)
+static void
+python_coro_trace(const char *label, struct python_coro *coro)
+{
+	int			line;
+	PyGenObject		*gen;
+	PyCodeObject		*code;
+	const char		*func, *fname, *file;
+
+	gen = (PyGenObject *)coro->obj;
+	code = gen->gi_frame->f_code;
+
+	func = PyUnicode_AsUTF8AndSize(code->co_name, NULL);
+	file = PyUnicode_AsUTF8AndSize(code->co_filename, NULL);
+
+	line = PyFrame_GetLineNumber(gen->gi_frame);
+
+	if ((fname = strrchr(file, '/')) == NULL)
+		fname = file;
+	else
+		fname++;
+
+	kore_log(LOG_NOTICE, "coro %lld %s <%s> @ [%s:%d]",
+	    coro->id, label, func, fname, line);
+}
+#endif
 
 static void
 pyconnection_dealloc(struct pyconnection *pyc)
