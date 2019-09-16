@@ -21,7 +21,9 @@ struct python_coro {
 	u_int64_t			id;
 	int				state;
 	PyObject			*obj;
+#if defined(PYTHON_CORO_TRACE)
 	char				*name;
+#endif
 	PyObject			*result;
 	struct pysocket_op		*sockop;
 	struct pygather_op		*gatherop;

@@ -333,7 +333,9 @@ kore_python_coro_delete(void *obj)
 	else
 		TAILQ_REMOVE(&coro_suspended, coro, list);
 
+#if defined(PYTHON_CORO_TRACE)
 	kore_free(coro->name);
+#endif
 	Py_XDECREF(coro->result);
 
 	kore_pool_put(&coro_pool, coro);
@@ -555,7 +557,9 @@ python_coro_create(PyObject *obj, struct http_request *req)
 	coro = kore_pool_get(&coro_pool);
 	coro_count++;
 
+#if defined(PYTHON_CORO_TRACE)
 	coro->name = NULL;
+#endif
 	coro->result = NULL;
 	coro->sockop = NULL;
 	coro->gatherop = NULL;
@@ -1528,6 +1532,7 @@ python_kore_shutdown(PyObject *self, PyObject *args)
 static PyObject *
 python_kore_coroname(PyObject *self, PyObject *args)
 {
+#if defined(PYTHON_CORO_TRACE)
 	const char		*name;
 
 	if (coro_running == NULL) {
@@ -1541,7 +1546,7 @@ python_kore_coroname(PyObject *self, PyObject *args)
 
 	kore_free(coro_running->name);
 	coro_running->name = kore_strdup(name);
-
+#endif
 	Py_RETURN_NONE;
 }
 
