@@ -21,6 +21,7 @@ struct python_coro {
 	u_int64_t			id;
 	int				state;
 	PyObject			*obj;
+	char				*name;
 	PyObject			*result;
 	struct pysocket_op		*sockop;
 	struct pygather_op		*gatherop;
@@ -46,6 +47,7 @@ static PyObject		*python_kore_fatalx(PyObject *, PyObject *);
 static PyObject		*python_kore_setname(PyObject *, PyObject *);
 static PyObject		*python_kore_suspend(PyObject *, PyObject *);
 static PyObject		*python_kore_shutdown(PyObject *, PyObject *);
+static PyObject		*python_kore_coroname(PyObject *, PyObject *);
 static PyObject		*python_kore_bind_unix(PyObject *, PyObject *);
 static PyObject		*python_kore_prerequest(PyObject *, PyObject *);
 static PyObject		*python_kore_task_create(PyObject *, PyObject *);
@@ -86,6 +88,7 @@ static struct PyMethodDef pykore_methods[] = {
 	METHOD("setname", python_kore_setname, METH_VARARGS),
 	METHOD("suspend", python_kore_suspend, METH_VARARGS),
 	METHOD("shutdown", python_kore_shutdown, METH_NOARGS),
+	METHOD("coroname", python_kore_coroname, METH_VARARGS),
 	METHOD("bind_unix", python_kore_bind_unix, METH_VARARGS),
 	METHOD("prerequest", python_kore_prerequest, METH_VARARGS),
 	METHOD("task_create", python_kore_task_create, METH_VARARGS),

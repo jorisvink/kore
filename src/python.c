@@ -333,7 +333,9 @@ kore_python_coro_delete(void *obj)
 	else
 		TAILQ_REMOVE(&coro_suspended, coro, list);
 
+	kore_free(coro->name);
 	Py_XDECREF(coro->result);
+
 	kore_pool_put(&coro_pool, coro);
 }
 
@@ -553,6 +555,7 @@ python_coro_create(PyObject *obj, struct http_request *req)
 	coro = kore_pool_get(&coro_pool);
 	coro_count++;
 
+	coro->name = NULL;
 	coro->result = NULL;
 	coro->sockop = NULL;
 	coro->gatherop = NULL;
@@ -685,8 +688,13 @@ python_coro_trace(const char *label, struct python_coro *coro)
 	else
 		line = -1;
 
-	kore_log(LOG_NOTICE, "coro %" PRIu64 " %s <%s> @ [%s:%d]",
-	    coro->id, label, func, fname, line);
+	if (coro->name) {
+		kore_log(LOG_NOTICE, "coro '%s' %s <%s> @ [%s:%d]",
+		    coro->name, label, func, fname, line);
+	} else {
+		kore_log(LOG_NOTICE, "coro %" PRIu64 " %s <%s> @ [%s:%d]",
+		    coro->id, label, func, fname, line);
+	}
 }
 #endif
 
@@ -1515,6 +1523,26 @@ python_kore_shutdown(PyObject *self, PyObject *args)
 	kore_shutdown();
 
 	Py_RETURN_TRUE;
+}
+
+static PyObject *
+python_kore_coroname(PyObject *self, PyObject *args)
+{
+	const char		*name;
+
+	if (coro_running == NULL) {
+		PyErr_SetString(PyExc_RuntimeError,
+		    "kore.coroname() only available in coroutines");
+		return (NULL);
+	}
+
+	if (!PyArg_ParseTuple(args, "s", &name))
+		return (NULL);
+
+	kore_free(coro_running->name);
+	coro_running->name = kore_strdup(name);
+
+	Py_RETURN_NONE;
 }
 
 static PyObject *
