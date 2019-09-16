@@ -320,6 +320,10 @@ kore_python_coro_delete(void *obj)
 	coro = obj;
 	coro_count--;
 
+#if defined(PYTHON_CORO_DEBUG)
+	python_coro_trace("deleted", coro);
+#endif
+
 	coro_running = coro;
 	Py_DECREF(coro->obj);
 	coro_running = NULL;
@@ -565,6 +569,10 @@ python_coro_create(PyObject *obj, struct http_request *req)
 	if (coro->request != NULL)
 		http_request_sleep(coro->request);
 
+#if defined(PYTHON_CORO_DEBUG)
+	python_coro_trace("created", coro);
+#endif
+
 	return (coro);
 }
 
@@ -657,19 +665,27 @@ python_coro_trace(const char *label, struct python_coro *coro)
 	const char		*func, *fname, *file;
 
 	gen = (PyGenObject *)coro->obj;
-	code = gen->gi_frame->f_code;
 
-	func = PyUnicode_AsUTF8AndSize(code->co_name, NULL);
-	file = PyUnicode_AsUTF8AndSize(code->co_filename, NULL);
+	if (gen->gi_frame != NULL && gen->gi_frame->f_code != NULL) {
+		code = gen->gi_frame->f_code;
+		func = PyUnicode_AsUTF8AndSize(code->co_name, NULL);
+		file = PyUnicode_AsUTF8AndSize(code->co_filename, NULL);
 
-	line = PyFrame_GetLineNumber(gen->gi_frame);
+		if ((fname = strrchr(file, '/')) == NULL)
+			fname = file;
+		else
+			fname++;
+	} else {
+		func = "unknown";
+		fname = "unknown";
+	}
 
-	if ((fname = strrchr(file, '/')) == NULL)
-		fname = file;
+	if (gen->gi_frame != NULL)
+		line = PyFrame_GetLineNumber(gen->gi_frame);
 	else
-		fname++;
+		line = -1;
 
-	kore_log(LOG_NOTICE, "coro %lld %s <%s> @ [%s:%d]",
+	kore_log(LOG_NOTICE, "coro %" PRIu64 " %s <%s> @ [%s:%d]",
 	    coro->id, label, func, fname, line);
 }
 #endif
