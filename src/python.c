@@ -321,7 +321,7 @@ kore_python_coro_delete(void *obj)
 	coro_count--;
 
 #if defined(PYTHON_CORO_TRACE)
-	python_coro_trace("deleted", coro);
+	python_coro_trace(coro->killed ? "killed" : "deleted", coro);
 #endif
 
 	coro_running = coro;
@@ -567,6 +567,7 @@ python_coro_create(PyObject *obj, struct http_request *req)
 	coro->exception_msg = NULL;
 
 	coro->obj = obj;
+	coro->killed = 0;
 	coro->request = req;
 	coro->id = coro_id++;
 	coro->state = CORO_STATE_RUNNABLE;
@@ -696,7 +697,7 @@ python_coro_trace(const char *label, struct python_coro *coro)
 		kore_log(LOG_NOTICE, "coro '%s' %s <%s> @ [%s:%d]",
 		    coro->name, label, func, fname, line);
 	} else {
-		kore_log(LOG_NOTICE, "coro %" PRIu64 " %s <%s> @ [%s:%d]",
+		kore_log(LOG_NOTICE, "coro %u %s <%s> @ [%s:%d]",
 		    coro->id, label, func, fname, line);
 	}
 }
@@ -1246,6 +1247,7 @@ static PyObject *
 python_kore_task_create(PyObject *self, PyObject *args)
 {
 	PyObject		*obj;
+	struct python_coro	*coro;
 
 	if (!PyArg_ParseTuple(args, "O", &obj))
 		return (NULL);
@@ -1253,10 +1255,43 @@ python_kore_task_create(PyObject *self, PyObject *args)
 	if (!PyCoro_CheckExact(obj))
 		fatal("%s: object is not a coroutine", __func__);
 
-	python_coro_create(obj, NULL);
+	coro = python_coro_create(obj, NULL);
 	Py_INCREF(obj);
 
-	Py_RETURN_NONE;
+	return (PyLong_FromUnsignedLong(coro->id));
+}
+
+static PyObject *
+python_kore_task_kill(PyObject *self, PyObject *args)
+{
+	u_int32_t		id;
+	struct python_coro	*coro, *active;
+
+	if (!PyArg_ParseTuple(args, "I", &id))
+		return (NULL);
+
+	/* Remember active coro, as delete sets coro_running to NULL. */
+	active = coro_running;
+
+	TAILQ_FOREACH(coro, &coro_runnable, list) {
+		if (coro->id == id) {
+			coro->killed++;
+			kore_python_coro_delete(coro);
+			coro_running = active;
+			Py_RETURN_TRUE;
+		}
+	}
+
+	TAILQ_FOREACH(coro, &coro_suspended, list) {
+		if (coro->id == id) {
+			coro->killed++;
+			kore_python_coro_delete(coro);
+			coro_running = active;
+			Py_RETURN_TRUE;
+		}
+	}
+
+	Py_RETURN_FALSE;
 }
 
 static PyObject *
@@ -3161,7 +3196,7 @@ pygather_reap_coro(struct pygather_op *op, struct python_coro *reap)
 	}
 
 	if (coro == NULL)
-		fatal("coroutine %" PRIu64 " not found in gather", reap->id);
+		fatal("coroutine %u not found in gather", reap->id);
 
 	op->running--;
 	if (op->running < 0)

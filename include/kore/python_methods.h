@@ -18,8 +18,9 @@
 #define CORO_STATE_SUSPENDED		2
 
 struct python_coro {
-	u_int64_t			id;
+	u_int32_t			id;
 	int				state;
+	int				killed;
 	PyObject			*obj;
 #if defined(PYTHON_CORO_TRACE)
 	char				*name;
@@ -51,6 +52,7 @@ static PyObject		*python_kore_suspend(PyObject *, PyObject *);
 static PyObject		*python_kore_shutdown(PyObject *, PyObject *);
 static PyObject		*python_kore_coroname(PyObject *, PyObject *);
 static PyObject		*python_kore_bind_unix(PyObject *, PyObject *);
+static PyObject		*python_kore_task_kill(PyObject *, PyObject *);
 static PyObject		*python_kore_prerequest(PyObject *, PyObject *);
 static PyObject		*python_kore_task_create(PyObject *, PyObject *);
 static PyObject		*python_kore_socket_wrap(PyObject *, PyObject *);
@@ -91,6 +93,7 @@ static struct PyMethodDef pykore_methods[] = {
 	METHOD("suspend", python_kore_suspend, METH_VARARGS),
 	METHOD("shutdown", python_kore_shutdown, METH_NOARGS),
 	METHOD("coroname", python_kore_coroname, METH_VARARGS),
+	METHOD("task_kill", python_kore_task_kill, METH_VARARGS),
 	METHOD("bind_unix", python_kore_bind_unix, METH_VARARGS),
 	METHOD("prerequest", python_kore_prerequest, METH_VARARGS),
 	METHOD("task_create", python_kore_task_create, METH_VARARGS),
