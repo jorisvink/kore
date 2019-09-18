@@ -40,9 +40,7 @@
 #include "python_api.h"
 #include "python_methods.h"
 
-#if defined(PYTHON_CORO_TRACE)
 #include <frameobject.h>
-#endif
 
 struct reqcall {
 	PyObject		*f;
@@ -67,10 +65,7 @@ static struct python_coro	*python_coro_create(PyObject *,
 static int		python_coro_run(struct python_coro *);
 static void		python_coro_wakeup(struct python_coro *);
 static void		python_coro_suspend(struct python_coro *);
-
-#if defined(PYTHON_CORO_TRACE)
 static void		python_coro_trace(const char *, struct python_coro *);
-#endif
 
 static void		pysocket_evt_handle(void *, int);
 static void		pysocket_op_timeout(void *, u_int64_t);
@@ -206,6 +201,7 @@ static struct kore_pool			gather_result_pool;
 
 static u_int64_t			coro_id;
 static int				coro_count;
+static int				coro_tracing;
 static struct coro_list			coro_runnable;
 static struct coro_list			coro_suspended;
 
@@ -226,6 +222,7 @@ kore_python_init(void)
 
 	coro_id = 0;
 	coro_count = 0;
+	coro_tracing = 0;
 
 	TAILQ_INIT(&prereq);
 
@@ -320,9 +317,7 @@ kore_python_coro_delete(void *obj)
 	coro = obj;
 	coro_count--;
 
-#if defined(PYTHON_CORO_TRACE)
 	python_coro_trace(coro->killed ? "killed" : "deleted", coro);
-#endif
 
 	coro_running = coro;
 	Py_DECREF(coro->obj);
@@ -333,9 +328,7 @@ kore_python_coro_delete(void *obj)
 	else
 		TAILQ_REMOVE(&coro_suspended, coro, list);
 
-#if defined(PYTHON_CORO_TRACE)
 	kore_free(coro->name);
-#endif
 	Py_XDECREF(coro->result);
 
 	kore_pool_put(&coro_pool, coro);
@@ -557,9 +550,7 @@ python_coro_create(PyObject *obj, struct http_request *req)
 	coro = kore_pool_get(&coro_pool);
 	coro_count++;
 
-#if defined(PYTHON_CORO_TRACE)
 	coro->name = NULL;
-#endif
 	coro->result = NULL;
 	coro->sockop = NULL;
 	coro->gatherop = NULL;
@@ -577,9 +568,7 @@ python_coro_create(PyObject *obj, struct http_request *req)
 	if (coro->request != NULL)
 		http_request_sleep(coro->request);
 
-#if defined(PYTHON_CORO_TRACE)
 	python_coro_trace("created", coro);
-#endif
 
 	return (coro);
 }
@@ -596,9 +585,7 @@ python_coro_run(struct python_coro *coro)
 	coro_running = coro;
 
 	for (;;) {
-#if defined(PYTHON_CORO_TRACE)
 		python_coro_trace("running", coro);
-#endif
 
 		PyErr_Clear();
 		item = _PyGen_Send((PyGenObject *)coro->obj, NULL);
@@ -643,9 +630,7 @@ python_coro_wakeup(struct python_coro *coro)
 	TAILQ_REMOVE(&coro_suspended, coro, list);
 	TAILQ_INSERT_TAIL(&coro_runnable, coro, list);
 
-#if defined(PYTHON_CORO_TRACE)
 	python_coro_trace("wokeup", coro);
-#endif
 }
 
 static void
@@ -658,12 +643,9 @@ python_coro_suspend(struct python_coro *coro)
 	TAILQ_REMOVE(&coro_runnable, coro, list);
 	TAILQ_INSERT_TAIL(&coro_suspended, coro, list);
 
-#if defined(PYTHON_CORO_TRACE)
 	python_coro_trace("suspended", coro);
-#endif
 }
 
-#if defined(PYTHON_CORO_TRACE)
 static void
 python_coro_trace(const char *label, struct python_coro *coro)
 {
@@ -671,6 +653,9 @@ python_coro_trace(const char *label, struct python_coro *coro)
 	PyGenObject		*gen;
 	PyCodeObject		*code;
 	const char		*func, *fname, *file;
+
+	if (coro_tracing == 0)
+		return;
 
 	gen = (PyGenObject *)coro->obj;
 
@@ -701,7 +686,6 @@ python_coro_trace(const char *label, struct python_coro *coro)
 		    coro->id, label, func, fname, line);
 	}
 }
-#endif
 
 static void
 pyconnection_dealloc(struct pyconnection *pyc)
@@ -1567,7 +1551,6 @@ python_kore_shutdown(PyObject *self, PyObject *args)
 static PyObject *
 python_kore_coroname(PyObject *self, PyObject *args)
 {
-#if defined(PYTHON_CORO_TRACE)
 	const char		*name;
 
 	if (coro_running == NULL) {
@@ -1581,7 +1564,18 @@ python_kore_coroname(PyObject *self, PyObject *args)
 
 	kore_free(coro_running->name);
 	coro_running->name = kore_strdup(name);
-#endif
+
+	Py_RETURN_NONE;
+}
+
+static PyObject *
+python_kore_corotrace(PyObject *self, PyObject *args)
+{
+	if (!PyArg_ParseTuple(args, "b", &coro_tracing))
+		return (NULL);
+
+	printf("coro tracing is now %d\n", coro_tracing);
+
 	Py_RETURN_NONE;
 }
 
