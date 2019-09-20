@@ -357,10 +357,13 @@ struct pylock {
 
 static PyObject *pylock_aexit(struct pylock *, PyObject *);
 static PyObject *pylock_aenter(struct pylock *, PyObject *);
+static PyObject *pylock_release(struct pylock *, PyObject *);
+static PyObject *pylock_trylock(struct pylock *, PyObject *);
 
 static PyMethodDef pylock_methods[] = {
 	METHOD("aqcuire", pylock_aenter, METH_NOARGS),
-	METHOD("release", pylock_aexit, METH_NOARGS),
+	METHOD("release", pylock_release, METH_NOARGS),
+	METHOD("trylock", pylock_trylock, METH_NOARGS),
 	METHOD("__aexit__", pylock_aexit, METH_VARARGS),
 	METHOD("__aenter__", pylock_aenter, METH_NOARGS),
 	METHOD(NULL, NULL, -1)

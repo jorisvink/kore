@@ -2834,6 +2834,35 @@ pylock_dealloc(struct pylock *lock)
 }
 
 static PyObject *
+pylock_trylock(struct pylock *lock, PyObject *args)
+{
+	if (lock->owner != NULL)
+		Py_RETURN_FALSE;
+
+	lock->owner = coro_running;
+
+	Py_RETURN_TRUE;
+}
+
+static PyObject *
+pylock_release(struct pylock *lock, PyObject *args)
+{
+	if (lock->owner == NULL) {
+		PyErr_SetString(PyExc_RuntimeError, "no lock owner set");
+		return (NULL);
+	}
+
+	if (lock->owner->id != coro_running->id) {
+		PyErr_SetString(PyExc_RuntimeError, "lock not owned by caller");
+		return (NULL);
+	}
+
+	pylock_do_release(lock);
+
+	Py_RETURN_NONE;
+}
+
+static PyObject *
 pylock_aenter(struct pylock *lock, PyObject *args)
 {
 	struct pylock_op	*op;
