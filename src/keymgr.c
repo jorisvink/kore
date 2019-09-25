@@ -52,6 +52,27 @@
 #define RAND_POLL_INTERVAL	(1800 * 1000)
 #define RAND_FILE_SIZE		1024
 
+#if defined(__linux__)
+#include "seccomp.h"
+
+/* The syscalls our keymgr is allowed to perform, only. */
+static struct sock_filter filter_keymgr[] = {
+	/* Required to deal with private keys and certs. */
+	KORE_SYSCALL_ALLOW(open),
+	KORE_SYSCALL_ALLOW(read),
+	KORE_SYSCALL_ALLOW(close),
+
+	/* Allow it to read/write messages. */
+	KORE_SYSCALL_ALLOW(write),
+	KORE_SYSCALL_ALLOW(read),
+
+	/* Process things. */
+	KORE_SYSCALL_ALLOW(exit),
+	KORE_SYSCALL_ALLOW(sigaltstack),
+	KORE_SYSCALL_ALLOW(rt_sigaction),
+};
+#endif
+
 struct key {
 	EVP_PKEY		*pkey;
 	struct kore_domain	*dom;
@@ -101,6 +122,13 @@ kore_keymgr_run(void)
 	kore_msg_register(KORE_MSG_KEYMGR_REQ, keymgr_msg_recv);
 	kore_msg_register(KORE_MSG_ENTROPY_REQ, keymgr_entropy_request);
 	kore_msg_register(KORE_MSG_CERTIFICATE_REQ, keymgr_certificate_request);
+
+#if defined(__linux__)
+	/* Drop all enabled seccomp filters, and add only ours. */
+	kore_seccomp_drop();
+	kore_seccomp_filter("keymgr", filter_keymgr,
+	    KORE_FILTER_LEN(filter_keymgr));
+#endif
 
 	kore_worker_privdrop(keymgr_runas_user, keymgr_root_path);
 

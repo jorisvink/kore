@@ -595,6 +595,7 @@ void		kore_worker_privdrop(const char *, const char *);
 struct kore_worker	*kore_worker_data(u_int8_t);
 
 void		kore_platform_init(void);
+void		kore_platform_sandbox(void);
 void		kore_platform_event_init(void);
 void		kore_platform_event_cleanup(void);
 void		kore_platform_proctitle(char *);
@@ -852,6 +853,7 @@ void	kore_buf_replace_string(struct kore_buf *,
 void	kore_keymgr_run(void);
 void	kore_keymgr_cleanup(int);
 
+void	kore_seccomp_hook(void);
 void	kore_worker_teardown(void);
 void	kore_parent_teardown(void);
 void	kore_worker_configure(void);

@@ -226,6 +226,7 @@ main(int argc, char *argv[])
 	nlisteners = 0;
 	LIST_INIT(&listeners);
 
+	kore_platform_init();
 	kore_log_init();
 #if !defined(KORE_NO_HTTP)
 	http_parent_init();
@@ -267,8 +268,6 @@ main(int argc, char *argv[])
 		kore_free(rcall);
 	}
 #endif
-
-	kore_platform_init();
 
 #if !defined(KORE_NO_HTTP)
 	if (http_body_disk_offload > 0) {

@@ -22,6 +22,28 @@
 #include "http.h"
 #include "curl.h"
 
+#if defined(__linux__)
+#include "seccomp.h"
+
+static struct sock_filter filter_curl[] = {
+	/* Allow sockets and libcurl to call connect. */
+	KORE_SYSCALL_ALLOW(bind),
+	KORE_SYSCALL_ALLOW(socket),
+	KORE_SYSCALL_ALLOW(connect),
+
+	/* Threading related. */
+	KORE_SYSCALL_ALLOW(clone),
+	KORE_SYSCALL_ALLOW(set_robust_list),
+
+	/* Other */
+	KORE_SYSCALL_ALLOW(ioctl),
+	KORE_SYSCALL_ALLOW(madvise),
+	KORE_SYSCALL_ALLOW(recvmsg),
+	KORE_SYSCALL_ALLOW(sendmmsg),
+	KORE_SYSCALL_ALLOW(getpeername),
+};
+#endif
+
 #define FD_CACHE_BUCKETS	2048
 
 struct fd_cache {
@@ -82,6 +104,10 @@ kore_curl_sysinit(void)
 	len = snprintf(user_agent, sizeof(user_agent), "kore/%s", kore_version);
 	if (len == -1 || (size_t)len >= sizeof(user_agent))
 		fatal("user-agent string too long");
+
+#if defined(__linux__)
+	kore_seccomp_filter("curl", filter_curl, KORE_FILTER_LEN(filter_curl));
+#endif
 }
 
 int

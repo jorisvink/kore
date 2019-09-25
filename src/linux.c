@@ -16,12 +16,13 @@
 
 #include <sys/param.h>
 #include <sys/epoll.h>
-#include <sys/prctl.h>
 #include <sys/sendfile.h>
+#include <sys/syscall.h>
 
 #include <sched.h>
 
 #include "kore.h"
+#include "seccomp.h"
 
 #if defined(KORE_USE_PGSQL)
 #include "pgsql.h"
@@ -39,6 +40,8 @@ void
 kore_platform_init(void)
 {
 	long		n;
+
+	kore_seccomp_init();
 
 	if ((n = sysconf(_SC_NPROCESSORS_ONLN)) == -1) {
 		kore_debug("could not get number of cpu's falling back to 1");
@@ -248,3 +251,9 @@ resend:
 	return (KORE_RESULT_OK);
 }
 #endif
+
+void
+kore_platform_sandbox(void)
+{
+	kore_seccomp_enable();
+}

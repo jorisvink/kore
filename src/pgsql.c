@@ -28,6 +28,19 @@
 
 #include "pgsql.h"
 
+#if defined(__linux__)
+#include "seccomp.h"
+
+static struct sock_filter filter_pgsql[] = {
+	KORE_SYSCALL_ALLOW(socket),
+	KORE_SYSCALL_ALLOW(connect),
+	KORE_SYSCALL_ALLOW(sendto),
+	KORE_SYSCALL_ALLOW(recvfrom),
+	KORE_SYSCALL_ALLOW(getsockopt),
+	KORE_SYSCALL_ALLOW(getsockname),
+};
+#endif
+
 struct pgsql_wait {
 	struct kore_pgsql	*pgsql;
 	TAILQ_ENTRY(pgsql_wait)	list;
@@ -79,6 +92,11 @@ kore_pgsql_sys_init(void)
 	    sizeof(struct pgsql_job), 100);
 	kore_pool_init(&pgsql_wait_pool, "pgsql_wait_pool",
 	    sizeof(struct pgsql_wait), pgsql_queue_limit);
+
+#if defined(__linux__)
+	kore_seccomp_filter("pgsql", filter_pgsql,
+	    KORE_FILTER_LEN(filter_pgsql));
+#endif
 }
 
 void

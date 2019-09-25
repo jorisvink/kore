@@ -10,3 +10,4 @@ obj
 kodev/kodev
 kore.features
 src/version.c
+src/platform.h

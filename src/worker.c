@@ -310,9 +310,13 @@ kore_worker_privdrop(const char *runas, const char *root)
 			fatalx("cannot drop privileges");
 	}
 
-#if defined(KORE_USE_PLATFORM_PLEDGE)
-	kore_platform_pledge();
+#if defined(__linux__) && !defined(KORE_NO_TLS)
+	/* keymgr gets its own privileges. */
+	if (worker->id == KORE_WORKER_KEYMGR)
+		return;
 #endif
+
+	kore_platform_sandbox();
 
 }
 
@@ -568,6 +572,13 @@ kore_worker_reap(void)
 		kore_log(LOG_NOTICE,
 		    "worker %d (pid: %d) (hdlr: %s) gone",
 		    kw->id, kw->pid, func);
+
+#if defined(__linux__)
+		if (WIFSIGNALED(status) && WTERMSIG(status) == SIGSYS) {
+			kore_log(LOG_NOTICE,
+			    "worker %d died from sandbox violation", kw->id);
+		}
+#endif
 
 #if !defined(KORE_NO_TLS)
 		if (id == KORE_WORKER_KEYMGR) {

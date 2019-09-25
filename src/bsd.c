@@ -272,6 +272,14 @@ kore_platform_sendfile(struct connection *c, struct netbuf *nb)
 }
 #endif
 
+void
+kore_platform_sandbox(void)
+{
+#if defined(KORE_USE_PLATFORM_PLEDGE)
+	kore_platform_pledge();
+#endif
+}
+
 #if defined(KORE_USE_PLATFORM_PLEDGE)
 void
 kore_platform_pledge(void)

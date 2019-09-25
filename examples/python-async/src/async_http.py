@@ -26,6 +26,7 @@ async def httpclient(req):
     client = kore.httpclient("https://kore.io")
 
     # Do a simple GET request.
+    print("firing off request")
     status, body = await client.get()
     print("status: %d, body: '%s'" % (status, body))
 

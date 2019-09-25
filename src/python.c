@@ -189,6 +189,25 @@ static PyMemAllocatorEx allocator = {
 	.free = python_free
 };
 
+#if defined(__linux__)
+#include "seccomp.h"
+
+static struct sock_filter filter_python[] = {
+	/* Required for kore.proc */
+	KORE_SYSCALL_ALLOW(dup2),
+	KORE_SYSCALL_ALLOW(pipe),
+	KORE_SYSCALL_ALLOW(wait4),
+	KORE_SYSCALL_ALLOW(execve),
+
+	/* Socket related. */
+	KORE_SYSCALL_ALLOW(sendto),
+	KORE_SYSCALL_ALLOW(recvfrom),
+	KORE_SYSCALL_ALLOW(getsockopt),
+	KORE_SYSCALL_ALLOW(setsockopt),
+	KORE_SYSCALL_ALLOW(getsockname),
+};
+#endif
+
 static TAILQ_HEAD(, pyproc)		procs;
 static struct reqcall_list		prereq;
 
@@ -258,6 +277,11 @@ kore_python_init(void)
 	}
 
 	Py_Initialize();
+
+#if defined(__linux__)
+	kore_seccomp_filter("python", filter_python,
+	    KORE_FILTER_LEN(filter_python));
+#endif
 }
 
 void

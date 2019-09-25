@@ -12,6 +12,7 @@ SHARE_DIR=$(PREFIX)/share/kore
 INCLUDE_DIR=$(PREFIX)/include/kore
 
 VERSION=src/version.c
+PLATFORM=src/platform.h
 
 S_SRC=	src/kore.c src/buf.c src/config.c src/connection.c \
 	src/domain.c src/filemap.c src/fileref.c src/mem.c src/msg.c \
@@ -23,7 +24,7 @@ FEATURES_INC=
 
 CFLAGS+=-Wall -Werror -Wstrict-prototypes -Wmissing-prototypes
 CFLAGS+=-Wmissing-declarations -Wshadow -Wpointer-arith -Wcast-qual
-CFLAGS+=-Wsign-compare -Iinclude/kore -std=c99 -pedantic
+CFLAGS+=-Wsign-compare -Iinclude/kore --std=c99 -pedantic
 CFLAGS+=-DPREFIX='"$(PREFIX)"' -fstack-protector-all
 
 ifneq ("$(OPENSSL_PATH)", "")
@@ -133,7 +134,7 @@ ifeq ("$(OSNAME)", "darwin")
 else ifeq ("$(OSNAME)", "linux")
 	CFLAGS+=-D_GNU_SOURCE=1 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2
 	LDFLAGS+=-ldl
-	S_SRC+=src/linux.c
+	S_SRC+=src/linux.c src/seccomp.c
 else
 	S_SRC+=src/bsd.c
 	ifneq ("$(JSONRPC)", "")
@@ -144,7 +145,12 @@ endif
 
 S_OBJS=	$(S_SRC:src/%.c=$(OBJDIR)/%.o)
 
-all: $(VERSION) $(KORE) $(KODEV)
+all: $(PLATFORM) $(VERSION) $(KORE) $(KODEV)
+
+$(PLATFORM): force
+	@if [ -f misc/$(OSNAME)-platform.sh ]; then \
+		misc/$(OSNAME)-platform.sh > $(PLATFORM) ; \
+	fi
 
 $(VERSION): force
 	@if [ -d .git ]; then \
