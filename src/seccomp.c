@@ -42,6 +42,7 @@ static struct sock_filter filter_kore[] = {
 	KORE_SYSCALL_ALLOW(open),
 	KORE_SYSCALL_ALLOW(read),
 	KORE_SYSCALL_ALLOW(stat),
+	KORE_SYSCALL_ALLOW(lstat),
 	KORE_SYSCALL_ALLOW(fstat),
 	KORE_SYSCALL_ALLOW(write),
 	KORE_SYSCALL_ALLOW(fcntl),
