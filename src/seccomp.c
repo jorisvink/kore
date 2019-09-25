@@ -139,7 +139,10 @@ kore_seccomp_drop(void)
 	struct filter		*filter;
 
 	while ((filter = TAILQ_FIRST(&filters)) != NULL) {
-		kore_log(LOG_INFO, "seccomp filter '%s' dropped", filter->name);
+		if (!kore_quiet) {
+			kore_log(LOG_INFO,
+			    "seccomp filter '%s' dropped", filter->name);
+		}
 		TAILQ_REMOVE(&filters, filter, list);
 		kore_free(filter->name);
 		kore_free(filter);
@@ -236,7 +239,11 @@ kore_seccomp_enable(void)
 	TAILQ_FOREACH(filter, &filters, list) {
 		for (i = 0; i < filter->instructions; i++)
 			sf[jmp_off++] = filter->prog[i];
-		kore_log(LOG_INFO, "seccomp filter '%s' added", filter->name);
+
+		if (!kore_quiet) {
+			kore_log(LOG_INFO,
+			    "seccomp filter '%s' added", filter->name);
+		}
 	}
 
 	for (i = 0; i < filter_epilogue_len; i++)
@@ -252,7 +259,8 @@ kore_seccomp_enable(void)
 	if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog) == -1)
 		fatal("prctl: %s", errno_s);
 
-	kore_log(LOG_INFO, "seccomp sandbox activated");
+	if (!kore_quit)
+		kore_log(LOG_INFO, "seccomp sandbox activated");
 }
 
 int
