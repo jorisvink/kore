@@ -36,8 +36,14 @@
 #define SECCOMP_KILL_POLICY		SECCOMP_RET_KILL
 #endif
 
-/* The bare minimum to be able to run kore. */
+/*
+ * The bare minimum to be able to run kore. These are added last and can
+ * be overwritten by a filter program that is added before hand.
+ */
 static struct sock_filter filter_kore[] = {
+	/* Deny these, but with EACCESS instead of dying. */
+	KORE_SYSCALL_DENY_ERRNO(ioctl, EACCES),
+
 	/* File related. */
 	KORE_SYSCALL_ALLOW(open),
 	KORE_SYSCALL_ALLOW(read),
@@ -49,6 +55,7 @@ static struct sock_filter filter_kore[] = {
 	KORE_SYSCALL_ALLOW(lseek),
 	KORE_SYSCALL_ALLOW(close),
 	KORE_SYSCALL_ALLOW(access),
+	KORE_SYSCALL_ALLOW(writev),
 	KORE_SYSCALL_ALLOW(getcwd),
 	KORE_SYSCALL_ALLOW(openat),
 	KORE_SYSCALL_ALLOW(unlink),
@@ -74,13 +81,17 @@ static struct sock_filter filter_kore[] = {
 	KORE_SYSCALL_ALLOW(epoll_ctl),
 	KORE_SYSCALL_ALLOW(setsockopt),
 	KORE_SYSCALL_ALLOW(epoll_wait),
+	KORE_SYSCALL_ALLOW(epoll_pwait),
 
-	/* "Other" without clear category. */
-	KORE_SYSCALL_ALLOW(futex),
+	/* Signal related. */
 	KORE_SYSCALL_ALLOW(sigaltstack),
 	KORE_SYSCALL_ALLOW(rt_sigreturn),
 	KORE_SYSCALL_ALLOW(rt_sigaction),
 	KORE_SYSCALL_ALLOW(clock_gettime),
+
+	/* "Other" without clear category. */
+	KORE_SYSCALL_ALLOW(futex),
+	KORE_SYSCALL_ALLOW(rt_sigprocmask),
 
 #if defined(__NR_getrandom)
 	KORE_SYSCALL_ALLOW(getrandom),
@@ -101,14 +112,9 @@ static struct sock_filter filter_prologue[] = {
 };
 
 /* bpf program epilogue. */
-#define FILTER_EPILOGUE_ALLOW_OFFSET	1
-
 static struct sock_filter filter_epilogue[] = {
 	/* Return hit if no system calls matched our list. */
-	BPF_STMT(BPF_RET+BPF_K, SECCOMP_KILL_POLICY),
-
-	/* Final destination for syscalls that are accepted. */
-	BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_ALLOW)
+	BPF_STMT(BPF_RET+BPF_K, SECCOMP_KILL_POLICY)
 };
 
 #define filter_prologue_len	KORE_FILTER_LEN(filter_prologue)
@@ -161,8 +167,8 @@ kore_seccomp_enable(void)
 	struct sock_fprog		prog;
 	struct kore_runtime_call	*rcall;
 	struct filter			*filter;
+	size_t				prog_len, off, i;
 	int				skip_worker_filter;
-	size_t				prog_len, pos, jmp_off, i;
 
 #if defined(KORE_DEBUG)
 	memset(&sa, 0, sizeof(sa));
@@ -195,50 +201,27 @@ kore_seccomp_enable(void)
 		    KORE_FILTER_LEN(filter_kore));
 	}
 
-	/*
-	 * Construct the entire BPF program by adding all relevant parts
-	 * together. While doing so remember where the jmp_off is  going to be
-	 * so we can resolve the true branch for all comparisons.
-	 */
-
 	/* Start with the prologue. */
 	prog_len = filter_prologue_len;
-	jmp_off = prog_len;
 
 	/* Now account for all enabled filters. */
-	TAILQ_FOREACH(filter, &filters, list) {
+	TAILQ_FOREACH(filter, &filters, list)
 		prog_len += filter->instructions;
-		jmp_off += filter->instructions;
-	}
 
 	/* Finally add the epilogue. */
 	prog_len += filter_epilogue_len;
-
-	/* Finalize the jump position. */
-	jmp_off += FILTER_EPILOGUE_ALLOW_OFFSET;
-
-	/* Initial filter position is immediately after prologue. */
-	pos = filter_prologue_len + 1;
-
-	/* Iterate over all filters and fixup the true branch. */
-	TAILQ_FOREACH(filter, &filters, list) {
-		for (i = 0; i < filter->instructions; i++) {
-			filter->prog[i].jt = (u_int8_t)jmp_off - pos;
-			pos++;
-		}
-	}
 
 	/* Build the entire bpf program now. */
 	if ((sf = calloc(prog_len, sizeof(*sf))) == NULL)
 		fatal("calloc");
 
-	jmp_off = 0;
+	off = 0;
 	for (i = 0; i < filter_prologue_len; i++)
-		sf[jmp_off++] = filter_prologue[i];
+		sf[off++] = filter_prologue[i];
 
 	TAILQ_FOREACH(filter, &filters, list) {
 		for (i = 0; i < filter->instructions; i++)
-			sf[jmp_off++] = filter->prog[i];
+			sf[off++] = filter->prog[i];
 
 		if (!kore_quiet) {
 			kore_log(LOG_INFO,
@@ -247,7 +230,7 @@ kore_seccomp_enable(void)
 	}
 
 	for (i = 0; i < filter_epilogue_len; i++)
-		sf[jmp_off++] = filter_epilogue[i];
+		sf[off++] = filter_epilogue[i];
 
 	/* Lock and load it. */
 	if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1)

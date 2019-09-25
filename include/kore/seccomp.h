@@ -26,15 +26,17 @@
 /*
  * Allow a system call by comparing the accumulator value (which will contain
  * the system call value) with the value of SYS_##name.
- *
- * If the value is equal the true branch (first) is taken, otherwise the
- * false branch (second) is taken.
- *
- * When the program is constructed the true branch jump destination is
- * resolved automatically.
  */
-#define KORE_SYSCALL_ALLOW(_name)	\
-    BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, SYS_##_name, 0, 0)
+#define KORE_SYSCALL_ALLOW(_name)				\
+    BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, SYS_##_name, 0, 1),		\
+    BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_ALLOW)
+
+/*
+ * Explicit deny of a system call with an errno code for the caller.
+ */
+#define KORE_SYSCALL_DENY_ERRNO(_name, _errno)			\
+    BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, SYS_##_name, 0, 1),		\
+    BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_ERRNO|(_errno))
 
 /* The length of a filter. */
 #define KORE_FILTER_LEN(x)		(sizeof(x) / sizeof(x[0]))
