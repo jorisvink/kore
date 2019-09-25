@@ -259,7 +259,7 @@ kore_seccomp_enable(void)
 	if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog) == -1)
 		fatal("prctl: %s", errno_s);
 
-	if (!kore_quit)
+	if (!kore_quiet)
 		kore_log(LOG_INFO, "seccomp sandbox activated");
 }
 
