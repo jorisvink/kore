@@ -154,6 +154,7 @@ kore_seccomp_enable(void)
 	struct sock_fprog		prog;
 	struct kore_runtime_call	*rcall;
 	struct filter			*filter;
+	int				skip_worker_filter;
 	size_t				prog_len, pos, jmp_off, i;
 
 #if defined(KORE_DEBUG)
@@ -174,9 +175,18 @@ kore_seccomp_enable(void)
 		kore_free(rcall);
 	}
 
-	/* Add worker required syscalls. */
-	kore_seccomp_filter("worker", filter_kore,
-	    KORE_FILTER_LEN(filter_kore));
+	skip_worker_filter = 0;
+
+#if !defined(KORE_NO_TLS)
+	if (worker->id == KORE_WORKER_KEYMGR)
+		skip_worker_filter = 1;
+#endif
+
+	if (skip_worker_filter == 0) {
+		/* Add worker required syscalls. */
+		kore_seccomp_filter("worker", filter_kore,
+		    KORE_FILTER_LEN(filter_kore));
+	}
 
 	/*
 	 * Construct the entire BPF program by adding all relevant parts

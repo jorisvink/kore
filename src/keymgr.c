@@ -61,15 +61,28 @@ static struct sock_filter filter_keymgr[] = {
 	KORE_SYSCALL_ALLOW(open),
 	KORE_SYSCALL_ALLOW(read),
 	KORE_SYSCALL_ALLOW(close),
+	KORE_SYSCALL_ALLOW(fstat),
+	KORE_SYSCALL_ALLOW(futex),
+	KORE_SYSCALL_ALLOW(openat),
 
-	/* Allow it to read/write messages. */
-	KORE_SYSCALL_ALLOW(write),
+	/* Net related. */
 	KORE_SYSCALL_ALLOW(read),
+	KORE_SYSCALL_ALLOW(write),
+	KORE_SYSCALL_ALLOW(epoll_wait),
 
 	/* Process things. */
 	KORE_SYSCALL_ALLOW(exit),
+	KORE_SYSCALL_ALLOW(kill),
+	KORE_SYSCALL_ALLOW(getpid),
+	KORE_SYSCALL_ALLOW(arch_prctl),
+	KORE_SYSCALL_ALLOW(exit_group),
 	KORE_SYSCALL_ALLOW(sigaltstack),
+	KORE_SYSCALL_ALLOW(rt_sigreturn),
 	KORE_SYSCALL_ALLOW(rt_sigaction),
+
+	/* Other things. */
+	KORE_SYSCALL_ALLOW(munmap),
+	KORE_SYSCALL_ALLOW(getrandom),
 };
 #endif
 

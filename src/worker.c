@@ -310,14 +310,7 @@ kore_worker_privdrop(const char *runas, const char *root)
 			fatalx("cannot drop privileges");
 	}
 
-#if defined(__linux__) && !defined(KORE_NO_TLS)
-	/* keymgr gets its own privileges. */
-	if (worker->id == KORE_WORKER_KEYMGR)
-		return;
-#endif
-
 	kore_platform_sandbox();
-
 }
 
 void
