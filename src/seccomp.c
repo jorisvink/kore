@@ -76,11 +76,14 @@ static struct sock_filter filter_kore[] = {
 
 	/* "Other" without clear category. */
 	KORE_SYSCALL_ALLOW(futex),
-	KORE_SYSCALL_ALLOW(getrandom),
 	KORE_SYSCALL_ALLOW(sigaltstack),
 	KORE_SYSCALL_ALLOW(rt_sigreturn),
 	KORE_SYSCALL_ALLOW(rt_sigaction),
 	KORE_SYSCALL_ALLOW(clock_gettime),
+
+#if defined(__NR_getrandom)
+	KORE_SYSCALL_ALLOW(getrandom),
+#endif
 };
 
 /* bpf program prologue. */

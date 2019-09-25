@@ -66,6 +66,7 @@ static struct sock_filter filter_keymgr[] = {
 	KORE_SYSCALL_ALLOW(openat),
 
 	/* Net related. */
+	KORE_SYSCALL_ALLOW(poll),
 	KORE_SYSCALL_ALLOW(read),
 	KORE_SYSCALL_ALLOW(write),
 	KORE_SYSCALL_ALLOW(epoll_wait),
@@ -73,6 +74,7 @@ static struct sock_filter filter_keymgr[] = {
 	/* Process things. */
 	KORE_SYSCALL_ALLOW(exit),
 	KORE_SYSCALL_ALLOW(kill),
+	KORE_SYSCALL_ALLOW(getuid),
 	KORE_SYSCALL_ALLOW(getpid),
 	KORE_SYSCALL_ALLOW(arch_prctl),
 	KORE_SYSCALL_ALLOW(exit_group),
@@ -81,8 +83,11 @@ static struct sock_filter filter_keymgr[] = {
 	KORE_SYSCALL_ALLOW(rt_sigaction),
 
 	/* Other things. */
+	KORE_SYSCALL_ALLOW(mmap),
 	KORE_SYSCALL_ALLOW(munmap),
+#if defined(__NR_getrandom)
 	KORE_SYSCALL_ALLOW(getrandom),
+#endif
 };
 #endif
 
