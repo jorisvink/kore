@@ -49,8 +49,7 @@ async def async_socket(req):
     # Respond with the response from /socket-test.
     req.response(200, data)
 
-    # Close the underlying socket, no need to close the wrapped kore.socket
-    sock.close()
+    conn.close()
 
 async def socket_test(req):
     # Delay response a bit, just cause we can.
