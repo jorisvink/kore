@@ -1546,13 +1546,19 @@ cli_compile_kore(void *arg)
 static void
 cli_run_kore_python(void)
 {
-	char		*args[3], *cmd;
+	char		*args[5], *cmd;
+	char		pwd[MAXPATHLEN];
 
 	(void)cli_vasprintf(&cmd, "%s/bin/kore", prefix);
 
+	if (getcwd(pwd, sizeof(pwd)) == NULL)
+		fatal("could not get cwd: %s", errno_s);
+
 	args[0] = cmd;
-	args[1] = "-frn";
-	args[2] = NULL;
+	args[1] = "-frnc";
+	args[2] = "kore.conf";
+	args[3] = pwd;
+	args[4] = NULL;
 
 	execvp(args[0], args);
 	fatal("failed to start '%s': %s", args[0], errno_s);

@@ -97,27 +97,31 @@ static void	kore_server_start(int, char *[]);
 static void
 usage(void)
 {
-	fprintf(stderr, "Usage: %s [options]\n", __progname);
+#if !defined(KORE_SINGLE_BINARY) && defined(KORE_USE_PYTHON)
+	printf("Usage: %s [options] [app | app.py]\n", __progname);
+#else
+	printf("Usage: %s [options]\n", __progname);
+#endif
 
-	fprintf(stderr, "\n");
-	fprintf(stderr, "Available options:\n");
+	printf("\n");
+	printf("Available options:\n");
 #if !defined(KORE_SINGLE_BINARY)
-	fprintf(stderr, "\t-c\tconfiguration to use\n");
+	printf("\t-c\tconfiguration to use\n");
 #endif
 #if defined(KORE_DEBUG)
-	fprintf(stderr, "\t-d\trun with debug on\n");
+	printf("\t-d\trun with debug on\n");
 #endif
-	fprintf(stderr, "\t-f\tstart in foreground\n");
-	fprintf(stderr, "\t-h\tthis help text\n");
-	fprintf(stderr, "\t-n\tdo not chroot\n");
-	fprintf(stderr, "\t-q\tonly log errors\n");
-	fprintf(stderr, "\t-r\tdo not drop privileges\n");
-	fprintf(stderr, "\t-v\tdisplay %s build information\n", __progname);
+	printf("\t-f\tstart in foreground\n");
+	printf("\t-h\tthis help text\n");
+	printf("\t-n\tdo not chroot\n");
+	printf("\t-q\tonly log errors\n");
+	printf("\t-r\tdo not drop privileges\n");
+	printf("\t-v\tdisplay %s build information\n", __progname);
 
 #if !defined(KORE_SINGLE_BINARY)
-	fprintf(stderr, "\nFind more information on https://kore.io\n");
+	printf("\nFind more information on https://kore.io\n");
 #else
-	fprintf(stderr, "\nBuilt using https://kore.io\n");
+	printf("\nBuilt using https://kore.io\n");
 #endif
 
 	exit(1);
@@ -162,7 +166,6 @@ main(int argc, char *argv[])
 	int				ch, flags;
 #if !defined(KORE_SINGLE_BINARY) && defined(KORE_USE_PYTHON)
 	struct stat			st;
-	char				pwd[MAXPATHLEN];
 #endif
 
 	flags = 0;
@@ -223,12 +226,8 @@ main(int argc, char *argv[])
 		argc--;
 		argv++;
 	} else {
-		if (getcwd(pwd, sizeof(pwd)) == NULL)
-			fatal("getcwd: %s", errno_s);
-		kore_pymodule = pwd;
+		usage();
 	}
-
-	config_file = NULL;
 
 	if (lstat(kore_pymodule, &st) == -1)
 		fatal("failed to stat '%s': %s", kore_pymodule, errno_s);
