@@ -60,6 +60,7 @@ static struct sock_filter filter_kore[] = {
 	KORE_SYSCALL_ALLOW(writev),
 	KORE_SYSCALL_ALLOW(getcwd),
 	KORE_SYSCALL_ALLOW(unlink),
+	KORE_SYSCALL_ALLOW(readlink),
 
 	/* Process related. */
 	KORE_SYSCALL_ALLOW(exit),
