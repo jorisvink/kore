@@ -83,6 +83,7 @@ static struct sock_filter filter_keymgr[] = {
 	KORE_SYSCALL_ALLOW(sigaltstack),
 	KORE_SYSCALL_ALLOW(rt_sigreturn),
 	KORE_SYSCALL_ALLOW(rt_sigaction),
+	KORE_SYSCALL_ALLOW(rt_sigprocmask),
 
 	/* Other things. */
 	KORE_SYSCALL_ALLOW(mmap),
