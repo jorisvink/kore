@@ -132,6 +132,7 @@ struct filter {
 };
 
 static TAILQ_HEAD(, filter)	filters;
+static struct filter		*ufilter = NULL;
 
 void
 kore_seccomp_init(void)
@@ -184,8 +185,10 @@ kore_seccomp_enable(void)
 
 	/* Allow application to add its own filters. */
 	if ((rcall = kore_runtime_getcall("kore_seccomp_hook")) != NULL) {
+		ufilter = TAILQ_FIRST(&filters);
 		kore_runtime_execute(rcall);
 		kore_free(rcall);
+		ufilter = NULL;
 	}
 
 	skip_worker_filter = 0;
@@ -262,7 +265,11 @@ kore_seccomp_filter(const char *name, void *prog, size_t len)
 	filter->instructions = len;
 	filter->name = kore_strdup(name);
 
-	TAILQ_INSERT_TAIL(&filters, filter, list);
+	if (ufilter) {
+		TAILQ_INSERT_BEFORE(ufilter, filter, list);
+	} else {
+		TAILQ_INSERT_TAIL(&filters, filter, list);
+	}
 
 	return (KORE_RESULT_OK);
 }
