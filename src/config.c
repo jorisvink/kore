@@ -552,8 +552,9 @@ config_file_write(void)
 static int
 configure_file(char *file)
 {
-	kore_free(config_file);
-	config_file = kore_strdup(file);
+	free(config_file);
+	if ((config_file = strdup(file)) == NULL)
+		fatal("strdup");
 
 	return (KORE_RESULT_OK);
 }

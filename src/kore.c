@@ -182,7 +182,9 @@ main(int argc, char *argv[])
 		switch (ch) {
 #if !defined(KORE_SINGLE_BINARY)
 		case 'c':
-			config_file = optarg;
+			free(config_file);
+			if ((config_file = strdup(optarg)) == NULL)
+				fatal("strdup");
 			break;
 #endif
 #if defined(KORE_DEBUG)
@@ -284,6 +286,7 @@ main(int argc, char *argv[])
 #endif
 
 	kore_parse_config();
+	free(config_file);
 
 #if !defined(KORE_NO_HTTP)
 	if (http_body_disk_offload > 0) {
