@@ -32,10 +32,13 @@
 #include "seccomp.h"
 
 static struct sock_filter filter_pgsql[] = {
-	KORE_SYSCALL_ALLOW(socket),
+	/* Allow us to create sockets and call connect. */
 	KORE_SYSCALL_ALLOW(connect),
-	KORE_SYSCALL_ALLOW(sendto),
-	KORE_SYSCALL_ALLOW(recvfrom),
+	KORE_SYSCALL_ALLOW_ARG(socket, 0, AF_INET),
+	KORE_SYSCALL_ALLOW_ARG(socket, 0, AF_INET6),
+	KORE_SYSCALL_ALLOW_ARG(socket, 0, AF_UNIX),
+
+	/* Requires these calls. */
 	KORE_SYSCALL_ALLOW(getsockopt),
 	KORE_SYSCALL_ALLOW(getsockname),
 };

@@ -15,6 +15,7 @@
  */
 
 #include <sys/param.h>
+#include <sys/mman.h>
 #include <sys/epoll.h>
 #include <sys/prctl.h>
 #include <sys/syscall.h>
@@ -42,7 +43,7 @@
  */
 static struct sock_filter filter_kore[] = {
 	/* Deny these, but with EACCESS instead of dying. */
-	KORE_SYSCALL_DENY_ERRNO(ioctl, EACCES),
+	KORE_SYSCALL_DENY(ioctl, EACCES),
 
 	/* File related. */
 	KORE_SYSCALL_ALLOW(open),
@@ -54,10 +55,10 @@ static struct sock_filter filter_kore[] = {
 	KORE_SYSCALL_ALLOW(fcntl),
 	KORE_SYSCALL_ALLOW(lseek),
 	KORE_SYSCALL_ALLOW(close),
+	KORE_SYSCALL_ALLOW(openat),
 	KORE_SYSCALL_ALLOW(access),
 	KORE_SYSCALL_ALLOW(writev),
 	KORE_SYSCALL_ALLOW(getcwd),
-	KORE_SYSCALL_ALLOW(openat),
 	KORE_SYSCALL_ALLOW(unlink),
 
 	/* Process related. */
@@ -70,8 +71,13 @@ static struct sock_filter filter_kore[] = {
 
 	/* Memory related. */
 	KORE_SYSCALL_ALLOW(brk),
-	KORE_SYSCALL_ALLOW(mmap),
 	KORE_SYSCALL_ALLOW(munmap),
+
+	/* Deny mmap/mprotect calls with PROT_EXEC/PROT_WRITE protection. */
+	KORE_SYSCALL_DENY_WITH_FLAG(mmap, 2, PROT_EXEC | PROT_WRITE, EINVAL),
+	KORE_SYSCALL_DENY_WITH_FLAG(mprotect, 2, PROT_EXEC, EINVAL),
+
+	KORE_SYSCALL_ALLOW(mmap),
 	KORE_SYSCALL_ALLOW(mprotect),
 
 	/* Net related. */
@@ -103,14 +109,14 @@ static struct sock_filter filter_kore[] = {
 /* bpf program prologue. */
 static struct sock_filter filter_prologue[] = {
 	/* Load arch member into accumulator (A) (arch is __u32). */
-	BPF_STMT(BPF_LD+BPF_W+BPF_ABS, offsetof(struct seccomp_data, arch)),
+	KORE_BPF_LOAD(arch, 0),
 
 	/* Compare accumulator against constant, if false jump over kill. */
-	BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, SECCOMP_AUDIT_ARCH, 1, 0),
-	BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_KILL),
+	KORE_BPF_CMP(SECCOMP_AUDIT_ARCH, 1, 0),
+	KORE_BPF_RET(SECCOMP_RET_KILL),
 
-	/* Load system call member into accumulator (nr is int). */
-	BPF_STMT(BPF_LD+BPF_W+BPF_ABS, offsetof(struct seccomp_data, nr)),
+	/* Load the system call number into the accumulator. */
+	KORE_BPF_LOAD(nr, 0),
 };
 
 /* bpf program epilogue. */

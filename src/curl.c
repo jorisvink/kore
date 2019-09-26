@@ -28,8 +28,10 @@
 static struct sock_filter filter_curl[] = {
 	/* Allow sockets and libcurl to call connect. */
 	KORE_SYSCALL_ALLOW(bind),
-	KORE_SYSCALL_ALLOW(socket),
 	KORE_SYSCALL_ALLOW(connect),
+	KORE_SYSCALL_ALLOW_ARG(socket, 0, AF_INET),
+	KORE_SYSCALL_ALLOW_ARG(socket, 0, AF_INET6),
+	KORE_SYSCALL_ALLOW_ARG(socket, 0, AF_UNIX),
 
 	/* Threading related. */
 	KORE_SYSCALL_ALLOW(clone),
