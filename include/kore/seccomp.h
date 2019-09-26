@@ -23,23 +23,47 @@
 #include <linux/filter.h>
 #include <linux/seccomp.h>
 
-/*
- * Allow a system call by comparing the accumulator value (which will contain
- * the system call value) with the value of SYS_##name.
- */
-#define KORE_SYSCALL_ALLOW(_name)				\
+/* Do something with a syscall with a user-supplied action. */
+#define KORE_SYSCALL_FILTER(_name, _action)			\
     BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, SYS_##_name, 0, 1),		\
-    BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_ALLOW)
+    BPF_STMT(BPF_RET+BPF_K, _action)
 
-/*
- * Explicit deny of a system call with an errno code for the caller.
- */
+/* Allow a system call completely. */
+#define KORE_SYSCALL_ALLOW(_name)				\
+    KORE_SYSCALL_FILTER(_name, SECCOMP_RET_ALLOW)
+
+/* Allow system call, but log it. */
+#define KORE_SYSCALL_ALLOW_LOG(_name)				\
+    KORE_SYSCALL_FILTER(_name, SECCOMP_RET_LOG)
+
+/* Explicit deny of a system call with an errno code for the caller. */
 #define KORE_SYSCALL_DENY_ERRNO(_name, _errno)			\
-    BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, SYS_##_name, 0, 1),		\
-    BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_ERRNO|(_errno))
+    KORE_SYSCALL_FILTER(_name, SECCOMP_RET_ERRNO|(_errno))
 
 /* The length of a filter. */
 #define KORE_FILTER_LEN(x)		(sizeof(x) / sizeof(x[0]))
+
+/*
+ * Macro for applications to make easily define custom filter.
+ *
+ * eg:
+ * KORE_SECCOMP_FILTER("filter",
+ *	KORE_SYSCALL_DENY_ERRNO(socket, EACCESS),
+ *	KORE_SYSCALL_DENY_ERRNO(ioctl, EACCESS),
+ *	KORE_SYSCALL_ALLOW(poll),
+ * );
+ *
+ */
+#define KORE_SECCOMP_FILTER(name, ...)				\
+	struct sock_filter _scfilt[] = {			\
+		__VA_ARGS__					\
+	};							\
+	void							\
+	kore_seccomp_hook(void)					\
+	{							\
+		kore_seccomp_filter(name, _scfilt,		\
+		    KORE_FILTER_LEN(_scfilt));			\
+	}
 
 void	kore_seccomp_init(void);
 void	kore_seccomp_drop(void);
