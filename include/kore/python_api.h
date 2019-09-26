@@ -42,4 +42,8 @@ extern const char			*kore_pymodule;
 extern struct kore_module_functions	kore_python_module;
 extern struct kore_runtime		kore_python_runtime;
 
+#define KORE_PYTHON_TEARDOWN_HOOK	"koreapp.cleanup"
+#define KORE_PYTHON_CONFIG_HOOK		"koreapp.configure"
+#define KORE_PYTHON_DAEMONIZED_HOOK	"koreapp.daemonized"
+
 #endif

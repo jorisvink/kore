@@ -75,23 +75,17 @@ static void	kore_write_kore_pid(void);
 static void	kore_proctitle_setup(void);
 static void	kore_server_sslstart(void);
 static void	kore_server_start(int, char *[]);
+static void	kore_call_parent_configure(int, char **);
 
 #if !defined(KORE_SINGLE_BINARY) && defined(KORE_USE_PYTHON)
-#define KORE_PARENT_CONFIG_METHOD	"koreapp.configure"
-#define KORE_PARENT_TEARDOWN_METHOD	"koreapp.cleanup"
-#define KORE_PARENT_DAEMONIZED_METHOD	"koreapp.daemonized"
+static const char	*parent_config_hook = KORE_PYTHON_CONFIG_HOOK;
+static const char	*parent_teardown_hook = KORE_PYTHON_TEARDOWN_HOOK;
+#else
+static const char	*parent_config_hook = KORE_CONFIG_HOOK;
+static const char	*parent_teardown_hook = KORE_TEARDOWN_HOOK;
+#if defined(KORE_SINGLE_BINARY)
+static const char	*parent_daemonized_hook = KORE_DAEMONIZED_HOOK;
 #endif
-
-#if !defined(KORE_PARENT_CONFIG_METHOD)
-#define KORE_PARENT_CONFIG_METHOD	"kore_parent_configure"
-#endif
-
-#if !defined(KORE_PARENT_TEARDOWN_METHOD)
-#define KORE_PARENT_TEARDOWN_METHOD	"kore_parent_teardown"
-#endif
-
-#if !defined(KORE_PARENT_DAEMONIZED_METHOD)
-#define KORE_PARENT_DAEMONIZED_METHOD	"kore_parent_daemonized"
 #endif
 
 static void
@@ -228,14 +222,19 @@ main(int argc, char *argv[])
 		argc--;
 		argv++;
 	} else {
-		usage();
+		kore_pymodule = NULL;
 	}
 
-	if (lstat(kore_pymodule, &st) == -1)
-		fatal("failed to stat '%s': %s", kore_pymodule, errno_s);
+	if (kore_pymodule) {
+		if (lstat(kore_pymodule, &st) == -1) {
+			fatal("failed to stat '%s': %s",
+			    kore_pymodule, errno_s);
+		}
 
-	if (!S_ISDIR(st.st_mode) && !S_ISREG(st.st_mode))
-		fatal("%s: not a directory or file", kore_pymodule);
+		if (!S_ISDIR(st.st_mode) && !S_ISREG(st.st_mode))
+			fatal("%s: not a directory or file", kore_pymodule);
+	}
+
 #elif !defined(KORE_SINGLE_BINARY)
 	if (argc > 0)
 		fatal("did you mean to run `kodev' instead?");
@@ -272,21 +271,32 @@ main(int argc, char *argv[])
 #if defined(KORE_USE_PYTHON)
 	kore_python_init();
 #if !defined(KORE_SINGLE_BINARY)
-	kore_module_load(kore_pymodule, NULL, KORE_MODULE_PYTHON);
-	if (S_ISDIR(st.st_mode) && chdir(kore_pymodule) == -1)
-		fatal("chdir(%s): %s", kore_pymodule, errno_s);
-#endif
-#endif
-#if defined(KORE_SINGLE_BINARY) || defined(KORE_USE_PYTHON)
-	rcall = kore_runtime_getcall(KORE_PARENT_CONFIG_METHOD);
-	if (rcall != NULL) {
-		kore_runtime_configure(rcall, argc, argv);
-		kore_free(rcall);
+	if (kore_pymodule) {
+		kore_module_load(kore_pymodule, NULL, KORE_MODULE_PYTHON);
+		if (S_ISDIR(st.st_mode) && chdir(kore_pymodule) == -1)
+			fatal("chdir(%s): %s", kore_pymodule, errno_s);
+	} else {
+		/* swap back to non-python hooks. */
+		parent_config_hook = KORE_CONFIG_HOOK;
+		parent_teardown_hook = KORE_TEARDOWN_HOOK;
 	}
+#endif
+#endif
+
+#if defined(KORE_SINGLE_BINARY)
+	kore_call_parent_configure(argc, argv);
+#endif
+
+#if defined(KORE_USE_PYTHON) && !defined(KORE_SINGLE_BINARY)
+	if (kore_pymodule)
+		kore_call_parent_configure(argc, argv);
 #endif
 
 	kore_parse_config();
+
+#if !defined(KORE_SINGLE_BINARY)
 	free(config_file);
+#endif
 
 #if !defined(KORE_NO_HTTP)
 	if (http_body_disk_offload > 0) {
@@ -306,7 +316,7 @@ main(int argc, char *argv[])
 
 	kore_worker_shutdown();
 
-	rcall = kore_runtime_getcall(KORE_PARENT_TEARDOWN_METHOD);
+	rcall = kore_runtime_getcall(parent_teardown_hook);
 	if (rcall != NULL) {
 		kore_runtime_execute(rcall);
 		kore_free(rcall);
@@ -707,7 +717,7 @@ kore_server_start(int argc, char *argv[])
 	u_int32_t			tmp;
 	u_int64_t			netwait;
 	int				quit, last_sig;
-#if defined(KORE_SINGLE_BINARY) || !defined(KORE_USE_PYTHON)
+#if defined(KORE_SINGLE_BINARY)
 	struct kore_runtime_call	*rcall;
 #endif
 
@@ -715,7 +725,7 @@ kore_server_start(int argc, char *argv[])
 		if (daemon(1, 0) == -1)
 			fatal("cannot daemon(): %s", errno_s);
 #if defined(KORE_SINGLE_BINARY)
-		rcall = kore_runtime_getcall(KORE_PARENT_DAEMONIZED_METHOD);
+		rcall = kore_runtime_getcall(parent_daemonized_hook);
 		if (rcall != NULL) {
 			kore_runtime_execute(rcall);
 			kore_free(rcall);
@@ -743,11 +753,12 @@ kore_server_start(int argc, char *argv[])
 	}
 
 #if !defined(KORE_SINGLE_BINARY) && !defined(KORE_USE_PYTHON)
-	rcall = kore_runtime_getcall(KORE_PARENT_CONFIG_METHOD);
-	if (rcall != NULL) {
-		kore_runtime_configure(rcall, argc, argv);
-		kore_free(rcall);
-	}
+	kore_call_parent_configure(argc, argv);
+#endif
+
+#if defined(KORE_USE_PYTHON) && !defined(KORE_SINGLE_BINARY)
+	if (kore_pymodule == NULL)
+		kore_call_parent_configure(argc, argv);
 #endif
 
 	kore_platform_proctitle("[parent]");
@@ -829,5 +840,17 @@ kore_write_kore_pid(void)
 	} else {
 		fprintf(fp, "%d\n", kore_pid);
 		fclose(fp);
+	}
+}
+
+static void
+kore_call_parent_configure(int argc, char **argv)
+{
+	struct kore_runtime_call	*rcall;
+
+	rcall = kore_runtime_getcall(parent_config_hook);
+	if (rcall != NULL) {
+		kore_runtime_configure(rcall, argc, argv);
+		kore_free(rcall);
 	}
 }
