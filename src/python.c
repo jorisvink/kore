@@ -25,6 +25,8 @@
 #include <ctype.h>
 #include <libgen.h>
 #include <signal.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #include "kore.h"
 #include "http.h"
@@ -91,6 +93,10 @@ static int		pyhttp_preprocess(struct http_request *);
 static int		pyhttp_iterobj_chunk_sent(struct netbuf *);
 static int		pyhttp_iterobj_next(struct pyhttp_iterobj *);
 static void		pyhttp_iterobj_disconnect(struct connection *);
+
+static int		pydomain_params(PyObject *,
+			    struct kore_module_handle *, const char *, int);
+static int		pydomain_auth(PyObject *, struct kore_module_handle *);
 
 #if defined(KORE_USE_PGSQL)
 static int		pykore_pgsql_result(struct pykore_pgsql *);
@@ -734,8 +740,9 @@ pyhttp_file_dealloc(struct pyhttp_file *pyfile)
 static int
 python_runtime_http_request(void *addr, struct http_request *req)
 {
-	int			ret;
+	int			ret, idx, cnt;
 	PyObject		*pyret, *args, *callable;
+	PyObject		*cargs[HTTP_CAPTURE_GROUPS + 1];
 
 	if (req->py_coro != NULL) {
 		python_coro_wakeup(req->py_coro);
@@ -776,14 +783,46 @@ python_runtime_http_request(void *addr, struct http_request *req)
 		break;
 	}
 
+	cnt = 0;
 	callable = (PyObject *)addr;
 
-	if ((args = PyTuple_New(1)) == NULL)
-		fatal("python_runtime_http_request: PyTuple_New failed");
+	/* starts at 1 to skip the full path. */
+	if (req->hdlr->type == HANDLER_TYPE_DYNAMIC) {
+		for (idx = 1; idx < HTTP_CAPTURE_GROUPS - 1; idx++) {
+			if (req->cgroups[idx].rm_so == -1 ||
+			    req->cgroups[idx].rm_eo == -1)
+				break;
+
+			cargs[cnt] = PyUnicode_FromStringAndSize(req->path +
+			    req->cgroups[idx].rm_so,
+			    req->cgroups[idx].rm_eo - req->cgroups[idx].rm_so);
+
+			if (cargs[cnt] == NULL) {
+				while (cnt-- >= 0)
+					Py_XDECREF(cargs[cnt]);
+				kore_python_log_error("http request");
+				http_response(req,
+				    HTTP_STATUS_INTERNAL_ERROR, NULL, 0);
+				return (KORE_RESULT_OK);
+			}
+
+			cnt++;
+		}
+	}
+
+	cargs[cnt] = NULL;
+
+	if ((args = PyTuple_New(cnt + 1)) == NULL)
+		fatal("%s: PyTuple_New failed", __func__);
 
 	Py_INCREF(req->py_req);
 	if (PyTuple_SetItem(args, 0, req->py_req) != 0)
 		fatal("python_runtime_http_request: PyTuple_SetItem failed");
+
+	for (idx = 0; cargs[idx] != NULL; idx++) {
+		if (PyTuple_SetItem(args, 1 + idx, cargs[idx]) != 0)
+			fatal("%s: PyTuple_SetItem failed (%d)", __func__, idx);
+	}
 
 	PyErr_Clear();
 	pyret = PyObject_Call(callable, args, NULL);
@@ -826,13 +865,13 @@ python_runtime_validator(void *addr, struct http_request *req, const void *data)
 			fatal("%s: pyreq alloc failed", __func__);
 	}
 
-	if (req->py_coro != NULL) {
-		coro = req->py_coro;
+	if (req->py_validator != NULL) {
+		coro = req->py_validator;
 		python_coro_wakeup(coro);
 		if (python_coro_run(coro) == KORE_RESULT_OK) {
 			ret = python_validator_check(coro->result);
 			kore_python_coro_delete(coro);
-			req->py_coro = NULL;
+			req->py_validator = NULL;
 			return (ret);
 		}
 
@@ -872,12 +911,12 @@ python_runtime_validator(void *addr, struct http_request *req, const void *data)
 
 	if (PyCoro_CheckExact(pyret)) {
 		coro = python_coro_create(pyret, req);
-		req->py_coro = coro;
+		req->py_validator = coro;
 		if (python_coro_run(coro) == KORE_RESULT_OK) {
 			http_request_wakeup(req);
 			ret = python_validator_check(coro->result);
 			kore_python_coro_delete(coro);
-			req->py_coro = NULL;
+			req->py_validator = NULL;
 			return (ret);
 		}
 		return (KORE_RESULT_RETRY);
@@ -897,24 +936,16 @@ python_validator_check(PyObject *obj)
 	if (obj == NULL)
 		return (KORE_RESULT_ERROR);
 
-	if (!PyLong_Check(obj)) {
+	if (!PyBool_Check(obj)) {
 		kore_log(LOG_WARNING,
-		    "invalid return value from authenticator (not an int)");
+		    "validator did not return True/False");
 		ret = KORE_RESULT_ERROR;
-	} else {
-		ret = (int)PyLong_AsLong(obj);
 	}
 
-	switch (ret) {
-	case KORE_RESULT_OK:
-	case KORE_RESULT_ERROR:
-		break;
-	default:
-		kore_log(LOG_WARNING,
-		    "unsupported authenticator return value '%d'", ret);
+	if (obj == Py_True)
+		ret = KORE_RESULT_OK;
+	else
 		ret = KORE_RESULT_ERROR;
-		break;
-	}
 
 	return (ret);
 }
@@ -1026,7 +1057,7 @@ python_runtime_configure(void *addr, int argc, char **argv)
 
 	if (pyret == NULL) {
 		kore_python_log_error("python_runtime_configure");
-		fatal("failed to call configure method: wrong args?");
+		fatal("failed to configure your application");
 	}
 
 	Py_DECREF(pyret);
@@ -1098,8 +1129,9 @@ python_runtime_connect(void *addr, struct connection *c)
 static PyMODINIT_FUNC
 python_module_init(void)
 {
-	int		i;
-	PyObject	*pykore;
+	int			i;
+	struct pyconfig		*config;
+	PyObject		*pykore;
 
 	if ((pykore = PyModule_Create(&pykore_module)) == NULL)
 		fatal("python_module_init: failed to setup pykore module");
@@ -1109,6 +1141,7 @@ python_module_init(void)
 	python_push_type("pytimer", pykore, &pytimer_type);
 	python_push_type("pyqueue", pykore, &pyqueue_type);
 	python_push_type("pysocket", pykore, &pysocket_type);
+	python_push_type("pydomain", pykore, &pydomain_type);
 	python_push_type("pyconnection", pykore, &pyconnection_type);
 
 #if defined(KORE_USE_CURL)
@@ -1123,7 +1156,60 @@ python_module_init(void)
 		    python_integers[i].value);
 	}
 
+	if ((config = PyObject_New(struct pyconfig, &pyconfig_type)) == NULL)
+		fatal("failed to create config object");
+
+	if (PyObject_SetAttrString(pykore, "config", (PyObject *)config) == -1)
+		fatal("failed to add config object");
+
 	return (pykore);
+}
+
+static int
+pyconfig_setattr(PyObject *self, PyObject *attr, PyObject *val)
+{
+	char		*v;
+	int		ret;
+	PyObject	*repr;
+	const char	*name, *value;
+
+	ret = -1;
+	repr = NULL;
+
+	if (!PyUnicode_Check(attr))
+		fatal("setattr: attribute name not a unicode string");
+
+	if (PyLong_CheckExact(val)) {
+		if ((repr = PyObject_Repr(val)) == NULL)
+			return (-1);
+		value = PyUnicode_AsUTF8(repr);
+	} else if (PyUnicode_CheckExact(val)) {
+		value = PyUnicode_AsUTF8(val);
+	} else if (PyBool_Check(val)) {
+		if (val == Py_False)
+			value = "False";
+		else
+			value = "True";
+	} else {
+		fatal("invalid object, config expects integer, bool or string");
+	}
+
+	name = PyUnicode_AsUTF8(attr);
+	v = kore_strdup(value);
+
+	if (!kore_configure_setting(name, v)) {
+		ret = -1;
+		PyErr_SetString(PyExc_RuntimeError,
+		    "configured cannot be changed at runtime");
+	} else {
+		ret = 0;
+	}
+
+	kore_free(v);
+
+	Py_XDECREF(repr);
+
+	return (ret);
 }
 
 static void
@@ -1403,6 +1489,57 @@ python_kore_tracer(PyObject *self, PyObject *args)
 	python_tracer = obj;
 
 	Py_RETURN_TRUE;
+}
+
+static PyObject *
+python_kore_domain(PyObject *self, PyObject *args)
+{
+	const char		*name;
+	struct pydomain		*domain;
+#if !defined(KORE_NO_TLS)
+	int			depth;
+	const char		*x509, *key, *ca;
+
+	ca = NULL;
+	depth = -1;
+
+	if (!PyArg_ParseTuple(args, "sss|si", &name, &x509, &key, &ca, &depth))
+		return (NULL);
+
+	if (ca != NULL && depth < 0) {
+		PyErr_Format(PyExc_RuntimeError, "invalid depth '%d'", depth);
+		return (NULL);
+	}
+#else
+	if (!PyArg_ParseTuple(args, "s", &name))
+		return (NULL);
+#endif
+
+	if (kore_domain_lookup(name) != NULL) {
+		PyErr_SetString(PyExc_RuntimeError, "domain exists");
+		return (NULL);
+	}
+
+	if ((domain = PyObject_New(struct pydomain, &pydomain_type)) == NULL)
+		return (NULL);
+
+	if (!kore_domain_new(name))
+		fatal("failed to create new domain configuration");
+
+	if ((domain->config = kore_domain_lookup(name)) == NULL)
+		fatal("failed to find new domain configuration");
+
+#if !defined(KORE_NO_TLS)
+	domain->config->certkey = kore_strdup(key);
+	domain->config->certfile = kore_strdup(x509);
+
+	if (ca != NULL) {
+		domain->config->cafile = kore_strdup(ca);
+		domain->config->x509_verify_depth = depth;
+	}
+#endif
+
+	return ((PyObject *)domain);
 }
 
 static PyObject *
@@ -3795,12 +3932,33 @@ pyhttp_file_read(struct pyhttp_file *pyfile, PyObject *args)
 static PyObject *
 pyhttp_websocket_handshake(struct pyhttp_request *pyreq, PyObject *args)
 {
-	const char	*onconnect, *onmsg, *ondisconnect;
+	struct connection	*c;
+	PyObject		*onconnect, *onmsg, *ondisconnect;
 
-	if (!PyArg_ParseTuple(args, "sss", &onconnect, &onmsg, &ondisconnect))
+	if (!PyArg_ParseTuple(args, "OOO", &onconnect, &onmsg, &ondisconnect))
 		return (NULL);
 
-	kore_websocket_handshake(pyreq->req, onconnect, onmsg, ondisconnect);
+	kore_websocket_handshake(pyreq->req, NULL, NULL, NULL);
+
+	c = pyreq->req->owner;
+
+	Py_INCREF(onconnect);
+	Py_INCREF(onmsg);
+	Py_INCREF(ondisconnect);
+
+	c->ws_connect = kore_calloc(1, sizeof(struct kore_runtime_call));
+	c->ws_connect->addr = onconnect;
+	c->ws_connect->runtime = &kore_python_runtime;
+
+	c->ws_message = kore_calloc(1, sizeof(struct kore_runtime_call));
+	c->ws_message->addr = onmsg;
+	c->ws_message->runtime = &kore_python_runtime;
+
+	c->ws_disconnect = kore_calloc(1, sizeof(struct kore_runtime_call));
+	c->ws_disconnect->addr = ondisconnect;
+	c->ws_disconnect->runtime = &kore_python_runtime;
+
+	python_runtime_connect(onconnect, c);
 
 	Py_RETURN_TRUE;
 }
@@ -4020,6 +4178,349 @@ pyhttp_file_get_filename(struct pyhttp_file *pyfile, void *closure)
 		return (PyErr_NoMemory());
 
 	return (name);
+}
+
+void
+pydomain_dealloc(struct pydomain *domain)
+{
+	PyObject_Del((PyObject *)domain);
+}
+
+static int
+pydomain_set_accesslog(struct pydomain *domain, PyObject *arg, void *closure)
+{
+	const char		*path;
+
+	if (!PyUnicode_CheckExact(arg))
+		return (-1);
+
+	if (domain->config->accesslog != -1) {
+		PyErr_Format(PyExc_RuntimeError,
+		    "domain %s accesslog already set", domain->config->domain);
+		return (-1);
+	}
+
+	path = PyUnicode_AsUTF8(arg);
+
+	domain->config->accesslog = open(path,
+	    O_CREAT | O_APPEND | O_WRONLY,
+	    S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+
+	if (domain->config->accesslog == -1) {
+		PyErr_Format(PyExc_RuntimeError,
+		    "failed to open accesslog for %s (%s:%s)",
+		    domain->config->domain, path, errno_s);
+		return (-1);
+	}
+
+	return (0);
+}
+
+static PyObject *
+pydomain_filemaps(struct pydomain *domain, PyObject *args)
+{
+	Py_ssize_t		idx;
+	const char		*url, *path;
+	PyObject		*dict, *key, *value;
+
+	if (!PyArg_ParseTuple(args, "O", &dict))
+		return (NULL);
+
+	if (!PyDict_CheckExact(dict))
+		return (NULL);
+
+	idx = 0;
+	while (PyDict_Next(dict, &idx, &key, &value)) {
+		if (!PyUnicode_CheckExact(key) ||
+		    !PyUnicode_CheckExact(value)) {
+			return (NULL);
+		}
+
+		url = PyUnicode_AsUTF8(key);
+		path = PyUnicode_AsUTF8(value);
+
+		if (!kore_filemap_create(domain->config, path, url)) {
+			PyErr_Format(PyExc_RuntimeError,
+			    "failed to create filemap %s->%s for %s",
+			    url, path, domain->config->domain);
+			return (NULL);
+		}
+	}
+
+	Py_RETURN_NONE;
+}
+
+static PyObject *
+pydomain_route(struct pydomain *domain, PyObject *args, PyObject *kwargs)
+{
+	struct kore_module_handle	*hdlr;
+	int				method;
+	const char			*path, *val;
+	Py_ssize_t			list_len, idx;
+	PyObject			*callable, *repr, *obj, *item;
+
+	if (!PyArg_ParseTuple(args, "sO", &path, &callable))
+		return (NULL);
+
+	if (!PyCallable_Check(callable))
+		return (NULL);
+
+	TAILQ_FOREACH(hdlr, &domain->config->handlers, list) {
+		if (!strcmp(hdlr->path, path)) {
+			PyErr_Format(PyExc_RuntimeError,
+			    "route '%s' exists", path);
+			return (NULL);
+		}
+	}
+
+	if ((repr = PyObject_Repr(callable)) == NULL)
+		return (NULL);
+
+	val = PyUnicode_AsUTF8(repr);
+
+	hdlr = kore_calloc(1, sizeof(*hdlr));
+	hdlr->dom = domain->config;
+	hdlr->func = kore_strdup(val);
+	hdlr->path = kore_strdup(path);
+	hdlr->methods = HTTP_METHOD_ALL;
+	TAILQ_INIT(&hdlr->params);
+
+	Py_DECREF(repr);
+
+	hdlr->rcall = kore_calloc(1, sizeof(struct kore_runtime_call));
+	hdlr->rcall->addr = callable;
+	hdlr->rcall->runtime = &kore_python_runtime;
+
+	if (kwargs != NULL) {
+		if ((obj = PyDict_GetItemString(kwargs, "methods")) != NULL) {
+			if (!PyList_CheckExact(obj)) {
+				kore_module_handler_free(hdlr);
+				return (NULL);
+			}
+
+			hdlr->methods = 0;
+			list_len = PyList_Size(obj);
+
+			for (idx = 0; idx < list_len; idx++) {
+				if ((item = PyList_GetItem(obj, idx)) == NULL) {
+					kore_module_handler_free(hdlr);
+					return (NULL);
+				}
+
+				if ((val = PyUnicode_AsUTF8(item)) == NULL) {
+					kore_module_handler_free(hdlr);
+					return (NULL);
+				}
+
+				method = http_method_value(val);
+				if (method == 0) {
+					PyErr_Format(PyExc_RuntimeError,
+					    "unknown method '%s'", val);
+					kore_module_handler_free(hdlr);
+					return (NULL);
+				}
+
+				hdlr->methods |= method;
+				if (method == HTTP_METHOD_GET)
+					hdlr->methods |= HTTP_METHOD_HEAD;
+
+				if (!pydomain_params(kwargs,
+				    hdlr, val, method)) {
+					kore_module_handler_free(hdlr);
+					return (NULL);
+				}
+			}
+		}
+
+		if ((obj = PyDict_GetItemString(kwargs, "auth")) != NULL) {
+			if (!pydomain_auth(obj, hdlr)) {
+				kore_module_handler_free(hdlr);
+				return (NULL);
+			}
+		}
+	}
+
+	if (path[0] == '/') {
+		hdlr->type = HANDLER_TYPE_STATIC;
+	} else {
+		hdlr->type = HANDLER_TYPE_DYNAMIC;
+
+		if (regcomp(&hdlr->rctx, hdlr->path, REG_EXTENDED)) {
+			PyErr_SetString(PyExc_RuntimeError,
+			    "failed to compile regex for path");
+			kore_module_handler_free(hdlr);
+			return (NULL);
+		}
+	}
+
+	Py_INCREF(callable);
+	TAILQ_INSERT_TAIL(&domain->config->handlers, hdlr, list);
+
+	Py_RETURN_NONE;
+}
+
+static int
+pydomain_params(PyObject *kwargs, struct kore_module_handle *hdlr,
+    const char *method, int type)
+{
+	Py_ssize_t			idx;
+	const char			*val;
+	int				vtype;
+	struct kore_validator		*vldr;
+	struct kore_handler_params	*param;
+	PyObject			*obj, *key, *item;
+
+	if ((obj = PyDict_GetItemString(kwargs, method)) == NULL)
+		return (KORE_RESULT_OK);
+
+	if (!PyDict_CheckExact(obj))
+		return (KORE_RESULT_ERROR);
+
+	idx = 0;
+	while (PyDict_Next(obj, &idx, &key, &item)) {
+		if (!PyUnicode_CheckExact(key))
+			return (KORE_RESULT_ERROR);
+
+		val = PyUnicode_AsUTF8(key);
+
+		if (PyUnicode_CheckExact(item)) {
+			vtype = KORE_VALIDATOR_TYPE_REGEX;
+		} else if (PyCallable_Check(item)) {
+			vtype = KORE_VALIDATOR_TYPE_FUNCTION;
+		} else {
+			PyErr_Format(PyExc_RuntimeError,
+			    "validator '%s' must be regex or function", val);
+			return (KORE_RESULT_ERROR);
+		}
+
+		vldr = kore_calloc(1, sizeof(*vldr));
+		vldr->type = vtype;
+
+		if (vtype == KORE_VALIDATOR_TYPE_REGEX) {
+			val = PyUnicode_AsUTF8(item);
+			if (regcomp(&(vldr->rctx),
+			    val, REG_EXTENDED | REG_NOSUB)) {
+				PyErr_Format(PyExc_RuntimeError,
+				    "Invalid regex (%s)", val);
+				kore_free(vldr);
+				return (KORE_RESULT_ERROR);
+			}
+		} else {
+			vldr->rcall = kore_calloc(1, sizeof(*vldr->rcall));
+			vldr->rcall->addr = item;
+			vldr->rcall->runtime = &kore_python_runtime;
+			Py_INCREF(item);
+		}
+
+		val = PyUnicode_AsUTF8(key);
+		vldr->name = kore_strdup(val);
+
+		param = kore_calloc(1, sizeof(*param));
+		param->flags = 0;
+		param->method = type;
+		param->validator = vldr;
+		param->name = kore_strdup(val);
+
+		if (type == HTTP_METHOD_GET)
+			param->flags = KORE_PARAMS_QUERY_STRING;
+
+		TAILQ_INSERT_TAIL(&hdlr->params, param, list);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+pydomain_auth(PyObject *dict, struct kore_module_handle *hdlr)
+{
+	int			type;
+	struct kore_auth	*auth;
+	struct kore_validator	*vldr;
+	PyObject		*obj, *repr;
+	const char		*value, *redir;
+
+	if (!PyDict_CheckExact(dict))
+		return (KORE_RESULT_ERROR);
+
+	if ((obj = PyDict_GetItemString(dict, "type")) == NULL ||
+	    !PyUnicode_CheckExact(obj)) {
+		PyErr_Format(PyExc_RuntimeError,
+		    "missing 'type' in auth dictionary for '%s'", hdlr->path);
+		return (KORE_RESULT_ERROR);
+	}
+
+	value = PyUnicode_AsUTF8(obj);
+
+	if (!strcmp(value, "cookie")) {
+		type = KORE_AUTH_TYPE_COOKIE;
+	} else if (!strcmp(value, "header")) {
+		type = KORE_AUTH_TYPE_HEADER;
+	} else {
+		PyErr_Format(PyExc_RuntimeError,
+		    "invalid 'type' (%s) in auth dictionary for '%s'",
+		    value, hdlr->path);
+		return (KORE_RESULT_ERROR);
+	}
+
+	if ((obj = PyDict_GetItemString(dict, "value")) == NULL ||
+	    !PyUnicode_CheckExact(obj)) {
+		PyErr_Format(PyExc_RuntimeError,
+		    "missing 'value' in auth dictionary for '%s'", hdlr->path);
+		return (KORE_RESULT_ERROR);
+	}
+
+	value = PyUnicode_AsUTF8(obj);
+
+	if ((obj = PyDict_GetItemString(dict, "redirect")) != NULL) {
+		if (!PyUnicode_CheckExact(obj)) {
+			PyErr_Format(PyExc_RuntimeError,
+			    "redirect for auth on '%s' is not a string",
+			    hdlr->path);
+			return (KORE_RESULT_ERROR);
+		}
+
+		redir = PyUnicode_AsUTF8(obj);
+	} else {
+		redir = NULL;
+	}
+
+	if ((obj = PyDict_GetItemString(dict, "verify")) == NULL ||
+	    !PyCallable_Check(obj)) {
+		PyErr_Format(PyExc_RuntimeError,
+		    "missing 'verify' in auth dictionary for '%s'", hdlr->path);
+		return (KORE_RESULT_ERROR);
+	}
+
+	auth = kore_calloc(1, sizeof(*auth));
+	auth->type = type;
+	auth->value = kore_strdup(value);
+
+	if (redir != NULL)
+		auth->redirect = kore_strdup(redir);
+
+	vldr = kore_calloc(1, sizeof(*vldr));
+	vldr->type = KORE_VALIDATOR_TYPE_FUNCTION;
+
+	vldr->rcall = kore_calloc(1, sizeof(*vldr->rcall));
+	vldr->rcall->addr = obj;
+	vldr->rcall->runtime = &kore_python_runtime;
+	Py_INCREF(obj);
+
+	if ((repr = PyObject_Repr(obj)) == NULL) {
+		kore_free(vldr->rcall);
+		kore_free(vldr);
+		kore_free(auth);
+		return (KORE_RESULT_ERROR);
+	}
+
+	value = PyUnicode_AsUTF8(repr);
+	vldr->name = kore_strdup(value);
+	Py_DECREF(repr);
+
+	auth->validator = vldr;
+	hdlr->auth = auth;
+
+	return (KORE_RESULT_OK);
 }
 
 #if defined(KORE_USE_PGSQL)

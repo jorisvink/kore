@@ -44,6 +44,7 @@ static PyObject		*python_kore_fatal(PyObject *, PyObject *);
 static PyObject		*python_kore_queue(PyObject *, PyObject *);
 static PyObject		*python_kore_worker(PyObject *, PyObject *);
 static PyObject		*python_kore_tracer(PyObject *, PyObject *);
+static PyObject		*python_kore_domain(PyObject *, PyObject *);
 static PyObject		*python_kore_fatalx(PyObject *, PyObject *);
 static PyObject		*python_kore_setname(PyObject *, PyObject *);
 static PyObject		*python_kore_suspend(PyObject *, PyObject *);
@@ -72,7 +73,7 @@ static PyObject		*python_websocket_broadcast(PyObject *, PyObject *);
 
 #define METHOD(n, c, a)		{ n, (PyCFunction)c, a, NULL }
 #define GETTER(n, g)		{ n, (getter)g, NULL, NULL, NULL }
-#define SETTER(n, s)		{ n, NULL, (setter)g, NULL, NULL }
+#define SETTER(n, s)		{ n, NULL, (setter)s, NULL, NULL }
 #define GETSET(n, g, s)		{ n, (getter)g, (setter)s, NULL, NULL }
 
 static struct PyMethodDef pykore_methods[] = {
@@ -85,6 +86,7 @@ static struct PyMethodDef pykore_methods[] = {
 	METHOD("queue", python_kore_queue, METH_VARARGS),
 	METHOD("worker", python_kore_worker, METH_VARARGS),
 	METHOD("tracer", python_kore_tracer, METH_VARARGS),
+	METHOD("domain", python_kore_domain, METH_VARARGS),
 	METHOD("gather", python_kore_gather, METH_VARARGS | METH_KEYWORDS),
 	METHOD("fatal", python_kore_fatal, METH_VARARGS),
 	METHOD("fatalx", python_kore_fatalx, METH_VARARGS),
@@ -113,6 +115,55 @@ static struct PyMethodDef pykore_methods[] = {
 
 static struct PyModuleDef pykore_module = {
 	PyModuleDef_HEAD_INIT, "kore", NULL, -1, pykore_methods
+};
+
+struct pyconfig {
+	PyObject_HEAD
+};
+
+static int	pyconfig_setattr(PyObject *, PyObject *, PyObject *);
+
+static PyTypeObject pyconfig_type = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "kore.config",
+	.tp_doc = "kore configuration",
+	.tp_setattro = pyconfig_setattr,
+	.tp_basicsize = sizeof(struct pyconfig),
+	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+};
+
+struct pydomain {
+	PyObject_HEAD
+	struct kore_domain	*config;
+};
+
+static PyObject	*pydomain_filemaps(struct pydomain *, PyObject *);
+static PyObject	*pydomain_route(struct pydomain *, PyObject *, PyObject *);
+
+static PyMethodDef pydomain_methods[] = {
+	METHOD("filemaps", pydomain_filemaps, METH_VARARGS),
+	METHOD("route", pydomain_route, METH_VARARGS | METH_KEYWORDS),
+	METHOD(NULL, NULL, -1)
+};
+
+static int	pydomain_set_accesslog(struct pydomain *, PyObject *, void *);
+
+static PyGetSetDef pydomain_getset[] = {
+	SETTER("accesslog", pydomain_set_accesslog),
+	SETTER(NULL, NULL),
+};
+
+static void	pydomain_dealloc(struct pydomain *);
+
+static PyTypeObject pydomain_type = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "kore.domain",
+	.tp_doc = "kore domain configuration",
+	.tp_getset = pydomain_getset,
+	.tp_methods = pydomain_methods,
+	.tp_basicsize = sizeof(struct pydomain),
+	.tp_dealloc = (destructor)pydomain_dealloc,
+	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
 };
 
 #define PYSUSPEND_OP_INIT	1

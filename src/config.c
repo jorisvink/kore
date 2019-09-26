@@ -53,6 +53,8 @@ static int		configure_load(char *);
 static FILE		*config_file_write(void);
 extern u_int8_t		asset_builtin_kore_conf[];
 extern u_int32_t	asset_len_builtin_kore_conf;
+#elif defined(KORE_USE_PYTHON)
+static int		configure_file(char *);
 #endif
 
 static int		configure_include(char *);
@@ -129,6 +131,7 @@ static int		configure_task_threads(char *);
 #endif
 
 #if defined(KORE_USE_PYTHON)
+static int		configure_deployment(char *);
 static int		configure_python_path(char *);
 static int		configure_python_import(char *);
 #endif
@@ -141,18 +144,46 @@ static int		configure_curl_recv_max(char *);
 static struct {
 	const char		*name;
 	int			(*configure)(char *);
-} config_names[] = {
+} config_directives[] = {
 	{ "include",			configure_include },
 	{ "bind",			configure_bind },
 	{ "bind_unix",			configure_bind_unix },
 	{ "load",			configure_load },
+	{ "domain",			configure_domain },
 #if defined(KORE_USE_PYTHON)
 	{ "python_path",		configure_python_path },
 	{ "python_import",		configure_python_import },
 #endif
+#if !defined(KORE_NO_TLS)
+	{ "certfile",			configure_certfile },
+	{ "certkey",			configure_certkey },
+	{ "client_verify",		configure_client_verify },
+	{ "client_verify_depth",	configure_client_verify_depth },
+#endif
+#if !defined(KORE_NO_HTTP)
+	{ "filemap",			configure_filemap },
+	{ "static",			configure_static_handler },
+	{ "dynamic",			configure_dynamic_handler },
+	{ "accesslog",			configure_accesslog },
+	{ "restrict",			configure_restrict },
+	{ "validator",			configure_validator },
+	{ "params",			configure_params },
+	{ "validate",			configure_validate },
+	{ "authentication",		configure_authentication },
+	{ "authentication_uri",		configure_authentication_uri },
+	{ "authentication_type",	configure_authentication_type },
+	{ "authentication_value",	configure_authentication_value },
+	{ "authentication_validator",	configure_authentication_validator },
+#endif
+	{ NULL,				NULL },
+};
+
+static struct {
+	const char		*name;
+	int			(*configure)(char *);
+} config_settings[] = {
 	{ "root",			configure_root },
 	{ "chroot",			configure_root },
-	{ "domain",			configure_domain },
 	{ "runas",			configure_runas },
 	{ "workers",			configure_workers },
 	{ "worker_max_connections",	configure_max_connections },
@@ -172,19 +203,10 @@ static struct {
 	{ "rand_file",			configure_rand_file },
 	{ "keymgr_runas",		configure_keymgr_runas },
 	{ "keymgr_root",		configure_keymgr_root },
-	{ "certfile",			configure_certfile },
-	{ "certkey",			configure_certkey },
-	{ "client_verify",		configure_client_verify },
-	{ "client_verify_depth",	configure_client_verify_depth },
 #endif
 #if !defined(KORE_NO_HTTP)
-	{ "filemap",			configure_filemap },
 	{ "filemap_ext",		configure_filemap_ext },
 	{ "filemap_index",		configure_filemap_index },
-	{ "static",			configure_static_handler },
-	{ "dynamic",			configure_dynamic_handler },
-	{ "accesslog",			configure_accesslog },
-	{ "restrict",			configure_restrict },
 	{ "http_media_type",		configure_http_media_type },
 	{ "http_header_max",		configure_http_header_max },
 	{ "http_header_timeout",	configure_http_header_timeout },
@@ -196,16 +218,11 @@ static struct {
 	{ "http_request_limit",		configure_http_request_limit },
 	{ "http_body_disk_offload",	configure_http_body_disk_offload },
 	{ "http_body_disk_path",	configure_http_body_disk_path },
-	{ "validator",			configure_validator },
-	{ "params",			configure_params },
-	{ "validate",			configure_validate },
-	{ "authentication",		configure_authentication },
-	{ "authentication_uri",		configure_authentication_uri },
-	{ "authentication_type",	configure_authentication_type },
-	{ "authentication_value",	configure_authentication_value },
-	{ "authentication_validator",	configure_authentication_validator },
 	{ "websocket_maxframe",		configure_websocket_maxframe },
 	{ "websocket_timeout",		configure_websocket_timeout },
+#endif
+#if defined(KORE_USE_PYTHON)
+	{ "deployment",			configure_deployment },
 #endif
 #if defined(KORE_USE_PGSQL)
 	{ "pgsql_conn_max",		configure_pgsql_conn_max },
@@ -218,8 +235,13 @@ static struct {
 	{ "curl_timeout",		configure_curl_timeout },
 	{ "curl_recv_max",		configure_curl_recv_max },
 #endif
+#if !defined(KORE_SINGLE_BINARY) && defined(KORE_USE_PYTHON)
+	{ "file",			configure_file },
+#endif
 	{ NULL,				NULL },
 };
+
+static int				finalized = 0;
 
 #if !defined(KORE_SINGLE_BINARY)
 char					*config_file = NULL;
@@ -241,15 +263,26 @@ kore_parse_config(void)
 	FILE		*fp;
 	char		path[PATH_MAX];
 
+	if (finalized)
+		return;
+
+	fp = NULL;
+
 #if !defined(KORE_SINGLE_BINARY)
-	if ((fp = fopen(config_file, "r")) == NULL)
-		fatal("configuration given cannot be opened: %s", config_file);
+	if (config_file != NULL) {
+		if ((fp = fopen(config_file, "r")) == NULL) {
+			fatal("configuration given cannot be opened: %s",
+			    config_file);
+		}
+	}
 #else
 	fp = config_file_write();
 #endif
 
-	kore_parse_config_file(fp);
-	(void)fclose(fp);
+	if (fp != NULL) {
+		kore_parse_config_file(fp);
+		(void)fclose(fp);
+	}
 
 	if (!kore_module_loaded())
 		fatal("no application module was loaded");
@@ -304,6 +337,8 @@ kore_parse_config(void)
 
 	if (skip_chroot && !kore_quiet)
 		kore_log(LOG_WARNING, "privsep: will not chroot");
+
+	finalized = 1;
 }
 
 void
@@ -371,20 +406,57 @@ kore_parse_config_file(FILE *fp)
 			continue;
 		}
 
-		for (i = 0; config_names[i].name != NULL; i++) {
-			if (!strcmp(config_names[i].name, p)) {
-				if (config_names[i].configure(t))
+		for (i = 0; config_directives[i].name != NULL; i++) {
+			if (!strcmp(config_directives[i].name, p)) {
+				if (config_directives[i].configure(t))
 					break;
 				fatal("configuration error on line %d", lineno);
 				/* NOTREACHED */
 			}
 		}
 
-		if (config_names[i].name == NULL)
+		if (config_directives[i].name != NULL) {
+			lineno++;
+			continue;
+		}
+
+		for (i = 0; config_settings[i].name != NULL; i++) {
+			if (!strcmp(config_settings[i].name, p)) {
+				if (config_settings[i].configure(t))
+					break;
+				fatal("configuration error on line %d", lineno);
+				/* NOTREACHED */
+			}
+		}
+
+		if (config_settings[i].name == NULL)
 			printf("ignoring \"%s\" on line %d\n", p, lineno);
+
 		lineno++;
 	}
 }
+
+#if defined(KORE_USE_PYTHON)
+int
+kore_configure_setting(const char *name, char *value)
+{
+	int	i;
+
+	if (finalized)
+		return (KORE_RESULT_ERROR);
+
+	for (i = 0; config_settings[i].name != NULL; i++) {
+		if (!strcmp(config_settings[i].name, name)) {
+			if (config_settings[i].configure(value))
+				return (KORE_RESULT_OK);
+			fatal("bad value '%s' for '%s'", value, name);
+		}
+	}
+
+	kore_log(LOG_NOTICE, "ignoring unknown kore.config.%s setting", name);
+	return (KORE_RESULT_OK);
+}
+#endif
 
 static int
 configure_include(char *path)
@@ -475,6 +547,15 @@ config_file_write(void)
 	rewind(fp);
 
 	return (fp);
+}
+#elif defined(KORE_USE_PYTHON)
+static int
+configure_file(char *file)
+{
+	kore_free(config_file);
+	config_file = kore_strdup(file);
+
+	return (KORE_RESULT_OK);
 }
 #endif
 
@@ -1457,6 +1538,28 @@ configure_task_threads(char *option)
 #endif
 
 #if defined(KORE_USE_PYTHON)
+static int
+configure_deployment(char *value)
+{
+	if (!strcmp(value, "dev") || !strcmp(value, "development")) {
+		foreground = 1;
+		skip_runas = 1;
+		skip_chroot = 1;
+	} else if (!strcmp(value, "production")) {
+		foreground = 0;
+		skip_runas = 0;
+		skip_chroot = 0;
+	} else {
+		kore_log(LOG_NOTICE,
+		    "pyko.config.deployment: bad value '%s'", value);
+		return (KORE_RESULT_ERROR);
+	}
+
+	kore_log(LOG_NOTICE, "deployment set to %s", value);
+
+	return (KORE_RESULT_OK);
+}
+
 static int
 configure_python_path(char *path)
 {

@@ -230,6 +230,8 @@ struct http_file {
 #define HTTP_BODY_DIGEST_LEN		32
 #define HTTP_BODY_DIGEST_STRLEN		((HTTP_BODY_DIGEST_LEN * 2) + 1)
 
+#define HTTP_CAPTURE_GROUPS		17
+
 struct reqcall;
 struct kore_task;
 struct http_client;
@@ -266,9 +268,11 @@ struct http_request {
 #if defined(KORE_USE_PYTHON)
 	void				*py_req;
 	void				*py_coro;
+	void				*py_validator;
 	struct reqcall			*py_rqnext;
 #endif
 
+	regmatch_t	cgroups[HTTP_CAPTURE_GROUPS];
 	u_int8_t	http_body_digest[HTTP_BODY_DIGEST_LEN];
 
 #if defined(KORE_USE_CURL)
@@ -330,6 +334,7 @@ const char	*http_status_text(int);
 const char	*http_method_text(int);
 time_t		http_date_to_time(char *);
 char		*http_validate_header(char *);
+int		http_method_value(const char *);
 void		http_start_recv(struct connection *);
 void		http_request_free(struct http_request *);
 void		http_request_sleep(struct http_request *);

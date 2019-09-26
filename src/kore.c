@@ -76,6 +76,24 @@ static void	kore_proctitle_setup(void);
 static void	kore_server_sslstart(void);
 static void	kore_server_start(int, char *[]);
 
+#if !defined(KORE_SINGLE_BINARY) && defined(KORE_USE_PYTHON)
+#define KORE_PARENT_CONFIG_METHOD	"koreapp.configure"
+#define KORE_PARENT_TEARDOWN_METHOD	"koreapp.cleanup"
+#define KORE_PARENT_DAEMONIZED_METHOD	"koreapp.daemonized"
+#endif
+
+#if !defined(KORE_PARENT_CONFIG_METHOD)
+#define KORE_PARENT_CONFIG_METHOD	"kore_parent_configure"
+#endif
+
+#if !defined(KORE_PARENT_TEARDOWN_METHOD)
+#define KORE_PARENT_TEARDOWN_METHOD	"kore_parent_teardown"
+#endif
+
+#if !defined(KORE_PARENT_DAEMONIZED_METHOD)
+#define KORE_PARENT_DAEMONIZED_METHOD	"kore_parent_daemonized"
+#endif
+
 static void
 usage(void)
 {
@@ -210,13 +228,13 @@ main(int argc, char *argv[])
 		kore_pymodule = pwd;
 	}
 
+	config_file = NULL;
+
 	if (lstat(kore_pymodule, &st) == -1)
 		fatal("failed to stat '%s': %s", kore_pymodule, errno_s);
 
-	if (!S_ISDIR(st.st_mode))
-		fatal("%s: not a directory", kore_pymodule);
-
-	config_file = "kore.conf";
+	if (!S_ISDIR(st.st_mode) && !S_ISREG(st.st_mode))
+		fatal("%s: not a directory or file", kore_pymodule);
 #elif !defined(KORE_SINGLE_BINARY)
 	if (argc > 0)
 		fatal("did you mean to run `kodev' instead?");
@@ -244,7 +262,7 @@ main(int argc, char *argv[])
 	kore_module_init();
 	kore_server_sslstart();
 
-#if !defined(KORE_SINGLE_BINARY)
+#if !defined(KORE_SINGLE_BINARY) && !defined(KORE_USE_PYTHON)
 	if (config_file == NULL)
 		usage();
 #endif
@@ -254,20 +272,19 @@ main(int argc, char *argv[])
 	kore_python_init();
 #if !defined(KORE_SINGLE_BINARY)
 	kore_module_load(kore_pymodule, NULL, KORE_MODULE_PYTHON);
-	if (chdir(kore_pymodule) == -1)
+	if (S_ISDIR(st.st_mode) && chdir(kore_pymodule) == -1)
 		fatal("chdir(%s): %s", kore_pymodule, errno_s);
 #endif
 #endif
-
-	kore_parse_config();
-
-#if defined(KORE_SINGLE_BINARY)
-	rcall = kore_runtime_getcall("kore_parent_configure");
+#if defined(KORE_SINGLE_BINARY) || defined(KORE_USE_PYTHON)
+	rcall = kore_runtime_getcall(KORE_PARENT_CONFIG_METHOD);
 	if (rcall != NULL) {
 		kore_runtime_configure(rcall, argc, argv);
 		kore_free(rcall);
 	}
 #endif
+
+	kore_parse_config();
 
 #if !defined(KORE_NO_HTTP)
 	if (http_body_disk_offload > 0) {
@@ -287,7 +304,7 @@ main(int argc, char *argv[])
 
 	kore_worker_shutdown();
 
-	rcall = kore_runtime_getcall("kore_parent_teardown");
+	rcall = kore_runtime_getcall(KORE_PARENT_TEARDOWN_METHOD);
 	if (rcall != NULL) {
 		kore_runtime_execute(rcall);
 		kore_free(rcall);
@@ -690,11 +707,13 @@ kore_server_start(int argc, char *argv[])
 	u_int64_t			netwait;
 	int				quit, last_sig;
 
+	rcall = NULL;
+
 	if (foreground == 0) {
 		if (daemon(1, 0) == -1)
 			fatal("cannot daemon(): %s", errno_s);
 #if defined(KORE_SINGLE_BINARY)
-		rcall = kore_runtime_getcall("kore_parent_daemonized");
+		rcall = kore_runtime_getcall(KORE_PARENT_DAEMONIZED_METHOD);
 		if (rcall != NULL) {
 			kore_runtime_execute(rcall);
 			kore_free(rcall);
@@ -721,8 +740,8 @@ kore_server_start(int argc, char *argv[])
 #endif
 	}
 
-#if !defined(KORE_SINGLE_BINARY)
-	rcall = kore_runtime_getcall("kore_parent_configure");
+#if !defined(KORE_SINGLE_BINARY) && !defined(KORE_USE_PYTHON)
+	rcall = kore_runtime_getcall(KORE_PARENT_CONFIG_METHOD);
 	if (rcall != NULL) {
 		kore_runtime_configure(rcall, argc, argv);
 		kore_free(rcall);

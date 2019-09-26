@@ -674,6 +674,10 @@ int			kore_connection_accept(struct listener *,
 u_int64_t	kore_time_ms(void);
 void		kore_log_init(void);
 
+#if defined(KORE_USE_PYTHON)
+int		kore_configure_setting(const char *, char *);
+#endif
+
 void		*kore_malloc(size_t);
 void		kore_parse_config(void);
 void		kore_parse_config_file(FILE *);
@@ -748,7 +752,7 @@ void			kore_fileref_release(struct kore_fileref *);
 
 void		kore_domain_init(void);
 void		kore_domain_cleanup(void);
-int		kore_domain_new(char *);
+int		kore_domain_new(const char *);
 void		kore_domain_free(struct kore_domain *);
 void		kore_module_init(void);
 void		kore_module_cleanup(void);
@@ -766,8 +770,8 @@ void		kore_domain_crl_add(struct kore_domain *, const void *, size_t);
 int		kore_module_handler_new(const char *, const char *,
 		    const char *, const char *, int);
 void		kore_module_handler_free(struct kore_module_handle *);
-struct kore_module_handle	*kore_module_handler_find(const char *,
-				    const char *);
+struct kore_module_handle	*kore_module_handler_find(struct http_request *,
+				    const char *, const char *);
 #endif
 
 struct kore_runtime_call	*kore_runtime_getcall(const char *);

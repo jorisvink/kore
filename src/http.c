@@ -442,6 +442,10 @@ http_request_free(struct http_request *req)
 		kore_python_coro_delete(req->py_coro);
 		req->py_coro = NULL;
 	}
+	if (req->py_validator != NULL) {
+		kore_python_coro_delete(req->py_validator);
+		req->py_validator = NULL;
+	}
 	Py_XDECREF(req->py_req);
 #endif
 #if defined(KORE_USE_PGSQL)
@@ -1546,7 +1550,10 @@ http_request_new(struct connection *c, const char *host,
 		break;
 	}
 
-	if ((hdlr = kore_module_handler_find(host, path)) == NULL) {
+	req = kore_pool_get(&http_request_pool);
+
+	if ((hdlr = kore_module_handler_find(req, host, path)) == NULL) {
+		kore_pool_put(&http_request_pool, req);
 		http_error_response(c, 404);
 		return (NULL);
 	}
@@ -1579,6 +1586,7 @@ http_request_new(struct connection *c, const char *host,
 		m = HTTP_METHOD_PATCH;
 		flags |= HTTP_REQUEST_EXPECT_BODY;
 	} else {
+		kore_pool_put(&http_request_pool, req);
 		http_error_response(c, 400);
 		return (NULL);
 	}
@@ -1586,17 +1594,18 @@ http_request_new(struct connection *c, const char *host,
 	if (flags & HTTP_VERSION_1_0) {
 		if (m != HTTP_METHOD_GET && m != HTTP_METHOD_POST &&
 		    m != HTTP_METHOD_HEAD) {
+			kore_pool_put(&http_request_pool, req);
 			http_error_response(c, HTTP_STATUS_METHOD_NOT_ALLOWED);
 			return (NULL);
 		}
 	}
 
 	if (!(hdlr->methods & m)) {
+		kore_pool_put(&http_request_pool, req);
 		http_error_response(c, HTTP_STATUS_METHOD_NOT_ALLOWED);
 		return (NULL);
 	}
 
-	req = kore_pool_get(&http_request_pool);
 	req->end = 0;
 	req->total = 0;
 	req->start = 0;
@@ -1625,6 +1634,7 @@ http_request_new(struct connection *c, const char *host,
 	req->py_req = NULL;
 	req->py_coro = NULL;
 	req->py_rqnext = NULL;
+	req->py_validator = NULL;
 #endif
 
 	if (qsoff > 0) {
@@ -2257,6 +2267,33 @@ http_method_text(int method)
 	}
 
 	return (r);
+}
+
+int
+http_method_value(const char *method)
+{
+	if (!strcasecmp(method, "GET"))
+		return (HTTP_METHOD_GET);
+
+	if (!strcasecmp(method, "POST"))
+		return (HTTP_METHOD_POST);
+
+	if (!strcasecmp(method, "PUT"))
+		return (HTTP_METHOD_PUT);
+
+	if (!strcasecmp(method, "DELETE"))
+		return (HTTP_METHOD_DELETE);
+
+	if (!strcasecmp(method, "HEAD"))
+		return (HTTP_METHOD_HEAD);
+
+	if (!strcasecmp(method, "OPTIONS"))
+		return (HTTP_METHOD_OPTIONS);
+
+	if (!strcasecmp(method, "PATCH"))
+		return (HTTP_METHOD_PATCH);
+
+	return (0);
 }
 
 int

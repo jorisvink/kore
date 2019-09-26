@@ -191,7 +191,7 @@ kore_domain_cleanup(void)
 }
 
 int
-kore_domain_new(char *domain)
+kore_domain_new(const char *domain)
 {
 	struct kore_domain	*dom;
 

@@ -286,7 +286,8 @@ kore_module_handler_free(struct kore_module_handle *hdlr)
 }
 
 struct kore_module_handle *
-kore_module_handler_find(const char *domain, const char *path)
+kore_module_handler_find(struct http_request *req, const char *domain,
+    const char *path)
 {
 	struct kore_domain		*dom;
 	struct kore_module_handle	*hdlr;
@@ -299,7 +300,8 @@ kore_module_handler_find(const char *domain, const char *path)
 			if (!strcmp(hdlr->path, path))
 				return (hdlr);
 		} else {
-			if (!regexec(&(hdlr->rctx), path, 0, NULL, 0))
+			if (!regexec(&(hdlr->rctx), path,
+			    HTTP_CAPTURE_GROUPS, req->cgroups, 0))
 				return (hdlr);
 		}
 	}
