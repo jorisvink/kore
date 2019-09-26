@@ -72,6 +72,7 @@ static struct sock_filter filter_keymgr[] = {
 	KORE_SYSCALL_ALLOW(sendto),
 	KORE_SYSCALL_ALLOW(recvfrom),
 	KORE_SYSCALL_ALLOW(epoll_wait),
+	KORE_SYSCALL_ALLOW(epoll_pwait),
 
 	/* Process things. */
 	KORE_SYSCALL_ALLOW(exit),
@@ -86,6 +87,7 @@ static struct sock_filter filter_keymgr[] = {
 	KORE_SYSCALL_ALLOW(rt_sigprocmask),
 
 	/* Other things. */
+	KORE_SYSCALL_ALLOW(brk),
 	KORE_SYSCALL_ALLOW(mmap),
 	KORE_SYSCALL_ALLOW(munmap),
 #if defined(__NR_getrandom)
