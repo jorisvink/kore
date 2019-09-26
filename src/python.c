@@ -206,11 +206,17 @@ static struct sock_filter filter_python[] = {
 	KORE_SYSCALL_ALLOW(execve),
 
 	/* Socket related. */
+	KORE_SYSCALL_ALLOW(bind),
+	KORE_SYSCALL_ALLOW(listen),
 	KORE_SYSCALL_ALLOW(sendto),
 	KORE_SYSCALL_ALLOW(recvfrom),
 	KORE_SYSCALL_ALLOW(getsockopt),
 	KORE_SYSCALL_ALLOW(setsockopt),
 	KORE_SYSCALL_ALLOW(getsockname),
+
+	KORE_SYSCALL_ALLOW_ARG(socket, 0, AF_INET),
+	KORE_SYSCALL_ALLOW_ARG(socket, 0, AF_INET6),
+	KORE_SYSCALL_ALLOW_ARG(socket, 0, AF_UNIX),
 };
 #endif
 
