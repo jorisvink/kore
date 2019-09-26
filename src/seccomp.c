@@ -76,8 +76,10 @@ static struct sock_filter filter_kore[] = {
 
 	/* Net related. */
 	KORE_SYSCALL_ALLOW(poll),
+	KORE_SYSCALL_ALLOW(sendto),
 	KORE_SYSCALL_ALLOW(accept),
 	KORE_SYSCALL_ALLOW(sendfile),
+	KORE_SYSCALL_ALLOW(recvfrom),
 	KORE_SYSCALL_ALLOW(epoll_ctl),
 	KORE_SYSCALL_ALLOW(setsockopt),
 	KORE_SYSCALL_ALLOW(epoll_wait),

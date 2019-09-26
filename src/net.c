@@ -424,7 +424,7 @@ net_write(struct connection *c, size_t len, size_t *written)
 {
 	ssize_t		r;
 
-	r = write(c->fd, (c->snb->buf + c->snb->s_off), len);
+	r = send(c->fd, (c->snb->buf + c->snb->s_off), len, 0);
 	if (r == -1) {
 		switch (errno) {
 		case EINTR:
@@ -449,8 +449,8 @@ net_read(struct connection *c, size_t *bytes)
 {
 	ssize_t		r;
 
-	r = read(c->fd, (c->rnb->buf + c->rnb->s_off),
-	    (c->rnb->b_len - c->rnb->s_off));
+	r = recv(c->fd, (c->rnb->buf + c->rnb->s_off),
+	    (c->rnb->b_len - c->rnb->s_off), 0);
 	if (r == -1) {
 		switch (errno) {
 		case EINTR:

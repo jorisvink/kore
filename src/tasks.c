@@ -279,7 +279,7 @@ task_channel_write(int fd, void *data, u_int32_t len)
 	d = data;
 	offset = 0;
 	while (offset != len) {
-		r = write(fd, d + offset, len - offset);
+		r = send(fd, d + offset, len - offset, 0);
 		if (r == -1 && errno == EINTR)
 			continue;
 		if (r == -1)

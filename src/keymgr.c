@@ -60,6 +60,7 @@ static struct sock_filter filter_keymgr[] = {
 	/* Required to deal with private keys and certs. */
 	KORE_SYSCALL_ALLOW(open),
 	KORE_SYSCALL_ALLOW(read),
+	KORE_SYSCALL_ALLOW(write),
 	KORE_SYSCALL_ALLOW(close),
 	KORE_SYSCALL_ALLOW(fstat),
 	KORE_SYSCALL_ALLOW(futex),
@@ -67,8 +68,8 @@ static struct sock_filter filter_keymgr[] = {
 
 	/* Net related. */
 	KORE_SYSCALL_ALLOW(poll),
-	KORE_SYSCALL_ALLOW(read),
-	KORE_SYSCALL_ALLOW(write),
+	KORE_SYSCALL_ALLOW(sendto),
+	KORE_SYSCALL_ALLOW(recvfrom),
 	KORE_SYSCALL_ALLOW(epoll_wait),
 
 	/* Process things. */
