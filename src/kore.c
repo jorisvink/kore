@@ -703,11 +703,11 @@ static void
 kore_server_start(int argc, char *argv[])
 {
 	u_int32_t			tmp;
-	struct kore_runtime_call	*rcall;
 	u_int64_t			netwait;
 	int				quit, last_sig;
-
-	rcall = NULL;
+#if defined(KORE_SINGLE_BINARY) || !defined(KORE_USE_PYTHON)
+	struct kore_runtime_call	*rcall;
+#endif
 
 	if (foreground == 0) {
 		if (daemon(1, 0) == -1)
