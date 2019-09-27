@@ -94,6 +94,8 @@ kore_platform_event_init(void)
 	/* Hack to check if we're running under the parent or not. */
 	if (worker != NULL) {
 		LIST_FOREACH(l, &listeners, list) {
+			if (l->fd == -1)
+				continue;
 			kore_platform_event_schedule(l->fd,
 			    EVFILT_READ, EV_ADD | EV_DISABLE, l);
 		}
