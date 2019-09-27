@@ -349,8 +349,6 @@ kore_tls_sni_cb(SSL *ssl, int *ad, void *arg)
 	sname = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
 	kore_debug("kore_tls_sni_cb(): received host %s", sname);
 
-	printf("looking for %s in %s\n", sname, c->owner->server->name);
-
 	if (sname != NULL &&
 	    (dom = kore_domain_lookup(c->owner->server, sname)) != NULL) {
 		if (dom->ssl_ctx == NULL) {
