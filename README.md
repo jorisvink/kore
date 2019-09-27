@@ -34,7 +34,7 @@ License
 
 Documentation
 --------------
-[Read the documentation](https://docs.kore.io/3.2.0/)
+[Read the documentation](https://docs.kore.io/3.3.0/)
 
 Performance
 -----------
