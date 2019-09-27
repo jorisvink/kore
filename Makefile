@@ -63,16 +63,6 @@ else
 		src/validator.c src/websocket.c
 endif
 
-ifneq ("$(NOTLS)", "")
-	CFLAGS+=-DKORE_NO_TLS
-	FEATURES+=-DKORE_NO_TLS
-	ifneq ("$(NOHTTP)", "")
-		LDFLAGS=-rdynamic
-	else
-		LDFLAGS=-rdynamic -l$(KORE_CRYPTO)
-	endif
-endif
-
 ifneq ("$(PGSQL)", "")
 	S_SRC+=src/pgsql.c
 	LDFLAGS+=-L$(shell pg_config --libdir) -lpq

@@ -156,8 +156,15 @@ net_send_fileref(struct connection *c, struct kore_fileref *ref)
 	nb->flags = NETBUF_IS_FILEREF;
 
 #if defined(KORE_USE_PLATFORM_SENDFILE)
-	nb->fd_off = 0;
-	nb->fd_len = ref->size;
+	if (c->owner->tls == 0) {
+		nb->fd_off = 0;
+		nb->fd_len = ref->size;
+	} else {
+		nb->buf = ref->base;
+		nb->b_len = ref->size;
+		nb->m_len = nb->b_len;
+		nb->flags |= NETBUF_IS_STREAM;
+	}
 #else
 	nb->buf = ref->base;
 	nb->b_len = ref->size;
@@ -329,7 +336,6 @@ net_remove_netbuf(struct connection *c, struct netbuf *nb)
 	kore_pool_put(&nb_pool, nb);
 }
 
-#if !defined(KORE_NO_TLS)
 int
 net_write_tls(struct connection *c, size_t len, size_t *written)
 {
@@ -417,7 +423,6 @@ net_read_tls(struct connection *c, size_t *bytes)
 
 	return (KORE_RESULT_OK);
 }
-#endif
 
 int
 net_write(struct connection *c, size_t len, size_t *written)

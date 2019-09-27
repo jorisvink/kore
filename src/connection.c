@@ -61,11 +61,9 @@ kore_connection_new(void *owner)
 
 	c = kore_pool_get(&connection_pool);
 
-#if !defined(KORE_NO_TLS)
 	c->ssl = NULL;
 	c->cert = NULL;
 	c->tls_reneg = 0;
-#endif
 	c->flags = 0;
 	c->rnb = NULL;
 	c->snb = NULL;
@@ -146,27 +144,29 @@ kore_connection_accept(struct listener *listener, struct connection **out)
 	c->handle = kore_connection_handle;
 	TAILQ_INSERT_TAIL(&connections, c, list);
 
-#if !defined(KORE_NO_TLS)
-	c->state = CONN_STATE_TLS_SHAKE;
-	c->write = net_write_tls;
-	c->read = net_read_tls;
-#else
-	c->state = CONN_STATE_ESTABLISHED;
-	c->write = net_write;
-	c->read = net_read;
-
-	if (listener->connect != NULL) {
-		kore_runtime_connect(listener->connect, c);
+	if (listener->tls) {
+		c->state = CONN_STATE_TLS_SHAKE;
+		c->write = net_write_tls;
+		c->read = net_read_tls;
 	} else {
+		c->state = CONN_STATE_ESTABLISHED;
+		c->write = net_write;
+		c->read = net_read;
+
+		if (listener->connect != NULL) {
+			kore_runtime_connect(listener->connect, c);
+		} else {
 #if !defined(KORE_NO_HTTP)
-		c->proto = CONN_PROTO_HTTP;
-		if (http_keepalive_time != 0)
-			c->idle_timer.length = http_keepalive_time * 1000;
-		net_recv_queue(c, http_header_max,
-		    NETBUF_CALL_CB_ALWAYS, http_header_recv);
+			c->proto = CONN_PROTO_HTTP;
+			if (http_keepalive_time != 0) {
+				c->idle_timer.length =
+				    http_keepalive_time * 1000;
+			}
+			net_recv_queue(c, http_header_max,
+			    NETBUF_CALL_CB_ALWAYS, http_header_recv);
 #endif
+		}
 	}
-#endif
 
 	kore_connection_start_idletimer(c);
 	worker_active_connections++;
@@ -246,17 +246,14 @@ kore_connection_event(void *arg, int error)
 int
 kore_connection_handle(struct connection *c)
 {
-#if !defined(KORE_NO_TLS)
 	int			r;
 	struct listener		*listener;
 	char			cn[X509_CN_LENGTH];
-#endif
 
 	kore_debug("kore_connection_handle(%p) -> %d", c, c->state);
 	kore_connection_stop_idletimer(c);
 
 	switch (c->state) {
-#if !defined(KORE_NO_TLS)
 	case CONN_STATE_TLS_SHAKE:
 		if (primary_dom->ssl_ctx == NULL) {
 			kore_log(LOG_NOTICE,
@@ -275,6 +272,7 @@ kore_connection_handle(struct connection *c)
 			SSL_set_fd(c->ssl, c->fd);
 			SSL_set_accept_state(c->ssl);
 			SSL_set_app_data(c->ssl, c);
+			SSL_set_ex_data(c->ssl, 0, c);
 		}
 
 		ERR_clear_error();
@@ -331,7 +329,6 @@ kore_connection_handle(struct connection *c)
 
 		c->state = CONN_STATE_ESTABLISHED;
 		/* FALLTHROUGH */
-#endif /* !KORE_NO_TLS */
 	case CONN_STATE_ESTABLISHED:
 		if (c->evt.flags & KORE_EVENT_READ) {
 			if (!net_recv_flush(c))
@@ -365,7 +362,6 @@ kore_connection_remove(struct connection *c)
 
 	kore_debug("kore_connection_remove(%p)", c);
 
-#if !defined(KORE_NO_TLS)
 	if (c->ssl != NULL) {
 		SSL_shutdown(c->ssl);
 		SSL_free(c->ssl);
@@ -373,7 +369,6 @@ kore_connection_remove(struct connection *c)
 
 	if (c->cert != NULL)
 		X509_free(c->cert);
-#endif
 
 	close(c->fd);
 

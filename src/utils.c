@@ -91,10 +91,8 @@ kore_log(int prio, const char *fmt, ...)
 
 	if (worker != NULL) {
 		(void)snprintf(tmp, sizeof(tmp), "wrk %d", worker->id);
-#if !defined(KORE_NO_TLS)
 		if (worker->id == KORE_WORKER_KEYMGR)
 			(void)kore_strlcpy(tmp, "keymgr", sizeof(tmp));
-#endif
 		if (foreground)
 			printf("[%s]: %s\n", tmp, buf);
 		else
@@ -646,10 +644,8 @@ fatal_log(const char *fmt, va_list args)
 	if (!foreground)
 		kore_log(LOG_ERR, "%s", buf);
 
-#if !defined(KORE_NO_TLS)
 	if (worker != NULL && worker->id == KORE_WORKER_KEYMGR)
 		kore_keymgr_cleanup(1);
-#endif
 
 	printf("%s: %s\n", kore_progname, buf);
 }

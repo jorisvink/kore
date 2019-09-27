@@ -26,6 +26,16 @@
 #include "http.h"
 #include "tasks.h"
 
+#if defined(__linux__)
+#include "seccomp.h"
+
+static struct sock_filter filter_task[] = {
+	KORE_SYSCALL_ALLOW(clone),
+	KORE_SYSCALL_ALLOW(socketpair),
+	KORE_SYSCALL_ALLOW(set_robust_list),
+};
+#endif
+
 static u_int8_t				threads;
 static TAILQ_HEAD(, kore_task_thread)	task_threads;
 
@@ -50,6 +60,10 @@ kore_task_init(void)
 {
 	threads = 0;
 	TAILQ_INIT(&task_threads);
+
+#if defined(__linux__)
+	kore_seccomp_filter("task", filter_task, KORE_FILTER_LEN(filter_task));
+#endif
 }
 
 void

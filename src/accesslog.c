@@ -47,10 +47,7 @@ static void	accesslog_flush(struct kore_domain *, u_int64_t, int);
 
 static u_int64_t	time_cache = 0;
 static char		tbuf[128] = { '\0' };
-
-#if !defined(KORE_NO_TLS)
 char			cnbuf[1024] = { '\0' };
-#endif
 
 static struct kore_buf	*logbuf = NULL;
 
@@ -106,12 +103,10 @@ kore_accesslog(struct http_request *req)
 		req->agent = "-";
 
 	cn = "-";
-#if !defined(KORE_NO_TLS)
 	if (req->owner->cert != NULL) {
 		if (X509_GET_CN(req->owner->cert, cnbuf, sizeof(cnbuf)) != -1)
 			cn = cnbuf;
 	}
-#endif
 
 	switch (req->owner->family) {
 	case AF_INET:

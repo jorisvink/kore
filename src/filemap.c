@@ -86,8 +86,8 @@ kore_filemap_create(struct kore_domain *dom, const char *path, const char *root)
 	if (len == -1 || (size_t)len >= sizeof(regex))
 		fatal("kore_filemap_create: buffer too small");
 
-	if (!kore_module_handler_new(regex, dom->domain,
-	    "filemap_resolve", NULL, HANDLER_TYPE_DYNAMIC))
+	if (!kore_module_handler_new(dom, regex, "filemap_resolve",
+	    NULL, HANDLER_TYPE_DYNAMIC))
 		return (KORE_RESULT_ERROR);
 
 	hdlr = NULL;
@@ -177,6 +177,7 @@ static void
 filemap_serve(struct http_request *req, struct filemap_entry *map)
 {
 	struct stat		st;
+	struct connection	*c;
 	struct kore_fileref	*ref;
 	const char		*path;
 	int			len, fd, index;
@@ -224,7 +225,9 @@ lookup:
 		return;
 	}
 
-	if ((ref = kore_fileref_get(rpath)) == NULL) {
+	c = req->owner;
+
+	if ((ref = kore_fileref_get(rpath, c->owner->tls)) == NULL) {
 		if ((fd = open(fpath, O_RDONLY | O_NOFOLLOW)) == -1) {
 			switch (errno) {
 			case ENOENT:
@@ -271,7 +274,7 @@ lookup:
 			}
 
 			/* kore_fileref_create() takes ownership of the fd. */
-			ref = kore_fileref_create(fpath, fd,
+			ref = kore_fileref_create(c, fpath, fd,
 			    st.st_size, &st.st_mtim);
 			if (ref == NULL) {
 				http_response(req,

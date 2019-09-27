@@ -57,9 +57,12 @@ extern u_int32_t	asset_len_builtin_kore_conf;
 static int		configure_file(char *);
 #endif
 
+static int		configure_tls(char *);
+static int		configure_listen(char *);
 static int		configure_include(char *);
 static int		configure_bind(char *);
 static int		configure_bind_unix(char *);
+static int		configure_attach(char *);
 static int		configure_domain(char *);
 static int		configure_root(char *);
 static int		configure_runas(char *);
@@ -76,7 +79,6 @@ static int		configure_socket_backlog(char *);
 static int		configure_add_pledge(char *);
 #endif
 
-#if !defined(KORE_NO_TLS)
 static int		configure_rand_file(char *);
 static int		configure_certfile(char *);
 static int		configure_certkey(char *);
@@ -87,7 +89,6 @@ static int		configure_keymgr_root(char *);
 static int		configure_keymgr_runas(char *);
 static int		configure_client_verify(char *);
 static int		configure_client_verify_depth(char *);
-#endif
 
 #if !defined(KORE_NO_HTTP)
 static int		configure_filemap(char *);
@@ -145,20 +146,21 @@ static struct {
 	const char		*name;
 	int			(*configure)(char *);
 } config_directives[] = {
+	{ "tls",			configure_tls },
+	{ "listen",			configure_listen },
 	{ "include",			configure_include },
 	{ "bind",			configure_bind },
-	{ "bind_unix",			configure_bind_unix },
+	{ "unix",			configure_bind_unix },
 	{ "load",			configure_load },
 	{ "domain",			configure_domain },
-#if defined(KORE_USE_PYTHON)
-	{ "python_path",		configure_python_path },
-	{ "python_import",		configure_python_import },
-#endif
-#if !defined(KORE_NO_TLS)
+	{ "attach",			configure_attach },
 	{ "certfile",			configure_certfile },
 	{ "certkey",			configure_certkey },
 	{ "client_verify",		configure_client_verify },
 	{ "client_verify_depth",	configure_client_verify_depth },
+#if defined(KORE_USE_PYTHON)
+	{ "python_path",		configure_python_path },
+	{ "python_import",		configure_python_import },
 #endif
 #if !defined(KORE_NO_HTTP)
 	{ "filemap",			configure_filemap },
@@ -193,16 +195,14 @@ static struct {
 	{ "worker_set_affinity",	configure_set_affinity },
 	{ "pidfile",			configure_pidfile },
 	{ "socket_backlog",		configure_socket_backlog },
-#if defined(KORE_USE_PLATFORM_PLEDGE)
-	{ "pledge",			configure_add_pledge },
-#endif
-#if !defined(KORE_NO_TLS)
 	{ "tls_version",		configure_tls_version },
 	{ "tls_cipher",			configure_tls_cipher },
 	{ "tls_dhparam",		configure_tls_dhparam },
 	{ "rand_file",			configure_rand_file },
 	{ "keymgr_runas",		configure_keymgr_runas },
 	{ "keymgr_root",		configure_keymgr_root },
+#if defined(KORE_USE_PLATFORM_PLEDGE)
+	{ "pledge",			configure_add_pledge },
 #endif
 #if !defined(KORE_NO_HTTP)
 	{ "filemap_ext",		configure_filemap_ext },
@@ -256,6 +256,7 @@ static struct kore_module_handle	*current_handler = NULL;
 
 extern const char			*__progname;
 static struct kore_domain		*current_domain = NULL;
+static struct listener			*current_listener = NULL;
 
 void
 kore_parse_config(void)
@@ -314,7 +315,6 @@ kore_parse_config(void)
 		if (!kore_quiet)
 			kore_log(LOG_WARNING, "privsep: will not change user");
 	} else {
-#if !defined(KORE_NO_TLS)
 		if (keymgr_runas_user == NULL) {
 			if (!kore_quiet) {
 				kore_log(LOG_NOTICE, "privsep: no keymgr_runas "
@@ -322,10 +322,8 @@ kore_parse_config(void)
 			}
 			keymgr_runas_user = kore_strdup(kore_runas_user);
 		}
-#endif
 	}
 
-#if !defined(KORE_NO_TLS)
 	if (keymgr_root_path == NULL) {
 		if (!kore_quiet) {
 			kore_log(LOG_NOTICE, "privsep: no keymgr_root set, "
@@ -333,7 +331,6 @@ kore_parse_config(void)
 		}
 		keymgr_root_path = kore_strdup(kore_root_path);
 	}
-#endif
 
 	if (skip_chroot && !kore_quiet)
 		kore_log(LOG_WARNING, "privsep: will not chroot");
@@ -351,6 +348,12 @@ kore_parse_config_file(FILE *fp)
 	while ((p = kore_read_line(fp, buf, sizeof(buf))) != NULL) {
 		if (strlen(p) == 0) {
 			lineno++;
+			continue;
+		}
+
+		if (!strcmp(p, "}") && current_listener != NULL) {
+			lineno++;
+			current_listener = NULL;
 			continue;
 		}
 
@@ -376,13 +379,18 @@ kore_parse_config_file(FILE *fp)
 #endif
 
 		if (!strcmp(p, "}") && current_domain != NULL) {
-#if !defined(KORE_NO_TLS)
-			if (current_domain->certfile == NULL ||
-			    current_domain->certkey == NULL) {
+			if (current_domain->listener == NULL) {
+				fatal("domain '%s' not attached to listener",
+				    current_domain->domain);
+			}
+
+			if (current_domain->listener->tls == 1 &&
+			    (current_domain->certfile == NULL ||
+			    current_domain->certkey == NULL)) {
 				fatal("incomplete TLS setup for '%s'",
 				    current_domain->domain);
 			}
-#endif
+
 			current_domain = NULL;
 		}
 
@@ -473,15 +481,78 @@ configure_include(char *path)
 }
 
 static int
+configure_listen(char *options)
+{
+	struct listener		*l;
+	char			*argv[3];
+
+	if (current_listener != NULL) {
+		printf("nested listener contexts are not allowed\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	kore_split_string(options, " ", argv, 3);
+
+	if (argv[0] == NULL || argv[1] == NULL) {
+		printf("invalid listener context\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (strcmp(argv[1], "{")) {
+		printf("listener context not opened correctly\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if ((l = kore_listener_lookup(argv[0])) != NULL) {
+		printf("a listener with name '%s' already exists\n", l->name);
+		return (KORE_RESULT_ERROR);
+	}
+
+	current_listener = kore_listener_create(argv[0]);
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_tls(char *yesno)
+{
+	if (current_listener == NULL) {
+		printf("bind directive not inside a listener context\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (!strcmp(yesno, "no")) {
+		current_listener->tls = 0;
+	} else if (!strcmp(yesno, "yes")) {
+		current_listener->tls = 1;
+	} else {
+		printf("invalid '%s' for yes|no tls option\n", yesno);
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
 configure_bind(char *options)
 {
 	char		*argv[4];
+
+	if (current_listener == NULL) {
+		printf("bind directive not inside a listener context\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (current_listener->fd != -1) {
+		printf("listener '%s' already bound\n", current_listener->name);
+		return (KORE_RESULT_ERROR);
+	}
 
 	kore_split_string(options, " ", argv, 4);
 	if (argv[0] == NULL || argv[1] == NULL)
 		return (KORE_RESULT_ERROR);
 
-	return (kore_server_bind(argv[0], argv[1], argv[2]));
+	return (kore_server_bind(current_listener, argv[0], argv[1], argv[2]));
 }
 
 static int
@@ -489,11 +560,21 @@ configure_bind_unix(char *options)
 {
 	char		*argv[3];
 
+	if (current_listener == NULL) {
+		printf("bind_unix directive not inside a listener context\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (current_listener->fd != -1) {
+		printf("listener '%s' already bound\n", current_listener->name);
+		return (KORE_RESULT_ERROR);
+	}
+
 	kore_split_string(options, " ", argv, 3);
 	if (argv[0] == NULL)
 		return (KORE_RESULT_ERROR);
 
-	return (kore_server_bind_unix(argv[0], argv[1]));
+	return (kore_server_bind_unix(current_listener, argv[0], argv[1]));
 }
 
 static int
@@ -560,7 +641,6 @@ configure_file(char *file)
 }
 #endif
 
-#if !defined(KORE_NO_TLS)
 static int
 configure_tls_version(char *version)
 {
@@ -733,8 +813,6 @@ configure_keymgr_root(char *root)
 	return (KORE_RESULT_OK);
 }
 
-#endif /* !KORE_NO_TLS */
-
 static int
 configure_domain(char *options)
 {
@@ -747,6 +825,11 @@ configure_domain(char *options)
 
 	kore_split_string(options, " ", argv, 3);
 
+	if (argv[0] == NULL || argv[1] == NULL) {
+		printf("invalid domain context\n");
+		return (KORE_RESULT_ERROR);
+	}
+
 	if (strcmp(argv[1], "{")) {
 		printf("domain context not opened correctly\n");
 		return (KORE_RESULT_ERROR);
@@ -757,12 +840,38 @@ configure_domain(char *options)
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (!kore_domain_new(argv[0])) {
-		printf("could not create new domain %s\n", argv[0]);
+	current_domain = kore_domain_new(argv[0]);
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_attach(char *name)
+{
+	struct listener		*l;
+
+	if (current_domain == NULL) {
+		printf("attach not specified in domain context\n");
 		return (KORE_RESULT_ERROR);
 	}
 
-	current_domain = kore_domain_lookup(argv[0]);
+	if (current_domain->listener != NULL) {
+		printf("domain '%s' already attached to listener\n",
+		    current_domain->domain);
+		return (KORE_RESULT_ERROR);
+	}
+
+	if ((l = kore_listener_lookup(name)) == NULL) {
+		printf("listener '%s' does not exist\n", name);
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (!kore_domain_attach(l, current_domain)) {
+		printf("failed to attach '%s' to '%s'\n",
+		    current_domain->domain, name);
+		return (KORE_RESULT_ERROR);
+	}
+
 	return (KORE_RESULT_OK);
 }
 
@@ -796,8 +905,8 @@ configure_handler(int type, char *options)
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (!kore_module_handler_new(argv[0],
-	    current_domain->domain, argv[1], argv[2], type)) {
+	if (!kore_module_handler_new(current_domain,
+	    argv[0], argv[1], argv[2], type)) {
 		printf("cannot create handler for %s\n", argv[0]);
 		return (KORE_RESULT_ERROR);
 	}

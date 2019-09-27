@@ -46,8 +46,6 @@
 
 #include "kore.h"
 
-#if !defined(KORE_NO_TLS)
-
 #define RAND_TMP_FILE		"rnd.tmp"
 #define RAND_POLL_INTERVAL	(1800 * 1000)
 #define RAND_FILE_SIZE		1024
@@ -135,7 +133,7 @@ kore_keymgr_run(void)
 
 	quit = 0;
 
-	kore_listener_cleanup();
+	kore_listener_closeall();
 	kore_module_cleanup();
 
 	net_init();
@@ -232,6 +230,7 @@ kore_keymgr_cleanup(int final)
 static void
 keymgr_reload(void)
 {
+	struct listener		*l;
 	struct kore_domain	*dom;
 
 	if (!kore_quiet)
@@ -243,8 +242,12 @@ keymgr_reload(void)
 	kore_domain_callback(keymgr_load_privatekey);
 
 	/* can't use kore_domain_callback() due to dst parameter. */
-	TAILQ_FOREACH(dom, &domains, list)
-		keymgr_submit_certificates(dom, KORE_MSG_WORKER_ALL);
+	LIST_FOREACH(l, &listeners, list) {
+		if (l->tls == 0)
+			continue;
+		TAILQ_FOREACH(dom, &l->domains, list)
+			keymgr_submit_certificates(dom, KORE_MSG_WORKER_ALL);
+	}
 }
 
 static void
@@ -414,6 +417,9 @@ keymgr_load_privatekey(struct kore_domain *dom)
 	FILE			*fp;
 	struct key		*key;
 
+	if (dom->listener->tls == 0)
+		return;
+
 	if ((fp = fopen(dom->certkey, "r")) == NULL)
 		fatal("failed to open private key: %s", dom->certkey);
 
@@ -431,10 +437,15 @@ keymgr_load_privatekey(struct kore_domain *dom)
 static void
 keymgr_certificate_request(struct kore_msg *msg, const void *data)
 {
+	struct listener		*l;
 	struct kore_domain	*dom;
 
-	TAILQ_FOREACH(dom, &domains, list)
-		keymgr_submit_certificates(dom, msg->src);
+	LIST_FOREACH(l, &listeners, list) {
+		if (l->tls == 0)
+			continue;
+		TAILQ_FOREACH(dom, &l->domains, list)
+			keymgr_submit_certificates(dom, msg->src);
+	}
 }
 
 static void
@@ -546,5 +557,3 @@ keymgr_ecdsa_sign(struct kore_msg *msg, const void *data, struct key *key)
 
 	kore_msg_send(msg->src, KORE_MSG_KEYMGR_RESP, sig, siglen);
 }
-
-#endif

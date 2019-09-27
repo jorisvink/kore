@@ -22,9 +22,7 @@
 #include <sys/resource.h>
 #include <sys/socket.h>
 
-#if !defined(KORE_NO_TLS)
 #include <openssl/rand.h>
-#endif
 
 #include <fcntl.h>
 #include <grp.h>
@@ -57,12 +55,7 @@
 #define WAIT_ANY		(-1)
 #endif
 
-#if !defined(KORE_NO_TLS)
 #define WORKER_SOLO_COUNT	2
-#else
-#define WORKER_SOLO_COUNT	1
-#endif
-
 #define WORKER(id)						\
 	(struct kore_worker *)((u_int8_t *)kore_workers +	\
 	    (sizeof(struct kore_worker) * id))
@@ -79,12 +72,10 @@ static inline int	worker_acceptlock_obtain(void);
 static inline void	worker_acceptlock_release(void);
 static void		worker_accept_avail(struct kore_msg *, const void *);
 
-#if !defined(KORE_NO_TLS)
 static void	worker_entropy_recv(struct kore_msg *, const void *);
 static void	worker_keymgr_response(struct kore_msg *, const void *);
 static int	worker_keymgr_response_verify(struct kore_msg *, const void *,
 		    struct kore_domain **);
-#endif
 
 static int				accept_avail;
 static struct kore_worker		*kore_workers;
@@ -112,10 +103,8 @@ kore_worker_init(void)
 	if (worker_count == 0)
 		worker_count = cpu_count;
 
-#if !defined(KORE_NO_TLS)
 	/* account for the key manager. */
 	worker_count += 1;
-#endif
 
 	len = sizeof(*accept_lock) +
 	    (sizeof(struct kore_worker) * worker_count);
@@ -318,19 +307,15 @@ kore_worker_entry(struct kore_worker *kw)
 {
 	struct kore_runtime_call	*rcall;
 	char				buf[16];
+	u_int64_t			last_seed;
 	int				quit, had_lock;
 	u_int64_t			netwait, now, next_prune;
-#if !defined(KORE_NO_TLS)
-	u_int64_t			last_seed;
-#endif
 
 	worker = kw;
 
 	(void)snprintf(buf, sizeof(buf), "[wrk %d]", kw->id);
-#if !defined(KORE_NO_TLS)
 	if (kw->id == KORE_WORKER_KEYMGR)
 		(void)snprintf(buf, sizeof(buf), "[keymgr]");
-#endif
 	kore_platform_proctitle(buf);
 
 	if (worker_set_affinity == 1)
@@ -340,16 +325,19 @@ kore_worker_entry(struct kore_worker *kw)
 
 	kore_signal_setup();
 
-#if !defined(KORE_NO_TLS)
 	if (kw->id == KORE_WORKER_KEYMGR) {
 		kore_keymgr_run();
 		exit(0);
 	}
-#endif
+
 	net_init();
 	kore_connection_init();
 	kore_platform_event_init();
 	kore_msg_worker_init();
+
+#if defined(KORE_USE_TASKS)
+	kore_task_init();
+#endif
 
 	kore_worker_privdrop(kore_runas_user, kore_root_path);
 
@@ -368,11 +356,6 @@ kore_worker_entry(struct kore_worker *kw)
 	accept_avail = 1;
 	worker_active_connections = 0;
 
-#if defined(KORE_USE_TASKS)
-	kore_task_init();
-#endif
-
-#if !defined(KORE_NO_TLS)
 	last_seed = 0;
 	kore_msg_register(KORE_MSG_CRL, worker_keymgr_response);
 	kore_msg_register(KORE_MSG_ENTROPY_RESP, worker_entropy_recv);
@@ -381,7 +364,6 @@ kore_worker_entry(struct kore_worker *kw)
 		kore_msg_send(KORE_WORKER_KEYMGR,
 		    KORE_MSG_CERTIFICATE_REQ, NULL, 0);
 	}
-#endif
 
 	kore_msg_register(KORE_MSG_ACCEPT_AVAILABLE, worker_accept_avail);
 
@@ -406,13 +388,11 @@ kore_worker_entry(struct kore_worker *kw)
 	for (;;) {
 		now = kore_time_ms();
 
-#if !defined(KORE_NO_TLS)
 		if ((now - last_seed) > KORE_RESEED_TIME) {
 			kore_msg_send(KORE_WORKER_KEYMGR,
 			    KORE_MSG_ENTROPY_REQ, NULL, 0);
 			last_seed = now;
 		}
-#endif
 
 		if (!worker->has_lock && accept_avail) {
 			accept_avail = 0;
@@ -573,7 +553,6 @@ kore_worker_reap(void)
 		}
 #endif
 
-#if !defined(KORE_NO_TLS)
 		if (id == KORE_WORKER_KEYMGR) {
 			kore_log(LOG_CRIT, "keymgr gone, stopping");
 			kw->pid = 0;
@@ -583,7 +562,6 @@ kore_worker_reap(void)
 			}
 			break;
 		}
-#endif
 
 		if (kw->pid == accept_lock->current &&
 		    worker_no_lock == 0)
@@ -720,7 +698,6 @@ worker_accept_avail(struct kore_msg *msg, const void *data)
 	accept_avail = 1;
 }
 
-#if !defined(KORE_NO_TLS)
 static void
 worker_entropy_recv(struct kore_msg *msg, const void *data)
 {
@@ -762,6 +739,7 @@ static int
 worker_keymgr_response_verify(struct kore_msg *msg, const void *data,
     struct kore_domain **out)
 {
+	struct listener			*l;
 	struct kore_domain		*dom;
 	const struct kore_x509_msg	*req;
 
@@ -785,9 +763,15 @@ worker_keymgr_response_verify(struct kore_msg *msg, const void *data,
 		return (KORE_RESULT_ERROR);
 	}
 
-	dom = NULL;
-	TAILQ_FOREACH(dom, &domains, list) {
-		if (!strncmp(dom->domain, req->domain, req->domain_len))
+	LIST_FOREACH(l, &listeners, list) {
+		dom = NULL;
+
+		TAILQ_FOREACH(dom, &l->domains, list) {
+			if (!strncmp(dom->domain, req->domain, req->domain_len))
+				break;
+		}
+
+		if (dom != NULL)
 			break;
 	}
 
@@ -801,4 +785,3 @@ worker_keymgr_response_verify(struct kore_msg *msg, const void *data,
 
 	return (KORE_RESULT_OK);
 }
-#endif

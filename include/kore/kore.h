@@ -30,11 +30,9 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-#if !defined(KORE_NO_TLS)
 #include <openssl/err.h>
 #include <openssl/dh.h>
 #include <openssl/ssl.h>
-#endif
 
 #include <errno.h>
 #include <regex.h>
@@ -57,7 +55,7 @@ extern int daemon(int, int);
 #define st_mtim		st_mtimespec
 #endif
 
-#if !defined(KORE_NO_SENDFILE) && defined(KORE_NO_TLS)
+#if !defined(KORE_NO_SENDFILE)
 #if defined(__MACH__) || defined(__FreeBSD_version) || defined(__linux__)
 #define KORE_USE_PLATFORM_SENDFILE	1
 #endif
@@ -127,16 +125,14 @@ struct http_request;
 struct kore_fileref {
 	int				cnt;
 	int				flags;
+	int				ontls;
 	off_t				size;
 	char				*path;
 	u_int64_t			mtime;
 	time_t				mtime_sec;
 	u_int64_t			expiration;
-#if !defined(KORE_USE_PLATFORM_SENDFILE)
 	void				*base;
-#else
 	int				fd;
-#endif
 	TAILQ_ENTRY(kore_fileref)	list;
 };
 
@@ -149,12 +145,10 @@ struct netbuf {
 	u_int8_t		flags;
 
 	struct kore_fileref	*file_ref;
-#if defined(KORE_USE_PLATFORM_SENDFILE)
 	off_t			fd_off;
 	off_t			fd_len;
-#endif
 
-	void			*owner;
+	struct connection	*owner;
 	void			*extra;
 	int			(*cb)(struct netbuf *);
 
@@ -218,12 +212,10 @@ struct connection {
 	int			fd;
 	u_int8_t		state;
 	u_int8_t		proto;
-	void			*owner;
-#if !defined(KORE_NO_TLS)
+	struct listener		*owner;
 	X509			*cert;
 	SSL			*ssl;
 	int			tls_reneg;
-#endif
 	u_int8_t		flags;
 	void			*hdlr_extra;
 
@@ -288,13 +280,40 @@ struct kore_runtime_call {
 	struct kore_runtime	*runtime;
 };
 
+struct kore_domain {
+	u_int16_t				id;
+	int					logerr;
+	u_int64_t				logwarn;
+	int					accesslog;
+
+	char					*domain;
+	struct kore_buf				*logbuf;
+	struct listener				*listener;
+
+	char					*cafile;
+	char					*crlfile;
+	char					*certfile;
+	char					*certkey;
+	SSL_CTX					*ssl_ctx;
+	int					x509_verify_depth;
+#if !defined(KORE_NO_HTTP)
+	TAILQ_HEAD(, kore_module_handle)	handlers;
+#endif
+	TAILQ_ENTRY(kore_domain)		list;
+};
+
+TAILQ_HEAD(kore_domain_h, kore_domain);
+
 extern struct kore_runtime	kore_native_runtime;
 
 struct listener {
 	struct kore_event		evt;
 	int				fd;
+	int				tls;
 	int				family;
 	struct kore_runtime_call	*connect;
+	char				*name;
+	struct kore_domain_h		domains;
 
 	LIST_ENTRY(listener)	list;
 };
@@ -410,29 +429,6 @@ struct kore_worker {
 	} lb;
 };
 
-struct kore_domain {
-	u_int16_t				id;
-	char					*domain;
-	int					accesslog;
-	struct kore_buf				*logbuf;
-	int					logerr;
-	u_int64_t				logwarn;
-#if !defined(KORE_NO_TLS)
-	char					*cafile;
-	char					*crlfile;
-	char					*certfile;
-	char					*certkey;
-	SSL_CTX					*ssl_ctx;
-	int					x509_verify_depth;
-#endif
-#if !defined(KORE_NO_HTTP)
-	TAILQ_HEAD(, kore_module_handle)	handlers;
-#endif
-	TAILQ_ENTRY(kore_domain)		list;
-};
-
-TAILQ_HEAD(kore_domain_h, kore_domain);
-
 #if !defined(KORE_NO_HTTP)
 
 #define KORE_VALIDATOR_TYPE_REGEX	1
@@ -520,7 +516,6 @@ struct kore_msg {
 	size_t		length;
 };
 
-#if !defined(KORE_NO_TLS)
 struct kore_keyreq {
 	int		padding;
 	char		domain[KORE_DOMAINNAME_LEN];
@@ -535,7 +530,6 @@ struct kore_x509_msg {
 	size_t		data_len;
 	u_int8_t	data[];
 };
-#endif
 
 #if !defined(KORE_SINGLE_BINARY)
 extern char	*config_file;
@@ -554,13 +548,11 @@ extern char	*kore_tls_cipher_list;
 
 extern volatile sig_atomic_t	sig_recv;
 
-#if !defined(KORE_NO_TLS)
 extern int	tls_version;
 extern DH	*tls_dhparam;
 extern char	*rand_file;
 extern char	*keymgr_runas_user;
 extern char	*keymgr_root_path;
-#endif
 
 extern u_int8_t			nlisteners;
 extern u_int16_t		cpu_count;
@@ -578,7 +570,6 @@ extern u_int32_t		kore_socket_backlog;
 
 extern struct listener_head	listeners;
 extern struct kore_worker	*worker;
-extern struct kore_domain_h	domains;
 extern struct kore_domain	*primary_dom;
 extern struct kore_pool		nb_pool;
 
@@ -646,17 +637,21 @@ struct kore_timer	*kore_timer_add(void (*cb)(void *, u_int64_t),
 			    u_int64_t, void *, int);
 
 void		kore_listener_cleanup(void);
+void		kore_listener_closeall(void);
 void		kore_listener_accept(void *, int);
+struct listener	*kore_listener_create(const char *);
+struct listener	*kore_listener_lookup(const char *);
 void		kore_listener_free(struct listener *);
-struct listener	*kore_listener_alloc(int, const char *);
+int		kore_listener_init(struct listener *, int, const char *);
 
 int		kore_sockopt(int, int, int);
-int		kore_server_bind_unix(const char *, const char *);
-int		kore_server_bind(const char *, const char *, const char *);
-#if !defined(KORE_NO_TLS)
+int		kore_server_bind_unix(struct listener *,
+		    const char *, const char *);
+int		kore_server_bind(struct listener *,
+		    const char *, const char *, const char *);
+
 int		kore_tls_sni_cb(SSL *, int *, void *);
 void		kore_tls_info_callback(const SSL *, int, int);
-#endif
 
 void			kore_connection_init(void);
 void			kore_connection_cleanup(void);
@@ -749,14 +744,15 @@ extern char	*kore_filemap_index;
 #endif
 
 void			kore_fileref_init(void);
-struct kore_fileref	*kore_fileref_get(const char *);
-struct kore_fileref	*kore_fileref_create(const char *, int, off_t,
-			    struct timespec *);
+struct kore_fileref	*kore_fileref_get(const char *, int);
+struct kore_fileref	*kore_fileref_create(struct connection *,
+			    const char *, int, off_t, struct timespec *);
 void			kore_fileref_release(struct kore_fileref *);
+
+struct kore_domain	*kore_domain_new(const char *);
 
 void		kore_domain_init(void);
 void		kore_domain_cleanup(void);
-int		kore_domain_new(const char *);
 void		kore_domain_free(struct kore_domain *);
 void		kore_module_init(void);
 void		kore_module_cleanup(void);
@@ -768,10 +764,11 @@ void		*kore_module_getsym(const char *, struct kore_runtime **);
 void		kore_domain_load_crl(void);
 void		kore_domain_keymgr_init(void);
 void		kore_domain_callback(void (*cb)(struct kore_domain *));
+int		kore_domain_attach(struct listener *, struct kore_domain *);
 void		kore_domain_tlsinit(struct kore_domain *, const void *, size_t);
 void		kore_domain_crl_add(struct kore_domain *, const void *, size_t);
 #if !defined(KORE_NO_HTTP)
-int		kore_module_handler_new(const char *, const char *,
+int		kore_module_handler_new(struct kore_domain *, const char *,
 		    const char *, const char *, int);
 void		kore_module_handler_free(struct kore_module_handle *);
 struct kore_module_handle	*kore_module_handler_find(struct http_request *,
@@ -799,7 +796,8 @@ void	kore_runtime_wsmessage(struct kore_runtime_call *,
 #endif
 
 struct kore_domain		*kore_domain_byid(u_int16_t);
-struct kore_domain		*kore_domain_lookup(const char *);
+struct kore_domain		*kore_domain_lookup(struct listener *,
+				    const char *);
 
 #if !defined(KORE_NO_HTTP)
 void		kore_validator_init(void);

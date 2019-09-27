@@ -136,6 +136,7 @@ kore_module_reload(int cbs)
 	struct stat			st;
 	int				ret;
 #if !defined(KORE_NO_HTTP)
+	struct listener			*l;
 	struct kore_domain		*dom;
 	struct kore_module_handle	*hdlr;
 #endif
@@ -182,13 +183,17 @@ kore_module_reload(int cbs)
 	}
 
 #if !defined(KORE_NO_HTTP)
-	TAILQ_FOREACH(dom, &domains, list) {
-		TAILQ_FOREACH(hdlr, &(dom->handlers), list) {
-			kore_free(hdlr->rcall);
-			hdlr->rcall = kore_runtime_getcall(hdlr->func);
-			if (hdlr->rcall == NULL)
-				fatal("no function '%s' found", hdlr->func);
-			hdlr->errors = 0;
+	LIST_FOREACH(l, &listeners, list) {
+		TAILQ_FOREACH(dom, &l->domains, list) {
+			TAILQ_FOREACH(hdlr, &(dom->handlers), list) {
+				kore_free(hdlr->rcall);
+				hdlr->rcall = kore_runtime_getcall(hdlr->func);
+				if (hdlr->rcall == NULL) {
+					fatal("no function '%s' found",
+					    hdlr->func);
+				}
+				hdlr->errors = 0;
+			}
 		}
 	}
 #endif
@@ -209,18 +214,11 @@ kore_module_loaded(void)
 
 #if !defined(KORE_NO_HTTP)
 int
-kore_module_handler_new(const char *path, const char *domain,
+kore_module_handler_new(struct kore_domain *dom, const char *path,
     const char *func, const char *auth, int type)
 {
 	struct kore_auth		*ap;
-	struct kore_domain		*dom;
 	struct kore_module_handle	*hdlr;
-
-	kore_debug("kore_module_handler_new(%s, %s, %s, %s, %d)", path,
-	    domain, func, auth, type);
-
-	if ((dom = kore_domain_lookup(domain)) == NULL)
-		return (KORE_RESULT_ERROR);
 
 	if (auth != NULL) {
 		if ((ap = kore_auth_lookup(auth)) == NULL)
@@ -289,10 +287,13 @@ struct kore_module_handle *
 kore_module_handler_find(struct http_request *req, const char *domain,
     const char *path)
 {
+	struct connection		*c;
 	struct kore_domain		*dom;
 	struct kore_module_handle	*hdlr;
 
-	if ((dom = kore_domain_lookup(domain)) == NULL)
+	c = req->owner;
+
+	if ((dom = kore_domain_lookup(c->owner, domain)) == NULL)
 		return (NULL);
 
 	TAILQ_FOREACH(hdlr, &(dom->handlers), list) {

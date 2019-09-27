@@ -1551,6 +1551,7 @@ http_request_new(struct connection *c, const char *host,
 	}
 
 	req = kore_pool_get(&http_request_pool);
+	req->owner = c;
 
 	if ((hdlr = kore_module_handler_find(req, host, path)) == NULL) {
 		kore_pool_put(&http_request_pool, req);

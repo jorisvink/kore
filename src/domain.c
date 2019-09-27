@@ -23,14 +23,12 @@
 #include <sys/param.h>
 #include <sys/types.h>
 
-#if !defined(KORE_NO_TLS)
 #include <openssl/x509.h>
 #include <openssl/bio.h>
 #include <openssl/evp.h>
 #include <openssl/ec.h>
 #include <openssl/ecdsa.h>
 #include <poll.h>
-#endif
 
 #include <fnmatch.h>
 
@@ -43,18 +41,14 @@
 #define KORE_DOMAIN_CACHE	16
 #define SSL_SESSION_ID		"kore_ssl_sessionid"
 
-struct kore_domain_h		domains;
 struct kore_domain		*primary_dom = NULL;
 
-#if !defined(KORE_NO_TLS)
 static u_int8_t			keymgr_buf[2048];
 static size_t			keymgr_buflen = 0;
 static int			keymgr_response = 0;
 DH				*tls_dhparam = NULL;
 int				tls_version = KORE_TLS_VERSION_BOTH;
-#endif
 
-#if !defined(KORE_NO_TLS)
 static int	domain_x509_verify(int, X509_STORE_CTX *);
 static X509	*domain_load_certificate_chain(SSL_CTX *, const void *, size_t);
 
@@ -90,7 +84,6 @@ struct ecdsa_method {
 	int		flags;
 	char		*app_data;
 };
-#endif
 
 static ECDSA_METHOD	keymgr_ecdsa = {
 	"kore ECDSA keymgr method",
@@ -117,9 +110,8 @@ static RSA_METHOD	keymgr_rsa = {
 	NULL,
 	NULL
 };
-
+#endif
 #endif /* OPENSSL_VERSION_NUMBER */
-#endif /* KORE_NO_TLS */
 
 static u_int16_t		domain_id = 0;
 static struct kore_domain	*cached[KORE_DOMAIN_CACHE];
@@ -129,12 +121,9 @@ kore_domain_init(void)
 {
 	int		i;
 
-	TAILQ_INIT(&domains);
-
 	for (i = 0; i < KORE_DOMAIN_CACHE; i++)
 		cached[i] = NULL;
 
-#if !defined(KORE_NO_TLS)
 #if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
 	if (keymgr_rsa_meth == NULL) {
 		if ((keymgr_rsa_meth = RSA_meth_new("kore RSA keymgr method",
@@ -161,21 +150,11 @@ kore_domain_init(void)
 		    OPENSSL_VERSION_TEXT);
 	}
 #endif
-
-#endif
 }
 
 void
 kore_domain_cleanup(void)
 {
-	struct kore_domain *dom;
-
-	while ((dom = TAILQ_FIRST(&domains)) != NULL) {
-		TAILQ_REMOVE(&domains, dom, list);
-		kore_domain_free(dom);
-	}
-
-#if !defined(KORE_NO_TLS)
 #if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
 	if (keymgr_rsa_meth != NULL) {
 		RSA_meth_free(keymgr_rsa_meth);
@@ -187,33 +166,20 @@ kore_domain_cleanup(void)
 		keymgr_ec_meth = NULL;
 	}
 #endif
-#endif
 }
 
-int
+struct kore_domain *
 kore_domain_new(const char *domain)
 {
 	struct kore_domain	*dom;
 
-	if (kore_domain_lookup(domain) != NULL)
-		return (KORE_RESULT_ERROR);
-
 	kore_debug("kore_domain_new(%s)", domain);
 
-	dom = kore_malloc(sizeof(*dom));
+	dom = kore_calloc(1, sizeof(*dom));
 	dom->id = domain_id++;
-	dom->logbuf = NULL;
 	dom->accesslog = -1;
-	dom->logwarn = 0;
-	dom->logerr = 0;
-#if !defined(KORE_NO_TLS)
-	dom->cafile = NULL;
-	dom->certkey = NULL;
-	dom->ssl_ctx = NULL;
-	dom->certfile = NULL;
-	dom->crlfile = NULL;
+
 	dom->x509_verify_depth = 1;
-#endif
 	dom->domain = kore_strdup(domain);
 
 #if !defined(KORE_NO_HTTP)
@@ -226,10 +192,27 @@ kore_domain_new(const char *domain)
 		cached[dom->id] = dom;
 	}
 
-	TAILQ_INSERT_TAIL(&domains, dom, list);
-
 	if (primary_dom == NULL)
 		primary_dom = dom;
+
+	return (dom);
+}
+
+int
+kore_domain_attach(struct listener *l, struct kore_domain *dom)
+{
+	struct kore_domain	*d;
+
+	if (dom->listener != NULL)
+		return (KORE_RESULT_ERROR);
+
+	TAILQ_FOREACH(d, &l->domains, list) {
+		if (!strcmp(d->domain, dom->domain))
+			return (KORE_RESULT_ERROR);
+	}
+
+	dom->listener = l;
+	TAILQ_INSERT_TAIL(&l->domains, dom, list);
 
 	return (KORE_RESULT_OK);
 }
@@ -246,12 +229,11 @@ kore_domain_free(struct kore_domain *dom)
 	if (primary_dom == dom)
 		primary_dom = NULL;
 
-	TAILQ_REMOVE(&domains, dom, list);
+	TAILQ_REMOVE(&dom->listener->domains, dom, list);
 
 	if (dom->domain != NULL)
 		kore_free(dom->domain);
 
-#if !defined(KORE_NO_TLS)
 	if (dom->ssl_ctx != NULL)
 		SSL_CTX_free(dom->ssl_ctx);
 	if (dom->cafile != NULL)
@@ -262,7 +244,6 @@ kore_domain_free(struct kore_domain *dom)
 		kore_free(dom->certfile);
 	if (dom->crlfile != NULL)
 		kore_free(dom->crlfile);
-#endif
 
 #if !defined(KORE_NO_HTTP)
 	/* Drop all handlers associated with this domain */
@@ -274,7 +255,6 @@ kore_domain_free(struct kore_domain *dom)
 	kore_free(dom);
 }
 
-#if !defined(KORE_NO_TLS)
 void
 kore_domain_tlsinit(struct kore_domain *dom, const void *pem, size_t pemlen)
 {
@@ -488,24 +468,26 @@ kore_domain_crl_add(struct kore_domain *dom, const void *pem, size_t pemlen)
 	X509_STORE_set_flags(store,
 	    X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
 }
-#endif
 
 void
 kore_domain_callback(void (*cb)(struct kore_domain *))
 {
+	struct listener		*l;
 	struct kore_domain	*dom;
 
-	TAILQ_FOREACH(dom, &domains, list) {
-		cb(dom);
+	LIST_FOREACH(l, &listeners, list) {
+		TAILQ_FOREACH(dom, &l->domains, list) {
+			cb(dom);
+		}
 	}
 }
 
 struct kore_domain *
-kore_domain_lookup(const char *domain)
+kore_domain_lookup(struct listener *l, const char *domain)
 {
 	struct kore_domain	*dom;
 
-	TAILQ_FOREACH(dom, &domains, list) {
+	TAILQ_FOREACH(dom, &l->domains, list) {
 		if (!strcmp(dom->domain, domain))
 			return (dom);
 		if (!fnmatch(dom->domain, domain, FNM_CASEFOLD))
@@ -518,14 +500,17 @@ kore_domain_lookup(const char *domain)
 struct kore_domain *
 kore_domain_byid(u_int16_t id)
 {
+	struct listener		*l;
 	struct kore_domain	*dom;
 
 	if (id < KORE_DOMAIN_CACHE)
 		return (cached[id]);
 
-	TAILQ_FOREACH(dom, &domains, list) {
-		if (dom->id == id)
-			return (dom);
+	LIST_FOREACH(l, &listeners, list) {
+		TAILQ_FOREACH(dom, &l->domains, list) {
+			if (dom->id == id)
+				return (dom);
+		}
 	}
 
 	return (NULL);
@@ -538,15 +523,21 @@ kore_domain_byid(u_int16_t id)
 void
 kore_domain_closelogs(void)
 {
+	struct listener		*l;
 	struct kore_domain	*dom;
 
-	TAILQ_FOREACH(dom, &domains, list) {
-		if (dom->accesslog != -1) {
-			(void)close(dom->accesslog);
-			/* turn into flag to indicate accesslogs are active. */
-			dom->accesslog = 1;
-		} else {
-			dom->accesslog = 0;
+	LIST_FOREACH(l, &listeners, list) {
+		TAILQ_FOREACH(dom, &l->domains, list) {
+			if (dom->accesslog != -1) {
+				(void)close(dom->accesslog);
+				/*
+				 * Turn into flag to indicate accesslogs
+				 * are active.
+				 */
+				dom->accesslog = 1;
+			} else {
+				dom->accesslog = 0;
+			}
 		}
 	}
 }
@@ -554,13 +545,10 @@ kore_domain_closelogs(void)
 void
 kore_domain_keymgr_init(void)
 {
-#if !defined(KORE_NO_TLS)
 	keymgr_init();
 	kore_msg_register(KORE_MSG_KEYMGR_RESP, keymgr_msg_response);
-#endif
 }
 
-#if !defined(KORE_NO_TLS)
 static void
 keymgr_init(void)
 {
@@ -872,4 +860,3 @@ domain_load_certificate_chain(SSL_CTX *ctx, const void *data, size_t len)
 
 	return (x);
 }
-#endif

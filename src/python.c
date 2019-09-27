@@ -57,6 +57,10 @@ static PyObject		*pyconnection_alloc(struct connection *);
 static PyObject		*python_callable(PyObject *, const char *);
 static void		python_split_arguments(char *, char **, size_t);
 
+static const char	*python_string_from_dict(PyObject *, const char *);
+static int		python_bool_from_dict(PyObject *, const char *, int *);
+static int		python_long_from_dict(PyObject *, const char *, long *);
+
 static int		pyhttp_response_sent(struct netbuf *);
 static PyObject		*pyhttp_file_alloc(struct http_file *);
 static PyObject		*pyhttp_request_alloc(const struct http_request *);
@@ -465,6 +469,57 @@ kore_python_proc_reap(void)
 		else
 			python_coro_wakeup(proc->coro);
 	}
+}
+
+static int
+python_long_from_dict(PyObject *dict, const char *key, long *result)
+{
+	PyObject	*obj;
+
+	if ((obj = PyDict_GetItemString(dict, key)) == NULL)
+		return (KORE_RESULT_ERROR);
+
+	if (!PyLong_CheckExact(obj))
+		return (KORE_RESULT_ERROR);
+
+	PyErr_Clear();
+	*result = PyLong_AsLong(obj);
+	if (*result == -1 && PyErr_Occurred()) {
+		PyErr_Clear();
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+python_bool_from_dict(PyObject *dict, const char *key, int *result)
+{
+	PyObject	*obj;
+
+	if ((obj = PyDict_GetItemString(dict, key)) == NULL)
+		return (KORE_RESULT_ERROR);
+
+	if (!PyBool_Check(obj))
+		return (KORE_RESULT_ERROR);
+
+	*result = (obj == Py_True);
+
+	return (KORE_RESULT_OK);
+}
+
+static const char *
+python_string_from_dict(PyObject *dict, const char *key)
+{
+	PyObject	*obj;
+
+	if ((obj = PyDict_GetItemString(dict, key)) == NULL)
+		return (NULL);
+
+	if (!PyUnicode_Check(obj))
+		return (NULL);
+
+	return (PyUnicode_AsUTF8AndSize(obj, NULL));
 }
 
 static void *
@@ -1294,35 +1349,59 @@ python_kore_time(PyObject *self, PyObject *args)
 }
 
 static PyObject *
-python_kore_bind(PyObject *self, PyObject *args)
+python_kore_listen(PyObject *self, PyObject *args, PyObject *kwargs)
 {
-	const char	*ip, *port;
+	struct listener		*l;
+	const char		*name, *ip, *port, *path;
 
-	if (!PyArg_ParseTuple(args, "ss", &ip, &port))
+	if (!PyArg_ParseTuple(args, "s", &name))
 		return (NULL);
 
-	if (!kore_server_bind(ip, port, NULL)) {
-		PyErr_SetString(PyExc_RuntimeError, "failed to listen");
+	if (kwargs == NULL) {
+		PyErr_SetString(PyExc_RuntimeError, "missing keyword args");
 		return (NULL);
 	}
 
-	Py_RETURN_TRUE;
-}
+	ip = python_string_from_dict(kwargs, "ip");
+	path = python_string_from_dict(kwargs, "path");
 
-static PyObject *
-python_kore_bind_unix(PyObject *self, PyObject *args)
-{
-	const char	*path;
-
-	if (!PyArg_ParseTuple(args, "s", &path))
-		return (NULL);
-
-	if (!kore_server_bind_unix(path, NULL)) {
-		PyErr_SetString(PyExc_RuntimeError, "failed bind to path");
+	if (ip == NULL && path == NULL) {
+		PyErr_SetString(PyExc_RuntimeError,
+		    "missing ip or path keywords");
 		return (NULL);
 	}
 
-	Py_RETURN_TRUE;
+	if (ip != NULL && path != NULL) {
+		PyErr_SetString(PyExc_RuntimeError, "ip/path are exclusive");
+		return (NULL);
+	}
+
+	l = kore_listener_create(name);
+
+	if (ip != NULL) {
+		if ((port = python_string_from_dict(kwargs, "port")) == NULL) {
+			kore_listener_free(l);
+			PyErr_SetString(PyExc_RuntimeError,
+			    "missing or invalid 'port' keyword");
+			return (NULL);
+		}
+
+		if (!kore_server_bind(l, ip, port, NULL)) {
+			PyErr_Format(PyExc_RuntimeError,
+			    "failed to bind to '%s:%s'", ip, port);
+			return (NULL);
+		}
+	} else {
+		if (!kore_server_bind_unix(l, path, NULL)) {
+			PyErr_Format(PyExc_RuntimeError,
+			    "failed to bind to '%s'", path);
+			return (NULL);
+		}
+	}
+
+	python_bool_from_dict(kwargs, "tls", &l->tls);
+
+	Py_RETURN_NONE;
 }
 
 static PyObject *
@@ -1498,30 +1577,64 @@ python_kore_tracer(PyObject *self, PyObject *args)
 }
 
 static PyObject *
-python_kore_domain(PyObject *self, PyObject *args)
+python_kore_domain(PyObject *self, PyObject *args, PyObject *kwargs)
 {
+	struct listener		*l;
+	long			depth;
 	const char		*name;
 	struct pydomain		*domain;
-#if !defined(KORE_NO_TLS)
-	int			depth;
-	const char		*x509, *key, *ca;
+	const char		*cert, *key, *ca, *attach;
 
 	ca = NULL;
 	depth = -1;
+	key = NULL;
+	cert = NULL;
+	attach = NULL;
 
-	if (!PyArg_ParseTuple(args, "sss|si", &name, &x509, &key, &ca, &depth))
-		return (NULL);
-
-	if (ca != NULL && depth < 0) {
-		PyErr_Format(PyExc_RuntimeError, "invalid depth '%d'", depth);
-		return (NULL);
-	}
-#else
 	if (!PyArg_ParseTuple(args, "s", &name))
 		return (NULL);
-#endif
 
-	if (kore_domain_lookup(name) != NULL) {
+	if (kwargs == NULL) {
+		PyErr_SetString(PyExc_RuntimeError, "missing keyword args");
+		return (NULL);
+	}
+
+	if ((attach = python_string_from_dict(kwargs, "attach")) == NULL) {
+		PyErr_SetString(PyExc_RuntimeError,
+		    "missing or invalid 'attach' keyword");
+		return (NULL);
+	}
+
+	if ((l = kore_listener_lookup(attach)) == NULL) {
+		PyErr_Format(PyExc_RuntimeError,
+		    "listener '%s' does not exist", attach);
+		return (NULL);
+	}
+
+	if (l->tls) {
+		key = python_string_from_dict(kwargs, "key");
+		cert = python_string_from_dict(kwargs, "cert");
+
+		if (key == NULL || cert == NULL) {
+			PyErr_Format(PyExc_RuntimeError,
+			    "missing key or cert keywords for TLS listener");
+			return (NULL);
+		}
+
+		ca = python_string_from_dict(kwargs, "client_authority");
+		if (ca != NULL) {
+			python_long_from_dict(kwargs, "verify_depth", &depth);
+			if (depth < 0) {
+				PyErr_Format(PyExc_RuntimeError,
+				    "invalid depth '%d'", depth);
+				return (NULL);
+			}
+		}
+	} else if (key != NULL || cert != NULL || ca != NULL) {
+		kore_log(LOG_INFO, "ignoring tls settings for '%s'", name);
+	}
+
+	if (kore_domain_lookup(l, name) != NULL) {
 		PyErr_SetString(PyExc_RuntimeError, "domain exists");
 		return (NULL);
 	}
@@ -1529,21 +1642,21 @@ python_kore_domain(PyObject *self, PyObject *args)
 	if ((domain = PyObject_New(struct pydomain, &pydomain_type)) == NULL)
 		return (NULL);
 
-	if (!kore_domain_new(name))
+	if ((domain->config = kore_domain_new(name)) == NULL)
 		fatal("failed to create new domain configuration");
 
-	if ((domain->config = kore_domain_lookup(name)) == NULL)
-		fatal("failed to find new domain configuration");
+	if (!kore_domain_attach(l, domain->config))
+		fatal("failed to attach domain configuration");
 
-#if !defined(KORE_NO_TLS)
-	domain->config->certkey = kore_strdup(key);
-	domain->config->certfile = kore_strdup(x509);
+	if (l->tls) {
+		domain->config->certkey = kore_strdup(key);
+		domain->config->certfile = kore_strdup(cert);
 
-	if (ca != NULL) {
-		domain->config->cafile = kore_strdup(ca);
-		domain->config->x509_verify_depth = depth;
+		if (ca != NULL) {
+			domain->config->cafile = kore_strdup(ca);
+			domain->config->x509_verify_depth = depth;
+		}
 	}
-#endif
 
 	return ((PyObject *)domain);
 }
@@ -2013,7 +2126,6 @@ pyconnection_get_addr(struct pyconnection *pyc, void *closure)
 	return (result);
 }
 
-#if !defined(KORE_NO_TLS)
 static PyObject *
 pyconnection_get_peer_x509(struct pyconnection *pyc, void *closure)
 {
@@ -2044,7 +2156,6 @@ pyconnection_get_peer_x509(struct pyconnection *pyc, void *closure)
 
 	return (bytes);
 }
-#endif
 
 static void
 pytimer_run(void *arg, u_int64_t now)
@@ -4448,14 +4559,11 @@ pydomain_auth(PyObject *dict, struct kore_module_handle *hdlr)
 	if (!PyDict_CheckExact(dict))
 		return (KORE_RESULT_ERROR);
 
-	if ((obj = PyDict_GetItemString(dict, "type")) == NULL ||
-	    !PyUnicode_CheckExact(obj)) {
-		PyErr_Format(PyExc_RuntimeError,
-		    "missing 'type' in auth dictionary for '%s'", hdlr->path);
+	if ((value = python_string_from_dict(dict, "type")) == NULL) {
+		PyErr_SetString(PyExc_RuntimeError,
+		    "missing or invalid 'type' keyword");
 		return (KORE_RESULT_ERROR);
 	}
-
-	value = PyUnicode_AsUTF8(obj);
 
 	if (!strcmp(value, "cookie")) {
 		type = KORE_AUTH_TYPE_COOKIE;
@@ -4468,27 +4576,13 @@ pydomain_auth(PyObject *dict, struct kore_module_handle *hdlr)
 		return (KORE_RESULT_ERROR);
 	}
 
-	if ((obj = PyDict_GetItemString(dict, "value")) == NULL ||
-	    !PyUnicode_CheckExact(obj)) {
-		PyErr_Format(PyExc_RuntimeError,
-		    "missing 'value' in auth dictionary for '%s'", hdlr->path);
+	if ((value = python_string_from_dict(dict, "value")) == NULL) {
+		PyErr_SetString(PyExc_RuntimeError,
+		    "missing or invalid 'value' keyword");
 		return (KORE_RESULT_ERROR);
 	}
 
-	value = PyUnicode_AsUTF8(obj);
-
-	if ((obj = PyDict_GetItemString(dict, "redirect")) != NULL) {
-		if (!PyUnicode_CheckExact(obj)) {
-			PyErr_Format(PyExc_RuntimeError,
-			    "redirect for auth on '%s' is not a string",
-			    hdlr->path);
-			return (KORE_RESULT_ERROR);
-		}
-
-		redir = PyUnicode_AsUTF8(obj);
-	} else {
-		redir = NULL;
-	}
+	redir = python_string_from_dict(dict, "redirect");
 
 	if ((obj = PyDict_GetItemString(dict, "verify")) == NULL ||
 	    !PyCallable_Check(obj)) {
@@ -4836,7 +4930,6 @@ pykore_pgsql_result(struct pykore_pgsql *pysql)
 static PyObject *
 python_kore_httpclient(PyObject *self, PyObject *args, PyObject *kwargs)
 {
-	PyObject		*obj;
 	struct pyhttp_client	*client;
 	const char		*url, *v;
 
@@ -4856,54 +4949,19 @@ python_kore_httpclient(PyObject *self, PyObject *args, PyObject *kwargs)
 	client->url = kore_strdup(url);
 
 	if (kwargs != NULL) {
-		if ((obj = PyDict_GetItemString(kwargs, "tlscert")) != NULL) {
-			if ((v = PyUnicode_AsUTF8(obj)) == NULL) {
-				Py_DECREF((PyObject *)client);
-				return (NULL);
-			}
-
+		if ((v = python_string_from_dict(kwargs, "tlscert")) != NULL)
 			client->tlscert = kore_strdup(v);
-		}
 
-		if ((obj = PyDict_GetItemString(kwargs, "tlskey")) != NULL) {
-			if ((v = PyUnicode_AsUTF8(obj)) == NULL) {
-				Py_DECREF((PyObject *)client);
-				return (NULL);
-			}
-
+		if ((v = python_string_from_dict(kwargs, "tlskey")) != NULL)
 			client->tlskey = kore_strdup(v);
-		}
 
-		if ((obj = PyDict_GetItemString(kwargs, "cabundle")) != NULL) {
-			if ((v = PyUnicode_AsUTF8(obj)) == NULL) {
-				Py_DECREF((PyObject *)client);
-				return (NULL);
-			}
-
+		if ((v = python_string_from_dict(kwargs, "cabundle")) != NULL)
 			client->cabundle = kore_strdup(v);
-		}
 
-		if ((obj = PyDict_GetItemString(kwargs, "unix")) != NULL) {
-			if ((v = PyUnicode_AsUTF8(obj)) == NULL) {
-				Py_DECREF((PyObject *)client);
-				return (NULL);
-			}
-
+		if ((v = python_string_from_dict(kwargs, "unix")) != NULL)
 			client->unix = kore_strdup(v);
-		}
 
-		if ((obj = PyDict_GetItemString(kwargs, "tlsverify")) != NULL) {
-			if (obj == Py_True) {
-				client->tlsverify = 1;
-			} else if (obj == Py_False) {
-				client->tlsverify = 0;
-			} else {
-				Py_DECREF((PyObject *)client);
-				PyErr_SetString(PyExc_RuntimeError,
-				    "tlsverify not True or False");
-				return (NULL);
-			}
-		}
+		python_bool_from_dict(kwargs, "tlsverify", &client->tlsverify);
 	}
 
 	if ((client->tlscert != NULL && client->tlskey == NULL) ||
@@ -5103,19 +5161,8 @@ pyhttp_client_request(struct pyhttp_client *client, int m, PyObject *kwargs)
 		}
 	}
 
-	if (kwargs != NULL &&
-	    ((item = PyDict_GetItemString(kwargs, "return_headers")) != NULL)) {
-		if (item == Py_True) {
-			op->headers = 1;
-		} else if (item == Py_False) {
-			op->headers = 0;
-		} else {
-			Py_DECREF((PyObject *)op);
-			PyErr_SetString(PyExc_RuntimeError,
-			    "return_headers not True or False");
-			return (NULL);
-		}
-	}
+	if (kwargs != NULL)
+		python_bool_from_dict(kwargs, "return_headers", &op->headers);
 
 	return ((PyObject *)op);
 }

@@ -1,7 +1,5 @@
 Kore NOHTTP example
 
-Note that this example only works if Kore was built with NOHTTP=1.
-
 Run:
 ```
 	$ kodev run

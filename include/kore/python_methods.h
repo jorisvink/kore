@@ -38,25 +38,26 @@ static PyObject		*python_kore_log(PyObject *, PyObject *);
 static PyObject		*python_kore_time(PyObject *, PyObject *);
 static PyObject		*python_kore_lock(PyObject *, PyObject *);
 static PyObject		*python_kore_proc(PyObject *, PyObject *);
-static PyObject		*python_kore_bind(PyObject *, PyObject *);
 static PyObject		*python_kore_timer(PyObject *, PyObject *);
 static PyObject		*python_kore_fatal(PyObject *, PyObject *);
 static PyObject		*python_kore_queue(PyObject *, PyObject *);
 static PyObject		*python_kore_worker(PyObject *, PyObject *);
 static PyObject		*python_kore_tracer(PyObject *, PyObject *);
-static PyObject		*python_kore_domain(PyObject *, PyObject *);
 static PyObject		*python_kore_fatalx(PyObject *, PyObject *);
 static PyObject		*python_kore_setname(PyObject *, PyObject *);
 static PyObject		*python_kore_suspend(PyObject *, PyObject *);
 static PyObject		*python_kore_shutdown(PyObject *, PyObject *);
 static PyObject		*python_kore_coroname(PyObject *, PyObject *);
 static PyObject		*python_kore_corotrace(PyObject *, PyObject *);
-static PyObject		*python_kore_bind_unix(PyObject *, PyObject *);
 static PyObject		*python_kore_task_kill(PyObject *, PyObject *);
 static PyObject		*python_kore_prerequest(PyObject *, PyObject *);
 static PyObject		*python_kore_task_create(PyObject *, PyObject *);
 static PyObject		*python_kore_socket_wrap(PyObject *, PyObject *);
+static PyObject		*python_kore_domain(PyObject *, PyObject *, PyObject *);
 static PyObject		*python_kore_gather(PyObject *, PyObject *, PyObject *);
+
+static PyObject		*python_kore_listen(PyObject *, PyObject *,
+			    PyObject *);
 
 #if defined(KORE_USE_PGSQL)
 static PyObject		*python_kore_pgsql_query(PyObject *, PyObject *,
@@ -81,13 +82,10 @@ static struct PyMethodDef pykore_methods[] = {
 	METHOD("time", python_kore_time, METH_NOARGS),
 	METHOD("lock", python_kore_lock, METH_NOARGS),
 	METHOD("proc", python_kore_proc, METH_VARARGS),
-	METHOD("bind", python_kore_bind, METH_VARARGS),
 	METHOD("timer", python_kore_timer, METH_VARARGS),
 	METHOD("queue", python_kore_queue, METH_VARARGS),
 	METHOD("worker", python_kore_worker, METH_VARARGS),
 	METHOD("tracer", python_kore_tracer, METH_VARARGS),
-	METHOD("domain", python_kore_domain, METH_VARARGS),
-	METHOD("gather", python_kore_gather, METH_VARARGS | METH_KEYWORDS),
 	METHOD("fatal", python_kore_fatal, METH_VARARGS),
 	METHOD("fatalx", python_kore_fatalx, METH_VARARGS),
 	METHOD("setname", python_kore_setname, METH_VARARGS),
@@ -96,10 +94,12 @@ static struct PyMethodDef pykore_methods[] = {
 	METHOD("coroname", python_kore_coroname, METH_VARARGS),
 	METHOD("corotrace", python_kore_corotrace, METH_VARARGS),
 	METHOD("task_kill", python_kore_task_kill, METH_VARARGS),
-	METHOD("bind_unix", python_kore_bind_unix, METH_VARARGS),
 	METHOD("prerequest", python_kore_prerequest, METH_VARARGS),
 	METHOD("task_create", python_kore_task_create, METH_VARARGS),
 	METHOD("socket_wrap", python_kore_socket_wrap, METH_VARARGS),
+	METHOD("listen", python_kore_listen, METH_VARARGS | METH_KEYWORDS),
+	METHOD("gather", python_kore_gather, METH_VARARGS | METH_KEYWORDS),
+	METHOD("domain", python_kore_domain, METH_VARARGS | METH_KEYWORDS),
 	METHOD("websocket_broadcast", python_websocket_broadcast, METH_VARARGS),
 #if defined(KORE_USE_PGSQL)
 	METHOD("dbsetup", python_kore_pgsql_register, METH_VARARGS),
@@ -589,16 +589,12 @@ static PyMethodDef pyconnection_methods[] = {
 static PyObject	*pyconnection_get_fd(struct pyconnection *, void *);
 static PyObject	*pyconnection_get_addr(struct pyconnection *, void *);
 
-#if !defined(KORE_NO_TLS)
 static PyObject	*pyconnection_get_peer_x509(struct pyconnection *, void *);
-#endif
 
 static PyGetSetDef pyconnection_getset[] = {
 	GETTER("fd", pyconnection_get_fd),
 	GETTER("addr", pyconnection_get_addr),
-#if !defined(KORE_NO_TLS)
 	GETTER("x509", pyconnection_get_peer_x509),
-#endif
 	GETTER(NULL, NULL),
 };
 

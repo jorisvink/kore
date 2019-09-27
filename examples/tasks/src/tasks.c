@@ -33,6 +33,31 @@
 #include <kore/http.h>
 #include <kore/tasks.h>
 
+/* We need to allow some more syscalls on linux. */
+#if defined(__linux__)
+#include <kore/seccomp.h>
+
+KORE_SECCOMP_FILTER("tasks",
+	/* Allow sockets and libcurl to call connect. */
+	KORE_SYSCALL_ALLOW(bind),
+	KORE_SYSCALL_ALLOW(ioctl),
+	KORE_SYSCALL_ALLOW(connect),
+	KORE_SYSCALL_ALLOW(getsockopt),
+	KORE_SYSCALL_ALLOW(getsockname),
+	KORE_SYSCALL_ALLOW_ARG(socket, 0, AF_INET),
+	KORE_SYSCALL_ALLOW_ARG(socket, 0, AF_INET6),
+	KORE_SYSCALL_ALLOW_ARG(socket, 0, AF_UNIX),
+	KORE_SYSCALL_ALLOW_ARG(socket, 0, AF_NETLINK),
+
+	/* Other */
+	KORE_SYSCALL_ALLOW(ioctl),
+	KORE_SYSCALL_ALLOW(madvise),
+	KORE_SYSCALL_ALLOW(recvmsg),
+	KORE_SYSCALL_ALLOW(sendmmsg),
+	KORE_SYSCALL_ALLOW(getpeername),
+);
+#endif
+
 int		run_curl(struct kore_task *);
 int		post_back(struct http_request *);
 int		page_handler(struct http_request *);

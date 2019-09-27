@@ -52,7 +52,6 @@ Clone this repository or get the latest release at [https://kore.io/releases/3.2
 
 Requirements
 * openssl (1.0.2, 1.1.0 or 1.1.1)
-  (note: this requirement drops away when building with NOTLS=1 NOHTTP=1)
   (note: libressl 3.0.0+ works as a replacement)
 
 Requirement for asynchronous curl (optional)
@@ -82,7 +81,6 @@ those by setting a shell environment variable before running **_make_**.
 * TASKS=1 (compiles in task support)
 * PGSQL=1 (compiles in pgsql support)
 * DEBUG=1 (enables use of -d for debug)
-* NOTLS=1 (compiles Kore without TLS)
 * NOHTTP=1 (compiles Kore without HTTP support)
 * NOOPT=1 (disable compiler optimizations)
 * JSONRPC=1 (compiles in JSONRPC support)

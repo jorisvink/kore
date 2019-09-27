@@ -125,9 +125,6 @@ static void
 version(void)
 {
 	printf("%s ", kore_version);
-#if defined(KORE_NO_TLS)
-	printf("no-tls ");
-#endif
 #if defined(KORE_NO_HTTP)
 	printf("no-http ");
 #endif
@@ -339,17 +336,21 @@ main(int argc, char *argv[])
 	return (0);
 }
 
-#if !defined(KORE_NO_TLS)
 int
 kore_tls_sni_cb(SSL *ssl, int *ad, void *arg)
 {
+	struct connection	*c;
 	struct kore_domain	*dom;
 	const char		*sname;
+
+	if ((c = SSL_get_ex_data(ssl, 0)) == NULL)
+		fatal("no connection data in %s", __func__);
 
 	sname = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
 	kore_debug("kore_tls_sni_cb(): received host %s", sname);
 
-	if (sname != NULL && (dom = kore_domain_lookup(sname)) != NULL) {
+	if (sname != NULL &&
+	    (dom = kore_domain_lookup(c->owner, sname)) != NULL) {
 		if (dom->ssl_ctx == NULL) {
 			kore_log(LOG_NOTICE,
 			    "TLS configuration for %s not complete",
@@ -388,16 +389,16 @@ kore_tls_info_callback(const SSL *ssl, int flags, int ret)
 			c->tls_reneg++;
 	}
 }
-#endif
 
 int
-kore_server_bind(const char *ip, const char *port, const char *ccb)
+kore_server_bind(struct listener *l, const char *ip, const char *port,
+    const char *ccb)
 {
 	int			r;
-	struct listener		*l;
+	const char		*proto;
 	struct addrinfo		hints, *results;
 
-	kore_debug("kore_server_bind(%s, %s)", ip, port);
+	kore_debug("kore_server_bind(%s, %s, %s)", l->name, ip, port);
 
 	memset(&hints, 0, sizeof(hints));
 	hints.ai_family = AF_UNSPEC;
@@ -409,8 +410,9 @@ kore_server_bind(const char *ip, const char *port, const char *ccb)
 	if (r != 0)
 		fatal("getaddrinfo(%s): %s", ip, gai_strerror(r));
 
-	if ((l = kore_listener_alloc(results->ai_family, ccb)) == NULL) {
+	if (kore_listener_init(l, results->ai_family, ccb) == -1) {
 		freeaddrinfo(results);
+		kore_listener_free(l);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -430,20 +432,20 @@ kore_server_bind(const char *ip, const char *port, const char *ccb)
 	}
 
 	if (foreground && !kore_quiet) {
-#if !defined(KORE_NO_TLS)
-		kore_log(LOG_NOTICE, "running on https://%s:%s", ip, port);
-#else
-		kore_log(LOG_NOTICE, "running on http://%s:%s", ip, port);
-#endif
+		if (l->tls)
+			proto = "https";
+		else
+			proto = "http";
+
+		kore_log(LOG_NOTICE, "running on %s://%s:%s", proto, ip, port);
 	}
 
 	return (KORE_RESULT_OK);
 }
 
 int
-kore_server_bind_unix(const char *path, const char *ccb)
+kore_server_bind_unix(struct listener *l, const char *path, const char *ccb)
 {
-	struct listener		*l;
 	int			len;
 	struct sockaddr_un	sun;
 	socklen_t		socklen;
@@ -465,8 +467,10 @@ kore_server_bind_unix(const char *path, const char *ccb)
 	socklen = sizeof(sun);
 #endif
 
-	if ((l = kore_listener_alloc(AF_UNIX, ccb)) == NULL)
+	if (kore_listener_init(l, AF_UNIX, ccb) == -1) {
+		kore_listener_free(l);
 		return (KORE_RESULT_ERROR);
+	}
 
 	if (bind(l->fd, (struct sockaddr *)&sun, socklen) == -1) {
 		kore_log(LOG_ERR, "bind: %s", errno_s);
@@ -487,10 +491,43 @@ kore_server_bind_unix(const char *path, const char *ccb)
 }
 
 struct listener *
-kore_listener_alloc(int family, const char *ccb)
+kore_listener_create(const char *name)
 {
 	struct listener		*l;
 
+	l = kore_calloc(1, sizeof(struct listener));
+
+	nlisteners++;
+	LIST_INSERT_HEAD(&listeners, l, list);
+
+	l->fd = -1;
+	l->tls = 1;
+	l->name = kore_strdup(name);
+
+	l->evt.type = KORE_TYPE_LISTENER;
+	l->evt.handle = kore_listener_accept;
+
+	TAILQ_INIT(&l->domains);
+
+	return (l);
+}
+
+struct listener *
+kore_listener_lookup(const char *name)
+{
+	struct listener		*l;
+
+	LIST_FOREACH(l, &listeners, list) {
+		if (!strcmp(l->name, name))
+			return (l);
+	}
+
+	return (NULL);
+}
+
+int
+kore_listener_init(struct listener *l, int family, const char *ccb)
+{
 	switch (family) {
 	case AF_INET:
 	case AF_INET6:
@@ -500,57 +537,54 @@ kore_listener_alloc(int family, const char *ccb)
 		fatal("unknown address family %d", family);
 	}
 
-	l = kore_calloc(1, sizeof(struct listener));
-
-	nlisteners++;
-	LIST_INSERT_HEAD(&listeners, l, list);
-
-	l->fd = -1;
 	l->family = family;
-
-	l->evt.type = KORE_TYPE_LISTENER;
-	l->evt.handle = kore_listener_accept;
 
 	if ((l->fd = socket(family, SOCK_STREAM, 0)) == -1) {
 		kore_listener_free(l);
 		kore_log(LOG_ERR, "socket(): %s", errno_s);
-		return (NULL);
+		return (KORE_RESULT_ERROR);
 	}
 
 	if (fcntl(l->fd, F_SETFD, FD_CLOEXEC) == -1) {
 		kore_listener_free(l);
 		kore_log(LOG_ERR, "fcntl(): %s", errno_s);
-		return (NULL);
+		return (KORE_RESULT_ERROR);
 	}
 
 	if (!kore_connection_nonblock(l->fd, family != AF_UNIX)) {
 		kore_listener_free(l);
 		kore_log(LOG_ERR, "kore_connection_nonblock(): %s", errno_s);
-		return (NULL);
+		return (KORE_RESULT_ERROR);
 	}
 
 	if (!kore_sockopt(l->fd, SOL_SOCKET, SO_REUSEADDR)) {
 		kore_listener_free(l);
-		return (NULL);
+		return (KORE_RESULT_ERROR);
 	}
 
 	if (ccb != NULL) {
 		if ((l->connect = kore_runtime_getcall(ccb)) == NULL) {
 			kore_log(LOG_ERR, "no such callback: '%s'", ccb);
 			kore_listener_free(l);
-			return (NULL);
+			return (KORE_RESULT_ERROR);
 		}
 	} else {
 		l->connect = NULL;
 	}
 
-	return (l);
+	return (KORE_RESULT_OK);
 }
 
 void
 kore_listener_free(struct listener *l)
 {
+	struct kore_domain	*dom;
+
+	while ((dom = TAILQ_FIRST(&l->domains)) != NULL)
+		kore_domain_free(dom);
+
 	LIST_REMOVE(l, list);
+	kore_free(l->name);
 
 	if (l->fd != -1)
 		close(l->fd);
@@ -639,6 +673,15 @@ kore_signal_setup(void)
 }
 
 void
+kore_listener_closeall(void)
+{
+	struct listener		*l;
+
+	LIST_FOREACH(l, &listeners, list)
+		l->fd = -1;
+}
+
+void
 kore_listener_cleanup(void)
 {
 	struct listener		*l;
@@ -703,12 +746,8 @@ kore_proctitle_setup(void)
 static void
 kore_server_sslstart(void)
 {
-#if !defined(KORE_NO_TLS)
-	kore_debug("kore_server_sslstart()");
-
 	SSL_library_init();
 	SSL_load_error_strings();
-#endif
 }
 
 static void

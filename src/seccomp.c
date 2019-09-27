@@ -79,6 +79,7 @@ static struct sock_filter filter_kore[] = {
 	KORE_SYSCALL_DENY_WITH_FLAG(mprotect, 2, PROT_EXEC, EINVAL),
 
 	KORE_SYSCALL_ALLOW(mmap),
+	KORE_SYSCALL_ALLOW(madvise),
 	KORE_SYSCALL_ALLOW(mprotect),
 
 	/* Net related. */
@@ -178,7 +179,6 @@ kore_seccomp_enable(void)
 	struct kore_runtime_call	*rcall;
 	struct filter			*filter;
 	size_t				prog_len, off, i;
-	int				skip_worker_filter;
 
 #if defined(KORE_DEBUG)
 	memset(&sa, 0, sizeof(sa));
@@ -200,14 +200,7 @@ kore_seccomp_enable(void)
 		ufilter = NULL;
 	}
 
-	skip_worker_filter = 0;
-
-#if !defined(KORE_NO_TLS)
-	if (worker->id == KORE_WORKER_KEYMGR)
-		skip_worker_filter = 1;
-#endif
-
-	if (skip_worker_filter == 0) {
+	if (worker->id != KORE_WORKER_KEYMGR) {
 		/* Add worker required syscalls. */
 		kore_seccomp_filter("worker", filter_kore,
 		    KORE_FILTER_LEN(filter_kore));
