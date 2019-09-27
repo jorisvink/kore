@@ -1377,6 +1377,7 @@ python_kore_listen(PyObject *self, PyObject *args, PyObject *kwargs)
 	}
 
 	l = kore_listener_create(name);
+	python_bool_from_dict(kwargs, "tls", &l->tls);
 
 	if (ip != NULL) {
 		if ((port = python_string_from_dict(kwargs, "port")) == NULL) {
@@ -1398,8 +1399,6 @@ python_kore_listen(PyObject *self, PyObject *args, PyObject *kwargs)
 			return (NULL);
 		}
 	}
-
-	python_bool_from_dict(kwargs, "tls", &l->tls);
 
 	Py_RETURN_NONE;
 }
