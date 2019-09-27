@@ -156,7 +156,7 @@ net_send_fileref(struct connection *c, struct kore_fileref *ref)
 	nb->flags = NETBUF_IS_FILEREF;
 
 #if defined(KORE_USE_PLATFORM_SENDFILE)
-	if (c->owner->tls == 0) {
+	if (c->owner->server->tls == 0) {
 		nb->fd_off = 0;
 		nb->fd_len = ref->size;
 	} else {

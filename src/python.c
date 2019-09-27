@@ -1349,9 +1349,9 @@ python_kore_time(PyObject *self, PyObject *args)
 }
 
 static PyObject *
-python_kore_listen(PyObject *self, PyObject *args, PyObject *kwargs)
+python_kore_server(PyObject *self, PyObject *args, PyObject *kwargs)
 {
-	struct listener		*l;
+	struct kore_server	*srv;
 	const char		*name, *ip, *port, *path;
 
 	if (!PyArg_ParseTuple(args, "s", &name))
@@ -1376,29 +1376,31 @@ python_kore_listen(PyObject *self, PyObject *args, PyObject *kwargs)
 		return (NULL);
 	}
 
-	l = kore_listener_create(name);
-	python_bool_from_dict(kwargs, "tls", &l->tls);
+	srv = kore_server_create(name);
+	python_bool_from_dict(kwargs, "tls", &srv->tls);
 
 	if (ip != NULL) {
 		if ((port = python_string_from_dict(kwargs, "port")) == NULL) {
-			kore_listener_free(l);
+			kore_server_free(srv);
 			PyErr_SetString(PyExc_RuntimeError,
 			    "missing or invalid 'port' keyword");
 			return (NULL);
 		}
 
-		if (!kore_server_bind(l, ip, port, NULL)) {
+		if (!kore_server_bind(srv, ip, port, NULL)) {
 			PyErr_Format(PyExc_RuntimeError,
 			    "failed to bind to '%s:%s'", ip, port);
 			return (NULL);
 		}
 	} else {
-		if (!kore_server_bind_unix(l, path, NULL)) {
+		if (!kore_server_bind_unix(srv, path, NULL)) {
 			PyErr_Format(PyExc_RuntimeError,
 			    "failed to bind to '%s'", path);
 			return (NULL);
 		}
 	}
+
+	kore_server_finalize(srv);
 
 	Py_RETURN_NONE;
 }
@@ -1578,7 +1580,7 @@ python_kore_tracer(PyObject *self, PyObject *args)
 static PyObject *
 python_kore_domain(PyObject *self, PyObject *args, PyObject *kwargs)
 {
-	struct listener		*l;
+	struct kore_server	*srv;
 	long			depth;
 	const char		*name;
 	struct pydomain		*domain;
@@ -1604,13 +1606,13 @@ python_kore_domain(PyObject *self, PyObject *args, PyObject *kwargs)
 		return (NULL);
 	}
 
-	if ((l = kore_listener_lookup(attach)) == NULL) {
+	if ((srv = kore_server_lookup(attach)) == NULL) {
 		PyErr_Format(PyExc_RuntimeError,
-		    "listener '%s' does not exist", attach);
+		    "server '%s' does not exist", attach);
 		return (NULL);
 	}
 
-	if (l->tls) {
+	if (srv->tls) {
 		key = python_string_from_dict(kwargs, "key");
 		cert = python_string_from_dict(kwargs, "cert");
 
@@ -1633,7 +1635,7 @@ python_kore_domain(PyObject *self, PyObject *args, PyObject *kwargs)
 		kore_log(LOG_INFO, "ignoring tls settings for '%s'", name);
 	}
 
-	if (kore_domain_lookup(l, name) != NULL) {
+	if (kore_domain_lookup(srv, name) != NULL) {
 		PyErr_SetString(PyExc_RuntimeError, "domain exists");
 		return (NULL);
 	}
@@ -1644,10 +1646,10 @@ python_kore_domain(PyObject *self, PyObject *args, PyObject *kwargs)
 	if ((domain->config = kore_domain_new(name)) == NULL)
 		fatal("failed to create new domain configuration");
 
-	if (!kore_domain_attach(l, domain->config))
+	if (!kore_domain_attach(domain->config, srv))
 		fatal("failed to attach domain configuration");
 
-	if (l->tls) {
+	if (srv->tls) {
 		domain->config->certkey = kore_strdup(key);
 		domain->config->certfile = kore_strdup(cert);
 

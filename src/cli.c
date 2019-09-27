@@ -273,7 +273,7 @@ static const char *src_data =
 static const char *config_data =
 	"# %s configuration\n"
 	"\n"
-	"listen tls {\n"
+	"server tls {\n"
 	"\tbind 127.0.0.1 8888\n"
 	"}\n"
 	"\n"

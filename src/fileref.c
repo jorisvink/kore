@@ -45,14 +45,14 @@ kore_fileref_init(void)
 }
 
 struct kore_fileref *
-kore_fileref_create(struct connection *c, const char *path, int fd,
+kore_fileref_create(struct kore_server *srv, const char *path, int fd,
     off_t size, struct timespec *ts)
 {
 	struct kore_fileref	*ref;
 
 	fileref_timer_prime();
 
-	if ((ref = kore_fileref_get(path, c->owner->tls)) != NULL)
+	if ((ref = kore_fileref_get(path, srv->tls)) != NULL)
 		return (ref);
 
 	ref = kore_pool_get(&ref_pool);
@@ -60,7 +60,7 @@ kore_fileref_create(struct connection *c, const char *path, int fd,
 	ref->cnt = 1;
 	ref->flags = 0;
 	ref->size = size;
-	ref->ontls = c->owner->tls;
+	ref->ontls = srv->tls;
 	ref->path = kore_strdup(path);
 	ref->mtime_sec = ts->tv_sec;
 	ref->mtime = ((u_int64_t)(ts->tv_sec * 1000 + (ts->tv_nsec / 1000000)));
@@ -78,7 +78,7 @@ kore_fileref_create(struct connection *c, const char *path, int fd,
 		fatal("net_send_file: madvise: %s", errno_s);
 	close(fd);
 #else
-	if (c->owner->tls == 0) {
+	if (srv->tls == 0) {
 		ref->fd = fd;
 	} else {
 		if ((uintmax_t)size> SIZE_MAX) {

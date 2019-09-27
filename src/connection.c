@@ -144,7 +144,7 @@ kore_connection_accept(struct listener *listener, struct connection **out)
 	c->handle = kore_connection_handle;
 	TAILQ_INSERT_TAIL(&connections, c, list);
 
-	if (listener->tls) {
+	if (listener->server->tls) {
 		c->state = CONN_STATE_TLS_SHAKE;
 		c->write = net_write_tls;
 		c->read = net_read_tls;

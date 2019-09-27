@@ -79,6 +79,7 @@ void
 kore_platform_event_init(void)
 {
 	struct listener		*l;
+	struct kore_server	*srv;
 
 	if (kfd != -1)
 		close(kfd);
@@ -93,11 +94,13 @@ kore_platform_event_init(void)
 
 	/* Hack to check if we're running under the parent or not. */
 	if (worker != NULL) {
-		LIST_FOREACH(l, &listeners, list) {
-			if (l->fd == -1)
-				continue;
-			kore_platform_event_schedule(l->fd,
-			    EVFILT_READ, EV_ADD | EV_DISABLE, l);
+		LIST_FOREACH(srv, &kore_servers, list) {
+			LIST_FOREACH(l, &srv->listeners, list) {
+				if (l->fd == -1)
+					continue;
+				kore_platform_event_schedule(l->fd,
+				    EVFILT_READ, EV_ADD | EV_DISABLE, l);
+			}
 		}
 	}
 }
@@ -184,18 +187,28 @@ void
 kore_platform_enable_accept(void)
 {
 	struct listener		*l;
+	struct kore_server	*srv;
 
-	LIST_FOREACH(l, &listeners, list)
-		kore_platform_event_schedule(l->fd, EVFILT_READ, EV_ENABLE, l);
+	LIST_FOREACH(srv, &kore_servers, list) {
+		LIST_FOREACH(l, &srv->listeners, list) {
+			kore_platform_event_schedule(l->fd,
+			    EVFILT_READ, EV_ENABLE, l);
+		}
+	}
 }
 
 void
 kore_platform_disable_accept(void)
 {
 	struct listener		*l;
+	struct kore_server	*srv;
 
-	LIST_FOREACH(l, &listeners, list)
-		kore_platform_event_schedule(l->fd, EVFILT_READ, EV_DISABLE, l);
+	LIST_FOREACH(srv, &kore_servers, list) {
+		LIST_FOREACH(l, &srv->listeners, list) {
+			kore_platform_event_schedule(l->fd,
+			    EVFILT_READ, EV_DISABLE, l);
+		}
+	}
 }
 
 void

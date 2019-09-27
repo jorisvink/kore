@@ -475,6 +475,8 @@ kore_worker_entry(struct kore_worker *kw)
 		kore_free(rcall);
 	}
 
+	kore_server_cleanup();
+
 	kore_platform_event_cleanup();
 	kore_connection_cleanup();
 	kore_domain_cleanup();
@@ -739,7 +741,7 @@ static int
 worker_keymgr_response_verify(struct kore_msg *msg, const void *data,
     struct kore_domain **out)
 {
-	struct listener			*l;
+	struct kore_server		*srv;
 	struct kore_domain		*dom;
 	const struct kore_x509_msg	*req;
 
@@ -763,10 +765,13 @@ worker_keymgr_response_verify(struct kore_msg *msg, const void *data,
 		return (KORE_RESULT_ERROR);
 	}
 
-	LIST_FOREACH(l, &listeners, list) {
+	LIST_FOREACH(srv, &kore_servers, list) {
 		dom = NULL;
 
-		TAILQ_FOREACH(dom, &l->domains, list) {
+		if (srv->tls == 0)
+			continue;
+
+		TAILQ_FOREACH(dom, &srv->domains, list) {
 			if (!strncmp(dom->domain, req->domain, req->domain_len))
 				break;
 		}

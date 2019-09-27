@@ -199,20 +199,20 @@ kore_domain_new(const char *domain)
 }
 
 int
-kore_domain_attach(struct listener *l, struct kore_domain *dom)
+kore_domain_attach(struct kore_domain *dom, struct kore_server *server)
 {
 	struct kore_domain	*d;
 
-	if (dom->listener != NULL)
+	if (dom->server != NULL)
 		return (KORE_RESULT_ERROR);
 
-	TAILQ_FOREACH(d, &l->domains, list) {
+	TAILQ_FOREACH(d, &server->domains, list) {
 		if (!strcmp(d->domain, dom->domain))
 			return (KORE_RESULT_ERROR);
 	}
 
-	dom->listener = l;
-	TAILQ_INSERT_TAIL(&l->domains, dom, list);
+	dom->server = server;
+	TAILQ_INSERT_TAIL(&server->domains, dom, list);
 
 	return (KORE_RESULT_OK);
 }
@@ -229,7 +229,7 @@ kore_domain_free(struct kore_domain *dom)
 	if (primary_dom == dom)
 		primary_dom = NULL;
 
-	TAILQ_REMOVE(&dom->listener->domains, dom, list);
+	TAILQ_REMOVE(&dom->server->domains, dom, list);
 
 	if (dom->domain != NULL)
 		kore_free(dom->domain);
@@ -472,22 +472,22 @@ kore_domain_crl_add(struct kore_domain *dom, const void *pem, size_t pemlen)
 void
 kore_domain_callback(void (*cb)(struct kore_domain *))
 {
-	struct listener		*l;
+	struct kore_server	*srv;
 	struct kore_domain	*dom;
 
-	LIST_FOREACH(l, &listeners, list) {
-		TAILQ_FOREACH(dom, &l->domains, list) {
+	LIST_FOREACH(srv, &kore_servers, list) {
+		TAILQ_FOREACH(dom, &srv->domains, list) {
 			cb(dom);
 		}
 	}
 }
 
 struct kore_domain *
-kore_domain_lookup(struct listener *l, const char *domain)
+kore_domain_lookup(struct kore_server *srv, const char *domain)
 {
 	struct kore_domain	*dom;
 
-	TAILQ_FOREACH(dom, &l->domains, list) {
+	TAILQ_FOREACH(dom, &srv->domains, list) {
 		if (!strcmp(dom->domain, domain))
 			return (dom);
 		if (!fnmatch(dom->domain, domain, FNM_CASEFOLD))
@@ -500,14 +500,14 @@ kore_domain_lookup(struct listener *l, const char *domain)
 struct kore_domain *
 kore_domain_byid(u_int16_t id)
 {
-	struct listener		*l;
+	struct kore_server	*srv;
 	struct kore_domain	*dom;
 
 	if (id < KORE_DOMAIN_CACHE)
 		return (cached[id]);
 
-	LIST_FOREACH(l, &listeners, list) {
-		TAILQ_FOREACH(dom, &l->domains, list) {
+	LIST_FOREACH(srv, &kore_servers, list) {
+		TAILQ_FOREACH(dom, &srv->domains, list) {
 			if (dom->id == id)
 				return (dom);
 		}
@@ -523,11 +523,11 @@ kore_domain_byid(u_int16_t id)
 void
 kore_domain_closelogs(void)
 {
-	struct listener		*l;
+	struct kore_server	*srv;
 	struct kore_domain	*dom;
 
-	LIST_FOREACH(l, &listeners, list) {
-		TAILQ_FOREACH(dom, &l->domains, list) {
+	LIST_FOREACH(srv, &kore_servers, list) {
+		TAILQ_FOREACH(dom, &srv->domains, list) {
 			if (dom->accesslog != -1) {
 				(void)close(dom->accesslog);
 				/*

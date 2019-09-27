@@ -136,7 +136,7 @@ kore_module_reload(int cbs)
 	struct stat			st;
 	int				ret;
 #if !defined(KORE_NO_HTTP)
-	struct listener			*l;
+	struct kore_server		*srv;
 	struct kore_domain		*dom;
 	struct kore_module_handle	*hdlr;
 #endif
@@ -183,8 +183,8 @@ kore_module_reload(int cbs)
 	}
 
 #if !defined(KORE_NO_HTTP)
-	LIST_FOREACH(l, &listeners, list) {
-		TAILQ_FOREACH(dom, &l->domains, list) {
+	LIST_FOREACH(srv, &kore_servers, list) {
+		TAILQ_FOREACH(dom, &srv->domains, list) {
 			TAILQ_FOREACH(hdlr, &(dom->handlers), list) {
 				kore_free(hdlr->rcall);
 				hdlr->rcall = kore_runtime_getcall(hdlr->func);
@@ -293,7 +293,7 @@ kore_module_handler_find(struct http_request *req, const char *domain,
 
 	c = req->owner;
 
-	if ((dom = kore_domain_lookup(c->owner, domain)) == NULL)
+	if ((dom = kore_domain_lookup(c->owner->server, domain)) == NULL)
 		return (NULL);
 
 	TAILQ_FOREACH(hdlr, &(dom->handlers), list) {

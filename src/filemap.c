@@ -179,6 +179,7 @@ filemap_serve(struct http_request *req, struct filemap_entry *map)
 	struct stat		st;
 	struct connection	*c;
 	struct kore_fileref	*ref;
+	struct kore_server	*srv;
 	const char		*path;
 	int			len, fd, index;
 	char			fpath[PATH_MAX], rpath[PATH_MAX];
@@ -226,8 +227,9 @@ lookup:
 	}
 
 	c = req->owner;
+	srv = c->owner->server;
 
-	if ((ref = kore_fileref_get(rpath, c->owner->tls)) == NULL) {
+	if ((ref = kore_fileref_get(rpath, srv->tls)) == NULL) {
 		if ((fd = open(fpath, O_RDONLY | O_NOFOLLOW)) == -1) {
 			switch (errno) {
 			case ENOENT:
@@ -274,7 +276,7 @@ lookup:
 			}
 
 			/* kore_fileref_create() takes ownership of the fd. */
-			ref = kore_fileref_create(c, fpath, fd,
+			ref = kore_fileref_create(srv, fpath, fd,
 			    st.st_size, &st.st_mtim);
 			if (ref == NULL) {
 				http_response(req,

@@ -56,7 +56,7 @@ static PyObject		*python_kore_socket_wrap(PyObject *, PyObject *);
 static PyObject		*python_kore_domain(PyObject *, PyObject *, PyObject *);
 static PyObject		*python_kore_gather(PyObject *, PyObject *, PyObject *);
 
-static PyObject		*python_kore_listen(PyObject *, PyObject *,
+static PyObject		*python_kore_server(PyObject *, PyObject *,
 			    PyObject *);
 
 #if defined(KORE_USE_PGSQL)
@@ -97,7 +97,7 @@ static struct PyMethodDef pykore_methods[] = {
 	METHOD("prerequest", python_kore_prerequest, METH_VARARGS),
 	METHOD("task_create", python_kore_task_create, METH_VARARGS),
 	METHOD("socket_wrap", python_kore_socket_wrap, METH_VARARGS),
-	METHOD("listen", python_kore_listen, METH_VARARGS | METH_KEYWORDS),
+	METHOD("server", python_kore_server, METH_VARARGS | METH_KEYWORDS),
 	METHOD("gather", python_kore_gather, METH_VARARGS | METH_KEYWORDS),
 	METHOD("domain", python_kore_domain, METH_VARARGS | METH_KEYWORDS),
 	METHOD("websocket_broadcast", python_websocket_broadcast, METH_VARARGS),

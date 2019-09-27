@@ -46,7 +46,7 @@
 #endif
 
 volatile sig_atomic_t	sig_recv;
-struct listener_head	listeners;
+struct kore_server_list	kore_servers;
 u_int8_t		nlisteners;
 int			kore_argc = 0;
 pid_t			kore_pid = -1;
@@ -239,7 +239,7 @@ main(int argc, char *argv[])
 
 	kore_pid = getpid();
 	nlisteners = 0;
-	LIST_INIT(&listeners);
+	LIST_INIT(&kore_servers);
 
 	kore_platform_init();
 	kore_log_init();
@@ -322,7 +322,7 @@ main(int argc, char *argv[])
 	if (unlink(kore_pidfile) == -1 && errno != ENOENT)
 		kore_log(LOG_NOTICE, "failed to remove pidfile (%s)", errno_s);
 
-	kore_listener_cleanup();
+	kore_server_cleanup();
 
 	if (!kore_quiet)
 		kore_log(LOG_NOTICE, "goodbye");
@@ -349,8 +349,10 @@ kore_tls_sni_cb(SSL *ssl, int *ad, void *arg)
 	sname = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
 	kore_debug("kore_tls_sni_cb(): received host %s", sname);
 
+	printf("looking for %s in %s\n", sname, c->owner->server->name);
+
 	if (sname != NULL &&
-	    (dom = kore_domain_lookup(c->owner, sname)) != NULL) {
+	    (dom = kore_domain_lookup(c->owner->server, sname)) != NULL) {
 		if (dom->ssl_ctx == NULL) {
 			kore_log(LOG_NOTICE,
 			    "TLS configuration for %s not complete",
@@ -391,11 +393,11 @@ kore_tls_info_callback(const SSL *ssl, int flags, int ret)
 }
 
 int
-kore_server_bind(struct listener *l, const char *ip, const char *port,
+kore_server_bind(struct kore_server *srv, const char *ip, const char *port,
     const char *ccb)
 {
 	int			r;
-	const char		*proto;
+	struct listener		*l;
 	struct addrinfo		hints, *results;
 
 	kore_debug("kore_server_bind(%s, %s, %s)", l->name, ip, port);
@@ -409,6 +411,10 @@ kore_server_bind(struct listener *l, const char *ip, const char *port,
 	r = getaddrinfo(ip, port, &hints, &results);
 	if (r != 0)
 		fatal("getaddrinfo(%s): %s", ip, gai_strerror(r));
+
+	l = kore_listener_create(srv);
+	l->host = kore_strdup(ip);
+	l->port = kore_strdup(port);
 
 	if (kore_listener_init(l, results->ai_family, ccb) == -1) {
 		freeaddrinfo(results);
@@ -431,21 +437,14 @@ kore_server_bind(struct listener *l, const char *ip, const char *port,
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (foreground && !kore_quiet) {
-		if (l->tls)
-			proto = "https";
-		else
-			proto = "http";
-
-		kore_log(LOG_NOTICE, "running on %s://%s:%s", proto, ip, port);
-	}
-
 	return (KORE_RESULT_OK);
 }
 
 int
-kore_server_bind_unix(struct listener *l, const char *path, const char *ccb)
+kore_server_bind_unix(struct kore_server *srv, const char *path,
+    const char *ccb)
 {
+	struct listener		*l;
 	int			len;
 	struct sockaddr_un	sun;
 	socklen_t		socklen;
@@ -467,6 +466,9 @@ kore_server_bind_unix(struct listener *l, const char *path, const char *ccb)
 	socklen = sizeof(sun);
 #endif
 
+	l = kore_listener_create(srv);
+	l->host = kore_strdup(path);
+
 	if (kore_listener_init(l, AF_UNIX, ccb) == -1) {
 		kore_listener_free(l);
 		return (KORE_RESULT_ERROR);
@@ -484,42 +486,78 @@ kore_server_bind_unix(struct listener *l, const char *path, const char *ccb)
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (foreground && !kore_quiet)
-		kore_log(LOG_NOTICE, "running on %s", path);
-
 	return (KORE_RESULT_OK);
 }
 
+struct kore_server *
+kore_server_create(const char *name)
+{
+	struct kore_server	*srv;
+
+	srv = kore_calloc(1, sizeof(struct kore_server));
+	srv->name = kore_strdup(name);
+	srv->tls = 1;
+
+	TAILQ_INIT(&srv->domains);
+	LIST_INIT(&srv->listeners);
+
+	LIST_INSERT_HEAD(&kore_servers, srv, list);
+
+	return (srv);
+}
+
+void
+kore_server_finalize(struct kore_server *srv)
+{
+	struct listener		*l;
+	const char		*proto;
+
+	if (kore_quiet)
+		return;
+
+	LIST_FOREACH(l, &srv->listeners, list) {
+		if (srv->tls)
+			proto = "https";
+		else
+			proto = "http";
+
+		if (l->family == AF_UNIX) {
+			kore_log(LOG_NOTICE, "%s serving %s on %s",
+			    srv->name, proto, l->host);
+		} else {
+			kore_log(LOG_NOTICE, "%s serving %s on %s:%s",
+			    srv->name, proto, l->host, l->port);
+		}
+	}
+}
+
 struct listener *
-kore_listener_create(const char *name)
+kore_listener_create(struct kore_server *server)
 {
 	struct listener		*l;
 
 	l = kore_calloc(1, sizeof(struct listener));
 
 	nlisteners++;
-	LIST_INSERT_HEAD(&listeners, l, list);
+	LIST_INSERT_HEAD(&server->listeners, l, list);
+
+	l->server = server;
 
 	l->fd = -1;
-	l->tls = 1;
-	l->name = kore_strdup(name);
-
 	l->evt.type = KORE_TYPE_LISTENER;
 	l->evt.handle = kore_listener_accept;
-
-	TAILQ_INIT(&l->domains);
 
 	return (l);
 }
 
-struct listener *
-kore_listener_lookup(const char *name)
+struct kore_server *
+kore_server_lookup(const char *name)
 {
-	struct listener		*l;
+	struct kore_server	*srv;
 
-	LIST_FOREACH(l, &listeners, list) {
-		if (!strcmp(l->name, name))
-			return (l);
+	LIST_FOREACH(srv, &kore_servers, list) {
+		if (!strcmp(srv->name, name))
+			return (srv);
 	}
 
 	return (NULL);
@@ -576,18 +614,33 @@ kore_listener_init(struct listener *l, int family, const char *ccb)
 }
 
 void
-kore_listener_free(struct listener *l)
+kore_server_free(struct kore_server *srv)
 {
+	struct listener		*l;
 	struct kore_domain	*dom;
 
-	while ((dom = TAILQ_FIRST(&l->domains)) != NULL)
+	LIST_REMOVE(srv, list);
+
+	while ((dom = TAILQ_FIRST(&srv->domains)) != NULL)
 		kore_domain_free(dom);
 
+	while ((l = LIST_FIRST(&srv->listeners)) != NULL)
+		kore_listener_free(l);
+
+	kore_free(srv->name);
+	kore_free(srv);
+}
+
+void
+kore_listener_free(struct listener *l)
+{
 	LIST_REMOVE(l, list);
-	kore_free(l->name);
 
 	if (l->fd != -1)
 		close(l->fd);
+
+	kore_free(l->host);
+	kore_free(l->port);
 
 	kore_free(l);
 }
@@ -673,23 +726,24 @@ kore_signal_setup(void)
 }
 
 void
-kore_listener_closeall(void)
+kore_server_closeall(void)
 {
 	struct listener		*l;
+	struct kore_server	*srv;
 
-	LIST_FOREACH(l, &listeners, list)
-		l->fd = -1;
+	LIST_FOREACH(srv, &kore_servers, list) {
+		LIST_FOREACH(l, &srv->listeners, list)
+			l->fd = -1;
+	}
 }
 
 void
-kore_listener_cleanup(void)
+kore_server_cleanup(void)
 {
-	struct listener		*l;
+	struct kore_server	*srv;
 
-	while (!LIST_EMPTY(&listeners)) {
-		l = LIST_FIRST(&listeners);
-		kore_listener_free(l);
-	}
+	while ((srv = LIST_FIRST(&kore_servers)) != NULL)
+		kore_server_free(srv);
 }
 
 void

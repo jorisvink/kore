@@ -58,7 +58,7 @@ static int		configure_file(char *);
 #endif
 
 static int		configure_tls(char *);
-static int		configure_listen(char *);
+static int		configure_server(char *);
 static int		configure_include(char *);
 static int		configure_bind(char *);
 static int		configure_bind_unix(char *);
@@ -147,7 +147,7 @@ static struct {
 	int			(*configure)(char *);
 } config_directives[] = {
 	{ "tls",			configure_tls },
-	{ "listen",			configure_listen },
+	{ "server",			configure_server },
 	{ "include",			configure_include },
 	{ "bind",			configure_bind },
 	{ "unix",			configure_bind_unix },
@@ -256,7 +256,7 @@ static struct kore_module_handle	*current_handler = NULL;
 
 extern const char			*__progname;
 static struct kore_domain		*current_domain = NULL;
-static struct listener			*current_listener = NULL;
+static struct kore_server		*current_server = NULL;
 
 void
 kore_parse_config(void)
@@ -351,9 +351,10 @@ kore_parse_config_file(FILE *fp)
 			continue;
 		}
 
-		if (!strcmp(p, "}") && current_listener != NULL) {
+		if (!strcmp(p, "}") && current_server != NULL) {
 			lineno++;
-			current_listener = NULL;
+			kore_server_finalize(current_server);
+			current_server = NULL;
 			continue;
 		}
 
@@ -379,12 +380,12 @@ kore_parse_config_file(FILE *fp)
 #endif
 
 		if (!strcmp(p, "}") && current_domain != NULL) {
-			if (current_domain->listener == NULL) {
-				fatal("domain '%s' not attached to listener",
+			if (current_domain->server == NULL) {
+				fatal("domain '%s' not attached to server",
 				    current_domain->domain);
 			}
 
-			if (current_domain->listener->tls == 1 &&
+			if (current_domain->server->tls == 1 &&
 			    (current_domain->certfile == NULL ||
 			    current_domain->certkey == NULL)) {
 				fatal("incomplete TLS setup for '%s'",
@@ -481,34 +482,34 @@ configure_include(char *path)
 }
 
 static int
-configure_listen(char *options)
+configure_server(char *options)
 {
-	struct listener		*l;
+	struct kore_server	*srv;
 	char			*argv[3];
 
-	if (current_listener != NULL) {
-		printf("nested listener contexts are not allowed\n");
+	if (current_server != NULL) {
+		printf("nested server contexts are not allowed\n");
 		return (KORE_RESULT_ERROR);
 	}
 
 	kore_split_string(options, " ", argv, 3);
 
 	if (argv[0] == NULL || argv[1] == NULL) {
-		printf("invalid listener context\n");
+		printf("invalid server context\n");
 		return (KORE_RESULT_ERROR);
 	}
 
 	if (strcmp(argv[1], "{")) {
-		printf("listener context not opened correctly\n");
+		printf("server context not opened correctly\n");
 		return (KORE_RESULT_ERROR);
 	}
 
-	if ((l = kore_listener_lookup(argv[0])) != NULL) {
-		printf("a listener with name '%s' already exists\n", l->name);
+	if ((srv = kore_server_lookup(argv[0])) != NULL) {
+		printf("a server with name '%s' already exists\n", srv->name);
 		return (KORE_RESULT_ERROR);
 	}
 
-	current_listener = kore_listener_create(argv[0]);
+	current_server = kore_server_create(argv[0]);
 
 	return (KORE_RESULT_OK);
 }
@@ -516,15 +517,15 @@ configure_listen(char *options)
 static int
 configure_tls(char *yesno)
 {
-	if (current_listener == NULL) {
-		printf("bind directive not inside a listener context\n");
+	if (current_server == NULL) {
+		printf("bind directive not inside a server context\n");
 		return (KORE_RESULT_ERROR);
 	}
 
 	if (!strcmp(yesno, "no")) {
-		current_listener->tls = 0;
+		current_server->tls = 0;
 	} else if (!strcmp(yesno, "yes")) {
-		current_listener->tls = 1;
+		current_server->tls = 1;
 	} else {
 		printf("invalid '%s' for yes|no tls option\n", yesno);
 		return (KORE_RESULT_ERROR);
@@ -538,13 +539,8 @@ configure_bind(char *options)
 {
 	char		*argv[4];
 
-	if (current_listener == NULL) {
-		printf("bind directive not inside a listener context\n");
-		return (KORE_RESULT_ERROR);
-	}
-
-	if (current_listener->fd != -1) {
-		printf("listener '%s' already bound\n", current_listener->name);
+	if (current_server == NULL) {
+		printf("bind directive not inside a server context\n");
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -552,7 +548,7 @@ configure_bind(char *options)
 	if (argv[0] == NULL || argv[1] == NULL)
 		return (KORE_RESULT_ERROR);
 
-	return (kore_server_bind(current_listener, argv[0], argv[1], argv[2]));
+	return (kore_server_bind(current_server, argv[0], argv[1], argv[2]));
 }
 
 static int
@@ -560,13 +556,8 @@ configure_bind_unix(char *options)
 {
 	char		*argv[3];
 
-	if (current_listener == NULL) {
-		printf("bind_unix directive not inside a listener context\n");
-		return (KORE_RESULT_ERROR);
-	}
-
-	if (current_listener->fd != -1) {
-		printf("listener '%s' already bound\n", current_listener->name);
+	if (current_server == NULL) {
+		printf("bind_unix directive not inside a server context\n");
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -574,7 +565,7 @@ configure_bind_unix(char *options)
 	if (argv[0] == NULL)
 		return (KORE_RESULT_ERROR);
 
-	return (kore_server_bind_unix(current_listener, argv[0], argv[1]));
+	return (kore_server_bind_unix(current_server, argv[0], argv[1]));
 }
 
 static int
@@ -848,25 +839,25 @@ configure_domain(char *options)
 static int
 configure_attach(char *name)
 {
-	struct listener		*l;
+	struct kore_server	*srv;
 
 	if (current_domain == NULL) {
 		printf("attach not specified in domain context\n");
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (current_domain->listener != NULL) {
-		printf("domain '%s' already attached to listener\n",
+	if (current_domain->server != NULL) {
+		printf("domain '%s' already attached to server\n",
 		    current_domain->domain);
 		return (KORE_RESULT_ERROR);
 	}
 
-	if ((l = kore_listener_lookup(name)) == NULL) {
-		printf("listener '%s' does not exist\n", name);
+	if ((srv = kore_server_lookup(name)) == NULL) {
+		printf("server '%s' does not exist\n", name);
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (!kore_domain_attach(l, current_domain)) {
+	if (!kore_domain_attach(current_domain, srv)) {
 		printf("failed to attach '%s' to '%s'\n",
 		    current_domain->domain, name);
 		return (KORE_RESULT_ERROR);

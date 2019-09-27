@@ -191,23 +191,31 @@ void
 kore_platform_enable_accept(void)
 {
 	struct listener		*l;
+	struct kore_server	*srv;
 
 	kore_debug("kore_platform_enable_accept()");
 
-	LIST_FOREACH(l, &listeners, list)
-		kore_platform_event_schedule(l->fd, EPOLLIN, 0, l);
+	LIST_FOREACH(srv, &kore_servers, list) {
+		LIST_FOREACH(l, &srv->listeners, list)
+			kore_platform_event_schedule(l->fd, EPOLLIN, 0, l);
+	}
 }
 
 void
 kore_platform_disable_accept(void)
 {
 	struct listener		*l;
+	struct kore_server	*srv;
 
 	kore_debug("kore_platform_disable_accept()");
 
-	LIST_FOREACH(l, &listeners, list) {
-		if (epoll_ctl(efd, EPOLL_CTL_DEL, l->fd, NULL) == -1)
-			fatal("kore_platform_disable_accept: %s", errno_s);
+	LIST_FOREACH(srv, &kore_servers, list) {
+		LIST_FOREACH(l, &srv->listeners, list) {
+			if (epoll_ctl(efd, EPOLL_CTL_DEL, l->fd, NULL) == -1) {
+				fatal("kore_platform_disable_accept: %s",
+				    errno_s);
+			}
+		}
 	}
 }
 

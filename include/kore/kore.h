@@ -288,7 +288,7 @@ struct kore_domain {
 
 	char					*domain;
 	struct kore_buf				*logbuf;
-	struct listener				*listener;
+	struct kore_server			*server;
 
 	char					*cafile;
 	char					*crlfile;
@@ -309,16 +309,24 @@ extern struct kore_runtime	kore_native_runtime;
 struct listener {
 	struct kore_event		evt;
 	int				fd;
-	int				tls;
 	int				family;
+	char				*port;
+	char				*host;
+	struct kore_server		*server;
 	struct kore_runtime_call	*connect;
-	char				*name;
-	struct kore_domain_h		domains;
 
-	LIST_ENTRY(listener)	list;
+	LIST_ENTRY(listener)		list;
 };
 
-LIST_HEAD(listener_head, listener);
+struct kore_server {
+	int				tls;
+	char				*name;
+	struct kore_domain_h		domains;
+	LIST_HEAD(, listener)		listeners;
+	LIST_ENTRY(kore_server)		list;
+};
+
+LIST_HEAD(kore_server_list, kore_server);
 
 #if !defined(KORE_NO_HTTP)
 
@@ -568,10 +576,10 @@ extern u_int64_t		kore_websocket_maxframe;
 extern u_int64_t		kore_websocket_timeout;
 extern u_int32_t		kore_socket_backlog;
 
-extern struct listener_head	listeners;
 extern struct kore_worker	*worker;
-extern struct kore_domain	*primary_dom;
 extern struct kore_pool		nb_pool;
+extern struct kore_domain	*primary_dom;
+extern struct kore_server_list	kore_servers;
 
 void		kore_signal(int);
 void		kore_shutdown(void);
@@ -636,18 +644,24 @@ void		kore_timer_remove(struct kore_timer *);
 struct kore_timer	*kore_timer_add(void (*cb)(void *, u_int64_t),
 			    u_int64_t, void *, int);
 
-void		kore_listener_cleanup(void);
-void		kore_listener_closeall(void);
+void		kore_server_closeall(void);
+void		kore_server_cleanup(void);
+void		kore_server_free(struct kore_server *);
+void		kore_server_finalize(struct kore_server *);
+
+struct kore_server	*kore_server_create(const char *);
+struct kore_server	*kore_server_lookup(const char *);
+
 void		kore_listener_accept(void *, int);
-struct listener	*kore_listener_create(const char *);
 struct listener	*kore_listener_lookup(const char *);
 void		kore_listener_free(struct listener *);
+struct listener	*kore_listener_create(struct kore_server *);
 int		kore_listener_init(struct listener *, int, const char *);
 
 int		kore_sockopt(int, int, int);
-int		kore_server_bind_unix(struct listener *,
+int		kore_server_bind_unix(struct kore_server *,
 		    const char *, const char *);
-int		kore_server_bind(struct listener *,
+int		kore_server_bind(struct kore_server *,
 		    const char *, const char *, const char *);
 
 int		kore_tls_sni_cb(SSL *, int *, void *);
@@ -745,7 +759,7 @@ extern char	*kore_filemap_index;
 
 void			kore_fileref_init(void);
 struct kore_fileref	*kore_fileref_get(const char *, int);
-struct kore_fileref	*kore_fileref_create(struct connection *,
+struct kore_fileref	*kore_fileref_create(struct kore_server *,
 			    const char *, int, off_t, struct timespec *);
 void			kore_fileref_release(struct kore_fileref *);
 
@@ -764,7 +778,7 @@ void		*kore_module_getsym(const char *, struct kore_runtime **);
 void		kore_domain_load_crl(void);
 void		kore_domain_keymgr_init(void);
 void		kore_domain_callback(void (*cb)(struct kore_domain *));
-int		kore_domain_attach(struct listener *, struct kore_domain *);
+int		kore_domain_attach(struct kore_domain *, struct kore_server *);
 void		kore_domain_tlsinit(struct kore_domain *, const void *, size_t);
 void		kore_domain_crl_add(struct kore_domain *, const void *, size_t);
 #if !defined(KORE_NO_HTTP)
@@ -795,9 +809,8 @@ void	kore_runtime_wsmessage(struct kore_runtime_call *,
 	    struct connection *, u_int8_t, const void *, size_t);
 #endif
 
-struct kore_domain		*kore_domain_byid(u_int16_t);
-struct kore_domain		*kore_domain_lookup(struct listener *,
-				    const char *);
+struct kore_domain	*kore_domain_byid(u_int16_t);
+struct kore_domain	*kore_domain_lookup(struct kore_server *, const char *);
 
 #if !defined(KORE_NO_HTTP)
 void		kore_validator_init(void);

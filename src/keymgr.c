@@ -133,7 +133,7 @@ kore_keymgr_run(void)
 
 	quit = 0;
 
-	kore_listener_closeall();
+	kore_server_closeall();
 	kore_module_cleanup();
 
 	net_init();
@@ -230,7 +230,7 @@ kore_keymgr_cleanup(int final)
 static void
 keymgr_reload(void)
 {
-	struct listener		*l;
+	struct kore_server	*srv;
 	struct kore_domain	*dom;
 
 	if (!kore_quiet)
@@ -242,10 +242,10 @@ keymgr_reload(void)
 	kore_domain_callback(keymgr_load_privatekey);
 
 	/* can't use kore_domain_callback() due to dst parameter. */
-	LIST_FOREACH(l, &listeners, list) {
-		if (l->tls == 0)
+	LIST_FOREACH(srv, &kore_servers, list) {
+		if (srv->tls == 0)
 			continue;
-		TAILQ_FOREACH(dom, &l->domains, list)
+		TAILQ_FOREACH(dom, &srv->domains, list)
 			keymgr_submit_certificates(dom, KORE_MSG_WORKER_ALL);
 	}
 }
@@ -417,7 +417,7 @@ keymgr_load_privatekey(struct kore_domain *dom)
 	FILE			*fp;
 	struct key		*key;
 
-	if (dom->listener->tls == 0)
+	if (dom->server->tls == 0)
 		return;
 
 	if ((fp = fopen(dom->certkey, "r")) == NULL)
@@ -437,13 +437,13 @@ keymgr_load_privatekey(struct kore_domain *dom)
 static void
 keymgr_certificate_request(struct kore_msg *msg, const void *data)
 {
-	struct listener		*l;
+	struct kore_server	*srv;
 	struct kore_domain	*dom;
 
-	LIST_FOREACH(l, &listeners, list) {
-		if (l->tls == 0)
+	LIST_FOREACH(srv, &kore_servers, list) {
+		if (srv->tls == 0)
 			continue;
-		TAILQ_FOREACH(dom, &l->domains, list)
+		TAILQ_FOREACH(dom, &srv->domains, list)
 			keymgr_submit_certificates(dom, msg->src);
 	}
 }
