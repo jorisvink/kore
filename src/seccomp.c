@@ -69,6 +69,7 @@ static struct sock_filter filter_kore[] = {
 	KORE_SYSCALL_ALLOW(getuid),
 	KORE_SYSCALL_ALLOW(geteuid),
 	KORE_SYSCALL_ALLOW(exit_group),
+	KORE_SYSCALL_ALLOW(nanosleep),
 
 	/* Memory related. */
 	KORE_SYSCALL_ALLOW(brk),
