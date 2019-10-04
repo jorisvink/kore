@@ -398,7 +398,7 @@ kore_server_bind(struct kore_server *srv, const char *ip, const char *port,
 	struct listener		*l;
 	struct addrinfo		hints, *results;
 
-	kore_debug("kore_server_bind(%s, %s, %s)", l->name, ip, port);
+	kore_debug("kore_server_bind(%s, %s, %s)", srv->name, ip, port);
 
 	memset(&hints, 0, sizeof(hints));
 	hints.ai_family = AF_UNSPEC;
