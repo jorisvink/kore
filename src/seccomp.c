@@ -31,6 +31,10 @@
 #include "seccomp.h"
 #include "platform.h"
 
+#if defined(KORE_USE_PYTHON)
+#include "python_api.h"
+#endif
+
 #if defined(KORE_DEBUG)
 #define SECCOMP_KILL_POLICY		SECCOMP_RET_TRAP
 #else
@@ -128,6 +132,9 @@ static struct sock_filter filter_epilogue[] = {
 	BPF_STMT(BPF_RET+BPF_K, SECCOMP_KILL_POLICY)
 };
 
+static struct sock_filter	*seccomp_filter_update(struct sock_filter *,
+				    const char *, size_t);
+
 #define filter_prologue_len	KORE_FILTER_LEN(filter_prologue)
 #define filter_epilogue_len	KORE_FILTER_LEN(filter_epilogue)
 
@@ -188,9 +195,15 @@ kore_seccomp_enable(void)
 	sa.sa_sigaction = seccomp_trap;
 
 	if (sigfillset(&sa.sa_mask) == -1)
-		fatal("sigfillset: %s", errno_s);
+		fatalx("sigfillset: %s", errno_s);
 	if (sigaction(SIGSYS, &sa, NULL) == -1)
-		fatal("sigaction: %s", errno_s);
+		fatalx("sigaction: %s", errno_s);
+#endif
+
+#if defined(KORE_USE_PYTHON)
+	ufilter = TAILQ_FIRST(&filters);
+	kore_python_seccomp_hook();
+	ufilter = NULL;
 #endif
 
 	/* Allow application to add its own filters. */
@@ -219,7 +232,7 @@ kore_seccomp_enable(void)
 
 	/* Build the entire bpf program now. */
 	if ((sf = calloc(prog_len, sizeof(*sf))) == NULL)
-		fatal("calloc");
+		fatalx("calloc");
 
 	off = 0;
 	for (i = 0; i < filter_prologue_len; i++)
@@ -228,11 +241,10 @@ kore_seccomp_enable(void)
 	TAILQ_FOREACH(filter, &filters, list) {
 		for (i = 0; i < filter->instructions; i++)
 			sf[off++] = filter->prog[i];
-
-		if (!kore_quiet) {
+#if defined(KORE_DEBUG)
 			kore_log(LOG_INFO,
 			    "seccomp filter '%s' added", filter->name);
-		}
+#endif
 	}
 
 	for (i = 0; i < filter_epilogue_len; i++)
@@ -240,16 +252,20 @@ kore_seccomp_enable(void)
 
 	/* Lock and load it. */
 	if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1)
-		fatal("prctl: %s", errno_s);
+		fatalx("prctl: %s", errno_s);
 
 	prog.filter = sf;
 	prog.len = prog_len;
 
 	if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog) == -1)
-		fatal("prctl: %s", errno_s);
+		fatalx("prctl: %s", errno_s);
 
 	if (!kore_quiet)
 		kore_log(LOG_INFO, "seccomp sandbox activated");
+
+#if defined(KORE_USE_PYTHON)
+	kore_python_seccomp_cleanup();
+#endif
 }
 
 int
@@ -277,6 +293,63 @@ kore_seccomp_filter(const char *name, void *prog, size_t len)
 	return (KORE_RESULT_OK);
 }
 
+int
+kore_seccomp_syscall_resolve(const char *name)
+{
+	int		i;
+
+	for (i = 0; kore_syscall_map[i].name != NULL; i++) {
+		if (!strcmp(name, kore_syscall_map[i].name))
+			return (kore_syscall_map[i].nr);
+	}
+
+	return (-1);
+}
+
+struct sock_filter *
+kore_seccomp_syscall_filter(const char *name, int action)
+{
+	struct sock_filter	filter[] = {
+		KORE_SYSCALL_FILTER(exit, action),
+		KORE_BPF_GUARD
+	};
+
+	return (seccomp_filter_update(filter, name, KORE_FILTER_LEN(filter)));
+}
+
+struct sock_filter *
+kore_seccomp_syscall_arg(const char *name, int action, int arg, int value)
+{
+	struct sock_filter	filter[] = {
+		KORE_SYSCALL_ARG(exit, arg, value, action),
+		KORE_BPF_GUARD
+	};
+
+	return (seccomp_filter_update(filter, name, KORE_FILTER_LEN(filter)));
+}
+
+struct sock_filter *
+kore_seccomp_syscall_mask(const char *name, int action, int arg, int value)
+{
+	struct sock_filter	filter[] = {
+		KORE_SYSCALL_MASK(exit, arg, value, action),
+		KORE_BPF_GUARD
+	};
+
+	return (seccomp_filter_update(filter, name, KORE_FILTER_LEN(filter)));
+}
+
+struct sock_filter *
+kore_seccomp_syscall_flag(const char *name, int action, int arg, int value)
+{
+	struct sock_filter	filter[] = {
+		KORE_SYSCALL_WITH_FLAG(exit, arg, value, action),
+		KORE_BPF_GUARD
+	};
+
+	return (seccomp_filter_update(filter, name, KORE_FILTER_LEN(filter)));
+}
+
 #if defined(KORE_DEBUG)
 static void
 seccomp_trap(int sig, siginfo_t *info, void *ucontext)
@@ -284,3 +357,21 @@ seccomp_trap(int sig, siginfo_t *info, void *ucontext)
 	kore_log(LOG_INFO, "sandbox violation - syscall=%d", info->si_syscall);
 }
 #endif
+
+static struct sock_filter *
+seccomp_filter_update(struct sock_filter *filter, const char *name, size_t elm)
+{
+	int			nr;
+	struct sock_filter	*result;
+
+	if ((nr = kore_seccomp_syscall_resolve(name)) == -1)
+		return (NULL);
+
+	result = kore_calloc(elm, sizeof(struct sock_filter));
+	memcpy(result, filter, elm * sizeof(struct sock_filter));
+
+	/* Update the syscall number to the one specified. */
+	result[0].k = nr;
+
+	return (result);
+}

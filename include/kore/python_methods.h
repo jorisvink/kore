@@ -132,6 +132,50 @@ static PyTypeObject pyconfig_type = {
 	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
 };
 
+#if defined(__linux__)
+struct pyseccomp {
+	PyObject_HEAD
+	size_t			elm;
+	u_int8_t		*filters;
+};
+
+static PyObject	*pyseccomp_allow(struct pyseccomp *, PyObject *);
+static PyObject	*pyseccomp_allow_arg(struct pyseccomp *, PyObject *);
+static PyObject	*pyseccomp_allow_flag(struct pyseccomp *, PyObject *);
+static PyObject	*pyseccomp_allow_mask(struct pyseccomp *, PyObject *);
+
+static PyObject	*pyseccomp_deny(struct pyseccomp *, PyObject *, PyObject *);
+static PyObject	*pyseccomp_deny_arg(struct pyseccomp *, PyObject *, PyObject *);
+static PyObject	*pyseccomp_deny_flag(struct pyseccomp *,
+		    PyObject *, PyObject *);
+static PyObject	*pyseccomp_deny_mask(struct pyseccomp *,
+		    PyObject *, PyObject *);
+
+static PyMethodDef pyseccomp_methods[] = {
+	METHOD("allow", pyseccomp_allow, METH_VARARGS),
+	METHOD("allow_arg", pyseccomp_allow_arg, METH_VARARGS),
+	METHOD("allow_flag", pyseccomp_allow_flag, METH_VARARGS),
+	METHOD("allow_mask", pyseccomp_allow_mask, METH_VARARGS),
+	METHOD("deny", pyseccomp_deny, METH_VARARGS | METH_KEYWORDS),
+	METHOD("deny_arg", pyseccomp_deny_arg, METH_VARARGS | METH_KEYWORDS),
+	METHOD("deny_flag", pyseccomp_deny_flag, METH_VARARGS | METH_KEYWORDS),
+	METHOD("deny_mask", pyseccomp_deny_mask, METH_VARARGS | METH_KEYWORDS),
+	METHOD(NULL, NULL, -1)
+};
+
+static void	pyseccomp_dealloc(struct pyseccomp *);
+
+static PyTypeObject pyseccomp_type = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "kore.seccomp",
+	.tp_doc = "kore seccomp configuration",
+	.tp_methods = pyseccomp_methods,
+	.tp_basicsize = sizeof(struct pyseccomp),
+	.tp_dealloc = (destructor)pyseccomp_dealloc,
+	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+};
+#endif
+
 struct pydomain {
 	PyObject_HEAD
 	struct kore_domain	*config;

@@ -214,14 +214,27 @@ static struct sock_filter filter_python[] = {
 	KORE_SYSCALL_ALLOW(listen),
 	KORE_SYSCALL_ALLOW(sendto),
 	KORE_SYSCALL_ALLOW(recvfrom),
-	KORE_SYSCALL_ALLOW(getsockopt),
-	KORE_SYSCALL_ALLOW(setsockopt),
 	KORE_SYSCALL_ALLOW(getsockname),
-
+	KORE_SYSCALL_ALLOW(getpeername),
 	KORE_SYSCALL_ALLOW_ARG(socket, 0, AF_INET),
 	KORE_SYSCALL_ALLOW_ARG(socket, 0, AF_INET6),
 	KORE_SYSCALL_ALLOW_ARG(socket, 0, AF_UNIX),
 };
+
+#define PYSECCOMP_ACTION_ALLOW		1
+#define PYSECCOMP_ACTION_DENY		2
+
+#define PYSECCOMP_SYSCALL_FILTER	1
+#define PYSECCOMP_SYSCALL_ARG		2
+#define PYSECCOMP_SYSCALL_MASK		3
+#define PYSECCOMP_SYSCALL_FLAG		4
+
+static int	pyseccomp_filter_install(struct pyseccomp *,
+		    const char *, int, int, int, int);
+static PyObject	*pyseccomp_common_action(struct pyseccomp *, PyObject *,
+		    PyObject *, int, int);
+
+static struct pyseccomp			*py_seccomp = NULL;
 #endif
 
 static TAILQ_HEAD(, pyproc)		procs;
@@ -470,6 +483,219 @@ kore_python_proc_reap(void)
 			python_coro_wakeup(proc->coro);
 	}
 }
+
+#if defined(__linux__)
+void
+kore_python_seccomp_hook(void)
+{
+	struct kore_runtime	*rt;
+	PyObject		*func, *result;
+
+	if ((func = kore_module_getsym("koreapp.seccomp", &rt)) == NULL)
+		return;
+
+	if (rt->type != KORE_RUNTIME_PYTHON)
+		return;
+
+	py_seccomp = PyObject_New(struct pyseccomp, &pyseccomp_type);
+	if (py_seccomp == NULL)
+		fatal("failed to create seccomp object");
+
+	py_seccomp->elm = 0;
+	py_seccomp->filters = NULL;
+
+	result = PyObject_CallFunctionObjArgs(func,
+	    (PyObject *)py_seccomp, NULL);
+	kore_python_log_error("koreapp.seccomp");
+
+	kore_seccomp_filter("koreapp", py_seccomp->filters, py_seccomp->elm);
+
+	Py_XDECREF(result);
+}
+
+void
+kore_python_seccomp_cleanup(void)
+{
+	Py_XDECREF(py_seccomp);
+	py_seccomp = NULL;
+}
+
+static void
+pyseccomp_dealloc(struct pyseccomp *seccomp)
+{
+	kore_free(seccomp->filters);
+
+	seccomp->elm = 0;
+	seccomp->filters = NULL;
+}
+
+static PyObject *
+pyseccomp_allow(struct pyseccomp *seccomp, PyObject *args)
+{
+	const char		*syscall;
+
+	if (!PyArg_ParseTuple(args, "s", &syscall))
+		return (NULL);
+
+	if (!pyseccomp_filter_install(seccomp, syscall,
+	    PYSECCOMP_SYSCALL_FILTER, 0, 0, SECCOMP_RET_ALLOW))
+		return (NULL);
+
+	Py_RETURN_NONE;
+}
+
+static PyObject *
+pyseccomp_allow_arg(struct pyseccomp *seccomp, PyObject *args)
+{
+	return (pyseccomp_common_action(seccomp, args, NULL,
+	    PYSECCOMP_SYSCALL_ARG, PYSECCOMP_ACTION_ALLOW));
+}
+
+static PyObject *
+pyseccomp_allow_flag(struct pyseccomp *seccomp, PyObject *args)
+{
+	return (pyseccomp_common_action(seccomp, args, NULL,
+	    PYSECCOMP_SYSCALL_FLAG, PYSECCOMP_ACTION_ALLOW));
+}
+
+static PyObject *
+pyseccomp_allow_mask(struct pyseccomp *seccomp, PyObject *args)
+{
+	return (pyseccomp_common_action(seccomp, args, NULL,
+	    PYSECCOMP_SYSCALL_MASK, PYSECCOMP_ACTION_ALLOW));
+}
+
+static PyObject *
+pyseccomp_deny(struct pyseccomp *seccomp, PyObject *args, PyObject *kwargs)
+{
+	long			err;
+	const char		*syscall;
+
+	if (!PyArg_ParseTuple(args, "s", &syscall))
+		return (NULL);
+
+	err = EACCES;
+
+	if (kwargs != NULL)
+		python_long_from_dict(kwargs, "errno", &err);
+
+	if (!pyseccomp_filter_install(seccomp, syscall,
+	    PYSECCOMP_SYSCALL_FILTER, 0, 0, SECCOMP_RET_ERRNO | (int)err))
+		return (NULL);
+
+	Py_RETURN_NONE;
+}
+
+static PyObject *
+pyseccomp_deny_arg(struct pyseccomp *seccomp, PyObject *args, PyObject *kwargs)
+{
+	return (pyseccomp_common_action(seccomp, args, kwargs,
+	    PYSECCOMP_SYSCALL_ARG, PYSECCOMP_ACTION_DENY));
+}
+
+static PyObject *
+pyseccomp_deny_flag(struct pyseccomp *seccomp, PyObject *args, PyObject *kwargs)
+{
+	return (pyseccomp_common_action(seccomp, args, kwargs,
+	    PYSECCOMP_SYSCALL_FLAG, PYSECCOMP_ACTION_DENY));
+}
+
+static PyObject *
+pyseccomp_deny_mask(struct pyseccomp *seccomp, PyObject *args, PyObject *kwargs)
+{
+	return (pyseccomp_common_action(seccomp, args, kwargs,
+	    PYSECCOMP_SYSCALL_MASK, PYSECCOMP_ACTION_DENY));
+}
+
+static PyObject *
+pyseccomp_common_action(struct pyseccomp *sc, PyObject *args,
+    PyObject *kwargs, int which, int action)
+{
+	long			err;
+	const char		*syscall;
+	int			arg, val;
+
+	if (!PyArg_ParseTuple(args, "sii", &syscall, &arg, &val))
+		return (NULL);
+
+	switch (action) {
+	case PYSECCOMP_ACTION_ALLOW:
+		action = SECCOMP_RET_ALLOW;
+		break;
+	case PYSECCOMP_ACTION_DENY:
+		err = EACCES;
+		if (kwargs != NULL)
+			python_long_from_dict(kwargs, "errno", &err);
+		action = SECCOMP_RET_ERRNO | (int)err;
+		break;
+	default:
+		fatal("%s: bad action %d", __func__, action);
+	}
+
+	if (!pyseccomp_filter_install(sc, syscall, which, arg, val, action))
+		return (NULL);
+
+	Py_RETURN_NONE;
+}
+
+static int
+pyseccomp_filter_install(struct pyseccomp *seccomp, const char *syscall,
+    int which, int arg, int val, int action)
+{
+	struct sock_filter	*filter;
+	size_t			elm, len, off;
+
+	switch (which) {
+	case PYSECCOMP_SYSCALL_FILTER:
+		filter = kore_seccomp_syscall_filter(syscall, action);
+		break;
+	case PYSECCOMP_SYSCALL_ARG:
+		filter = kore_seccomp_syscall_arg(syscall, action, arg, val);
+		break;
+	case PYSECCOMP_SYSCALL_MASK:
+		filter = kore_seccomp_syscall_mask(syscall, action, arg, val);
+		break;
+	case PYSECCOMP_SYSCALL_FLAG:
+		filter = kore_seccomp_syscall_flag(syscall, action, arg, val);
+		break;
+	default:
+		fatal("%s: invalid syscall instruction %d", __func__, which);
+	}
+
+	if (filter == NULL) {
+		PyErr_Format(PyExc_RuntimeError,
+		    "system call '%s' does not exist", syscall);
+		return (KORE_RESULT_ERROR);
+	}
+
+	elm = 0;
+
+	/*
+	 * Find the number of elements in the BPF program, by looking for
+	 * the KORE_BPF_GUARD element.
+	 */
+	for (;;) {
+		if (filter[elm].code == USHRT_MAX &&
+		    filter[elm].jt == UCHAR_MAX &&
+		    filter[elm].jf == UCHAR_MAX &&
+		    filter[elm].k == UINT_MAX)
+			break;
+
+		elm++;
+	}
+
+	len = elm * sizeof(struct sock_filter);
+	off = seccomp->elm * sizeof(struct sock_filter);
+	seccomp->filters = kore_realloc(seccomp->filters, off + len);
+
+	memcpy(seccomp->filters + off, filter, len);
+	seccomp->elm += elm;
+
+	kore_free(filter);
+
+	return (KORE_RESULT_OK);
+}
+#endif
 
 static int
 python_long_from_dict(PyObject *dict, const char *key, long *result)
@@ -1204,6 +1430,10 @@ python_module_init(void)
 	python_push_type("pysocket", pykore, &pysocket_type);
 	python_push_type("pydomain", pykore, &pydomain_type);
 	python_push_type("pyconnection", pykore, &pyconnection_type);
+
+#if defined(__linux__)
+	python_push_type("pyseccomp", pykore, &pyseccomp_type);
+#endif
 
 #if defined(KORE_USE_CURL)
 	python_push_type("pyhttpclient", pykore, &pyhttp_client_type);

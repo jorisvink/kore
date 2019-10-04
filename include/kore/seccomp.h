@@ -134,6 +134,9 @@
 /* The length of a filter. */
 #define KORE_FILTER_LEN(x)		(sizeof(x) / sizeof(x[0]))
 
+/* Used to mark the end of a BPF program. */
+#define KORE_BPF_GUARD		{ USHRT_MAX, UCHAR_MAX, UCHAR_MAX, UINT_MAX }
+
 /*
  * Macro for applications to make easily define custom filter.
  *
@@ -158,6 +161,12 @@
 void	kore_seccomp_init(void);
 void	kore_seccomp_drop(void);
 void	kore_seccomp_enable(void);
+int	kore_seccomp_syscall_resolve(const char *);
 int	kore_seccomp_filter(const char *, void *, size_t);
+
+struct sock_filter	*kore_seccomp_syscall_filter(const char *, int);
+struct sock_filter	*kore_seccomp_syscall_arg(const char *, int, int, int);
+struct sock_filter	*kore_seccomp_syscall_flag(const char *, int, int, int);
+struct sock_filter	*kore_seccomp_syscall_mask(const char *, int, int, int);
 
 #endif
