@@ -2085,8 +2085,6 @@ python_kore_corotrace(PyObject *self, PyObject *args)
 	if (!PyArg_ParseTuple(args, "b", &coro_tracing))
 		return (NULL);
 
-	printf("coro tracing is now %d\n", coro_tracing);
-
 	Py_RETURN_NONE;
 }
 
