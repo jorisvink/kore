@@ -56,6 +56,7 @@
 #endif
 
 #define WORKER_SOLO_COUNT	2
+
 #define WORKER(id)						\
 	(struct kore_worker *)((u_int8_t *)kore_workers +	\
 	    (sizeof(struct kore_worker) * id))
@@ -96,14 +97,25 @@ kore_worker_init(void)
 {
 	size_t			len;
 	struct kore_worker	*kw;
+	struct kore_server	*srv;
+	int			keymgr;
 	u_int16_t		i, cpu;
 
+	keymgr = 0;
 	worker_no_lock = 0;
 
 	if (worker_count == 0)
 		worker_count = cpu_count;
 
-	/* account for the key manager. */
+	/* Check if keymgr will be active. */
+	LIST_FOREACH(srv, &kore_servers, list) {
+		if (srv->tls) {
+			keymgr = 1;
+			break;
+		}
+	}
+
+	/* Account for the keymgr even if we don't end up starting it. */
 	worker_count += 1;
 
 	len = sizeof(*accept_lock) +
@@ -135,11 +147,16 @@ kore_worker_init(void)
 		kw->lb.offset = 0;
 	}
 
-	cpu = 0;
-	for (i = 0; i < worker_count; i++) {
-		kore_worker_spawn(i, cpu++);
-		if (cpu == cpu_count)
+	/* Start keymgr if required. */
+	if (keymgr)
+		kore_worker_spawn(0, 0);
+
+	/* Now start all the workers. */
+	cpu = 1;
+	for (i = 1; i < worker_count; i++) {
+		if (cpu >= cpu_count)
 			cpu = 0;
+		kore_worker_spawn(i, cpu++);
 	}
 }
 
