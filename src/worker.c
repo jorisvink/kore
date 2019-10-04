@@ -83,6 +83,7 @@ static struct kore_worker		*kore_workers;
 static int				worker_no_lock;
 static int				shm_accept_key;
 static struct wlock			*accept_lock;
+static int				keymgr_active = 0;
 
 struct kore_worker		*worker = NULL;
 u_int8_t			worker_set_affinity = 1;
@@ -98,10 +99,8 @@ kore_worker_init(void)
 	size_t			len;
 	struct kore_worker	*kw;
 	struct kore_server	*srv;
-	int			keymgr;
 	u_int16_t		i, cpu;
 
-	keymgr = 0;
 	worker_no_lock = 0;
 
 	if (worker_count == 0)
@@ -110,7 +109,7 @@ kore_worker_init(void)
 	/* Check if keymgr will be active. */
 	LIST_FOREACH(srv, &kore_servers, list) {
 		if (srv->tls) {
-			keymgr = 1;
+			keymgr_active = 1;
 			break;
 		}
 	}
@@ -148,7 +147,7 @@ kore_worker_init(void)
 	}
 
 	/* Start keymgr if required. */
-	if (keymgr)
+	if (keymgr_active)
 		kore_worker_spawn(0, 0);
 
 	/* Now start all the workers. */
@@ -374,12 +373,16 @@ kore_worker_entry(struct kore_worker *kw)
 	worker_active_connections = 0;
 
 	last_seed = 0;
-	kore_msg_register(KORE_MSG_CRL, worker_keymgr_response);
-	kore_msg_register(KORE_MSG_ENTROPY_RESP, worker_entropy_recv);
-	kore_msg_register(KORE_MSG_CERTIFICATE, worker_keymgr_response);
-	if (worker->restarted) {
-		kore_msg_send(KORE_WORKER_KEYMGR,
-		    KORE_MSG_CERTIFICATE_REQ, NULL, 0);
+
+	if (keymgr_active) {
+		kore_msg_register(KORE_MSG_CRL, worker_keymgr_response);
+		kore_msg_register(KORE_MSG_ENTROPY_RESP, worker_entropy_recv);
+		kore_msg_register(KORE_MSG_CERTIFICATE, worker_keymgr_response);
+
+		if (worker->restarted) {
+			kore_msg_send(KORE_WORKER_KEYMGR,
+			    KORE_MSG_CERTIFICATE_REQ, NULL, 0);
+		}
 	}
 
 	kore_msg_register(KORE_MSG_ACCEPT_AVAILABLE, worker_accept_avail);
@@ -405,7 +408,7 @@ kore_worker_entry(struct kore_worker *kw)
 	for (;;) {
 		now = kore_time_ms();
 
-		if ((now - last_seed) > KORE_RESEED_TIME) {
+		if (keymgr_active && (now - last_seed) > KORE_RESEED_TIME) {
 			kore_msg_send(KORE_WORKER_KEYMGR,
 			    KORE_MSG_ENTROPY_REQ, NULL, 0);
 			last_seed = now;
