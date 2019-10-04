@@ -486,12 +486,12 @@ kore_python_proc_reap(void)
 
 #if defined(__linux__)
 void
-kore_python_seccomp_hook(void)
+kore_python_seccomp_hook(const char *method)
 {
 	struct kore_runtime	*rt;
 	PyObject		*func, *result;
 
-	if ((func = kore_module_getsym("koreapp.seccomp", &rt)) == NULL)
+	if ((func = kore_module_getsym(hook, &rt)) == NULL)
 		return;
 
 	if (rt->type != KORE_RUNTIME_PYTHON)
@@ -506,7 +506,7 @@ kore_python_seccomp_hook(void)
 
 	result = PyObject_CallFunctionObjArgs(func,
 	    (PyObject *)py_seccomp, NULL);
-	kore_python_log_error("koreapp.seccomp");
+	kore_python_log_error(hook);
 
 	kore_seccomp_filter("koreapp", py_seccomp->filters, py_seccomp->elm);
 

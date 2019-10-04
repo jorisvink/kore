@@ -36,8 +36,8 @@ void		kore_python_log_error(const char *);
 PyObject	*kore_python_callable(PyObject *, const char *);
 
 #if defined(__linux__)
-void	kore_python_seccomp_hook(void);
 void	kore_python_seccomp_cleanup(void);
+void	kore_python_seccomp_hook(const char *);
 #endif
 
 #if !defined(KORE_SINGLE_BINARY)

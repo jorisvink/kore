@@ -202,7 +202,7 @@ kore_seccomp_enable(void)
 
 #if defined(KORE_USE_PYTHON)
 	ufilter = TAILQ_FIRST(&filters);
-	kore_python_seccomp_hook();
+	kore_python_seccomp_hook("koreapp.seccomp");
 	ufilter = NULL;
 #endif
 
