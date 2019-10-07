@@ -151,8 +151,11 @@ static PyObject	*pyseccomp_deny_flag(struct pyseccomp *,
 static PyObject	*pyseccomp_deny_mask(struct pyseccomp *,
 		    PyObject *, PyObject *);
 
+static PyObject	*pyseccomp_bpf_stmt(struct pyseccomp *, PyObject *);
+
 static PyMethodDef pyseccomp_methods[] = {
 	METHOD("allow", pyseccomp_allow, METH_VARARGS),
+	METHOD("bpf_stmt", pyseccomp_bpf_stmt, METH_VARARGS),
 	METHOD("allow_arg", pyseccomp_allow_arg, METH_VARARGS),
 	METHOD("allow_flag", pyseccomp_allow_flag, METH_VARARGS),
 	METHOD("allow_mask", pyseccomp_allow_mask, METH_VARARGS),

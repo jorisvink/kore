@@ -530,6 +530,32 @@ pyseccomp_dealloc(struct pyseccomp *seccomp)
 }
 
 static PyObject *
+pyseccomp_bpf_stmt(struct pyseccomp *seccomp, PyObject *args)
+{
+	u_int32_t		k;
+	u_int16_t		code;
+	size_t			len, off;
+	struct sock_filter	filter[1];
+
+	if (!PyArg_ParseTuple(args, "HI", &code, &k))
+		return (NULL);
+
+	filter[0].k = k;
+	filter[0].jt = 0;
+	filter[0].jf = 0;
+	filter[0].code = code;
+
+	len = sizeof(struct sock_filter);
+	off = seccomp->elm * sizeof(struct sock_filter);
+	seccomp->filters = kore_realloc(seccomp->filters, off + len);
+
+	memcpy(seccomp->filters + off, filter, len);
+	seccomp->elm += 1;
+
+	Py_RETURN_NONE;
+}
+
+static PyObject *
 pyseccomp_allow(struct pyseccomp *seccomp, PyObject *args)
 {
 	const char		*syscall;
