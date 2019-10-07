@@ -54,6 +54,8 @@ kore_msg_parent_init(void)
 	struct kore_worker	*kw;
 
 	for (i = 0; i < worker_count; i++) {
+		if (keymgr_active == 0 && i == KORE_WORKER_KEYMGR)
+			continue;
 		kw = kore_worker_data(i);
 		kore_msg_parent_add(kw);
 	}

@@ -559,6 +559,7 @@ extern volatile sig_atomic_t	sig_recv;
 extern int	tls_version;
 extern DH	*tls_dhparam;
 extern char	*rand_file;
+extern int	keymgr_active;
 extern char	*keymgr_runas_user;
 extern char	*keymgr_root_path;
 

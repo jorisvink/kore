@@ -123,6 +123,7 @@ static void	keymgr_rsa_encrypt(struct kore_msg *, const void *,
 static void	keymgr_ecdsa_sign(struct kore_msg *, const void *,
 		    struct key *);
 
+int	keymgr_active = 0;
 char	*keymgr_root_path = NULL;
 char	*keymgr_runas_user = NULL;
 
@@ -131,6 +132,9 @@ kore_keymgr_run(void)
 {
 	int		quit;
 	u_int64_t	now, last_seed;
+
+	if (keymgr_active == 0)
+		fatal("%s: called with keymgr_active == 0", __func__);
 
 	quit = 0;
 

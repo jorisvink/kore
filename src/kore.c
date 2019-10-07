@@ -806,6 +806,7 @@ static void
 kore_server_start(int argc, char *argv[])
 {
 	u_int32_t			tmp;
+	struct kore_server		*srv;
 	u_int64_t			netwait;
 	int				quit, last_sig;
 #if defined(KORE_SINGLE_BINARY)
@@ -829,6 +830,9 @@ kore_server_start(int argc, char *argv[])
 
 	if (!kore_quiet) {
 		kore_log(LOG_NOTICE, "%s is starting up", __progname);
+#if defined(__linux__)
+		kore_log(LOG_NOTICE, "seccomp sandbox enabled");
+#endif
 #if defined(KORE_USE_PGSQL)
 		kore_log(LOG_NOTICE, "pgsql built-in enabled");
 #endif
@@ -851,6 +855,14 @@ kore_server_start(int argc, char *argv[])
 	if (kore_pymodule == NULL)
 		kore_call_parent_configure(argc, argv);
 #endif
+
+	/* Check if keymgr will be active. */
+	LIST_FOREACH(srv, &kore_servers, list) {
+		if (srv->tls) {
+			keymgr_active = 1;
+			break;
+		}
+	}
 
 	kore_platform_proctitle("[parent]");
 	kore_msg_init();

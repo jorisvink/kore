@@ -83,7 +83,6 @@ static struct kore_worker		*kore_workers;
 static int				worker_no_lock;
 static int				shm_accept_key;
 static struct wlock			*accept_lock;
-static int				keymgr_active = 0;
 
 struct kore_worker		*worker = NULL;
 u_int8_t			worker_set_affinity = 1;
@@ -98,21 +97,12 @@ kore_worker_init(void)
 {
 	size_t			len;
 	struct kore_worker	*kw;
-	struct kore_server	*srv;
 	u_int16_t		i, cpu;
 
 	worker_no_lock = 0;
 
 	if (worker_count == 0)
 		worker_count = cpu_count;
-
-	/* Check if keymgr will be active. */
-	LIST_FOREACH(srv, &kore_servers, list) {
-		if (srv->tls) {
-			keymgr_active = 1;
-			break;
-		}
-	}
 
 	/* Account for the keymgr even if we don't end up starting it. */
 	worker_count += 1;

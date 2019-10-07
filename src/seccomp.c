@@ -260,9 +260,6 @@ kore_seccomp_enable(void)
 	if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog) == -1)
 		fatalx("prctl: %s", errno_s);
 
-	if (!kore_quiet)
-		kore_log(LOG_INFO, "seccomp sandbox activated");
-
 #if defined(KORE_USE_PYTHON)
 	kore_python_seccomp_cleanup();
 #endif
