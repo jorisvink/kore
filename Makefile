@@ -11,8 +11,8 @@ MAN_DIR?=$(PREFIX)/share/man
 SHARE_DIR=$(PREFIX)/share/kore
 INCLUDE_DIR=$(PREFIX)/include/kore
 
+PLATFORM=platform.h
 VERSION=src/version.c
-PLATFORM=src/platform.h
 
 S_SRC=	src/kore.c src/buf.c src/config.c src/connection.c \
 	src/domain.c src/filemap.c src/fileref.c src/mem.c src/msg.c \
@@ -24,7 +24,7 @@ FEATURES_INC=
 
 CFLAGS+=-Wall -Werror -Wstrict-prototypes -Wmissing-prototypes
 CFLAGS+=-Wmissing-declarations -Wshadow -Wpointer-arith -Wcast-qual
-CFLAGS+=-Wsign-compare -Iinclude/kore -std=c99 -pedantic
+CFLAGS+=-Wsign-compare -Iinclude/kore -I$(OBJDIR) -std=c99 -pedantic
 CFLAGS+=-DPREFIX='"$(PREFIX)"' -fstack-protector-all
 
 ifneq ("$(OPENSSL_PATH)", "")
@@ -137,9 +137,9 @@ S_OBJS=	$(S_SRC:src/%.c=$(OBJDIR)/%.o)
 
 all: $(PLATFORM) $(VERSION) $(KORE) $(KODEV)
 
-$(PLATFORM): force
+$(PLATFORM): $(OBJDIR) force
 	@if [ -f misc/$(OSNAME)-platform.sh ]; then \
-		misc/$(OSNAME)-platform.sh > $(PLATFORM) ; \
+		misc/$(OSNAME)-platform.sh > $(OBJDIR)/$(PLATFORM) ; \
 	fi
 
 $(VERSION): force
@@ -164,7 +164,7 @@ $(KORE): $(OBJDIR) $(S_OBJS)
 	$(CC) $(S_OBJS) $(LDFLAGS) -o $(KORE)
 	@echo $(FEATURES) $(FEATURES_INC) > kore.features
 
-objects: $(OBJDIR) $(S_OBJS)
+objects: $(OBJDIR) $(PLATFORM) $(S_OBJS)
 	@echo $(LDFLAGS) > $(OBJDIR)/ldflags
 	@echo "$(FEATURES) $(FEATURES_INC)" > $(OBJDIR)/features
 
