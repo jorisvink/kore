@@ -1366,7 +1366,6 @@ python_runtime_configure(void *addr, int argc, char **argv)
 	PyErr_Clear();
 	pyret = PyObject_Call(callable, args, NULL);
 	Py_DECREF(args);
-	Py_DECREF(list);
 
 	if (pyret == NULL) {
 		kore_python_log_error("python_runtime_configure");
