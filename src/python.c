@@ -2314,6 +2314,7 @@ out:
 	if (obj != NULL)
 		Py_DECREF(obj);
 
+	PyErr_Clear();
 	kore_free(base);
 
 	return (res);
