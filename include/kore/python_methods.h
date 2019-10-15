@@ -513,6 +513,7 @@ static PyTypeObject pylock_op_type = {
 struct pyproc {
 	PyObject_HEAD
 	pid_t			pid;
+	pid_t			apid;
 	int			reaped;
 	int			status;
 	struct pysocket		*in;

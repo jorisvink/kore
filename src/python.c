@@ -2183,6 +2183,7 @@ python_kore_proc(PyObject *self, PyObject *args)
 	}
 
 	proc->pid = -1;
+	proc->apid = -1;
 	proc->reaped = 0;
 	proc->status = 0;
 	proc->timer = NULL;
@@ -2231,6 +2232,7 @@ python_kore_proc(PyObject *self, PyObject *args)
 	    !kore_connection_nonblock(out_pipe[0], 0))
 		fatal("failed to mark kore.proc pipes are non-blocking");
 
+	proc->apid = proc->pid;
 	proc->in->fd = in_pipe[1];
 	proc->out->fd = out_pipe[0];
 
@@ -3693,7 +3695,7 @@ pyproc_close_stdin(struct pyproc *proc, PyObject *args)
 static PyObject *
 pyproc_get_pid(struct pyproc *proc, void *closure)
 {
-	return (PyLong_FromLong(proc->pid));
+	return (PyLong_FromLong(proc->apid));
 }
 
 static void
