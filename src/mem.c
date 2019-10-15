@@ -26,19 +26,20 @@
 #define KORE_MEM_BLOCK_SIZE_MAX		8192
 #define KORE_MEM_BLOCK_PREALLOC		128
 
-#define KORE_MEM_ALIGN		(sizeof(size_t))
+#define KORE_MEM_ALIGN		16
 #define KORE_MEM_MAGIC		0xd0d0
-#define KORE_MEMSIZE(x)		\
-	(*(size_t *)((u_int8_t *)x - sizeof(size_t)))
-#define KORE_MEMINFO(x)		\
-	(struct meminfo *)((u_int8_t *)x + KORE_MEMSIZE(x))
 
 #define KORE_MEM_TAGGED		0x0001
+
+struct memsize {
+	size_t			len;
+	size_t			magic;
+} __attribute__((packed));
 
 struct meminfo {
 	u_int16_t		flags;
 	u_int16_t		magic;
-};
+} __attribute__((packed));
 
 struct memblock {
 	struct kore_pool	pool;
@@ -50,6 +51,8 @@ struct tag {
 	TAILQ_ENTRY(tag)	list;
 };
 
+static inline struct memsize	*memsize(void *);
+static inline struct meminfo	*meminfo(void *);
 static size_t			memblock_index(size_t);
 
 static TAILQ_HEAD(, tag)	tags;
@@ -73,7 +76,7 @@ kore_mem_init(void)
 			fatal("kore_mem_init: snprintf");
 
 		elm = (KORE_MEM_BLOCK_PREALLOC * 1024) / size;
-		mlen = sizeof(size_t) + size +
+		mlen = sizeof(struct memsize) + size +
 		    sizeof(struct meminfo) + KORE_MEM_ALIGN;
 		mlen = mlen & ~(KORE_MEM_ALIGN - 1);
 
@@ -98,8 +101,9 @@ kore_malloc(size_t len)
 {
 	void			*ptr;
 	struct meminfo		*mem;
+	struct memsize		*size;
 	u_int8_t		*addr;
-	size_t			mlen, idx, *plen;
+	size_t			mlen, idx;
 
 	if (len == 0)
 		len = 8;
@@ -108,16 +112,18 @@ kore_malloc(size_t len)
 		idx = memblock_index(len);
 		ptr = kore_pool_get(&blocks[idx].pool);
 	} else {
-		mlen = sizeof(size_t) + len + sizeof(struct meminfo);
+		mlen = sizeof(struct memsize) + len + sizeof(struct meminfo);
 		if ((ptr = calloc(1, mlen)) == NULL)
 			fatal("kore_malloc(%zu): %d", len, errno);
 	}
 
-	plen = (size_t *)ptr;
-	*plen = len;
-	addr = (u_int8_t *)ptr + sizeof(size_t);
+	size = (struct memsize *)ptr;
+	size->len = len;
+	size->magic = KORE_MEM_MAGIC;
 
-	mem = KORE_MEMINFO(addr);
+	addr = (u_int8_t *)ptr + sizeof(struct memsize);
+
+	mem = (struct meminfo *)(addr + size->len);
 	mem->flags = 0;
 	mem->magic = KORE_MEM_MAGIC;
 
@@ -127,20 +133,17 @@ kore_malloc(size_t len)
 void *
 kore_realloc(void *ptr, size_t len)
 {
-	struct meminfo		*mem;
+	struct memsize		*size;
 	void			*nptr;
 
 	if (ptr == NULL) {
 		nptr = kore_malloc(len);
 	} else {
-		if (len == KORE_MEMSIZE(ptr))
+		size = memsize(ptr);
+		if (len == size->len)
 			return (ptr);
-		mem = KORE_MEMINFO(ptr);
-		if (mem->magic != KORE_MEM_MAGIC)
-			fatal("kore_realloc(): magic boundary not found");
-
 		nptr = kore_malloc(len);
-		memcpy(nptr, ptr, MIN(len, KORE_MEMSIZE(ptr)));
+		memcpy(nptr, ptr, MIN(len, size->len));
 		kore_free(ptr);
 	}
 
@@ -166,27 +169,25 @@ kore_calloc(size_t memb, size_t len)
 void
 kore_free(void *ptr)
 {
-	u_int8_t		*addr;
+	size_t			idx;
 	struct meminfo		*mem;
-	size_t			len, idx;
+	struct memsize		*size;
+	u_int8_t		*addr;
 
 	if (ptr == NULL)
 		return;
 
-	mem = KORE_MEMINFO(ptr);
-	if (mem->magic != KORE_MEM_MAGIC)
-		fatal("kore_free(): magic boundary not found");
-
+	mem = meminfo(ptr);
 	if (mem->flags & KORE_MEM_TAGGED) {
 		kore_mem_untag(ptr);
 		mem->flags &= ~KORE_MEM_TAGGED;
 	}
 
-	len = KORE_MEMSIZE(ptr);
-	addr = (u_int8_t *)ptr - sizeof(size_t);
+	size = memsize(ptr);
+	addr = (u_int8_t *)ptr - sizeof(struct memsize);
 
-	if (len <= KORE_MEM_BLOCK_SIZE_MAX) {
-		idx = memblock_index(len);
+	if (size->len <= KORE_MEM_BLOCK_SIZE_MAX) {
+		idx = memblock_index(size->len);
 		kore_pool_put(&blocks[idx].pool, addr);
 	} else {
 		free(addr);
@@ -226,9 +227,7 @@ kore_mem_tag(void *ptr, u_int32_t id)
 	if (kore_mem_lookup(id) != NULL)
 		fatal("kore_mem_tag: tag %u taken", id);
 
-	mem = KORE_MEMINFO(ptr);
-	if (mem->magic != KORE_MEM_MAGIC)
-		fatal("kore_mem_tag: magic boundary not found");
+	mem = meminfo(ptr);
 	mem->flags |= KORE_MEM_TAGGED;
 
 	tag = kore_pool_get(&tag_pool);
@@ -281,4 +280,32 @@ memblock_index(size_t len)
 		fatal("kore_malloc: idx too high");
 
 	return (idx);
+}
+
+static inline struct memsize *
+memsize(void *ptr)
+{
+	struct memsize	*ms;
+
+	ms = (struct memsize *)((u_int8_t *)ptr - sizeof(*ms));
+
+	if (ms->magic != KORE_MEM_MAGIC)
+		fatal("%s: bad memsize magic (0x%x)", __func__, ms->magic);
+
+	return (ms);
+}
+
+static inline struct meminfo *
+meminfo(void *ptr)
+{
+	struct memsize	*ms;
+	struct meminfo	*info;
+
+	ms = memsize(ptr);
+	info = (struct meminfo *)((u_int8_t *)ptr + ms->len);
+
+	if (info->magic != KORE_MEM_MAGIC)
+		fatal("%s: bad meminfo magic (0x%x)", __func__, info->magic);
+
+	return (info);
 }
