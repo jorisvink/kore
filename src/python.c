@@ -305,7 +305,7 @@ kore_python_init(void)
 		kore_free(rcall);
 	}
 
-	Py_Initialize();
+	Py_InitializeEx(0);
 
 #if defined(__linux__)
 	kore_seccomp_filter("python", filter_python,
