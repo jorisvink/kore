@@ -144,7 +144,7 @@ version(void)
 	printf("single ");
 #endif
 #if defined(KORE_USE_PYTHON)
-	printf("python ");
+	printf("python-%s ", PY_VERSION);
 #endif
 	printf("\n");
 	exit(0);

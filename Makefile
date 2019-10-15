@@ -88,8 +88,8 @@ endif
 
 ifneq ("$(PYTHON)", "")
 	S_SRC+=src/python.c
-	KORE_PYTHON_LIB?=$(shell python3-config --ldflags)
-	KORE_PYTHON_INC?=$(shell python3-config --includes)
+	KORE_PYTHON_LIB?=$(shell ./misc/python3-config.sh --ldflags)
+	KORE_PYTHON_INC?=$(shell ./misc/python3-config.sh --includes)
 	LDFLAGS+=$(KORE_PYTHON_LIB)
 	CFLAGS+=$(KORE_PYTHON_INC) -DKORE_USE_PYTHON
 	FEATURES+=-DKORE_USE_PYTHON
