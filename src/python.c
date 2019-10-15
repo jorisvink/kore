@@ -3690,6 +3690,12 @@ pyproc_close_stdin(struct pyproc *proc, PyObject *args)
 	Py_RETURN_TRUE;
 }
 
+static PyObject *
+pyproc_get_pid(struct pyproc *proc, void *closure)
+{
+	return (PyLong_FromLong(proc->pid));
+}
+
 static void
 pyproc_op_dealloc(struct pyproc_op *op)
 {

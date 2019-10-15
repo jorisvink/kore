@@ -539,10 +539,18 @@ static PyMethodDef pyproc_methods[] = {
 	METHOD(NULL, NULL, -1),
 };
 
+static PyObject	*pyproc_get_pid(struct pyproc *, void *);
+
+static PyGetSetDef pyproc_getset[] = {
+	GETTER("pid", pyproc_get_pid),
+	GETTER(NULL, NULL),
+};
+
 static PyTypeObject pyproc_type = {
 	PyVarObject_HEAD_INIT(NULL, 0)
 	.tp_name = "kore.proc",
 	.tp_doc = "async process",
+	.tp_getset = pyproc_getset,
 	.tp_methods = pyproc_methods,
 	.tp_basicsize = sizeof(struct pyproc),
 	.tp_dealloc = (destructor)pyproc_dealloc,
