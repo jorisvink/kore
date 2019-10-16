@@ -155,7 +155,9 @@ kore_keymgr_run(void)
 	kore_seccomp_filter("keymgr", filter_keymgr,
 	    KORE_FILTER_LEN(filter_keymgr));
 #endif
-
+#if defined(KORE_USE_PYTHON)
+	kore_msg_unregister(KORE_PYTHON_SEND_OBJ);
+#endif
 	kore_worker_privdrop(keymgr_runas_user, keymgr_root_path);
 
 	if (rand_file != NULL) {

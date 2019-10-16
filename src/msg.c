@@ -28,8 +28,6 @@ struct msg_type {
 	TAILQ_ENTRY(msg_type)	list;
 };
 
-TAILQ_HEAD(, msg_type)		msg_types;
-
 static struct msg_type	*msg_type_lookup(u_int8_t);
 static int		msg_recv_packet(struct netbuf *);
 static int		msg_recv_data(struct netbuf *);
@@ -41,9 +39,18 @@ static void		msg_type_shutdown(struct kore_msg *, const void *);
 static void		msg_type_websocket(struct kore_msg *, const void *);
 #endif
 
+static TAILQ_HEAD(, msg_type)	msg_types;
+static int			cacheidx = 0;
+static struct connection	*conncache[KORE_WORKER_MAX];
+
 void
 kore_msg_init(void)
 {
+	int		i;
+
+	for (i = 0; i < KORE_WORKER_MAX; i++)
+		conncache[i] = NULL;
+
 	TAILQ_INIT(&msg_types);
 }
 
@@ -75,6 +82,11 @@ kore_msg_parent_add(struct kore_worker *kw)
 	kw->msg[0]->hdlr_extra = &kw->id;
 	kw->msg[0]->disconnect = msg_disconnected_worker;
 	kw->msg[0]->handle = kore_connection_handle;
+
+	if (cacheidx >= KORE_WORKER_MAX)
+		fatal("%s: too many workers", __func__);
+
+	conncache[cacheidx++] = kw->msg[0];
 
 	TAILQ_INSERT_TAIL(&connections, kw->msg[0], list);
 	kore_platform_event_all(kw->msg[0]->fd, kw->msg[0]);
@@ -112,6 +124,18 @@ kore_msg_worker_init(void)
 
 	net_recv_queue(worker->msg[1],
 	    sizeof(struct kore_msg), 0, msg_recv_packet);
+}
+
+void
+kore_msg_unregister(u_int8_t id)
+{
+	struct msg_type		*type;
+
+	if ((type = msg_type_lookup(id)) == NULL)
+		return;
+
+	TAILQ_REMOVE(&msg_types, type, list);
+	kore_free(type);
 }
 
 int
@@ -164,7 +188,9 @@ static int
 msg_recv_data(struct netbuf *nb)
 {
 	struct connection	*c;
+	u_int8_t		dst;
 	struct msg_type		*type;
+	int			deliver, i;
 	u_int16_t		destination;
 	struct kore_msg		*msg = (struct kore_msg *)nb->buf;
 
@@ -182,12 +208,24 @@ msg_recv_data(struct netbuf *nb)
 
 	if (worker == NULL && type == NULL) {
 		destination = msg->dst;
-		TAILQ_FOREACH(c, &connections, list) {
+
+		for (i = 0; conncache[i] != NULL; i++) {
+			c = conncache[i];
 			if (c->proto != CONN_PROTO_MSG || c->hdlr_extra == NULL)
 				continue;
 
-			if (destination != KORE_MSG_WORKER_ALL &&
-			    *(u_int8_t *)c->hdlr_extra != destination)
+			deliver = 1;
+			dst = *(u_int8_t *)c->hdlr_extra;
+
+			if (destination == KORE_MSG_WORKER_ALL) {
+				if (keymgr_active && dst == 0)
+					deliver = 0;
+			} else {
+				if (dst != destination)
+					deliver = 0;
+			}
+
+			if (deliver == 0)
 				continue;
 
 			/* This allows the worker to receive the correct id. */

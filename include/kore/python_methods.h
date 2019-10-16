@@ -55,7 +55,8 @@ static PyObject		*python_kore_task_create(PyObject *, PyObject *);
 static PyObject		*python_kore_socket_wrap(PyObject *, PyObject *);
 static PyObject		*python_kore_domain(PyObject *, PyObject *, PyObject *);
 static PyObject		*python_kore_gather(PyObject *, PyObject *, PyObject *);
-
+static PyObject		*python_kore_sendobj(PyObject *, PyObject *,
+			    PyObject *);
 static PyObject		*python_kore_server(PyObject *, PyObject *,
 			    PyObject *);
 
@@ -100,6 +101,7 @@ static struct PyMethodDef pykore_methods[] = {
 	METHOD("server", python_kore_server, METH_VARARGS | METH_KEYWORDS),
 	METHOD("gather", python_kore_gather, METH_VARARGS | METH_KEYWORDS),
 	METHOD("domain", python_kore_domain, METH_VARARGS | METH_KEYWORDS),
+	METHOD("sendobj", python_kore_sendobj, METH_VARARGS | METH_KEYWORDS),
 	METHOD("websocket_broadcast", python_websocket_broadcast, METH_VARARGS),
 #if defined(KORE_USE_PGSQL)
 	METHOD("dbsetup", python_kore_pgsql_register, METH_VARARGS),

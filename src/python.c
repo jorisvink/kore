@@ -56,6 +56,7 @@ static PyObject		*python_import(const char *);
 static PyObject		*pyconnection_alloc(struct connection *);
 static PyObject		*python_callable(PyObject *, const char *);
 static void		python_split_arguments(char *, char **, size_t);
+static void		python_kore_recvobj(struct kore_msg *, const void *);
 
 static const char	*python_string_from_dict(PyObject *, const char *);
 static int		python_bool_from_dict(PyObject *, const char *, int *);
@@ -255,9 +256,13 @@ static struct coro_list			coro_suspended;
 
 extern const char *__progname;
 
+static PyObject		*pickle = NULL;
+static PyObject		*pickle_dumps = NULL;
+static PyObject		*pickle_loads = NULL;
+static PyObject		*python_tracer = NULL;
+
 /* XXX */
 static struct python_coro		*coro_running = NULL;
-static PyObject				*python_tracer = NULL;
 
 #if !defined(KORE_SINGLE_BINARY)
 const char	*kore_pymodule = NULL;
@@ -296,6 +301,8 @@ kore_python_init(void)
 	PyMem_SetAllocator(PYMEM_DOMAIN_RAW, &allocator);
 	PyMem_SetupDebugHooks();
 
+	kore_msg_register(KORE_PYTHON_SEND_OBJ, python_kore_recvobj);
+
 	if (PyImport_AppendInittab("kore", &python_module_init) == -1)
 		fatal("kore_python_init: failed to add new module");
 
@@ -306,6 +313,15 @@ kore_python_init(void)
 	}
 
 	Py_InitializeEx(0);
+
+	if ((pickle = PyImport_ImportModule("pickle")) == NULL)
+		fatal("failed to import pickle module");
+
+	if ((pickle_dumps = PyObject_GetAttrString(pickle, "dumps")) == NULL)
+		fatal("pickle module has no dumps method");
+
+	if ((pickle_loads = PyObject_GetAttrString(pickle, "loads")) == NULL)
+		fatal("pickle module has no loads method");
 
 #if defined(__linux__)
 	kore_seccomp_filter("python", filter_python,
@@ -2053,6 +2069,83 @@ python_kore_setname(PyObject *self, PyObject *args)
 	kore_progname = kore_strdup(name);
 
 	Py_RETURN_NONE;
+}
+
+static PyObject *
+python_kore_sendobj(PyObject *self, PyObject *args, PyObject *kwargs)
+{
+	long		val;
+	u_int16_t	dst;
+	char		*ptr;
+	Py_ssize_t	length;
+	PyObject	*object, *bytes;
+
+	if (!PyArg_ParseTuple(args, "O", &object))
+		return (NULL);
+
+	bytes = PyObject_CallFunctionObjArgs(pickle_dumps, object, NULL);
+	if (bytes == NULL)
+		return (NULL);
+
+	if (PyBytes_AsStringAndSize(bytes, &ptr, &length) == -1) {
+		Py_DECREF(bytes);
+		return (NULL);
+	}
+
+	dst = KORE_MSG_WORKER_ALL;
+
+	if (kwargs != NULL) {
+		if (python_long_from_dict(kwargs, "worker", &val)) {
+			if (val <= 0 || val > worker_count ||
+			    val >= KORE_WORKER_MAX) {
+				PyErr_Format(PyExc_RuntimeError,
+				    "worker %ld invalid", val);
+				Py_DECREF(bytes);
+				return (NULL);
+			}
+
+			dst = val;
+		}
+	}
+
+	kore_msg_send(dst, KORE_PYTHON_SEND_OBJ, ptr, length);
+	Py_DECREF(bytes);
+
+	Py_RETURN_NONE;
+}
+
+static void
+python_kore_recvobj(struct kore_msg *msg, const void *data)
+{
+	struct kore_runtime	*rt;
+	PyObject		*onmsg, *ret, *bytes, *obj;
+
+	if ((onmsg = kore_module_getsym("koreapp.onmsg", &rt)) == NULL)
+		return;
+
+	if (rt->type != KORE_RUNTIME_PYTHON)
+		return;
+
+	if ((bytes = PyBytes_FromStringAndSize(data, msg->length)) == NULL) {
+		Py_DECREF(onmsg);
+		kore_python_log_error("kore.recvobj");
+		return;
+	}
+
+	obj = PyObject_CallFunctionObjArgs(pickle_loads, bytes, NULL);
+	Py_DECREF(bytes);
+
+	if (obj == NULL) {
+		Py_DECREF(onmsg);
+		kore_python_log_error("kore.recvobj");
+		return;
+	}
+
+	ret = PyObject_CallFunctionObjArgs(onmsg, obj, NULL);
+
+	Py_DECREF(obj);
+	Py_DECREF(onmsg);
+	Py_XDECREF(ret);
 }
 
 static PyObject *

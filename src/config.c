@@ -1488,7 +1488,7 @@ configure_workers(char *option)
 {
 	int		err;
 
-	worker_count = kore_strtonum(option, 10, 1, 255, &err);
+	worker_count = kore_strtonum(option, 10, 1, KORE_WORKER_MAX, &err);
 	if (err != KORE_RESULT_OK) {
 		printf("%s is not a valid worker number\n", option);
 		return (KORE_RESULT_ERROR);

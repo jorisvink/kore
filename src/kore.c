@@ -243,6 +243,7 @@ main(int argc, char *argv[])
 
 	kore_platform_init();
 	kore_log_init();
+	kore_msg_init();
 #if !defined(KORE_NO_HTTP)
 	http_parent_init();
 #if defined(KORE_USE_CURL)
@@ -865,7 +866,6 @@ kore_server_start(int argc, char *argv[])
 	}
 
 	kore_platform_proctitle("[parent]");
-	kore_msg_init();
 	kore_worker_init();
 
 	/* Set worker_max_connections for kore_connection_init(). */
@@ -883,6 +883,10 @@ kore_server_start(int argc, char *argv[])
 	kore_timer_init();
 #if !defined(KORE_NO_HTTP)
 	kore_timer_add(kore_accesslog_run, 100, NULL, 0);
+#endif
+
+#if defined(KORE_USE_PYTHON)
+	kore_msg_unregister(KORE_PYTHON_SEND_OBJ);
 #endif
 
 	while (quit != 1) {

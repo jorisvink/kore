@@ -418,6 +418,8 @@ struct kore_alog_header {
 	u_int16_t		loglen;
 } __attribute__((packed));
 
+#define KORE_WORKER_MAX			UCHAR_MAX
+
 struct kore_worker {
 	u_int8_t			id;
 	u_int8_t			cpu;
@@ -512,6 +514,7 @@ struct kore_timer {
 #define KORE_MSG_CERTIFICATE_REQ	8
 #define KORE_MSG_CRL			9
 #define KORE_MSG_ACCEPT_AVAILABLE	10
+#define KORE_PYTHON_SEND_OBJ		11
 
 /* Predefined message targets. */
 #define KORE_MSG_PARENT		1000
@@ -743,6 +746,7 @@ void		kore_websocket_broadcast(struct connection *,
 void		kore_msg_init(void);
 void		kore_msg_worker_init(void);
 void		kore_msg_parent_init(void);
+void		kore_msg_unregister(u_int8_t);
 void		kore_msg_parent_add(struct kore_worker *);
 void		kore_msg_parent_remove(struct kore_worker *);
 void		kore_msg_send(u_int16_t, u_int8_t, const void *, size_t);
