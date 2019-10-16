@@ -23,8 +23,6 @@
 
 #include "kore.h"
 
-#define FILEREF_DEBUG	1
-
 /* cached filerefs expire after 30 seconds of inactivity. */
 #define FILEREF_EXPIRATION		(1000 * 30)
 
