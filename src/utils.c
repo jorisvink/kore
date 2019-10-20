@@ -239,7 +239,7 @@ kore_strtodouble(const char *str, long double min, long double max, int *err)
 
 	errno = 0;
 	d = strtod(str, &ep);
-	if (d == 0 || errno == ERANGE || str == ep || *ep != '\0') {
+	if (errno == ERANGE || str == ep || *ep != '\0') {
 		*err = KORE_RESULT_ERROR;
 		return (0);
 	}
