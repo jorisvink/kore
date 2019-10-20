@@ -287,6 +287,8 @@ json_item_free(struct kore_json_item *item)
 	default:
 		fatal("%s: unknown type %d", __func__, item->type);
 	}
+
+	kore_free(item);
 }
 
 static int
