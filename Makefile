@@ -15,8 +15,8 @@ PLATFORM=platform.h
 VERSION=src/version.c
 
 S_SRC=	src/kore.c src/buf.c src/config.c src/connection.c \
-	src/domain.c src/filemap.c src/fileref.c src/mem.c src/msg.c \
-	src/module.c src/net.c src/pool.c src/runtime.c src/timer.c \
+	src/domain.c src/filemap.c src/fileref.c src/json.c src/mem.c \
+	src/msg.c src/module.c src/net.c src/pool.c src/runtime.c src/timer.c \
 	src/utils.c src/worker.c src/keymgr.c $(VERSION)
 
 FEATURES=

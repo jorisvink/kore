@@ -464,6 +464,76 @@ struct kore_buf {
 	size_t			offset;
 };
 
+#define KORE_JSON_TYPE_OBJECT		1
+#define KORE_JSON_TYPE_ARRAY		2
+#define KORE_JSON_TYPE_STRING		3
+#define KORE_JSON_TYPE_NUMBER		4
+#define KORE_JSON_TYPE_LITERAL		5
+
+#define KORE_JSON_FALSE			0
+#define KORE_JSON_TRUE			1
+#define KORE_JSON_NULL			2
+
+#define KORE_JSON_DEPTH_MAX		10
+
+#define KORE_JSON_ERR_NONE		0
+#define KORE_JSON_ERR_INVALID_OBJECT	1
+#define KORE_JSON_ERR_INVALID_ARRAY	2
+#define KORE_JSON_ERR_INVALID_STRING	3
+#define KORE_JSON_ERR_INVALID_NUMBER	4
+#define KORE_JSON_ERR_INVALID_LITERAL	5
+#define KORE_JSON_ERR_DEPTH		6
+#define KORE_JSON_ERR_EOF		7
+#define KORE_JSON_ERR_INVALID_JSON	8
+#define KORE_JSON_ERR_INVALID_SEARCH	9
+#define KORE_JSON_ERR_NOT_FOUND		10
+#define KORE_JSON_ERR_TYPE_MISMATCH	11
+#define KORE_JSON_ERR_LAST		KORE_JSON_ERR_TYPE_MISMATCH
+
+#define kore_json_object(j, p)		\
+    kore_json_get(j, p, KORE_JSON_TYPE_OBJECT)
+
+#define kore_json_array(j, p)		\
+    kore_json_get(j, p, KORE_JSON_TYPE_ARRAY)
+
+#define kore_json_string(j, p)		\
+    kore_json_get(j, p, KORE_JSON_TYPE_STRING)
+
+#define kore_json_number(j, p)		\
+    kore_json_get(j, p, KORE_JSON_TYPE_NUMBER)
+
+#define kore_json_literal(j, p)		\
+    kore_json_get(j, p, KORE_JSON_TYPE_LITERAL)
+
+struct kore_json {
+	const u_int8_t			*data;
+	int				depth;
+	int				error;
+	size_t				length;
+	size_t				offset;
+
+	struct kore_buf			tmpbuf;
+	struct kore_json_item		*root;
+};
+
+struct kore_json_item {
+	int				type;
+	char				*name;
+	struct kore_json_item		*parent;
+
+	union {
+		TAILQ_HEAD(, kore_json_item)	items;
+		char				*string;
+		double				number;
+		int				literal;
+	} data;
+
+	int				(*parse)(struct kore_json *,
+					    struct kore_json_item *);
+
+	TAILQ_ENTRY(kore_json_item)	list;
+};
+
 struct kore_pool_region {
 	void				*start;
 	size_t				length;
@@ -873,6 +943,13 @@ void	kore_buf_appendf(struct kore_buf *, const char *, ...);
 void	kore_buf_appendv(struct kore_buf *, const char *, va_list);
 void	kore_buf_replace_string(struct kore_buf *,
 	    const char *, const void *, size_t);
+
+int	kore_json_parse(struct kore_json *);
+void	kore_json_cleanup(struct kore_json *);
+void	kore_json_init(struct kore_json *, const u_int8_t *, size_t);
+
+const char		*kore_json_strerror(struct kore_json *);
+struct kore_json_item	*kore_json_get(struct kore_json *, const char *, int);
 
 void	kore_keymgr_run(void);
 void	kore_keymgr_cleanup(int);
