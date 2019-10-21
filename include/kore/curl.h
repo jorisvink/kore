@@ -31,6 +31,9 @@ extern "C" {
 #define KORE_CURL_FLAG_HTTP_PARSED_HEADERS	0x0001
 #define KORE_CURL_FLAG_BOUND			0x0002
 
+#define KORE_CURL_SYNC				0x1000
+#define KORE_CURL_ASYNC				0x2000
+
 #define KORE_CURL_TYPE_CUSTOM			1
 #define KORE_CURL_TYPE_HTTP_CLIENT		2
 
@@ -71,8 +74,9 @@ void	kore_curl_do_timeout(void);
 void	kore_curl_run(struct kore_curl *);
 void	kore_curl_cleanup(struct kore_curl *);
 int	kore_curl_success(struct kore_curl *);
+void	kore_curl_run_sync(struct kore_curl *);
 void	kore_curl_logerror(struct kore_curl *);
-int	kore_curl_init(struct kore_curl *, const char *);
+int	kore_curl_init(struct kore_curl *, const char *, int);
 
 size_t	kore_curl_tobuf(char *, size_t, size_t, void *);
 size_t	kore_curl_frombuf(char *, size_t, size_t, void *);

@@ -117,16 +117,25 @@ kore_curl_sysinit(void)
 }
 
 int
-kore_curl_init(struct kore_curl *client, const char *url)
+kore_curl_init(struct kore_curl *client, const char *url, int flags)
 {
 	CURL		*handle;
+
+	if ((flags & KORE_CURL_ASYNC) && (flags & KORE_CURL_SYNC)) {
+		(void)kore_strlcpy(client->errbuf, "invalid flags",
+		    sizeof(client->errbuf));
+		return (KORE_RESULT_ERROR);
+	}
 
 	memset(client, 0, sizeof(*client));
 
 	TAILQ_INIT(&client->http.resp_hdrs);
 
-	if ((handle = curl_easy_init()) == NULL)
+	if ((handle = curl_easy_init()) == NULL) {
+		(void)kore_strlcpy(client->errbuf, "failed to setup curl",
+		    sizeof(client->errbuf));
 		return (KORE_RESULT_ERROR);
+	}
 
 	curl_easy_setopt(handle, CURLOPT_WRITEDATA, &client->response);
 	curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, kore_curl_tobuf);
@@ -138,6 +147,7 @@ kore_curl_init(struct kore_curl *client, const char *url)
 	curl_easy_setopt(handle, CURLOPT_TIMEOUT, kore_curl_timeout);
 	curl_easy_setopt(handle, CURLOPT_ERRORBUFFER, client->errbuf);
 
+	client->flags = flags;
 	client->handle = handle;
 	client->url = kore_strdup(url);
 	client->type = KORE_CURL_TYPE_CUSTOM;
@@ -276,7 +286,18 @@ kore_curl_bind_callback(struct kore_curl *client,
 void
 kore_curl_run(struct kore_curl *client)
 {
-	curl_multi_add_handle(multi, client->handle);
+	if (client->flags & KORE_CURL_ASYNC) {
+		curl_multi_add_handle(multi, client->handle);
+		return;
+	}
+
+	client->result = curl_easy_perform(client->handle);
+
+	curl_easy_getinfo(client->handle,
+	    CURLINFO_RESPONSE_CODE, &client->http.status);
+
+	curl_easy_cleanup(client->handle);
+	client->handle = NULL;
 }
 
 int
