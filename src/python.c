@@ -5451,7 +5451,7 @@ pyhttp_client_request(struct pyhttp_client *client, int m, PyObject *kwargs)
 	if (op == NULL)
 		return (NULL);
 
-	if (!kore_curl_init(&op->curl, client->url)) {
+	if (!kore_curl_init(&op->curl, client->url, KORE_CURL_ASYNC)) {
 		Py_DECREF((PyObject *)op);
 		PyErr_SetString(PyExc_RuntimeError, "failed to setup call");
 		return (NULL);
