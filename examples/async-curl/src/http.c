@@ -62,7 +62,7 @@ state_setup(struct http_request *req)
 	client = http_state_create(req, sizeof(*client), NULL);
 
 	/* Initialize curl. */
-	if (!kore_curl_init(client, "https://kore.io")) {
+	if (!kore_curl_init(client, "https://kore.io", KORE_CURL_ASYNC)) {
 		http_response(req, 500, NULL, 0);
 		return (HTTP_STATE_COMPLETE);
 	}
