@@ -29,6 +29,7 @@ void		kore_python_preinit(void);
 void		kore_python_cleanup(void);
 void		kore_python_coro_run(void);
 void		kore_python_proc_reap(void);
+int		kore_python_coro_pending(void);
 void		kore_python_path(const char *);
 void		kore_python_coro_delete(void *);
 void		kore_python_log_error(const char *);

@@ -129,7 +129,7 @@ version(void)
 	printf("no-http ");
 #endif
 #if defined(KORE_USE_CURL)
-	printf("curl ");
+	printf("curl-%s ", LIBCURL_VERSION);
 #endif
 #if defined(KORE_USE_PGSQL)
 	printf("pgsql ");

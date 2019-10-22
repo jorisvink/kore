@@ -376,6 +376,14 @@ kore_python_coro_run(void)
 	 * to HTTP requests was awoken and only run if true?
 	 */
 	http_process();
+
+#if defined(KORE_USE_CURL)
+	/*
+	 * If a coroutine fired off an httpclient instance, immediately
+	 * let it make progress.
+	 */
+	kore_curl_do_timeout();
+#endif
 }
 
 void
@@ -401,6 +409,12 @@ kore_python_coro_delete(void *obj)
 	Py_XDECREF(coro->result);
 
 	kore_pool_put(&coro_pool, coro);
+}
+
+int
+kore_python_coro_pending(void)
+{
+	return (!TAILQ_EMPTY(&coro_runnable));
 }
 
 void

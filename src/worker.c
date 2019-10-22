@@ -416,10 +416,16 @@ kore_worker_entry(struct kore_worker *kw)
 
 		netwait = kore_timer_next_run(now);
 
+		if (netwait == KORE_WAIT_INFINITE) {
 #if !defined(KORE_NO_HTTP)
-		if (netwait == KORE_WAIT_INFINITE && http_request_count > 0)
-			netwait = 100;
+			if (http_request_count > 0)
+				netwait = 100;
 #endif
+#if defined(KORE_USE_PYTHON)
+			if (kore_python_coro_pending())
+				netwait = 10;
+#endif
+		}
 
 		kore_platform_event_wait(netwait);
 		now = kore_time_ms();
@@ -468,9 +474,6 @@ kore_worker_entry(struct kore_worker *kw)
 #endif
 #if defined(KORE_USE_PYTHON)
 		kore_python_coro_run();
-#endif
-#if defined(KORE_USE_CURL)
-		kore_curl_do_timeout();
 #endif
 		if (next_prune <= now) {
 			kore_connection_check_timeout(now);
