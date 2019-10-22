@@ -39,7 +39,6 @@ static int	json_parse_string(struct kore_json *, struct kore_json_item *);
 static int	json_parse_number(struct kore_json *, struct kore_json_item *);
 static int	json_parse_literal(struct kore_json *, struct kore_json_item *);
 
-static void 			json_item_free(struct kore_json_item *);
 static struct kore_json_item	*json_item_alloc(int, const char *,
 				    struct kore_json_item *);
 static struct kore_json_item	*json_find_item(struct kore_json *,
@@ -92,7 +91,7 @@ kore_json_parse(struct kore_json *json)
 		return (KORE_RESULT_ERROR);
 	}
 
-	json->root = json_item_alloc(type, "<root>", NULL);
+	json->root = json_item_alloc(type, NULL, NULL);
 
 	if (!json->root->parse(json, json->root)) {
 		if (json->error == 0)
@@ -104,7 +103,7 @@ kore_json_parse(struct kore_json *json)
 }
 
 struct kore_json_item *
-kore_json_get(struct kore_json *json, const char *path, int type)
+kore_json_find(struct kore_json *json, const char *path, int type)
 {
 	struct kore_json_item	*item;
 	char			*copy;
@@ -131,7 +130,7 @@ void
 kore_json_cleanup(struct kore_json *json)
 {
 	kore_buf_cleanup(&json->tmpbuf);
-	json_item_free(json->root);
+	kore_json_item_free(json->root);
 }
 
 const char *
@@ -141,6 +140,117 @@ kore_json_strerror(struct kore_json *json)
 		return (json_errtab[json->error]);
 
 	return ("unknown JSON error");
+}
+
+struct kore_json_item *
+kore_json_create_item(struct kore_json_item *parent, const char *name,
+    int type, ...)
+{
+	const char			*p;
+	va_list				args;
+	struct kore_json_item		*item;
+
+	item = kore_calloc(1, sizeof(*item));
+	item->type = type;
+
+	va_start(args, type);
+
+	switch (item->type) {
+	case KORE_JSON_TYPE_OBJECT:
+		TAILQ_INIT(&item->data.items);
+		break;
+	case KORE_JSON_TYPE_ARRAY:
+		TAILQ_INIT(&item->data.items);
+		break;
+	case KORE_JSON_TYPE_STRING:
+		p = va_arg(args, const char *);
+		item->data.string = kore_strdup(p);
+		break;
+	case KORE_JSON_TYPE_NUMBER:
+		item->data.number = va_arg(args, double);
+		break;
+	case KORE_JSON_TYPE_LITERAL:
+		item->data.literal = va_arg(args, int);
+		break;
+	default:
+		fatal("%s: unknown type %d", __func__, item->type);
+	}
+
+	if (name)
+		item->name = kore_strdup(name);
+
+	if (parent) {
+		if (parent->type != KORE_JSON_TYPE_OBJECT &&
+		    parent->type != KORE_JSON_TYPE_ARRAY) {
+			fatal("%s: invalid parent type (%d)",
+			    __func__, parent->type);
+		}
+
+		TAILQ_INSERT_TAIL(&parent->data.items, item, list);
+	}
+
+	va_end(args);
+
+	return (item);
+}
+
+void
+kore_json_item_tobuf(struct kore_json_item *item, struct kore_buf *buf)
+{
+	struct kore_json_item	*nitem;
+
+	if (item->name)
+		kore_buf_appendf(buf, "\"%s\":", item->name);
+
+	switch (item->type) {
+	case KORE_JSON_TYPE_OBJECT:
+		kore_buf_appendf(buf, "{");
+		TAILQ_FOREACH(nitem, &item->data.items, list) {
+			kore_json_item_tobuf(nitem, buf);
+
+			if (TAILQ_NEXT(nitem, list))
+				kore_buf_appendf(buf, ",");
+		}
+		kore_buf_appendf(buf, "}");
+		break;
+	case KORE_JSON_TYPE_ARRAY:
+		kore_buf_appendf(buf, "[");
+		TAILQ_FOREACH(nitem, &item->data.items, list) {
+			kore_json_item_tobuf(nitem, buf);
+
+			if (TAILQ_NEXT(nitem, list))
+				kore_buf_appendf(buf, ",");
+		}
+		kore_buf_appendf(buf, "]");
+		break;
+	case KORE_JSON_TYPE_STRING:
+		kore_buf_appendf(buf, "\"%s\"", item->data.string);
+		break;
+	case KORE_JSON_TYPE_NUMBER:
+		kore_buf_appendf(buf, "%f", item->data.number);
+		break;
+	case KORE_JSON_TYPE_LITERAL:
+		switch (item->data.literal) {
+		case KORE_JSON_TRUE:
+			kore_buf_append(buf,
+			    json_true_literal, sizeof(json_true_literal));
+			break;
+		case KORE_JSON_FALSE:
+			kore_buf_append(buf,
+			    json_false_literal, sizeof(json_false_literal));
+			break;
+		case KORE_JSON_NULL:
+			kore_buf_append(buf,
+			    json_null_literal, sizeof(json_null_literal));
+			break;
+		default:
+			fatal("%s: unknown literal %d", __func__,
+			    item->data.literal);
+		}
+		break;
+	default:
+		fatal("%s: unknown type %d", __func__, item->type);
+	}
 }
 
 static struct kore_json_item *
@@ -218,6 +328,33 @@ json_find_item(struct kore_json *json, struct kore_json_item *object,
 	return (item);
 }
 
+void
+kore_json_item_free(struct kore_json_item *item)
+{
+	struct kore_json_item	*node;
+
+	switch (item->type) {
+	case KORE_JSON_TYPE_OBJECT:
+	case KORE_JSON_TYPE_ARRAY:
+		while ((node = TAILQ_FIRST(&item->data.items)) != NULL) {
+			TAILQ_REMOVE(&item->data.items, node, list);
+			kore_json_item_free(node);
+		}
+		break;
+	case KORE_JSON_TYPE_STRING:
+		kore_free(item->data.string);
+		break;
+	case KORE_JSON_TYPE_NUMBER:
+	case KORE_JSON_TYPE_LITERAL:
+		break;
+	default:
+		fatal("%s: unknown type %d", __func__, item->type);
+	}
+
+	kore_free(item->name);
+	kore_free(item);
+}
+
 static struct kore_json_item *
 json_item_alloc(int type, const char *name, struct kore_json_item *parent)
 {
@@ -263,33 +400,6 @@ json_item_alloc(int type, const char *name, struct kore_json_item *parent)
 	}
 
 	return (item);
-}
-
-static void
-json_item_free(struct kore_json_item *item)
-{
-	struct kore_json_item	*node;
-
-	switch (item->type) {
-	case KORE_JSON_TYPE_OBJECT:
-	case KORE_JSON_TYPE_ARRAY:
-		while ((node = TAILQ_FIRST(&item->data.items)) != NULL) {
-			TAILQ_REMOVE(&item->data.items, node, list);
-			json_item_free(node);
-		}
-		break;
-	case KORE_JSON_TYPE_STRING:
-		kore_free(item->data.string);
-		break;
-	case KORE_JSON_TYPE_NUMBER:
-	case KORE_JSON_TYPE_LITERAL:
-		break;
-	default:
-		fatal("%s: unknown type %d", __func__, item->type);
-	}
-
-	kore_free(item->name);
-	kore_free(item);
 }
 
 static int

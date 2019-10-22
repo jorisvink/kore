@@ -490,20 +490,35 @@ struct kore_buf {
 #define KORE_JSON_ERR_TYPE_MISMATCH	11
 #define KORE_JSON_ERR_LAST		KORE_JSON_ERR_TYPE_MISMATCH
 
-#define kore_json_object(j, p)		\
-    kore_json_get(j, p, KORE_JSON_TYPE_OBJECT)
+#define kore_json_find_object(j, p)		\
+    kore_json_find(j, p, KORE_JSON_TYPE_OBJECT)
 
-#define kore_json_array(j, p)		\
-    kore_json_get(j, p, KORE_JSON_TYPE_ARRAY)
+#define kore_json_find_array(j, p)		\
+    kore_json_find(j, p, KORE_JSON_TYPE_ARRAY)
 
-#define kore_json_string(j, p)		\
-    kore_json_get(j, p, KORE_JSON_TYPE_STRING)
+#define kore_json_find_string(j, p)		\
+    kore_json_find(j, p, KORE_JSON_TYPE_STRING)
 
-#define kore_json_number(j, p)		\
-    kore_json_get(j, p, KORE_JSON_TYPE_NUMBER)
+#define kore_json_find_number(j, p)		\
+    kore_json_find(j, p, KORE_JSON_TYPE_NUMBER)
 
-#define kore_json_literal(j, p)		\
-    kore_json_get(j, p, KORE_JSON_TYPE_LITERAL)
+#define kore_json_find_literal(j, p)		\
+    kore_json_find(j, p, KORE_JSON_TYPE_LITERAL)
+
+#define kore_json_create_object(o, n)				\
+    kore_json_create_item(o, n, KORE_JSON_TYPE_OBJECT)
+
+#define kore_json_create_array(o, n)				\
+    kore_json_create_item(o, n, KORE_JSON_TYPE_ARRAY)
+
+#define kore_json_create_string(o, n, v)			\
+    kore_json_create_item(o, n, KORE_JSON_TYPE_STRING, v)
+
+#define kore_json_create_number(o, n, v)			\
+    kore_json_create_item(o, n, KORE_JSON_TYPE_NUMBER, v)
+
+#define kore_json_create_literal(o, n, v)			\
+    kore_json_create_item(o, n, KORE_JSON_TYPE_LITERAL, v)
 
 struct kore_json {
 	const u_int8_t			*data;
@@ -946,10 +961,14 @@ void	kore_buf_replace_string(struct kore_buf *,
 
 int	kore_json_parse(struct kore_json *);
 void	kore_json_cleanup(struct kore_json *);
+void	kore_json_item_free(struct kore_json_item *);
 void	kore_json_init(struct kore_json *, const u_int8_t *, size_t);
+void	kore_json_item_tobuf(struct kore_json_item *, struct kore_buf *);
 
 const char		*kore_json_strerror(struct kore_json *);
-struct kore_json_item	*kore_json_get(struct kore_json *, const char *, int);
+struct kore_json_item	*kore_json_find(struct kore_json *, const char *, int);
+struct kore_json_item	*kore_json_create_item(struct kore_json_item *,
+			    const char *, int, ...);
 
 void	kore_keymgr_run(void);
 void	kore_keymgr_cleanup(int);
