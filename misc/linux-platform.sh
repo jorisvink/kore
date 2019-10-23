@@ -9,15 +9,16 @@
 # Not the hottest stuff to be honest..
 
 PLATFORM=$(uname -m)
+BASE=$(dirname $0)
 
 case "$PLATFORM" in
 	x86_64*)
 		seccomp_audit_arch=AUDIT_ARCH_X86_64
-		syscall_file=linux/syscall_64.tbl
+		syscall_file=$BASE/linux/syscall_64.tbl
 		;;
 	i*86*)
 		seccomp_audit_arch=AUDIT_ARCH_I386
-		syscall_file=linux/syscall_32.tbl
+		syscall_file=$BASE/linux/syscall_32.tbl
 		;;
 	arm*)
 		seccomp_audit_arch=AUDIT_ARCH_ARM
