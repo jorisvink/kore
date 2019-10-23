@@ -35,10 +35,12 @@
 #include "python_api.h"
 #endif
 
+#if !defined(SECCOMP_KILL_POLICY)
 #if defined(KORE_DEBUG)
 #define SECCOMP_KILL_POLICY		SECCOMP_RET_TRAP
 #else
 #define SECCOMP_KILL_POLICY		SECCOMP_RET_KILL
+#endif
 #endif
 
 /*
