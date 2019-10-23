@@ -193,8 +193,11 @@ kore_curl_cleanup(struct kore_curl *client)
 void
 kore_curl_do_timeout(void)
 {
-	while (timeout_immediate)
+	while (timeout_immediate) {
 		curl_timeout(NULL, kore_time_ms());
+		if (running == 0)
+			curl_timer(multi, -1, NULL);
+	}
 }
 
 size_t
