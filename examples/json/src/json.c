@@ -32,12 +32,12 @@ page(struct http_request *req)
 	if (!kore_json_parse(&json)) {
 		kore_buf_appendf(&buf, "%s\n", kore_json_strerror(&json));
 	} else {
-		if ((item = kore_json_string(&json, "foo/bar")) != NULL) {
+		item = kore_json_find_string(json.root, "foo/bar");
+		if (item != NULL) {
 			kore_buf_appendf(&buf,
 			    "foo.bar = '%s'\n", item->data.string);
 		} else {
-			kore_buf_appendf(&buf, "%s\n",
-			    kore_json_strerror(&json));
+			kore_buf_appendf(&buf, "string foo.bar not found\n");
 		}
 	}
 

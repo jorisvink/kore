@@ -966,7 +966,8 @@ void	kore_json_init(struct kore_json *, const u_int8_t *, size_t);
 void	kore_json_item_tobuf(struct kore_json_item *, struct kore_buf *);
 
 const char		*kore_json_strerror(struct kore_json *);
-struct kore_json_item	*kore_json_find(struct kore_json *, const char *, int);
+struct kore_json_item	*kore_json_find(struct kore_json_item *,
+			    const char *, int);
 struct kore_json_item	*kore_json_create_item(struct kore_json_item *,
 			    const char *, int, ...);
 

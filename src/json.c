@@ -41,8 +41,8 @@ static int	json_parse_literal(struct kore_json *, struct kore_json_item *);
 
 static struct kore_json_item	*json_item_alloc(int, const char *,
 				    struct kore_json_item *);
-static struct kore_json_item	*json_find_item(struct kore_json *,
-				    struct kore_json_item *, char **, int, int);
+static struct kore_json_item	*json_find_item(struct kore_json_item *,
+				    char **, int, int);
 
 static u_int8_t		json_null_literal[] = { 'n', 'u', 'l', 'l' };
 static u_int8_t		json_true_literal[] = { 't', 'r', 'u', 'e' };
@@ -103,7 +103,7 @@ kore_json_parse(struct kore_json *json)
 }
 
 struct kore_json_item *
-kore_json_find(struct kore_json *json, const char *path, int type)
+kore_json_find(struct kore_json_item *root, const char *path, int type)
 {
 	struct kore_json_item	*item;
 	char			*copy;
@@ -116,12 +116,8 @@ kore_json_find(struct kore_json *json, const char *path, int type)
 		return (NULL);
 	}
 
-	json->error = 0;
-	item = json_find_item(json, json->root, tokens, type, 0);
+	item = json_find_item(root, tokens, type, 0);
 	kore_free(copy);
-
-	if (item == NULL && json->error == 0)
-		json->error = KORE_JSON_ERR_NOT_FOUND;
 
 	return (item);
 }
@@ -254,8 +250,7 @@ kore_json_item_tobuf(struct kore_json_item *item, struct kore_buf *buf)
 }
 
 static struct kore_json_item *
-json_find_item(struct kore_json *json, struct kore_json_item *object,
-    char **tokens, int type, int pos)
+json_find_item(struct kore_json_item *object, char **tokens, int type, int pos)
 {
 	char			*p, *str;
 	struct kore_json_item	*item, *nitem;
@@ -271,18 +266,14 @@ json_find_item(struct kore_json *json, struct kore_json_item *object,
 	if ((str = strchr(tokens[pos], '[')) != NULL) {
 		*(str)++ = '\0';
 
-		if ((p = strchr(str, ']')) == NULL) {
-			json->error = KORE_JSON_ERR_INVALID_SEARCH;
+		if ((p = strchr(str, ']')) == NULL)
 			return (NULL);
-		}
 
 		*p = '\0';
 
 		spot = kore_strtonum(str, 10, 0, USHRT_MAX, &err);
-		if (err != KORE_RESULT_OK) {
-			json->error = KORE_JSON_ERR_INVALID_SEARCH;
+		if (err != KORE_RESULT_OK)
 			return (NULL);
-		}
 	} else {
 		spot = -1;
 	}
@@ -310,14 +301,12 @@ json_find_item(struct kore_json *json, struct kore_json_item *object,
 		if (tokens[pos + 1] == NULL) {
 			if (item->type == type)
 				return (item);
-			json->error = KORE_JSON_ERR_TYPE_MISMATCH;
 			return (NULL);
 		}
 
 		if (item->type == KORE_JSON_TYPE_OBJECT ||
 		    item->type == KORE_JSON_TYPE_ARRAY) {
-			item = json_find_item(json,
-			    item, tokens, type, pos + 1);
+			item = json_find_item(item, tokens, type, pos + 1);
 		} else {
 			item = NULL;
 		}
