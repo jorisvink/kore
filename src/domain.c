@@ -49,7 +49,6 @@ static int			keymgr_response = 0;
 DH				*tls_dhparam = NULL;
 int				tls_version = KORE_TLS_VERSION_BOTH;
 
-static BIO	*domain_bio_mem(const void *, size_t);
 static int	domain_x509_verify(int, X509_STORE_CTX *);
 static X509	*domain_load_certificate_chain(SSL_CTX *, const void *, size_t);
 
@@ -68,7 +67,7 @@ static ECDSA_SIG	*keymgr_ecdsa_sign(const unsigned char *, int,
 #if defined(KORE_OPENSSL_NEWER_API)
 static RSA_METHOD	*keymgr_rsa_meth = NULL;
 static EC_KEY_METHOD	*keymgr_ec_meth = NULL;
-#elif !defined(LIBRESSL_VERSION_NUMBER)
+#else
 /*
  * Run own ecdsa_method data structure as OpenSSL has this in ecs_locl.h
  * and does not export this on systems.
@@ -428,7 +427,7 @@ kore_domain_crl_add(struct kore_domain *dom, const void *pem, size_t pemlen)
 	X509_STORE		*store;
 
 	ERR_clear_error();
-	in = domain_bio_mem(pem, pemlen);
+	in = BIO_new_mem_buf(pem, pemlen);
 
 	if ((store = SSL_CTX_get_cert_store(dom->ssl_ctx)) == NULL) {
 		BIO_free(in);
@@ -833,7 +832,7 @@ domain_load_certificate_chain(SSL_CTX *ctx, const void *data, size_t len)
 	X509		*x, *ca;
 
 	ERR_clear_error();
-	in = domain_bio_mem(data, len);
+	in = BIO_new_mem_buf(data, len);
 
 	if ((x = PEM_read_bio_X509_AUX(in, NULL, NULL, NULL)) == NULL)
 		fatal("PEM_read_bio_X509_AUX: %s", ssl_errno_s);
@@ -870,30 +869,4 @@ domain_load_certificate_chain(SSL_CTX *ctx, const void *data, size_t len)
 	BIO_free(in);
 
 	return (x);
-}
-
-/*
- * XXX - hack around LibreSSL < 2.8.0 its BIO_new_mem_buf() not taking
- * a const pointer for its first argument.
- *
- * Since we build with -Wcast-qual and -Werror I rather do this than having
- * a bunch of pragma preprocessor magic to remove the warnings for that code
- * if we're dealing with LibreSSL.
- */
-static BIO *
-domain_bio_mem(const void *data, size_t len)
-{
-	BIO					*in;
-	union { void *p; const void *cp; }	deconst;
-
-	/* because OpenSSL likes taking ints as memory buffer lengths. */
-	if (len > INT_MAX)
-		fatal("domain_bio_mem: len(%zu) > INT_MAX", len);
-
-	deconst.cp = data;
-
-	if ((in = BIO_new_mem_buf(deconst.p, len)) == NULL)
-		fatal("BIO_new_mem_buf: %s", ssl_errno_s);
-
-	return (in);
 }

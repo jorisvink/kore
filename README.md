@@ -53,7 +53,7 @@ Clone this repository or get the latest release at [https://kore.io/releases/3.2
 
 Requirements
 * openssl (1.0.2, 1.1.0 or 1.1.1)
-  (note: libressl 2.7.5+ works as a replacement)
+  (note: libressl 3.0.0+ works as a replacement)
 
 Requirement for asynchronous curl (optional)
 * libcurl
