@@ -41,11 +41,6 @@
 #define KORE_DOMAIN_CACHE	16
 #define SSL_SESSION_ID		"kore_ssl_sessionid"
 
-#if defined(LIBRESSL_VERSION_NUMBER) && LIBRESSL_VERSION_NUMBER >= 0x3000000fL
-#undef OPENSSL_VERSION_NUMBER
-#define OPENSSL_VERSION_NUMBER 0x10100000L
-#endif
-
 struct kore_domain		*primary_dom = NULL;
 
 static u_int8_t			keymgr_buf[2048];
@@ -54,6 +49,7 @@ static int			keymgr_response = 0;
 DH				*tls_dhparam = NULL;
 int				tls_version = KORE_TLS_VERSION_BOTH;
 
+static BIO	*domain_bio_mem(const void *, size_t);
 static int	domain_x509_verify(int, X509_STORE_CTX *);
 static X509	*domain_load_certificate_chain(SSL_CTX *, const void *, size_t);
 
@@ -69,10 +65,10 @@ static int	keymgr_rsa_privenc(int, const unsigned char *,
 static ECDSA_SIG	*keymgr_ecdsa_sign(const unsigned char *, int,
 			    const BIGNUM *, const BIGNUM *, EC_KEY *);
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+#if defined(KORE_OPENSSL_NEWER_API)
 static RSA_METHOD	*keymgr_rsa_meth = NULL;
 static EC_KEY_METHOD	*keymgr_ec_meth = NULL;
-#else
+#elif !defined(LIBRESSL_VERSION_NUMBER)
 /*
  * Run own ecdsa_method data structure as OpenSSL has this in ecs_locl.h
  * and does not export this on systems.
@@ -88,7 +84,9 @@ struct ecdsa_method {
 	int		flags;
 	char		*app_data;
 };
+#endif
 
+#if !defined(KORE_OPENSSL_NEWER_API)
 static ECDSA_METHOD	keymgr_ecdsa = {
 	"kore ECDSA keymgr method",
 	keymgr_ecdsa_sign,
@@ -114,7 +112,7 @@ static RSA_METHOD	keymgr_rsa = {
 	NULL,
 	NULL
 };
-#endif /* OPENSSL_VERSION_NUMBER */
+#endif
 
 static u_int16_t		domain_id = 0;
 static struct kore_domain	*cached[KORE_DOMAIN_CACHE];
@@ -127,7 +125,7 @@ kore_domain_init(void)
 	for (i = 0; i < KORE_DOMAIN_CACHE; i++)
 		cached[i] = NULL;
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+#if defined(KORE_OPENSSL_NEWER_API)
 	if (keymgr_rsa_meth == NULL) {
 		if ((keymgr_rsa_meth = RSA_meth_new("kore RSA keymgr method",
 		    RSA_METHOD_FLAG_NO_CHECK)) == NULL)
@@ -158,7 +156,7 @@ kore_domain_init(void)
 void
 kore_domain_cleanup(void)
 {
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+#if defined(KORE_OPENSSL_NEWER_API)
 	if (keymgr_rsa_meth != NULL) {
 		RSA_meth_free(keymgr_rsa_meth);
 		keymgr_rsa_meth = NULL;
@@ -267,7 +265,7 @@ kore_domain_tlsinit(struct kore_domain *dom, const void *pem, size_t pemlen)
 	STACK_OF(X509_NAME)	*certs;
 	EC_KEY			*eckey;
 	const SSL_METHOD	*method;
-#if OPENSSL_VERSION_NUMBER < 0x10100000L
+#if !defined(KORE_OPENSSL_NEWER_API)
 	EC_KEY			*ecdh;
 #endif
 
@@ -276,7 +274,7 @@ kore_domain_tlsinit(struct kore_domain *dom, const void *pem, size_t pemlen)
 	if (dom->ssl_ctx != NULL)
 		SSL_CTX_free(dom->ssl_ctx);
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+#if defined(KORE_OPENSSL_NEWER_API)
 	if ((method = TLS_method()) == NULL)
 		fatalx("TLS_method(): %s", ssl_errno_s);
 #else
@@ -295,7 +293,7 @@ kore_domain_tlsinit(struct kore_domain *dom, const void *pem, size_t pemlen)
 	if ((dom->ssl_ctx = SSL_CTX_new(method)) == NULL)
 		fatalx("SSL_ctx_new(): %s", ssl_errno_s);
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+#if defined(KORE_OPENSSL_NEWER_API)
 	if (!SSL_CTX_set_min_proto_version(dom->ssl_ctx, TLS1_2_VERSION))
 		fatalx("SSL_CTX_set_min_proto_version: %s", ssl_errno_s);
 
@@ -341,7 +339,7 @@ kore_domain_tlsinit(struct kore_domain *dom, const void *pem, size_t pemlen)
 		if ((rsa = EVP_PKEY_get1_RSA(pkey)) == NULL)
 			fatalx("no RSA public key present");
 		RSA_set_app_data(rsa, dom);
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+#if defined(KORE_OPENSSL_NEWER_API)
 		RSA_set_method(rsa, keymgr_rsa_meth);
 #else
 		RSA_set_method(rsa, &keymgr_rsa);
@@ -350,7 +348,7 @@ kore_domain_tlsinit(struct kore_domain *dom, const void *pem, size_t pemlen)
 	case EVP_PKEY_EC:
 		if ((eckey = EVP_PKEY_get1_EC_KEY(pkey)) == NULL)
 			fatalx("no EC public key present");
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+#if defined(KORE_OPENSSL_NEWER_API)
 		EC_KEY_set_ex_data(eckey, 0, dom);
 		EC_KEY_set_method(eckey, keymgr_ec_meth);
 #else
@@ -374,7 +372,7 @@ kore_domain_tlsinit(struct kore_domain *dom, const void *pem, size_t pemlen)
 	SSL_CTX_set_tmp_dh(dom->ssl_ctx, tls_dhparam);
 	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_SINGLE_DH_USE);
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+#if defined(KORE_OPENSSL_NEWER_API)
 	if (!SSL_CTX_set_ecdh_auto(dom->ssl_ctx, 1))
 		fatalx("SSL_CTX_set_ecdh_auto: %s", ssl_errno_s);
 #else
@@ -430,7 +428,7 @@ kore_domain_crl_add(struct kore_domain *dom, const void *pem, size_t pemlen)
 	X509_STORE		*store;
 
 	ERR_clear_error();
-	in = BIO_new_mem_buf(pem, pemlen);
+	in = domain_bio_mem(pem, pemlen);
 
 	if ((store = SSL_CTX_get_cert_store(dom->ssl_ctx)) == NULL) {
 		BIO_free(in);
@@ -560,7 +558,7 @@ keymgr_init(void)
 	if ((meth = RSA_get_default_method()) == NULL)
 		fatal("failed to obtain RSA method");
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+#if defined(KORE_OPENSSL_NEWER_API)
 	RSA_meth_set_pub_enc(keymgr_rsa_meth, RSA_meth_get_pub_enc(meth));
 	RSA_meth_set_pub_dec(keymgr_rsa_meth, RSA_meth_get_pub_dec(meth));
 	RSA_meth_set_bn_mod_exp(keymgr_rsa_meth, RSA_meth_get_bn_mod_exp(meth));
@@ -575,7 +573,7 @@ static int
 keymgr_rsa_init(RSA *rsa)
 {
 	if (rsa != NULL) {
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+#if defined(KORE_OPENSSL_NEWER_API)
 		RSA_set_flags(rsa, RSA_flags(rsa) |
 		    RSA_FLAG_EXT_PKEY | RSA_METHOD_FLAG_NO_CHECK);
 #else
@@ -657,7 +655,7 @@ keymgr_ecdsa_sign(const unsigned char *dgst, int dgst_len,
 	if (len > sizeof(keymgr_buf))
 		fatal("keymgr_buf too small");
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+#if defined(KORE_OPENSSL_NEWER_API)
 	if ((dom = EC_KEY_get_ex_data(eckey, 0)) == NULL)
 		fatal("EC_KEY has no domain");
 #else
@@ -835,7 +833,7 @@ domain_load_certificate_chain(SSL_CTX *ctx, const void *data, size_t len)
 	X509		*x, *ca;
 
 	ERR_clear_error();
-	in = BIO_new_mem_buf(data, len);
+	in = domain_bio_mem(data, len);
 
 	if ((x = PEM_read_bio_X509_AUX(in, NULL, NULL, NULL)) == NULL)
 		fatal("PEM_read_bio_X509_AUX: %s", ssl_errno_s);
@@ -844,13 +842,23 @@ domain_load_certificate_chain(SSL_CTX *ctx, const void *data, size_t len)
 	if (SSL_CTX_use_certificate(ctx, x) == 0)
 		fatal("SSL_CTX_use_certificate: %s", ssl_errno_s);
 
+#if defined(KORE_OPENSSL_NEWER_API)
 	SSL_CTX_clear_chain_certs(ctx);
+#else
+	sk_X509_pop_free(ctx->extra_certs, X509_free);
+	ctx->extra_certs = NULL;
+#endif
 
 	ERR_clear_error();
 	while ((ca = PEM_read_bio_X509(in, NULL, NULL, NULL)) != NULL) {
 		/* ca its reference count won't be increased. */
+#if defined(KORE_OPENSSL_NEWER_API)
 		if (SSL_CTX_add0_chain_cert(ctx, ca) == 0)
 			fatal("SSL_CTX_add0_chain_cert: %s", ssl_errno_s);
+#else
+		if (SSL_CTX_add_extra_chain_cert(ctx, ca) == 0)
+			fatal("SSL_CTX_add_extra_chain_cert: %s", ssl_errno_s);
+#endif
 	}
 
 	err = ERR_peek_last_error();
@@ -862,4 +870,30 @@ domain_load_certificate_chain(SSL_CTX *ctx, const void *data, size_t len)
 	BIO_free(in);
 
 	return (x);
+}
+
+/*
+ * XXX - hack around LibreSSL < 2.8.0 its BIO_new_mem_buf() not taking
+ * a const pointer for its first argument.
+ *
+ * Since we build with -Wcast-qual and -Werror I rather do this than having
+ * a bunch of pragma preprocessor magic to remove the warnings for that code
+ * if we're dealing with LibreSSL.
+ */
+static BIO *
+domain_bio_mem(const void *data, size_t len)
+{
+	BIO					*in;
+	union { void *p; const void *cp; }	deconst;
+
+	/* because OpenSSL likes taking ints as memory buffer lengths. */
+	if (len > INT_MAX)
+		fatal("domain_bio_mem: len(%zu) > INT_MAX", len);
+
+	deconst.cp = data;
+
+	if ((in = BIO_new_mem_buf(deconst.p, len)) == NULL)
+		fatal("BIO_new_mem_buf: %s", ssl_errno_s);
+
+	return (in);
 }

@@ -61,6 +61,19 @@ extern int daemon(int, int);
 #endif
 #endif
 
+/*
+ * Figure out what type of OpenSSL API we are dealing with.
+ */
+#if defined(LIBRESSL_VERSION_NUMBER)
+#if LIBRESSL_VERSION_NUMBER >= 0x3000000fL
+#define KORE_OPENSSL_NEWER_API		1
+#endif
+#else
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+#define KORE_OPENSSL_NEWER_API		1
+#endif
+#endif
+
 #if defined(__OpenBSD__)
 #define KORE_USE_PLATFORM_PLEDGE	1
 #endif

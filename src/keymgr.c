@@ -519,7 +519,7 @@ keymgr_rsa_encrypt(struct kore_msg *msg, const void *data, struct key *key)
 
 	req = (const struct kore_keyreq *)data;
 
-#if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
+#if defined(KORE_OPENSSL_NEWER_API)
 	rsa = EVP_PKEY_get0_RSA(key->pkey);
 #else
 	rsa = key->pkey->pkey.rsa;
@@ -546,7 +546,7 @@ keymgr_ecdsa_sign(struct kore_msg *msg, const void *data, struct key *key)
 	u_int8_t			sig[1024];
 
 	req = (const struct kore_keyreq *)data;
-#if !defined(LIBRESSL_VERSION_TEXT) && OPENSSL_VERSION_NUMBER >= 0x10100000L
+#if defined(KORE_OPENSSL_NEWER_API)
 	ec = EVP_PKEY_get0_EC_KEY(key->pkey);
 #else
 	ec = key->pkey->pkey.ec;
