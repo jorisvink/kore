@@ -472,6 +472,7 @@ void
 kore_python_proc_reap(void)
 {
 	struct pyproc		*proc;
+	struct python_coro	*coro;
 	pid_t			child;
 	int			status;
 
@@ -507,10 +508,20 @@ kore_python_proc_reap(void)
 			proc->timer = NULL;
 		}
 
-		if (proc->coro->request != NULL)
-			http_request_wakeup(proc->coro->request);
+		/*
+		 * If someone is waiting on proc.reap() then wakeup that
+		 * coroutine, otherwise wakeup the coroutine that created
+		 * the process.
+		 */
+		if (proc->op != NULL)
+			coro = proc->op->coro;
 		else
-			python_coro_wakeup(proc->coro);
+			coro = proc->coro;
+
+		if (coro->request != NULL)
+			http_request_wakeup(coro->request);
+		else
+			python_coro_wakeup(coro);
 	}
 }
 
@@ -2289,6 +2300,7 @@ python_kore_proc(PyObject *self, PyObject *args)
 	}
 
 	proc->pid = -1;
+	proc->op = NULL;
 	proc->apid = -1;
 	proc->reaped = 0;
 	proc->status = 0;
@@ -3721,6 +3733,12 @@ pyproc_reap(struct pyproc *proc, PyObject *args)
 {
 	struct pyproc_op	*op;
 
+	if (proc->op != NULL) {
+		PyErr_Format(PyExc_RuntimeError,
+		    "process %d already being reaped", proc->apid);
+		return (NULL);
+	}
+
 	if (proc->timer != NULL) {
 		kore_timer_remove(proc->timer);
 		proc->timer = NULL;
@@ -3730,6 +3748,9 @@ pyproc_reap(struct pyproc *proc, PyObject *args)
 		return (NULL);
 
 	op->proc = proc;
+	op->coro = coro_running;
+
+	proc->op = op;
 
 	Py_INCREF((PyObject *)proc);
 

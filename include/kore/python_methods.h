@@ -518,6 +518,7 @@ struct pyproc {
 	pid_t			apid;
 	int			reaped;
 	int			status;
+	struct pyproc_op	*op;
 	struct pysocket		*in;
 	struct pysocket		*out;
 	struct python_coro	*coro;
@@ -563,6 +564,7 @@ static PyTypeObject pyproc_type = {
 struct pyproc_op {
 	PyObject_HEAD
 	struct pyproc		*proc;
+	struct python_coro	*coro;
 };
 
 static void	pyproc_op_dealloc(struct pyproc_op *);
