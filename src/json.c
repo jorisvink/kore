@@ -498,6 +498,7 @@ json_parse_object(struct kore_json *json, struct kore_json_item *object)
 
 		switch (ch) {
 		case '}':
+			json->offset++;
 			ret = KORE_RESULT_OK;
 			goto cleanup;
 		case '"':
@@ -589,6 +590,7 @@ json_parse_array(struct kore_json *json, struct kore_json_item *array)
 			goto cleanup;
 
 		if (ch == ']') {
+			json->offset++;
 			ret = KORE_RESULT_OK;
 			goto cleanup;
 		}
