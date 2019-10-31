@@ -17,7 +17,9 @@
 #include <sys/param.h>
 #include <sys/mman.h>
 #include <sys/epoll.h>
+#include <sys/ptrace.h>
 #include <sys/prctl.h>
+#include <sys/reg.h>
 #include <sys/syscall.h>
 
 #include <linux/seccomp.h>
@@ -36,11 +38,7 @@
 #endif
 
 #if !defined(SECCOMP_KILL_POLICY)
-#if defined(KORE_DEBUG)
-#define SECCOMP_KILL_POLICY		SECCOMP_RET_TRAP
-#else
 #define SECCOMP_KILL_POLICY		SECCOMP_RET_KILL
-#endif
 #endif
 
 /*
@@ -140,9 +138,7 @@ static struct sock_filter	*seccomp_filter_update(struct sock_filter *,
 #define filter_prologue_len	KORE_FILTER_LEN(filter_prologue)
 #define filter_epilogue_len	KORE_FILTER_LEN(filter_epilogue)
 
-#if defined(KORE_DEBUG)
-static void	seccomp_trap(int sig, siginfo_t *, void *);
-#endif
+static void	seccomp_register_violation(struct kore_worker *);
 
 struct filter {
 	char			*name;
@@ -153,6 +149,12 @@ struct filter {
 
 static TAILQ_HEAD(, filter)	filters;
 static struct filter		*ufilter = NULL;
+
+/*
+ * If enabled will instruct the parent process to ptrace its children and
+ * log any seccomp SECCOMP_RET_TRACE rule.
+ */
+int	kore_seccomp_tracing = 0;
 
 void
 kore_seccomp_init(void)
@@ -181,26 +183,20 @@ kore_seccomp_drop(void)
 void
 kore_seccomp_enable(void)
 {
-#if defined(KORE_DEBUG)
-	struct sigaction		sa;
-#endif
 	struct sock_filter		*sf;
 	struct sock_fprog		prog;
 	struct kore_runtime_call	*rcall;
 	struct filter			*filter;
 	size_t				prog_len, off, i;
 
-#if defined(KORE_DEBUG)
-	memset(&sa, 0, sizeof(sa));
-
-	sa.sa_flags = SA_SIGINFO;
-	sa.sa_sigaction = seccomp_trap;
-
-	if (sigfillset(&sa.sa_mask) == -1)
-		fatalx("sigfillset: %s", errno_s);
-	if (sigaction(SIGSYS, &sa, NULL) == -1)
-		fatalx("sigaction: %s", errno_s);
-#endif
+	/*
+	 * If kore_seccomp_tracing is turned on, set the default policy to
+	 * SECCOMP_RET_TRACE so we can log the system calls.
+	 */
+	if (kore_seccomp_tracing) {
+		filter_epilogue[0].k = SECCOMP_RET_TRACE;
+		kore_log(LOG_NOTICE, "seccomp tracing enabled");
+	}
 
 #if defined(KORE_USE_PYTHON)
 	ufilter = TAILQ_FIRST(&filters);
@@ -243,10 +239,6 @@ kore_seccomp_enable(void)
 	TAILQ_FOREACH(filter, &filters, list) {
 		for (i = 0; i < filter->instructions; i++)
 			sf[off++] = filter->prog[i];
-#if defined(KORE_DEBUG)
-			kore_log(LOG_INFO,
-			    "seccomp filter '%s' added", filter->name);
-#endif
 	}
 
 	for (i = 0; i < filter_epilogue_len; i++)
@@ -292,6 +284,55 @@ kore_seccomp_filter(const char *name, void *prog, size_t len)
 	return (KORE_RESULT_OK);
 }
 
+void
+kore_seccomp_traceme(void)
+{
+	if (kore_seccomp_tracing == 0)
+		return;
+
+	if (ptrace(PTRACE_TRACEME, 0, NULL, NULL) == -1)
+		fatalx("ptrace. %s", errno_s);
+	if (kill(worker->pid, SIGSTOP) == -1)
+		fatalx("kill: %s", errno_s);
+}
+
+int
+kore_seccomp_trace(struct kore_worker *kw, int status)
+{
+	if (kore_seccomp_tracing == 0)
+		return (KORE_RESULT_ERROR);
+
+	if (WIFSTOPPED(status) && WSTOPSIG(status) == SIGSTOP) {
+		if (kw->tracing == 0) {
+			kw->tracing = 1;
+			if (ptrace(PTRACE_SETOPTIONS, kw->pid, NULL,
+			    PTRACE_O_TRACESECCOMP) == -1)
+				fatal("ptrace: %s", errno_s);
+			if (ptrace(PTRACE_CONT, kw->pid, NULL, NULL) == -1)
+				fatal("ptrace: %s", errno_s);
+		}
+
+		return (KORE_RESULT_OK);
+	}
+
+	if (WIFSTOPPED(status) && WSTOPSIG(status) == SIGTRAP) {
+		if ((status >> 8) ==
+		    (SIGTRAP | (PTRACE_EVENT_SECCOMP << 8)))
+			seccomp_register_violation(kw);
+		if (ptrace(PTRACE_CONT, kw->pid, NULL, NULL) == -1)
+			fatal("ptrace: %s", errno_s);
+		return (KORE_RESULT_OK);
+	}
+
+	if (WIFSTOPPED(status) && kw->tracing) {
+		if (ptrace(PTRACE_CONT, kw->pid, NULL, WSTOPSIG(status)) == -1)
+			fatal("ptrace: %s", errno_s);
+		return (KORE_RESULT_OK);
+	}
+
+	return (KORE_RESULT_ERROR);
+}
+
 int
 kore_seccomp_syscall_resolve(const char *name)
 {
@@ -303,6 +344,19 @@ kore_seccomp_syscall_resolve(const char *name)
 	}
 
 	return (-1);
+}
+
+const char *
+kore_seccomp_syscall_name(long sysnr)
+{
+	int		i;
+
+	for (i = 0; kore_syscall_map[i].name != NULL; i++) {
+		if (kore_syscall_map[i].nr == sysnr)
+			return (kore_syscall_map[i].name);
+	}
+
+	return ("unknown");
 }
 
 struct sock_filter *
@@ -349,13 +403,18 @@ kore_seccomp_syscall_flag(const char *name, int action, int arg, int value)
 	return (seccomp_filter_update(filter, name, KORE_FILTER_LEN(filter)));
 }
 
-#if defined(KORE_DEBUG)
 static void
-seccomp_trap(int sig, siginfo_t *info, void *ucontext)
+seccomp_register_violation(struct kore_worker *kw)
 {
-	kore_log(LOG_INFO, "sandbox violation - syscall=%d", info->si_syscall);
+	long	sysnr;
+
+	if ((sysnr = ptrace(PTRACE_PEEKUSER, kw->pid,
+	    sizeof(long) * ORIG_RAX, NULL)) == -1)
+		fatal("ptrace: %s", errno_s);
+
+	kore_log(LOG_INFO, "seccomp violation, worker=%d, syscall=%s",
+	    kw->id, kore_seccomp_syscall_name(sysnr));
 }
-#endif
 
 static struct sock_filter *
 seccomp_filter_update(struct sock_filter *filter, const char *name, size_t elm)

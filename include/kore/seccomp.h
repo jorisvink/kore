@@ -158,12 +158,17 @@
 		    KORE_FILTER_LEN(_scfilt));			\
 	}
 
+extern int	kore_seccomp_tracing;
+
 void	kore_seccomp_init(void);
 void	kore_seccomp_drop(void);
 void	kore_seccomp_enable(void);
+void	kore_seccomp_traceme(void);
 int	kore_seccomp_syscall_resolve(const char *);
+int	kore_seccomp_trace(struct kore_worker *, int);
 int	kore_seccomp_filter(const char *, void *, size_t);
 
+const char		*kore_seccomp_syscall_name(long);
 struct sock_filter	*kore_seccomp_syscall_filter(const char *, int);
 struct sock_filter	*kore_seccomp_syscall_arg(const char *, int, int, int);
 struct sock_filter	*kore_seccomp_syscall_flag(const char *, int, int, int);

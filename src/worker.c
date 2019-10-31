@@ -51,6 +51,10 @@
 #include "curl.h"
 #endif
 
+#if defined(__linux__)
+#include "seccomp.h"
+#endif
+
 #if !defined(WAIT_ANY)
 #define WAIT_ANY		(-1)
 #endif
@@ -68,6 +72,7 @@ struct wlock {
 
 static int	worker_trylock(void);
 static void	worker_unlock(void);
+static void	worker_reaper(pid_t, int);
 
 static inline int	worker_acceptlock_obtain(void);
 static inline void	worker_acceptlock_release(void);
@@ -207,7 +212,19 @@ kore_worker_shutdown(void)
 				pid = waitpid(kw->pid, &status, 0);
 				if (pid == -1)
 					continue;
-				kw->pid = 0;
+
+#if defined(__linux__)
+				kore_seccomp_trace(kw, status);
+#endif
+
+				if (WIFEXITED(status)) {
+					kw->pid = 0;
+
+					if (!kore_quiet) {
+						kore_log(LOG_NOTICE,
+						    "worker %d exited", kw->id);
+					}
+				}
 			}
 		}
 
@@ -318,6 +335,10 @@ kore_worker_entry(struct kore_worker *kw)
 	u_int64_t			netwait, now, next_prune;
 
 	worker = kw;
+
+#if defined(__linux__)
+	kore_seccomp_traceme();
+#endif
 
 	(void)snprintf(buf, sizeof(buf), "[wrk %d]", kw->id);
 	if (kw->id == KORE_WORKER_KEYMGR)
@@ -488,6 +509,7 @@ kore_worker_entry(struct kore_worker *kw)
 		kore_free(rcall);
 	}
 
+	kore_msg_send(KORE_MSG_PARENT, KORE_MSG_SHUTDOWN, NULL, 0);
 	kore_server_cleanup();
 
 	kore_platform_event_cleanup();
@@ -516,10 +538,7 @@ kore_worker_entry(struct kore_worker *kw)
 void
 kore_worker_reap(void)
 {
-	u_int16_t		id;
 	pid_t			pid;
-	struct kore_worker	*kw;
-	const char		*func;
 	int			status;
 
 	for (;;) {
@@ -535,21 +554,53 @@ kore_worker_reap(void)
 			return;
 		}
 
-		break;
-	}
+		if (pid == 0)
+			return;
 
-	if (pid == 0)
+		worker_reaper(pid, status);
+	}
+}
+
+void
+kore_worker_make_busy(void)
+{
+	if (worker_count == WORKER_SOLO_COUNT || worker_no_lock == 1)
 		return;
+
+	if (worker->has_lock) {
+		worker_unlock();
+		worker->has_lock = 0;
+		kore_msg_send(KORE_MSG_WORKER_ALL,
+		    KORE_MSG_ACCEPT_AVAILABLE, NULL, 0);
+	}
+}
+
+static void
+worker_reaper(pid_t pid, int status)
+{
+	u_int16_t		id;
+	struct kore_worker	*kw;
+	const char		*func;
 
 	for (id = 0; id < worker_count; id++) {
 		kw = WORKER(id);
 		if (kw->pid != pid)
 			continue;
 
+#if defined(__linux__)
+		if (kore_seccomp_trace(kw, status))
+			break;
+#endif
+
 		if (!kore_quiet) {
 			kore_log(LOG_NOTICE,
 			    "worker %d (%d) exited with status %d",
 			    kw->id, pid, status);
+		}
+
+		if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+			kw->pid = 0;
+			break;
 		}
 
 		func = "none";
@@ -610,20 +661,6 @@ kore_worker_reap(void)
 		kore_msg_parent_add(kw);
 
 		break;
-	}
-}
-
-void
-kore_worker_make_busy(void)
-{
-	if (worker_count == WORKER_SOLO_COUNT || worker_no_lock == 1)
-		return;
-
-	if (worker->has_lock) {
-		worker_unlock();
-		worker->has_lock = 0;
-		kore_msg_send(KORE_MSG_WORKER_ALL,
-		    KORE_MSG_ACCEPT_AVAILABLE, NULL, 0);
 	}
 }
 

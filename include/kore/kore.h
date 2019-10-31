@@ -436,6 +436,9 @@ struct kore_alog_header {
 struct kore_worker {
 	u_int8_t			id;
 	u_int8_t			cpu;
+#if defined(__linux__)
+	int				tracing;
+#endif
 	pid_t				pid;
 	int				pipe[2];
 	struct connection		*msg[2];

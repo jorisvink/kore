@@ -45,6 +45,10 @@
 #include "curl.h"
 #endif
 
+#if defined(__linux__)
+#include "seccomp.h"
+#endif
+
 /* XXX - This is becoming a clusterfuck. Fix it. */
 
 static int		configure_load(char *);
@@ -142,6 +146,10 @@ static int		configure_curl_timeout(char *);
 static int		configure_curl_recv_max(char *);
 #endif
 
+#if defined(__linux__)
+static int		configure_seccomp_tracing(char *);
+#endif
+
 static struct {
 	const char		*name;
 	int			(*configure)(char *);
@@ -203,6 +211,9 @@ static struct {
 	{ "keymgr_root",		configure_keymgr_root },
 #if defined(KORE_USE_PLATFORM_PLEDGE)
 	{ "pledge",			configure_add_pledge },
+#endif
+#if defined(__linux__)
+	{ "seccomp_tracing",		configure_seccomp_tracing },
 #endif
 #if !defined(KORE_NO_HTTP)
 	{ "filemap_ext",		configure_filemap_ext },
@@ -1716,6 +1727,24 @@ configure_curl_timeout(char *option)
 	kore_curl_timeout = kore_strtonum(option, 10, 0, USHRT_MAX, &err);
 	if (err != KORE_RESULT_OK) {
 		printf("bad kore_curl_timeout value: %s\n", option);
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
+#endif
+
+#if defined(__linux__)
+static int
+configure_seccomp_tracing(char *opt)
+{
+	if (!strcmp(opt, "yes")) {
+		kore_seccomp_tracing = 1;
+	} else if (!strcmp(opt, "no")) {
+		kore_seccomp_tracing = 0;
+	} else {
+		printf("bad seccomp_tracing value: %s (expected yes|no)\n",
+		    opt);
 		return (KORE_RESULT_ERROR);
 	}
 
