@@ -1089,15 +1089,15 @@ cli_build_asset(char *fpath, struct dirent *dp)
 #if !defined(KODEV_MINIMAL)
 	SHA256_CTX		sctx;
 	int			i, len;
+	struct mime_type	*mime;
+	const char		*mime_type;
 	u_int8_t		digest[SHA256_DIGEST_LENGTH];
 	char			hash[(SHA256_DIGEST_LENGTH * 2) + 1];
 #endif
 	off_t			off;
 	void			*base;
-	struct mime_type	*mime;
 	struct buildopt		*bopt;
 	int			in, out;
-	const char		*mime_type;
 	char			*cpath, *ext, *opath, *p, *name;
 
 	bopt = cli_buildopt_default();
@@ -1192,7 +1192,6 @@ cli_build_asset(char *fpath, struct dirent *dp)
 		if (len == -1 || (size_t)len >= sizeof(hash))
 			fatal("failed to convert SHA256 digest to hex");
 	}
-#endif
 
 	mime = NULL;
 	TAILQ_FOREACH(mime, &mime_types, list) {
@@ -1204,6 +1203,7 @@ cli_build_asset(char *fpath, struct dirent *dp)
 		mime_type = mime->type;
 	else
 		mime_type = "text/plain";
+#endif
 
 	/* Add the meta data. */
 	cli_file_writef(out, "};\n\n");
