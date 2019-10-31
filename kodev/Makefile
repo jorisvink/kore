@@ -20,6 +20,11 @@ else
 	CFLAGS+=-O2
 endif
 
+ifneq ("$(MINIMAL)", "")
+	CFLAGS+=-DKODEV_MINIMAL
+	LDFLAGS=
+endif
+
 OSNAME=$(shell uname -s | sed -e 's/[-_].*//g' | tr A-Z a-z)
 ifeq ("$(OSNAME)", "darwin")
 	CFLAGS+=-I/opt/local/include/ -I/usr/local/opt/openssl/include

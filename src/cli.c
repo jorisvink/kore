@@ -22,9 +22,11 @@
 #include <sys/mman.h>
 #include <sys/time.h>
 
+#if !defined(KODEV_MINIMAL)
 #include <openssl/err.h>
 #include <openssl/pem.h>
 #include <openssl/x509v3.h>
+#endif
 
 #include <ctype.h>
 #include <errno.h>
@@ -141,7 +143,6 @@ static void		fatal(const char *, ...) __attribute__((noreturn));
 static void		cli_file_close(int);
 static void		cli_run_kore(void);
 static void		cli_run_kore_python(void);
-static void		cli_generate_certs(void);
 static void		cli_compile_kore(void *);
 static void		cli_link_application(void *);
 static void		cli_compile_source_file(void *);
@@ -164,7 +165,6 @@ static void		cli_write_asset(const char *, const char *,
 			    struct buildopt *);
 static void		cli_register_kore_file(char *, struct dirent *);
 static void		cli_register_source_file(char *, struct dirent *);
-static void		cli_file_create(const char *, const char *, size_t);
 static int		cli_file_requires_build(struct stat *, const char *);
 static void		cli_find_files(const char *,
 			    void (*cb)(char *, struct dirent *));
@@ -197,10 +197,11 @@ static void		cli_help(int, char **);
 static void		cli_info(int, char **);
 static void		cli_build(int, char **);
 static void		cli_clean(int, char **);
-static void		cli_create(int, char **);
 static void		cli_reload(int, char **);
 static void		cli_flavor(int, char **);
 
+#if !defined(KODEV_MINIMAL)
+static void		cli_create(int, char **);
 static void		cli_create_help(void);
 
 static void		file_create_src(void);
@@ -209,6 +210,10 @@ static void		file_create_gitignore(void);
 static void		file_create_python_src(void);
 static void		file_create_python_config(void);
 
+static void		cli_generate_certs(void);
+static void		cli_file_create(const char *, const char *, size_t);
+#endif
+
 static struct cmd cmds[] = {
 	{ "help",	"this help text",			cli_help },
 	{ "run",	"run an application (-fnr implied)",	cli_run },
@@ -216,11 +221,14 @@ static struct cmd cmds[] = {
 	{ "info",	"show info on kore on this system",	cli_info },
 	{ "build",	"build an application",			cli_build },
 	{ "clean",	"cleanup the build files",		cli_clean },
+#if !defined(KODEV_MINIMAL)
 	{ "create",	"create a new application skeleton",	cli_create },
+#endif
 	{ "flavor",	"switch between build flavors",		cli_flavor },
 	{ NULL,		NULL,					NULL }
 };
 
+#if !defined(KODEV_MINIMAL)
 static struct filegen gen_files[] = {
 	{ file_create_src },
 	{ file_create_config },
@@ -370,6 +378,8 @@ static const char *dh2048_data =
 
 static const char *gitignore = "*.o\n.flavor\n.objs\n%s.so\nassets.h\ncert\n";
 
+#endif /* !KODEV_MINIMAL */
+
 static int			s_fd = -1;
 static char			*appl = NULL;
 static int			run_after = 0;
@@ -399,6 +409,9 @@ usage(void)
 	int		i;
 
 	fprintf(stderr, "Usage: kodev [command]\n");
+#if defined(KODEV_MINIMAL)
+	fprintf(stderr, "minimal (only build commands supported)\n");
+#endif
 	fprintf(stderr, "\nAvailable commands:\n");
 
 	for (i = 0; cmds[i].name != NULL; i++)
@@ -457,6 +470,7 @@ cli_help(int argc, char **argv)
 	usage();
 }
 
+#if !defined(KODEV_MINIMAL)
 static void
 cli_create_help(void)
 {
@@ -529,6 +543,7 @@ cli_create(int argc, char **argv)
 	printf("WARNING: DO NOT USE THE GENERATED DH PARAMETERS "
 	    "AND CERTIFICATES IN PRODUCTION\n");
 }
+#endif
 
 static void
 cli_flavor(int argc, char **argv)
@@ -572,13 +587,17 @@ cli_flavor(int argc, char **argv)
 static void
 cli_build(int argc, char **argv)
 {
+#if !defined(KODEV_MINIMAL)
+	int			l;
+	char			*data;
+#endif
 	struct dirent		dp;
 	struct cfile		*cf;
 	struct buildopt		*bopt;
 	struct timeval		times[2];
 	char			*build_path;
-	int			requires_relink, l;
-	char			*sofile, *config, *data;
+	int			requires_relink;
+	char			*sofile, *config;
 	char			*assets_path, *p, *src_path;
 	char			pwd[PATH_MAX], *assets_header;
 
@@ -614,11 +633,14 @@ cli_build(int argc, char **argv)
 
 	cli_flavor_load();
 	bopt = cli_buildopt_new("_default");
+
+#if !defined(KODEV_MINIMAL)
 	if (!cli_file_exists(build_path)) {
 		l = cli_vasprintf(&data, build_data, appl);
 		cli_file_create("conf/build.conf", data, l);
 		free(data);
 	}
+#endif
 
 	cli_find_files(src_path, cli_register_source_file);
 	free(src_path);
@@ -695,6 +717,7 @@ cli_build(int argc, char **argv)
 
 	free(assets_header);
 
+#if !defined(KODEV_MINIMAL)
 	if (bopt->kore_flavor == NULL ||
 	    !strstr(bopt->kore_flavor, "NOTLS=1")) {
 		if (!cli_dir_exists("cert")) {
@@ -702,6 +725,7 @@ cli_build(int argc, char **argv)
 			cli_generate_certs();
 		}
 	}
+#endif
 
 	if (bopt->single_binary) {
 		requires_relink++;
@@ -817,6 +841,7 @@ cli_info(int argc, char **argv)
 	}
 }
 
+#if !defined(KODEV_MINIMAL)
 static void
 file_create_python_src(void)
 {
@@ -885,6 +910,7 @@ file_create_gitignore(void)
 	free(name);
 	free(data);
 }
+#endif
 
 static void
 cli_mkdir(const char *fpath, int mode)
@@ -1024,6 +1050,7 @@ cli_file_write(int fd, const void *buf, size_t len)
 	}
 }
 
+#if !defined(KODEV_MINIMAL)
 static void
 cli_file_create(const char *name, const char *data, size_t len)
 {
@@ -1035,6 +1062,7 @@ cli_file_create(const char *name, const char *data, size_t len)
 
 	printf("created %s\n", name);
 }
+#endif
 
 static void
 cli_write_asset(const char *n, const char *e, struct buildopt *bopt)
@@ -1042,7 +1070,10 @@ cli_write_asset(const char *n, const char *e, struct buildopt *bopt)
 	cli_file_writef(s_fd, "extern const u_int8_t asset_%s_%s[];\n", n, e);
 	cli_file_writef(s_fd, "extern const u_int32_t asset_len_%s_%s;\n", n, e);
 	cli_file_writef(s_fd, "extern const time_t asset_mtime_%s_%s;\n", n, e);
+
+#if !defined(KODEV_MINIMAL)
 	cli_file_writef(s_fd, "extern const char *asset_sha256_%s_%s;\n", n, e);
+#endif
 
 	if (bopt->flavor_nohttp == 0) {
 		cli_file_writef(s_fd,
@@ -1053,17 +1084,21 @@ cli_write_asset(const char *n, const char *e, struct buildopt *bopt)
 static void
 cli_build_asset(char *fpath, struct dirent *dp)
 {
+	u_int8_t		*d;
 	struct stat		st;
+#if !defined(KODEV_MINIMAL)
 	SHA256_CTX		sctx;
+	int			i, len;
+	u_int8_t		digest[SHA256_DIGEST_LENGTH];
+	char			hash[(SHA256_DIGEST_LENGTH * 2) + 1];
+#endif
 	off_t			off;
 	void			*base;
 	struct mime_type	*mime;
 	struct buildopt		*bopt;
+	int			in, out;
 	const char		*mime_type;
-	int			in, out, i, len;
-	u_int8_t		*d, digest[SHA256_DIGEST_LENGTH];
 	char			*cpath, *ext, *opath, *p, *name;
-	char			hash[(SHA256_DIGEST_LENGTH * 2) + 1];
 
 	bopt = cli_buildopt_default();
 
@@ -1145,6 +1180,7 @@ cli_build_asset(char *fpath, struct dirent *dp)
 	 */
 	cli_file_writef(out, "0x00");
 
+#if !defined(KODEV_MINIMAL)
 	/* Calculate the SHA256 digest of the contents. */
 	(void)SHA256_Init(&sctx);
 	(void)SHA256_Update(&sctx, base, st.st_size);
@@ -1156,6 +1192,7 @@ cli_build_asset(char *fpath, struct dirent *dp)
 		if (len == -1 || (size_t)len >= sizeof(hash))
 			fatal("failed to convert SHA256 digest to hex");
 	}
+#endif
 
 	mime = NULL;
 	TAILQ_FOREACH(mime, &mime_types, list) {
@@ -1176,6 +1213,7 @@ cli_build_asset(char *fpath, struct dirent *dp)
 	    "const time_t asset_mtime_%s_%s = %" PRI_TIME_T ";\n",
 	    name, ext, st.st_mtime);
 
+#if !defined(KODEV_MINIMAL)
 	if (bopt->flavor_nohttp == 0) {
 		cli_file_writef(out,
 		    "const char *asset_sha256_%s_%s = \"\\\"%s\\\"\";\n",
@@ -1183,6 +1221,7 @@ cli_build_asset(char *fpath, struct dirent *dp)
 		cli_file_writef(out, http_serveable_function,
 		    name, ext, name, ext, name, ext, name, ext, mime_type);
 	}
+#endif
 
 	/* Write the file symbols into assets.h so they can be used. */
 	cli_write_asset(name, ext, bopt);
@@ -1321,6 +1360,7 @@ cli_find_files(const char *path, void (*cb)(char *, struct dirent *))
 	closedir(d);
 }
 
+#if !defined(KODEV_MINIMAL)
 static void
 cli_generate_certs(void)
 {
@@ -1414,6 +1454,7 @@ cli_generate_certs(void)
 	EVP_PKEY_free(pkey);
 	X509_free(x509);
 }
+#endif
 
 static void
 cli_compile_source_file(void *arg)
