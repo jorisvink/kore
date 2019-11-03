@@ -185,10 +185,12 @@ kore_connection_check_timeout(u_int64_t now)
 		if (c->proto == CONN_PROTO_MSG)
 			continue;
 #if !defined(KORE_NO_HTTP)
-		if (!http_check_timeout(c, now))
-			continue;
-		if (!TAILQ_EMPTY(&c->http_requests))
-			continue;
+		if (c->state == CONN_STATE_ESTABLISHED) {
+			if (!http_check_timeout(c, now))
+				continue;
+			if (!TAILQ_EMPTY(&c->http_requests))
+				continue;
+		}
 #endif
 		if (c->flags & CONN_IDLE_TIMER_ACT)
 			kore_connection_check_idletimer(now, c);
