@@ -114,6 +114,9 @@ kore_curl_sysinit(void)
 #if defined(__linux__)
 	kore_seccomp_filter("curl", filter_curl, KORE_FILTER_LEN(filter_curl));
 #endif
+#if defined(KORE_USE_PLATFORM_PLEDGE)
+	kore_platform_add_pledge("dns");
+#endif
 }
 
 int
