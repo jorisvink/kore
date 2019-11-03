@@ -42,7 +42,7 @@ static struct kevent		*events = NULL;
 static u_int32_t		event_count = 0;
 
 #if defined(KORE_USE_PLATFORM_PLEDGE)
-static char	pledges[256] = { "stdio rpath inet error" };
+static char	pledges[256] = { "stdio rpath inet" };
 #endif
 
 void
