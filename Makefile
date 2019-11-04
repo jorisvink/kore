@@ -29,7 +29,7 @@ CFLAGS+=-DPREFIX='"$(PREFIX)"' -fstack-protector-all
 
 ifneq ("$(OPENSSL_PATH)", "")
 CFLAGS+=-I$(OPENSSL_PATH)/include
-LDFLAGS=-rdynamic -L$(OPENSSL_PATH) -lssl -l$(KORE_CRYPTO)
+LDFLAGS=-rdynamic -L$(OPENSSL_PATH)/lib -lssl -l$(KORE_CRYPTO)
 else
 LDFLAGS=-rdynamic -lssl -l$(KORE_CRYPTO)
 endif
