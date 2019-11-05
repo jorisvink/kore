@@ -19,7 +19,7 @@
 #include <sys/epoll.h>
 #include <sys/ptrace.h>
 #include <sys/prctl.h>
-#include <sys/reg.h>
+#include <sys/user.h>
 #include <sys/syscall.h>
 
 #include <linux/seccomp.h>
@@ -50,21 +50,33 @@ static struct sock_filter filter_kore[] = {
 	KORE_SYSCALL_DENY(ioctl, EACCES),
 
 	/* File related. */
+#if defined(SYS_open)
 	KORE_SYSCALL_ALLOW(open),
+#endif
 	KORE_SYSCALL_ALLOW(read),
+#if defined(SYS_stat)
 	KORE_SYSCALL_ALLOW(stat),
+#endif
+#if defined(SYS_lstat)
 	KORE_SYSCALL_ALLOW(lstat),
+#endif
 	KORE_SYSCALL_ALLOW(fstat),
 	KORE_SYSCALL_ALLOW(write),
 	KORE_SYSCALL_ALLOW(fcntl),
 	KORE_SYSCALL_ALLOW(lseek),
 	KORE_SYSCALL_ALLOW(close),
 	KORE_SYSCALL_ALLOW(openat),
+#if defined(SYS_access)
 	KORE_SYSCALL_ALLOW(access),
+#endif
 	KORE_SYSCALL_ALLOW(writev),
 	KORE_SYSCALL_ALLOW(getcwd),
+#if defined(SYS_unlink)
 	KORE_SYSCALL_ALLOW(unlink),
+#endif
+#if defined(SYS_readlink)
 	KORE_SYSCALL_ALLOW(readlink),
+#endif
 
 	/* Process related. */
 	KORE_SYSCALL_ALLOW(exit),
@@ -88,14 +100,18 @@ static struct sock_filter filter_kore[] = {
 	KORE_SYSCALL_ALLOW(mprotect),
 
 	/* Net related. */
+#if defined(SYS_poll)
 	KORE_SYSCALL_ALLOW(poll),
+#endif
 	KORE_SYSCALL_ALLOW(sendto),
 	KORE_SYSCALL_ALLOW(accept),
 	KORE_SYSCALL_ALLOW(sendfile),
 	KORE_SYSCALL_ALLOW(recvfrom),
 	KORE_SYSCALL_ALLOW(epoll_ctl),
 	KORE_SYSCALL_ALLOW(setsockopt),
+#if defined(SYS_epoll_wait)
 	KORE_SYSCALL_ALLOW(epoll_wait),
+#endif
 	KORE_SYSCALL_ALLOW(epoll_pwait),
 
 	/* Signal related. */
@@ -291,7 +307,7 @@ kore_seccomp_traceme(void)
 		return;
 
 	if (ptrace(PTRACE_TRACEME, 0, NULL, NULL) == -1)
-		fatalx("ptrace. %s", errno_s);
+		fatalx("ptrace: %s", errno_s);
 	if (kill(worker->pid, SIGSTOP) == -1)
 		fatalx("kill: %s", errno_s);
 }
@@ -406,11 +422,25 @@ kore_seccomp_syscall_flag(const char *name, int action, int arg, int value)
 static void
 seccomp_register_violation(struct kore_worker *kw)
 {
-	long	sysnr;
+	struct iovec			iov;
+	struct user_regs_struct		regs;
+	long				sysnr;
 
-	if ((sysnr = ptrace(PTRACE_PEEKUSER, kw->pid,
-	    sizeof(long) * ORIG_RAX, NULL)) == -1)
+	iov.iov_base = &regs;
+	iov.iov_len = sizeof(regs);
+
+	if (ptrace(PTRACE_GETREGSET, kw->pid, 1, &iov) == -1)
 		fatal("ptrace: %s", errno_s);
+
+#if SECCOMP_AUDIT_ARCH == AUDIT_ARCH_X86_64
+	sysnr = regs.orig_rax;
+#elif SECCOMP_AUDIT_ARCH == AUDIT_ARCH_I386
+	sysnr = regs.orig_ax;
+#elif SECCOMP_AUDIT_ARCH == AUDIT_ARCH_AARCH64
+	sysnr = regs.regs[8];
+#else
+#error "platform not yet supported"
+#endif
 
 	kore_log(LOG_INFO, "seccomp violation, worker=%d, syscall=%s",
 	    kw->id, kore_seccomp_syscall_name(sysnr));
