@@ -1,12 +1,6 @@
 #!/bin/sh
 #
-# Linux specific defines.
-#
-# Attempts to generate a system call table based on either existing linux
-# kernel files (that live in our tree) or by looking on the running machine
-# its kallsyms proc entry and extracting the system calls from there.
-#
-# Not the hottest stuff to be honest..
+# Linux specific defines and system call maps.
 
 PLATFORM=$(uname -m)
 BASE=$(dirname $0)
@@ -14,17 +8,19 @@ BASE=$(dirname $0)
 case "$PLATFORM" in
 	x86_64*)
 		seccomp_audit_arch=AUDIT_ARCH_X86_64
-		syscall_file=$BASE/linux/syscall_64.tbl
+		syscall_file=$BASE/linux/x86_64_syscall.h.in
 		;;
 	i*86*)
 		seccomp_audit_arch=AUDIT_ARCH_I386
-		syscall_file=$BASE/linux/syscall_32.tbl
+		syscall_file=$BASE/linux/i386_syscall.h.in
 		;;
 	arm*)
 		seccomp_audit_arch=AUDIT_ARCH_ARM
+		syscall_file=$BASE/linux/arm_syscall.h.in
 		;;
 	aarch64*)
 		seccomp_audit_arch=AUDIT_ARCH_AARCH64
+		syscall_file=$BASE/linux/aarch64_syscall.h.in
 		;;
 esac
 
@@ -41,11 +37,7 @@ struct {
 } kore_syscall_map [] = {
 __EOF
 
-if [ ! -z $syscall_file ]; then
-	awk '/^[^#]/ { syscall = $3; number = $1; printf "  { \"%s\", %d },\n", syscall, number }' $syscall_file
-else
-	awk 'BEGIN { print "#include <sys/syscall.h>" } /p_syscall_meta/ { syscall = substr($NF, 19); printf "#if defined(SYS_%s)\n  { \"%s\", SYS_%s },\n#endif\n", syscall, syscall, syscall }' /proc/kallsyms | gcc -E -P -
-fi
+sed 's/__NR_//' $syscall_file | awk '/#define/ { syscall = $2; number = $3; printf "  { \"%s\", %d },\n", syscall, number }'
 
 cat << __EOF
   { NULL, 0 }
