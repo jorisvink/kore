@@ -164,8 +164,8 @@ void	kore_seccomp_init(void);
 void	kore_seccomp_drop(void);
 void	kore_seccomp_enable(void);
 void	kore_seccomp_traceme(void);
+int	kore_seccomp_trace(pid_t, int);
 int	kore_seccomp_syscall_resolve(const char *);
-int	kore_seccomp_trace(struct kore_worker *, int);
 int	kore_seccomp_filter(const char *, void *, size_t);
 
 const char		*kore_seccomp_syscall_name(long);

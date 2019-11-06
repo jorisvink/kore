@@ -208,7 +208,7 @@ kore_accesslog_gather(void *arg, u_int64_t now, int force)
 	if (logbuf == NULL)
 		logbuf = kore_buf_alloc(LOGBUF_SIZE);
 
-	for (id = 0; id < worker_count; id++) {
+	for (id = KORE_WORKER_BASE; id < worker_count; id++) {
 		kw = kore_worker_data(id);
 
 		accesslog_lock(kw);

@@ -31,6 +31,10 @@
 
 #include "kore.h"
 
+#if defined(KORE_USE_ACME)
+#include "acme.h"
+#endif
+
 #if !defined(KORE_NO_HTTP)
 #include "http.h"
 #endif
@@ -59,7 +63,7 @@
 #define WAIT_ANY		(-1)
 #endif
 
-#define WORKER_SOLO_COUNT	2
+#define WORKER_SOLO_COUNT	3
 
 #define WORKER(id)						\
 	(struct kore_worker *)((u_int8_t *)kore_workers +	\
@@ -80,8 +84,6 @@ static void		worker_accept_avail(struct kore_msg *, const void *);
 
 static void	worker_entropy_recv(struct kore_msg *, const void *);
 static void	worker_keymgr_response(struct kore_msg *, const void *);
-static int	worker_keymgr_response_verify(struct kore_msg *, const void *,
-		    struct kore_domain **);
 
 static int				accept_avail;
 static struct kore_worker		*kore_workers;
@@ -102,15 +104,15 @@ kore_worker_init(void)
 {
 	size_t			len;
 	struct kore_worker	*kw;
-	u_int16_t		i, cpu;
+	u_int16_t		idx, id, cpu;
 
 	worker_no_lock = 0;
 
 	if (worker_count == 0)
 		worker_count = cpu_count;
 
-	/* Account for the keymgr even if we don't end up starting it. */
-	worker_count += 1;
+	/* Account for the keymgr/acme even if we don't end up starting it. */
+	worker_count += 2;
 
 	len = sizeof(*accept_lock) +
 	    (sizeof(struct kore_worker) * worker_count);
@@ -136,30 +138,41 @@ kore_worker_init(void)
 	}
 
 	/* Setup log buffers. */
-	for (i = 0; i < worker_count; i++) {
-		kw = WORKER(i);
+	for (idx = KORE_WORKER_BASE; idx < worker_count; idx++) {
+		kw = WORKER(idx);
 		kw->lb.offset = 0;
 	}
 
-	/* Start keymgr if required. */
-	if (keymgr_active)
-		kore_worker_spawn(0, 0);
-
 	/* Now start all the workers. */
+	id = 1;
 	cpu = 1;
-	for (i = 1; i < worker_count; i++) {
+	for (idx = KORE_WORKER_BASE; idx < worker_count; idx++) {
 		if (cpu >= cpu_count)
 			cpu = 0;
-		kore_worker_spawn(i, cpu++);
+		kore_worker_spawn(idx, id++, cpu++);
+	}
+
+	if (keymgr_active) {
+#if defined(KORE_USE_ACME)
+		/* The ACME process is only started if we need it. */
+		if (acme_provider) {
+			kore_worker_spawn(KORE_WORKER_ACME_IDX,
+			    KORE_WORKER_ACME, 0);
+		}
+#endif
+
+		/* Now we can start the keymgr. */
+		kore_worker_spawn(KORE_WORKER_KEYMGR_IDX,
+		    KORE_WORKER_KEYMGR, 0);
 	}
 }
 
 void
-kore_worker_spawn(u_int16_t id, u_int16_t cpu)
+kore_worker_spawn(u_int16_t idx, u_int16_t id, u_int16_t cpu)
 {
 	struct kore_worker	*kw;
 
-	kw = WORKER(id);
+	kw = WORKER(idx);
 	kw->id = id;
 	kw->cpu = cpu;
 	kw->has_lock = 0;
@@ -198,7 +211,7 @@ kore_worker_shutdown(void)
 	struct kore_worker	*kw;
 	pid_t			pid;
 	int			status;
-	u_int16_t		id, done;
+	u_int16_t		idx, done;
 
 	if (!kore_quiet) {
 		kore_log(LOG_NOTICE,
@@ -206,15 +219,15 @@ kore_worker_shutdown(void)
 	}
 
 	for (;;) {
-		for (id = 0; id < worker_count; id++) {
-			kw = WORKER(id);
+		for (idx = 0; idx < worker_count; idx++) {
+			kw = WORKER(idx);
 			if (kw->pid != 0) {
 				pid = waitpid(kw->pid, &status, 0);
 				if (pid == -1)
 					continue;
 
 #if defined(__linux__)
-				kore_seccomp_trace(kw, status);
+				kore_seccomp_trace(kw->pid, status);
 #endif
 
 				if (WIFEXITED(status)) {
@@ -229,8 +242,8 @@ kore_worker_shutdown(void)
 		}
 
 		done = 0;
-		for (id = 0; id < worker_count; id++) {
-			kw = WORKER(id);
+		for (idx = 0; idx < worker_count; idx++) {
+			kw = WORKER(idx);
 			if (kw->pid == 0)
 				done++;
 		}
@@ -248,11 +261,11 @@ kore_worker_shutdown(void)
 void
 kore_worker_dispatch_signal(int sig)
 {
-	u_int16_t		id;
+	u_int16_t		idx;
 	struct kore_worker	*kw;
 
-	for (id = 0; id < worker_count; id++) {
-		kw = WORKER(id);
+	for (idx = 0; idx < worker_count; idx++) {
+		kw = WORKER(idx);
 		if (kill(kw->pid, sig) == -1) {
 			kore_debug("kill(%d, %d): %s", kw->pid, sig, errno_s);
 		}
@@ -329,7 +342,6 @@ void
 kore_worker_entry(struct kore_worker *kw)
 {
 	struct kore_runtime_call	*rcall;
-	char				buf[16];
 	u_int64_t			last_seed;
 	int				quit, had_lock;
 	u_int64_t			netwait, now, next_prune;
@@ -340,10 +352,7 @@ kore_worker_entry(struct kore_worker *kw)
 	kore_seccomp_traceme();
 #endif
 
-	(void)snprintf(buf, sizeof(buf), "[wrk %d]", kw->id);
-	if (kw->id == KORE_WORKER_KEYMGR)
-		(void)snprintf(buf, sizeof(buf), "[keymgr]");
-	kore_platform_proctitle(buf);
+	kore_platform_proctitle(kore_worker_name(kw->id));
 
 	if (worker_set_affinity == 1)
 		kore_platform_worker_setcpu(kw);
@@ -356,6 +365,13 @@ kore_worker_entry(struct kore_worker *kw)
 		kore_keymgr_run();
 		exit(0);
 	}
+
+#if defined(KORE_USE_ACME)
+	if (kw->id == KORE_WORKER_ACME) {
+		kore_acme_run();
+		exit(0);
+	}
+#endif
 
 	net_init();
 	kore_connection_init();
@@ -394,6 +410,12 @@ kore_worker_entry(struct kore_worker *kw)
 			kore_msg_send(KORE_WORKER_KEYMGR,
 			    KORE_MSG_CERTIFICATE_REQ, NULL, 0);
 		}
+#if defined(KORE_USE_ACME)
+		kore_msg_register(KORE_ACME_CHALLENGE_SET_CERT,
+		    worker_keymgr_response);
+		kore_msg_register(KORE_ACME_CHALLENGE_CLEAR_CERT,
+		    worker_keymgr_response);
+#endif
 	}
 
 	kore_msg_register(KORE_MSG_ACCEPT_AVAILABLE, worker_accept_avail);
@@ -575,22 +597,78 @@ kore_worker_make_busy(void)
 	}
 }
 
+int
+kore_worker_keymgr_response_verify(struct kore_msg *msg, const void *data,
+    struct kore_domain **out)
+{
+	struct kore_server		*srv;
+	struct kore_domain		*dom;
+	const struct kore_x509_msg	*req;
+
+	if (msg->length < sizeof(*req)) {
+		kore_log(LOG_WARNING,
+		    "short keymgr message (%zu)", msg->length);
+		return (KORE_RESULT_ERROR);
+	}
+
+	req = (const struct kore_x509_msg *)data;
+	if (msg->length != (sizeof(*req) + req->data_len)) {
+		kore_log(LOG_WARNING,
+		    "invalid keymgr payload (%zu)", msg->length);
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (req->domain[KORE_DOMAINNAME_LEN] != '\0') {
+		kore_log(LOG_WARNING, "domain not NUL-terminated");
+		return (KORE_RESULT_ERROR);
+
+	}
+
+	if (out == NULL)
+		return (KORE_RESULT_OK);
+
+	LIST_FOREACH(srv, &kore_servers, list) {
+		dom = NULL;
+
+		if (srv->tls == 0)
+			continue;
+
+		TAILQ_FOREACH(dom, &srv->domains, list) {
+			if (!strcmp(dom->domain, req->domain))
+				break;
+		}
+
+		if (dom != NULL)
+			break;
+	}
+
+	if (dom == NULL) {
+		kore_log(LOG_WARNING,
+		    "got keymgr response for domain that does not exist");
+		return (KORE_RESULT_ERROR);
+	}
+
+	*out = dom;
+
+	return (KORE_RESULT_OK);
+}
+
 static void
 worker_reaper(pid_t pid, int status)
 {
-	u_int16_t		id;
+	u_int16_t		idx;
 	struct kore_worker	*kw;
 	const char		*func;
 
-	for (id = 0; id < worker_count; id++) {
-		kw = WORKER(id);
+#if defined(__linux__)
+	if (kore_seccomp_trace(pid, status))
+		return;
+#endif
+
+	for (idx = 0; idx < worker_count; idx++) {
+		kw = WORKER(idx);
 		if (kw->pid != pid)
 			continue;
-
-#if defined(__linux__)
-		if (kore_seccomp_trace(kw, status))
-			break;
-#endif
 
 		if (!kore_quiet) {
 			kore_log(LOG_NOTICE,
@@ -619,8 +697,10 @@ worker_reaper(pid_t pid, int status)
 		}
 #endif
 
-		if (id == KORE_WORKER_KEYMGR) {
-			kore_log(LOG_CRIT, "keymgr gone, stopping");
+		if (kw->id == KORE_WORKER_KEYMGR ||
+		    kw->id == KORE_WORKER_ACME) {
+			kore_log(LOG_CRIT,
+			    "keymgr or acme process gone, stopping");
 			kw->pid = 0;
 			if (raise(SIGTERM) != 0) {
 				kore_log(LOG_WARNING,
@@ -657,7 +737,7 @@ worker_reaper(pid_t pid, int status)
 		kore_log(LOG_NOTICE, "restarting worker %d", kw->id);
 		kw->restarted = 1;
 		kore_msg_parent_remove(kw);
-		kore_worker_spawn(kw->id, kw->cpu);
+		kore_worker_spawn(idx, kw->id, kw->cpu);
 		kore_msg_parent_add(kw);
 
 		break;
@@ -769,74 +849,45 @@ worker_keymgr_response(struct kore_msg *msg, const void *data)
 	struct kore_domain		*dom;
 	const struct kore_x509_msg	*req;
 
-	if (!worker_keymgr_response_verify(msg, data, &dom))
+	if (!kore_worker_keymgr_response_verify(msg, data, &dom))
 		return;
 
 	req = (const struct kore_x509_msg *)data;
 
 	switch (msg->id) {
 	case KORE_MSG_CERTIFICATE:
-		kore_domain_tlsinit(dom, req->data, req->data_len);
+		kore_domain_tlsinit(dom, KORE_PEM_CERT_CHAIN,
+		    req->data, req->data_len);
 		break;
 	case KORE_MSG_CRL:
 		kore_domain_crl_add(dom, req->data, req->data_len);
 		break;
+#if defined(KORE_USE_ACME)
+	case KORE_ACME_CHALLENGE_SET_CERT:
+		if (dom->ssl_ctx == NULL) {
+			kore_domain_tlsinit(dom, KORE_DER_CERT_DATA,
+			    req->data, req->data_len);
+		}
+
+		kore_free(dom->acme_cert);
+		dom->acme_cert_len = req->data_len;
+		dom->acme_cert = kore_calloc(1, req->data_len);
+		memcpy(dom->acme_cert, req->data, req->data_len);
+
+		kore_log(LOG_NOTICE, "[%s] tls-alpn-01 challenge active",
+		    dom->domain);
+		dom->acme_challenge = 1;
+		break;
+	case KORE_ACME_CHALLENGE_CLEAR_CERT:
+		dom->acme_cert_len = 0;
+		dom->acme_challenge = 0;
+		kore_free(dom->acme_cert);
+		kore_log(LOG_NOTICE, "[%s] tls-alpn-01 challenge disabled",
+		    dom->domain);
+		break;
+#endif
 	default:
 		kore_log(LOG_WARNING, "unknown keymgr request %u", msg->id);
 		break;
 	}
-}
-
-static int
-worker_keymgr_response_verify(struct kore_msg *msg, const void *data,
-    struct kore_domain **out)
-{
-	struct kore_server		*srv;
-	struct kore_domain		*dom;
-	const struct kore_x509_msg	*req;
-
-	if (msg->length < sizeof(*req)) {
-		kore_log(LOG_WARNING,
-		    "short keymgr message (%zu)", msg->length);
-		return (KORE_RESULT_ERROR);
-	}
-
-	req = (const struct kore_x509_msg *)data;
-	if (msg->length != (sizeof(*req) + req->data_len)) {
-		kore_log(LOG_WARNING,
-		    "invalid keymgr payload (%zu)", msg->length);
-		return (KORE_RESULT_ERROR);
-	}
-
-	if (req->domain_len > KORE_DOMAINNAME_LEN) {
-		kore_log(LOG_WARNING,
-		    "invalid keymgr domain (%u)",
-		    req->domain_len);
-		return (KORE_RESULT_ERROR);
-	}
-
-	LIST_FOREACH(srv, &kore_servers, list) {
-		dom = NULL;
-
-		if (srv->tls == 0)
-			continue;
-
-		TAILQ_FOREACH(dom, &srv->domains, list) {
-			if (!strncmp(dom->domain, req->domain, req->domain_len))
-				break;
-		}
-
-		if (dom != NULL)
-			break;
-	}
-
-	if (dom == NULL) {
-		kore_log(LOG_WARNING,
-		    "got keymgr response for domain that does not exist");
-		return (KORE_RESULT_ERROR);
-	}
-
-	*out = dom;
-
-	return (KORE_RESULT_OK);
 }

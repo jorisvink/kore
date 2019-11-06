@@ -78,6 +78,8 @@ extern int daemon(int, int);
 #define KORE_USE_PLATFORM_PLEDGE	1
 #endif
 
+#define KORE_RSAKEY_BITS	4096
+
 #define KORE_RESULT_ERROR	0
 #define KORE_RESULT_OK		1
 #define KORE_RESULT_RETRY	2
@@ -85,6 +87,8 @@ extern int daemon(int, int);
 #define KORE_TLS_VERSION_1_3	0
 #define KORE_TLS_VERSION_1_2	1
 #define KORE_TLS_VERSION_BOTH	2
+
+#define KORE_BASE64_RAW		0x0001
 
 #define KORE_WAIT_INFINITE	(u_int64_t)-1
 #define KORE_RESEED_TIME	(1800 * 1000)
@@ -127,6 +131,9 @@ extern int daemon(int, int);
 	    NID_commonName, o, l)
 
 #define X509_CN_LENGTH		(ub_common_name + 1)
+
+#define KORE_PEM_CERT_CHAIN	1
+#define KORE_DER_CERT_DATA	2
 
 /* XXX hackish. */
 #if !defined(KORE_NO_HTTP)
@@ -195,6 +202,7 @@ TAILQ_HEAD(netbuf_head, netbuf);
 #define CONN_CLOSE_EMPTY	0x02
 #define CONN_WS_CLOSE_SENT	0x04
 #define CONN_IS_BUSY		0x08
+#define CONN_ACME_CHALLENGE	0x10
 
 #define KORE_IDLE_TIMER_MAX	5000
 
@@ -303,6 +311,12 @@ struct kore_domain {
 	struct kore_buf				*logbuf;
 	struct kore_server			*server;
 
+#if defined(KORE_USE_ACME)
+	int					acme;
+	int					acme_challenge;
+	void					*acme_cert;
+	size_t					acme_cert_len;
+#endif
 	char					*cafile;
 	char					*crlfile;
 	char					*certfile;
@@ -431,11 +445,9 @@ struct kore_alog_header {
 	u_int16_t		loglen;
 } __attribute__((packed));
 
-#define KORE_WORKER_MAX			UCHAR_MAX
-
 struct kore_worker {
-	u_int8_t			id;
-	u_int8_t			cpu;
+	u_int16_t			id;
+	u_int16_t			cpu;
 #if defined(__linux__)
 	int				tracing;
 #endif
@@ -600,7 +612,17 @@ struct kore_timer {
 	TAILQ_ENTRY(kore_timer)	list;
 };
 
-#define KORE_WORKER_KEYMGR		0
+/*
+ * Keymgr process is worker index 0, but id 2000.
+ * Acme process is worker index 1, but id 2001.
+ */
+#define KORE_WORKER_KEYMGR_IDX		0
+#define KORE_WORKER_ACME_IDX		1
+#define KORE_WORKER_BASE		2
+#define KORE_WORKER_KEYMGR		2000
+#define KORE_WORKER_ACME		2001
+#define KORE_WORKER_MAX			UCHAR_MAX
+
 #define KORE_WORKER_POLICY_RESTART	1
 #define KORE_WORKER_POLICY_TERMINATE	2
 
@@ -616,6 +638,10 @@ struct kore_timer {
 #define KORE_MSG_CRL			9
 #define KORE_MSG_ACCEPT_AVAILABLE	10
 #define KORE_PYTHON_SEND_OBJ		11
+#define KORE_MSG_ACME_BASE		100
+
+/* messages for applications should start at 201. */
+#define KORE_MSG_APP_BASE		200
 
 /* Predefined message targets. */
 #define KORE_MSG_PARENT		1000
@@ -630,15 +656,13 @@ struct kore_msg {
 
 struct kore_keyreq {
 	int		padding;
-	char		domain[KORE_DOMAINNAME_LEN];
-	u_int16_t	domain_len;
-	u_int16_t	data_len;
+	char		domain[KORE_DOMAINNAME_LEN + 1];
+	size_t		data_len;
 	u_int8_t	data[];
 };
 
 struct kore_x509_msg {
-	char		domain[KORE_DOMAINNAME_LEN];
-	u_int16_t	domain_len;
+	char		domain[KORE_DOMAINNAME_LEN + 1];
 	size_t		data_len;
 	u_int8_t	data[];
 };
@@ -666,6 +690,8 @@ extern char	*rand_file;
 extern int	keymgr_active;
 extern char	*keymgr_runas_user;
 extern char	*keymgr_root_path;
+extern char	*acme_runas_user;
+extern char	*acme_root_path;
 
 extern u_int8_t			nlisteners;
 extern u_int16_t		cpu_count;
@@ -696,9 +722,11 @@ void		kore_worker_init(void);
 void		kore_worker_make_busy(void);
 void		kore_worker_shutdown(void);
 void		kore_worker_dispatch_signal(int);
-void		kore_worker_spawn(u_int16_t, u_int16_t);
 void		kore_worker_entry(struct kore_worker *);
 void		kore_worker_privdrop(const char *, const char *);
+void		kore_worker_spawn(u_int16_t, u_int16_t, u_int16_t);
+int		kore_worker_keymgr_response_verify(struct kore_msg *,
+		    const void *, struct kore_domain **);
 
 struct kore_worker	*kore_worker_data(u_int8_t);
 
@@ -706,13 +734,13 @@ void		kore_platform_init(void);
 void		kore_platform_sandbox(void);
 void		kore_platform_event_init(void);
 void		kore_platform_event_cleanup(void);
-void		kore_platform_proctitle(char *);
 void		kore_platform_disable_read(int);
 void		kore_platform_disable_write(int);
 void		kore_platform_enable_accept(void);
 void		kore_platform_disable_accept(void);
 void		kore_platform_event_wait(u_int64_t);
 void		kore_platform_event_all(int, void *);
+void		kore_platform_proctitle(const char *);
 void		kore_platform_schedule_read(int, void *);
 void		kore_platform_schedule_write(int, void *);
 void		kore_platform_event_schedule(int, int, int, void *);
@@ -830,9 +858,14 @@ long long	kore_strtonum(const char *, int, long long, long long, int *);
 double		kore_strtodouble(const char *, long double, long double, int *);
 int		kore_base64_encode(const void *, size_t, char **);
 int		kore_base64_decode(const char *, u_int8_t **, size_t *);
+int		kore_base64url_encode(const void *, size_t, char **, int);
+int		kore_base64url_decode(const char *, u_int8_t **, size_t *, int);
 void		*kore_mem_find(void *, size_t, const void *, size_t);
 char		*kore_text_trim(char *, size_t);
 char		*kore_read_line(FILE *, char *, size_t);
+
+EVP_PKEY	*kore_rsakey_load(const char *);
+EVP_PKEY	*kore_rsakey_generate(const char *);
 
 #if !defined(KORE_NO_HTTP)
 void		kore_websocket_handshake(struct http_request *,
@@ -885,7 +918,8 @@ void		kore_domain_load_crl(void);
 void		kore_domain_keymgr_init(void);
 void		kore_domain_callback(void (*cb)(struct kore_domain *));
 int		kore_domain_attach(struct kore_domain *, struct kore_server *);
-void		kore_domain_tlsinit(struct kore_domain *, const void *, size_t);
+void		kore_domain_tlsinit(struct kore_domain *, int,
+		    const void *, size_t);
 void		kore_domain_crl_add(struct kore_domain *, const void *, size_t);
 #if !defined(KORE_NO_HTTP)
 int		kore_module_handler_new(struct kore_domain *, const char *,
@@ -930,6 +964,8 @@ struct kore_validator	*kore_validator_lookup(const char *);
 
 void		fatal(const char *, ...) __attribute__((noreturn));
 void		fatalx(const char *, ...) __attribute__((noreturn));
+
+const char	*kore_worker_name(int);
 void		kore_debug_internal(char *, int, const char *, ...);
 
 u_int16_t	net_read16(u_int8_t *);

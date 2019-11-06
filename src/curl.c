@@ -42,10 +42,13 @@ static struct sock_filter filter_curl[] = {
 	KORE_SYSCALL_ALLOW(set_robust_list),
 
 	/* Other */
+	KORE_SYSCALL_ALLOW(uname),
 	KORE_SYSCALL_ALLOW(ioctl),
 	KORE_SYSCALL_ALLOW(madvise),
 	KORE_SYSCALL_ALLOW(recvmsg),
 	KORE_SYSCALL_ALLOW(sendmmsg),
+	KORE_SYSCALL_ALLOW(faccessat),
+	KORE_SYSCALL_ALLOW(newfstatat),
 	KORE_SYSCALL_ALLOW(getpeername),
 };
 #endif

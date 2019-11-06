@@ -220,7 +220,7 @@ kore_platform_disable_accept(void)
 }
 
 void
-kore_platform_proctitle(char *title)
+kore_platform_proctitle(const char *title)
 {
 	kore_proctitle(title);
 }

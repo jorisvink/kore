@@ -17,6 +17,9 @@
 #include <sys/types.h>
 #include <sys/time.h>
 
+#include <openssl/evp.h>
+#include <openssl/rsa.h>
+
 #include <ctype.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -47,8 +50,19 @@ static struct {
 };
 
 static void	fatal_log(const char *, va_list);
+static int	utils_base64_encode(const void *, size_t, char **,
+		    const char *, int);
+static int	utils_base64_decode(const char *, u_int8_t **,
+		    size_t *, const char *, int);
 
-static char b64table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+static char b64_table[] = 	\
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+static char b64url_table[] = 	\
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+/* b64_table and b64url_table are the same size. */
+#define B64_TABLE_LEN		(sizeof(b64_table))
 
 #if defined(KORE_DEBUG)
 void
@@ -83,20 +97,20 @@ void
 kore_log(int prio, const char *fmt, ...)
 {
 	va_list		args;
-	char		buf[2048], tmp[32];
+	const char	*name;
+	char		buf[2048];
 
 	va_start(args, fmt);
 	(void)vsnprintf(buf, sizeof(buf), fmt, args);
 	va_end(args);
 
 	if (worker != NULL) {
-		(void)snprintf(tmp, sizeof(tmp), "wrk %d", worker->id);
-		if (worker->id == KORE_WORKER_KEYMGR)
-			(void)kore_strlcpy(tmp, "keymgr", sizeof(tmp));
+		name = kore_worker_name(worker->id);
+
 		if (foreground)
-			printf("[%s]: %s\n", tmp, buf);
+			printf("%s: %s\n", name, buf);
 		else
-			syslog(prio, "[%s]: %s", tmp, buf);
+			syslog(prio, "%s: %s", name, buf);
 	} else {
 		if (foreground)
 			printf("[parent]: %s\n", buf);
@@ -411,134 +425,27 @@ kore_time_ms(void)
 }
 
 int
+kore_base64url_encode(const void *data, size_t len, char **out, int flags)
+{
+	return (utils_base64_encode(data, len, out, b64url_table, flags));
+}
+
+int
 kore_base64_encode(const void *data, size_t len, char **out)
 {
-	u_int8_t		n;
-	size_t			nb;
-	const u_int8_t		*ptr;
-	u_int32_t		bytes;
-	struct kore_buf		result;
+	return (utils_base64_encode(data, len, out, b64_table, 0));
+}
 
-	nb = 0;
-	ptr = data;
-	kore_buf_init(&result, (len / 3) * 4);
-
-	while (len > 0) {
-		if (len > 2) {
-			nb = 3;
-			bytes = *ptr++ << 16;
-			bytes |= *ptr++ << 8;
-			bytes |= *ptr++;
-		} else if (len > 1) {
-			nb = 2;
-			bytes = *ptr++ << 16;
-			bytes |= *ptr++ << 8;
-		} else if (len == 1) {
-			nb = 1;
-			bytes = *ptr++ << 16;
-		} else {
-			kore_buf_cleanup(&result);
-			return (KORE_RESULT_ERROR);
-		}
-
-		n = (bytes >> 18) & 0x3f;
-		kore_buf_append(&result, &(b64table[n]), 1);
-		n = (bytes >> 12) & 0x3f;
-		kore_buf_append(&result, &(b64table[n]), 1);
-		if (nb > 1) {
-			n = (bytes >> 6) & 0x3f;
-			kore_buf_append(&result, &(b64table[n]), 1);
-			if (nb > 2) {
-				n = bytes & 0x3f;
-				kore_buf_append(&result, &(b64table[n]), 1);
-			}
-		}
-
-		len -= nb;
-	}
-
-	switch (nb) {
-	case 1:
-		kore_buf_appendf(&result, "==");
-		break;
-	case 2:
-		kore_buf_appendf(&result, "=");
-		break;
-	case 3:
-		break;
-	default:
-		kore_buf_cleanup(&result);
-		return (KORE_RESULT_ERROR);
-	}
-
-	/* result.data gets taken over so no need to cleanup result. */
-	*out = kore_buf_stringify(&result, NULL);
-
-	return (KORE_RESULT_OK);
+int
+kore_base64url_decode(const char *in, u_int8_t **out, size_t *olen, int flags)
+{
+	return (utils_base64_decode(in, out, olen, b64url_table, flags));
 }
 
 int
 kore_base64_decode(const char *in, u_int8_t **out, size_t *olen)
 {
-	int			i, c;
-	struct kore_buf		*res;
-	u_int8_t		d, n, o;
-	u_int32_t		b, len, idx;
-
-	i = 4;
-	b = 0;
-	d = 0;
-	c = 0;
-	len = strlen(in);
-	res = kore_buf_alloc(len);
-
-	for (idx = 0; idx < len; idx++) {
-		c = in[idx];
-		if (c == '=')
-			break;
-
-		for (o = 0; o < sizeof(b64table); o++) {
-			if (b64table[o] == c) {
-				d = o;
-				break;
-			}
-		}
-
-		if (o == sizeof(b64table)) {
-			*out = NULL;
-			kore_buf_free(res);
-			return (KORE_RESULT_ERROR);
-		}
-
-		b |= (d & 0x3f) << ((i - 1) * 6);
-		i--;
-		if (i == 0) {
-			for (i = 2; i >= 0; i--) {
-				n = (b >> (8 * i));
-				kore_buf_append(res, &n, 1);
-			}
-
-			b = 0;
-			i = 4;
-		}
-	}
-
-	if (c == '=') {
-		if (i > 2) {
-			*out = NULL;
-			kore_buf_free(res);
-			return (KORE_RESULT_ERROR);
-		}
-
-		o = i;
-		for (i = 2; i >= o; i--) {
-			n = (b >> (8 * i));
-			kore_buf_append(res, &n, 1);
-		}
-	}
-
-	*out = kore_buf_release(res, olen);
-	return (KORE_RESULT_OK);
+	return (utils_base64_decode(in, out, olen, b64_table, 0));
 }
 
 void *
@@ -605,6 +512,79 @@ kore_read_line(FILE *fp, char *in, size_t len)
 	return (p);
 }
 
+EVP_PKEY *
+kore_rsakey_load(const char *path)
+{
+	FILE		*fp;
+	EVP_PKEY	*pkey;
+
+	if (access(path, R_OK) == -1)
+		return (NULL);
+
+	if ((fp = fopen(path, "r")) == NULL)
+		fatalx("%s(%s): %s", __func__, path, errno_s);
+
+	if ((pkey = PEM_read_PrivateKey(fp, NULL, NULL, NULL)) == NULL)
+		fatalx("PEM_read_PrivateKey: %s", ssl_errno_s);
+
+	fclose(fp);
+
+	return (pkey);
+}
+
+EVP_PKEY *
+kore_rsakey_generate(const char *path)
+{
+	FILE			*fp;
+	EVP_PKEY_CTX		*ctx;
+	EVP_PKEY		*pkey;
+
+	if ((ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, NULL)) == NULL)
+		fatalx("EVP_PKEY_CTX_new_id: %s", ssl_errno_s);
+
+	if (EVP_PKEY_keygen_init(ctx) <= 0)
+		fatalx("EVP_PKEY_keygen_init: %s", ssl_errno_s);
+
+	if (EVP_PKEY_CTX_set_rsa_keygen_bits(ctx, KORE_RSAKEY_BITS) <= 0)
+		fatalx("EVP_PKEY_CTX_set_rsa_keygen_bits: %s", ssl_errno_s);
+
+	pkey = NULL;
+	if (EVP_PKEY_keygen(ctx, &pkey) <= 0)
+		fatalx("EVP_PKEY_keygen: %s", ssl_errno_s);
+
+	if (path != NULL) {
+		if ((fp = fopen(path, "w")) == NULL)
+			fatalx("fopen(%s): %s", path, errno_s);
+
+		if (!PEM_write_PrivateKey(fp, pkey, NULL, NULL, 0, NULL, NULL))
+			fatalx("PEM_write_PrivateKey: %s", ssl_errno_s);
+
+		fclose(fp);
+	}
+
+	return (pkey);
+}
+
+const char *
+kore_worker_name(int id)
+{
+	static char	buf[64];
+
+	switch (id) {
+	case KORE_WORKER_KEYMGR:
+		(void)snprintf(buf, sizeof(buf), "[keymgr]");
+		break;
+	case KORE_WORKER_ACME:
+		(void)snprintf(buf, sizeof(buf), "[acme]");
+		break;
+	default:
+		(void)snprintf(buf, sizeof(buf), "[wrk %d]", id);
+		break;
+	}
+
+	return (buf);
+}
+
 void
 fatal(const char *fmt, ...)
 {
@@ -648,4 +628,170 @@ fatal_log(const char *fmt, va_list args)
 		kore_keymgr_cleanup(1);
 
 	printf("%s: %s\n", kore_progname, buf);
+}
+
+static int
+utils_base64_encode(const void *data, size_t len, char **out,
+    const char *table, int flags)
+{
+	u_int8_t		n;
+	size_t			nb;
+	const u_int8_t		*ptr;
+	u_int32_t		bytes;
+	struct kore_buf		result;
+
+	nb = 0;
+	ptr = data;
+	kore_buf_init(&result, (len / 3) * 4);
+
+	while (len > 0) {
+		if (len > 2) {
+			nb = 3;
+			bytes = *ptr++ << 16;
+			bytes |= *ptr++ << 8;
+			bytes |= *ptr++;
+		} else if (len > 1) {
+			nb = 2;
+			bytes = *ptr++ << 16;
+			bytes |= *ptr++ << 8;
+		} else if (len == 1) {
+			nb = 1;
+			bytes = *ptr++ << 16;
+		} else {
+			kore_buf_cleanup(&result);
+			return (KORE_RESULT_ERROR);
+		}
+
+		n = (bytes >> 18) & 0x3f;
+		kore_buf_append(&result, &(table[n]), 1);
+		n = (bytes >> 12) & 0x3f;
+		kore_buf_append(&result, &(table[n]), 1);
+		if (nb > 1) {
+			n = (bytes >> 6) & 0x3f;
+			kore_buf_append(&result, &(table[n]), 1);
+			if (nb > 2) {
+				n = bytes & 0x3f;
+				kore_buf_append(&result, &(table[n]), 1);
+			}
+		}
+
+		len -= nb;
+	}
+
+	if (!(flags & KORE_BASE64_RAW)) {
+		switch (nb) {
+		case 1:
+			kore_buf_appendf(&result, "==");
+			break;
+		case 2:
+			kore_buf_appendf(&result, "=");
+			break;
+		case 3:
+			break;
+		default:
+			kore_buf_cleanup(&result);
+			return (KORE_RESULT_ERROR);
+		}
+	}
+
+	/* result.data gets taken over so no need to cleanup result. */
+	*out = kore_buf_stringify(&result, NULL);
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+utils_base64_decode(const char *in, u_int8_t **out, size_t *olen,
+    const char *table, int flags)
+{
+	int			i, c;
+	u_int8_t		d, n, o;
+	struct kore_buf		*res, buf;
+	const char		*ptr, *pad;
+	u_int32_t		b, len, plen, idx;
+
+	i = 4;
+	b = 0;
+	d = 0;
+	c = 0;
+	len = strlen(in);
+	memset(&buf, 0, sizeof(buf));
+
+	if (flags & KORE_BASE64_RAW) {
+		switch (len % 4) {
+		case 2:
+			plen = 2;
+			pad = "==";
+			break;
+		case 3:
+			plen = 1;
+			pad = "=";
+			break;
+		default:
+			return (KORE_RESULT_ERROR);
+		}
+
+		kore_buf_init(&buf, len + plen);
+		kore_buf_appendf(&buf, in, len);
+		kore_buf_appendf(&buf, pad, plen);
+
+		len = len + plen;
+		ptr = (const char *)buf.data;
+	} else {
+		ptr = in;
+	}
+
+	res = kore_buf_alloc(len);
+
+	for (idx = 0; idx < len; idx++) {
+		c = ptr[idx];
+		if (c == '=')
+			break;
+
+		for (o = 0; o < B64_TABLE_LEN; o++) {
+			if (table[o] == c) {
+				d = o;
+				break;
+			}
+		}
+
+		if (o == B64_TABLE_LEN) {
+			*out = NULL;
+			kore_buf_free(res);
+			kore_buf_cleanup(&buf);
+			return (KORE_RESULT_ERROR);
+		}
+
+		b |= (d & 0x3f) << ((i - 1) * 6);
+		i--;
+		if (i == 0) {
+			for (i = 2; i >= 0; i--) {
+				n = (b >> (8 * i));
+				kore_buf_append(res, &n, 1);
+			}
+
+			b = 0;
+			i = 4;
+		}
+	}
+
+	if (c == '=') {
+		if (i > 2) {
+			*out = NULL;
+			kore_buf_free(res);
+			kore_buf_cleanup(&buf);
+			return (KORE_RESULT_ERROR);
+		}
+
+		o = i;
+		for (i = 2; i >= o; i--) {
+			n = (b >> (8 * i));
+			kore_buf_append(res, &n, 1);
+		}
+	}
+
+	kore_buf_cleanup(&buf);
+	*out = kore_buf_release(res, olen);
+
+	return (KORE_RESULT_OK);
 }

@@ -274,8 +274,12 @@ kore_connection_handle(struct connection *c)
 
 			SSL_set_fd(c->ssl, c->fd);
 			SSL_set_accept_state(c->ssl);
-			SSL_set_app_data(c->ssl, c);
-			SSL_set_ex_data(c->ssl, 0, c);
+
+			if (!SSL_set_ex_data(c->ssl, 0, c)) {
+				kore_debug("SSL_set_ex_data(): %s",
+				    ssl_errno_s);
+				return (KORE_RESULT_ERROR);
+			}
 		}
 
 		ERR_clear_error();
@@ -292,6 +296,14 @@ kore_connection_handle(struct connection *c)
 				return (KORE_RESULT_ERROR);
 			}
 		}
+
+#if defined(KORE_USE_ACME)
+		if (c->flags & CONN_ACME_CHALLENGE) {
+			kore_log(LOG_INFO, "disconnecting acme client");
+			kore_connection_disconnect(c);
+			return (KORE_RESULT_OK);
+		}
+#endif
 
 		if (SSL_get_verify_mode(c->ssl) & SSL_VERIFY_PEER) {
 			c->cert = SSL_get_peer_certificate(c->ssl);

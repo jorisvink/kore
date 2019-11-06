@@ -40,30 +40,29 @@ static void		msg_type_websocket(struct kore_msg *, const void *);
 #endif
 
 static TAILQ_HEAD(, msg_type)	msg_types;
-static int			cacheidx = 0;
-static struct connection	*conncache[KORE_WORKER_MAX];
+static size_t			cacheidx = 0;
+static struct connection	**conncache = NULL;
 
 void
 kore_msg_init(void)
 {
-	int		i;
-
-	for (i = 0; i < KORE_WORKER_MAX; i++)
-		conncache[i] = NULL;
-
 	TAILQ_INIT(&msg_types);
 }
 
 void
 kore_msg_parent_init(void)
 {
-	u_int8_t		i;
+	u_int8_t		idx;
 	struct kore_worker	*kw;
 
-	for (i = 0; i < worker_count; i++) {
-		if (keymgr_active == 0 && i == KORE_WORKER_KEYMGR)
-			continue;
-		kw = kore_worker_data(i);
+	for (idx = 0; idx < worker_count; idx++) {
+		if (keymgr_active == 0) {
+			if (idx == KORE_WORKER_KEYMGR_IDX ||
+			    idx == KORE_WORKER_ACME_IDX)
+				continue;
+		}
+
+		kw = kore_worker_data(idx);
 		kore_msg_parent_add(kw);
 	}
 
@@ -83,8 +82,8 @@ kore_msg_parent_add(struct kore_worker *kw)
 	kw->msg[0]->disconnect = msg_disconnected_worker;
 	kw->msg[0]->handle = kore_connection_handle;
 
-	if (cacheidx >= KORE_WORKER_MAX)
-		fatal("%s: too many workers", __func__);
+	conncache = kore_realloc(conncache,
+	    (cacheidx + 1) * sizeof(struct connection *));
 
 	conncache[cacheidx++] = kw->msg[0];
 
@@ -187,11 +186,11 @@ msg_recv_packet(struct netbuf *nb)
 static int
 msg_recv_data(struct netbuf *nb)
 {
+	size_t			i;
 	struct connection	*c;
-	u_int8_t		dst;
 	struct msg_type		*type;
-	int			deliver, i;
-	u_int16_t		destination;
+	int			deliver;
+	u_int16_t		dst, destination;
 	struct kore_msg		*msg = (struct kore_msg *)nb->buf;
 
 	if ((type = msg_type_lookup(msg->id)) != NULL) {
@@ -209,13 +208,20 @@ msg_recv_data(struct netbuf *nb)
 	if (worker == NULL && type == NULL) {
 		destination = msg->dst;
 
-		for (i = 0; conncache[i] != NULL; i++) {
+		for (i = 0; i < cacheidx; i++) {
 			c = conncache[i];
-			if (c->proto != CONN_PROTO_MSG || c->hdlr_extra == NULL)
+			if (c->proto != CONN_PROTO_MSG)
+				fatal("connection not a msg connection");
+
+			/*
+			 * If hdlr_extra is NULL it just means the worker
+			 * never started, ignore it.
+			 */
+			if (c->hdlr_extra == NULL)
 				continue;
 
 			deliver = 1;
-			dst = *(u_int8_t *)c->hdlr_extra;
+			dst = *(u_int16_t *)c->hdlr_extra;
 
 			if (destination == KORE_MSG_WORKER_ALL) {
 				if (keymgr_active && dst == 0)
@@ -229,7 +235,7 @@ msg_recv_data(struct netbuf *nb)
 				continue;
 
 			/* This allows the worker to receive the correct id. */
-			msg->dst = *(u_int8_t *)c->hdlr_extra;
+			msg->dst = *(u_int16_t *)c->hdlr_extra;
 
 			net_send_queue(c, nb->buf, nb->s_off);
 			net_send_flush(c);

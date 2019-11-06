@@ -45,13 +45,18 @@
 #include "curl.h"
 #endif
 
+#if defined(KORE_USE_ACME)
+#include "acme.h"
+#endif
+
 #if defined(__linux__)
 #include "seccomp.h"
 #endif
 
 /* XXX - This is becoming a clusterfuck. Fix it. */
 
-static int		configure_load(char *);
+static int	configure_load(char *);
+static void	configure_check_var(char **, const char *, const char *);
 
 #if defined(KORE_SINGLE_BINARY)
 static FILE		*config_file_write(void);
@@ -59,6 +64,13 @@ extern u_int8_t		asset_builtin_kore_conf[];
 extern u_int32_t	asset_len_builtin_kore_conf;
 #elif defined(KORE_USE_PYTHON)
 static int		configure_file(char *);
+#endif
+
+#if defined(KORE_USE_ACME)
+static int		configure_acme(char *);
+static int		configure_acme_root(char *);
+static int		configure_acme_runas(char *);
+static int		configure_acme_provider(char *);
 #endif
 
 static int		configure_tls(char *);
@@ -155,15 +167,18 @@ static struct {
 	int			(*configure)(char *);
 } config_directives[] = {
 	{ "tls",			configure_tls },
-	{ "server",			configure_server },
-	{ "include",			configure_include },
+#if defined(KORE_USE_ACME)
+	{ "acme",			configure_acme },
+#endif
 	{ "bind",			configure_bind },
-	{ "unix",			configure_bind_unix },
 	{ "load",			configure_load },
 	{ "domain",			configure_domain },
+	{ "server",			configure_server },
 	{ "attach",			configure_attach },
-	{ "certfile",			configure_certfile },
 	{ "certkey",			configure_certkey },
+	{ "certfile",			configure_certfile },
+	{ "include",			configure_include },
+	{ "unix",			configure_bind_unix },
 	{ "client_verify",		configure_client_verify },
 	{ "client_verify_depth",	configure_client_verify_depth },
 #if defined(KORE_USE_PYTHON)
@@ -209,6 +224,11 @@ static struct {
 	{ "rand_file",			configure_rand_file },
 	{ "keymgr_runas",		configure_keymgr_runas },
 	{ "keymgr_root",		configure_keymgr_root },
+#if defined(KORE_USE_ACME)
+	{ "acme_runas",			configure_acme_runas },
+	{ "acme_root",			configure_acme_root },
+	{ "acme_provider",		configure_acme_provider },
+#endif
 #if defined(KORE_USE_PLATFORM_PLEDGE)
 	{ "pledge",			configure_add_pledge },
 #endif
@@ -326,22 +346,21 @@ kore_parse_config(void)
 		if (!kore_quiet)
 			kore_log(LOG_WARNING, "privsep: will not change user");
 	} else {
-		if (keymgr_runas_user == NULL) {
-			if (!kore_quiet) {
-				kore_log(LOG_NOTICE, "privsep: no keymgr_runas "
-				    "set, using 'runas` user");
-			}
-			keymgr_runas_user = kore_strdup(kore_runas_user);
-		}
+		configure_check_var(&keymgr_runas_user, kore_runas_user,
+			"privsep: no keymgr_runas set, using 'runas` user");
+#if defined(KORE_USE_ACME)
+		configure_check_var(&acme_runas_user, kore_runas_user,
+			"privsep: no acme_runas set, using 'runas` user");
+#endif
 	}
 
-	if (keymgr_root_path == NULL) {
-		if (!kore_quiet) {
-			kore_log(LOG_NOTICE, "privsep: no keymgr_root set, "
-			    "using 'root` directory");
-		}
-		keymgr_root_path = kore_strdup(kore_root_path);
-	}
+	configure_check_var(&keymgr_root_path, kore_root_path,
+		"privsep: no keymgr_root set, using 'root` directory");
+
+#if defined(KORE_USE_ACME)
+	configure_check_var(&acme_root_path, kore_root_path,
+		"privsep: no acme_root set, using 'root` directory");
+#endif
 
 	if (skip_chroot && !kore_quiet)
 		kore_log(LOG_WARNING, "privsep: will not chroot");
@@ -396,11 +415,19 @@ kore_parse_config_file(FILE *fp)
 				    current_domain->domain);
 			}
 
-			if (current_domain->server->tls == 1 &&
-			    (current_domain->certfile == NULL ||
-			    current_domain->certkey == NULL)) {
-				fatal("incomplete TLS setup for '%s'",
-				    current_domain->domain);
+			if (current_domain->server->tls == 1) {
+#if defined(KORE_USE_ACME)
+				if (current_domain->acme) {
+					lineno++;
+					current_domain = NULL;
+					continue;
+				}
+#endif
+				if (current_domain->certfile == NULL ||
+				    current_domain->certkey == NULL) {
+					fatal("incomplete TLS setup for '%s'",
+					    current_domain->domain);
+				}
 			}
 
 			current_domain = NULL;
@@ -478,6 +505,16 @@ kore_configure_setting(const char *name, char *value)
 }
 #endif
 
+static void
+configure_check_var(char **var, const char *other, const char *logmsg)
+{
+	if (*var == NULL) {
+		if (!kore_quiet)
+			kore_log(LOG_NOTICE, "%s", logmsg);
+		*var = kore_strdup(other);
+	}
+}
+
 static int
 configure_include(char *path)
 {
@@ -544,6 +581,82 @@ configure_tls(char *yesno)
 
 	return (KORE_RESULT_OK);
 }
+
+#if defined(KORE_USE_ACME)
+static int
+configure_acme(char *yesno)
+{
+	int		len;
+	char		path[MAXPATHLEN];
+
+	if (current_domain == NULL) {
+		printf("acme directive not inside a domain context\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (strchr(current_domain->domain, '*')) {
+		printf("wildcards not supported due to lack of dns-01\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (!strcmp(yesno, "no")) {
+		current_domain->acme = 0;
+	} else if (!strcmp(yesno, "yes")) {
+		current_domain->acme = 1;
+
+		/* Override keyfile and certfile locations. */
+		kore_free(current_domain->certkey);
+		kore_free(current_domain->certfile);
+
+		len = snprintf(path, sizeof(path), "%s/%s/fullchain.pem",
+		    KORE_ACME_CERTDIR, current_domain->domain);
+		if (len == -1 || (size_t)len >= sizeof(path))
+			fatal("failed to create certfile path");
+
+		current_domain->certfile = kore_strdup(path);
+
+		len = snprintf(path, sizeof(path), "%s/%s/key.pem",
+		    KORE_ACME_CERTDIR, current_domain->domain);
+		if (len == -1 || (size_t)len >= sizeof(path))
+			fatal("failed to create certkey path");
+
+		current_domain->certkey = kore_strdup(path);
+	} else {
+		printf("invalid '%s' for yes|no acme option\n", yesno);
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_acme_runas(char *user)
+{
+	kore_free(acme_runas_user);
+	acme_runas_user = kore_strdup(user);
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_acme_root(char *root)
+{
+	kore_free(acme_root_path);
+	acme_root_path = kore_strdup(root);
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_acme_provider(char *provider)
+{
+	kore_free(acme_provider);
+	acme_provider = kore_strdup(provider);
+
+	return (KORE_RESULT_OK);
+}
+
+#endif
 
 static int
 configure_bind(char *options)
@@ -767,12 +880,7 @@ configure_certfile(char *path)
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (current_domain->certfile != NULL) {
-		printf("certfile specified twice for %s\n",
-		    current_domain->domain);
-		return (KORE_RESULT_ERROR);
-	}
-
+	kore_free(current_domain->certfile);
 	current_domain->certfile = kore_strdup(path);
 	return (KORE_RESULT_OK);
 }
@@ -785,12 +893,7 @@ configure_certkey(char *path)
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (current_domain->certkey != NULL) {
-		printf("certkey specified twice for %s\n",
-		    current_domain->domain);
-		return (KORE_RESULT_ERROR);
-	}
-
+	kore_free(current_domain->certkey);
 	current_domain->certkey = kore_strdup(path);
 	return (KORE_RESULT_OK);
 }

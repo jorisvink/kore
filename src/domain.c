@@ -38,6 +38,10 @@
 #include "http.h"
 #endif
 
+#if defined(KORE_USE_ACME)
+#include "acme.h"
+#endif
+
 #define KORE_DOMAIN_CACHE	16
 #define SSL_SESSION_ID		"kore_ssl_sessionid"
 
@@ -256,8 +260,10 @@ kore_domain_free(struct kore_domain *dom)
 }
 
 void
-kore_domain_tlsinit(struct kore_domain *dom, const void *pem, size_t pemlen)
+kore_domain_tlsinit(struct kore_domain *dom, int type,
+    const void *data, size_t datalen)
 {
+	const u_int8_t		*ptr;
 	RSA			*rsa;
 	X509			*x509;
 	EVP_PKEY		*pkey;
@@ -329,7 +335,30 @@ kore_domain_tlsinit(struct kore_domain *dom, const void *pem, size_t pemlen)
 	}
 #endif
 
-	x509 = domain_load_certificate_chain(dom->ssl_ctx, pem, pemlen);
+	switch (type) {
+	case KORE_PEM_CERT_CHAIN:
+		x509 = domain_load_certificate_chain(dom->ssl_ctx,
+		    data, datalen);
+		break;
+	case KORE_DER_CERT_DATA:
+		ptr = data;
+		if ((x509 = d2i_X509(NULL, &ptr, datalen)) == NULL)
+			fatalx("d2i_X509: %s", ssl_errno_s);
+		if (SSL_CTX_use_certificate(dom->ssl_ctx, x509) == 0)
+			fatalx("SSL_CTX_use_certificate: %s", ssl_errno_s);
+		break;
+	default:
+		fatalx("%s: unknown type %d", __func__, type);
+	}
+
+	if (x509 == NULL) {
+		kore_log(LOG_NOTICE, "failed to load certificate for '%s': %s",
+		    dom->domain, ssl_errno_s);
+		SSL_CTX_free(dom->ssl_ctx);
+		dom->ssl_ctx = NULL;
+		return;
+	}
+
 	if ((pkey = X509_get_pubkey(x509)) == NULL)
 		fatalx("certificate has no public key");
 
@@ -362,8 +391,10 @@ kore_domain_tlsinit(struct kore_domain *dom, const void *pem, size_t pemlen)
 	if (!SSL_CTX_use_PrivateKey(dom->ssl_ctx, pkey))
 		fatalx("SSL_CTX_use_PrivateKey(): %s", ssl_errno_s);
 
-	if (!SSL_CTX_check_private_key(dom->ssl_ctx))
-		fatalx("Public/Private key for %s do not match", dom->domain);
+	if (!SSL_CTX_check_private_key(dom->ssl_ctx)) {
+		fatalx("Public/Private key for %s do not match (%s)",
+		    dom->domain, ssl_errno_s);
+	}
 
 	if (tls_dhparam == NULL)
 		fatalx("No DH parameters given");
@@ -414,6 +445,10 @@ kore_domain_tlsinit(struct kore_domain *dom, const void *pem, size_t pemlen)
 
 	SSL_CTX_set_info_callback(dom->ssl_ctx, kore_tls_info_callback);
 	SSL_CTX_set_tlsext_servername_callback(dom->ssl_ctx, kore_tls_sni_cb);
+
+#if defined(KORE_USE_ACME)
+	SSL_CTX_set_alpn_select_cb(dom->ssl_ctx, kore_acme_tls_alpn, dom);
+#endif
 
 	X509_free(x509);
 }
@@ -599,18 +634,18 @@ keymgr_rsa_privenc(int flen, const unsigned char *from, unsigned char *to,
 
 	if ((dom = RSA_get_app_data(rsa)) == NULL)
 		fatal("RSA key has no domain attached");
-	if (strlen(dom->domain) >= KORE_DOMAINNAME_LEN - 1)
-		fatal("domain name too long");
 
 	memset(keymgr_buf, 0, sizeof(keymgr_buf));
 
 	req = (struct kore_keyreq *)keymgr_buf;
+
+	if (kore_strlcpy(req->domain, dom->domain, sizeof(req->domain)) >=
+	    sizeof(req->domain))
+		fatal("%s: domain truncated", __func__);
+
 	req->data_len = flen;
 	req->padding = padding;
-	req->domain_len = strlen(dom->domain);
-
 	memcpy(&req->data[0], from, req->data_len);
-	memcpy(req->domain, dom->domain, req->domain_len);
 
 	kore_msg_send(KORE_WORKER_KEYMGR, KORE_MSG_KEYMGR_REQ, keymgr_buf, len);
 	keymgr_await_data();
@@ -663,13 +698,14 @@ keymgr_ecdsa_sign(const unsigned char *dgst, int dgst_len,
 #endif
 
 	memset(keymgr_buf, 0, sizeof(keymgr_buf));
-
 	req = (struct kore_keyreq *)keymgr_buf;
-	req->data_len = dgst_len;
-	req->domain_len = strlen(dom->domain);
 
+	if (kore_strlcpy(req->domain, dom->domain, sizeof(req->domain)) >=
+	    sizeof(req->domain))
+		fatal("%s: domain truncated", __func__);
+
+	req->data_len = dgst_len;
 	memcpy(&req->data[0], dgst, req->data_len);
-	memcpy(req->domain, dom->domain, req->domain_len);
 
 	kore_msg_send(KORE_WORKER_KEYMGR, KORE_MSG_KEYMGR_REQ, keymgr_buf, len);
 	keymgr_await_data();
@@ -835,11 +871,11 @@ domain_load_certificate_chain(SSL_CTX *ctx, const void *data, size_t len)
 	in = BIO_new_mem_buf(data, len);
 
 	if ((x = PEM_read_bio_X509_AUX(in, NULL, NULL, NULL)) == NULL)
-		fatal("PEM_read_bio_X509_AUX: %s", ssl_errno_s);
+		return (NULL);
 
 	/* refcount for x509 will go up one. */
 	if (SSL_CTX_use_certificate(ctx, x) == 0)
-		fatal("SSL_CTX_use_certificate: %s", ssl_errno_s);
+		return (NULL);
 
 #if defined(KORE_OPENSSL_NEWER_API)
 	SSL_CTX_clear_chain_certs(ctx);
@@ -853,10 +889,10 @@ domain_load_certificate_chain(SSL_CTX *ctx, const void *data, size_t len)
 		/* ca its reference count won't be increased. */
 #if defined(KORE_OPENSSL_NEWER_API)
 		if (SSL_CTX_add0_chain_cert(ctx, ca) == 0)
-			fatal("SSL_CTX_add0_chain_cert: %s", ssl_errno_s);
+			return (NULL);
 #else
 		if (SSL_CTX_add_extra_chain_cert(ctx, ca) == 0)
-			fatal("SSL_CTX_add_extra_chain_cert: %s", ssl_errno_s);
+			return (NULL);
 #endif
 	}
 
@@ -864,7 +900,7 @@ domain_load_certificate_chain(SSL_CTX *ctx, const void *data, size_t len)
 
 	if (ERR_GET_LIB(err) != ERR_LIB_PEM ||
 	    ERR_GET_REASON(err) != PEM_R_NO_START_LINE)
-		fatal("PEM_read_bio_X509: %s", ssl_errno_s);
+		return (NULL);
 
 	BIO_free(in);
 

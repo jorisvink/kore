@@ -236,7 +236,7 @@ kore_platform_disable_write(int fd)
 }
 
 void
-kore_platform_proctitle(char *title)
+kore_platform_proctitle(const char *title)
 {
 #ifdef __MACH__
 	kore_proctitle(title);
@@ -299,6 +299,9 @@ kore_platform_sandbox(void)
 void
 kore_platform_pledge(void)
 {
+	if (worker->id == KORE_WORKER_KEYMGR || worker->id == KORE_WORKER_ACME)
+		return;
+
 	if (pledge(pledges, NULL) == -1)
 		fatal("failed to pledge process");
 }

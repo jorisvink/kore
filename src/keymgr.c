@@ -29,14 +29,25 @@
  * for a configured domain when it receives a SIGUSR1. It it reloads them
  * it will send the newly loaded certificate chains to the worker processes
  * which will update their TLS contexts accordingly.
+ *
+ * If ACME is turned on the keymgr will also hold all account and domain
+ * keys and will initiate the process of acquiring new certificates against
+ * the ACME provider that is configured if those certificates do not exist
+ * or are expired (or are expiring soon).
  */
 
 #include <sys/types.h>
+#include <sys/mman.h>
 #include <sys/stat.h>
 
 #include <openssl/evp.h>
+#include <openssl/rsa.h>
 #include <openssl/rand.h>
+#include <openssl/sha.h>
+#include <openssl/x509.h>
+#include <openssl/x509v3.h>
 
+#include <ctype.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -45,6 +56,10 @@
 #include <unistd.h>
 
 #include "kore.h"
+
+#if defined(KORE_USE_ACME)
+#include "acme.h"
+#endif
 
 #define RAND_TMP_FILE		"rnd.tmp"
 #define RAND_POLL_INTERVAL	(1800 * 1000)
@@ -55,11 +70,15 @@
 
 /* The syscalls our keymgr is allowed to perform, only. */
 static struct sock_filter filter_keymgr[] = {
+	/* Deny these, but with EACCESS instead of dying. */
+	KORE_SYSCALL_DENY(ioctl, EACCES),
+
 	/* Required to deal with private keys and certs. */
 #if defined(SYS_open)
 	KORE_SYSCALL_ALLOW(open),
 #endif
 	KORE_SYSCALL_ALLOW(read),
+	KORE_SYSCALL_ALLOW(lseek),
 	KORE_SYSCALL_ALLOW(write),
 	KORE_SYSCALL_ALLOW(close),
 	KORE_SYSCALL_ALLOW(fstat),
@@ -100,6 +119,18 @@ static struct sock_filter filter_keymgr[] = {
 #if defined(__NR_getrandom)
 	KORE_SYSCALL_ALLOW(getrandom),
 #endif
+
+#if defined(KORE_USE_ACME)
+#if defined(SYS_mkdir)
+	KORE_SYSCALL_ALLOW(mkdir),
+#endif
+	KORE_SYSCALL_ALLOW(mkdirat),
+	KORE_SYSCALL_ALLOW(umask),
+#if defined(SYS_access)
+	KORE_SYSCALL_ALLOW(access),
+#endif
+	KORE_SYSCALL_ALLOW(faccessat),
+#endif
 };
 #endif
 
@@ -114,17 +145,77 @@ char				*rand_file = NULL;
 static TAILQ_HEAD(, key)	keys;
 static int			initialized = 0;
 
+#if defined(KORE_USE_ACME)
+
+#define ACME_ORDER_STATE_INIT		1
+#define ACME_ORDER_STATE_SUBMIT		2
+
+#define ACME_X509_EXPIRATION		120
+#define ACME_TLS_ALPN_01_OID		"1.3.6.1.5.5.7.1.31"
+
+#define ACME_RENEWAL_THRESHOLD		5
+#define ACME_RENEWAL_TIMER		(3600 * 1000)
+
+/* UTCTIME in format of YYMMDDHHMMSSZ */
+#define ASN1_UTCTIME_LEN		13
+
+/* GENERALIZEDTIME in format of YYYYMMDDHHMMSSZ */
+#define ASN1_GENERALIZEDTIME_LEN	15
+
+/* Set to 1 when we receive KORE_ACME_PROC_READY. */
+static int			acmeproc_ready = 0;
+
+/* Renewal timer for all domains under acme control. */
+static struct kore_timer	*acme_renewal = NULL;
+
+struct acme_order {
+	int			state;
+	struct kore_timer	*timer;
+	char			*domain;
+};
+
+static char	*keymgr_bignum_base64(const BIGNUM *);
+
+static void	keymgr_acme_init(void);
+static void	keymgr_acme_renewal(void *, u_int64_t);
+static void	keymgr_acme_check(struct kore_domain *);
+static void	keymgr_acme_sign(struct kore_msg *, const void *);
+static void	keymgr_acme_ready(struct kore_msg *, const void *);
+static void	keymgr_acme_domainkey(struct kore_domain *, struct key *);
+
+static void	keymgr_acme_order_create(const char *);
+static void	keymgr_acme_order_redo(void *, u_int64_t);
+static void	keymgr_acme_order_start(void *, u_int64_t);
+
+static void	keymgr_x509_ext(STACK_OF(X509_EXTENSION) *,
+		    int, const char *, ...);
+
+static void	keymgr_acme_csr(const struct kore_keyreq *, struct key *);
+static void	keymgr_acme_install_cert(const void *, size_t, struct key *);
+static void	keymgr_acme_order_failed(const void *, size_t, struct key *);
+static void	keymgr_acme_challenge_cert(const void *, size_t, struct key *);
+
+static int	keymgr_x509_not_after(X509 *, time_t *);
+static int	keymgr_asn1_convert_utctime(const ASN1_TIME *, time_t *);
+static int	keymgr_asn1_convert_generalizedtime(const void *,
+		    size_t, time_t *);
+
+#endif /* KORE_USE_ACME */
+
 static void	keymgr_reload(void);
 static void	keymgr_load_randfile(void);
 static void	keymgr_save_randfile(void);
 
-static void	keymgr_load_privatekey(struct kore_domain *);
+static struct key	*keymgr_load_privatekey(const char *);
+static void		keymgr_load_domain_privatekey(struct kore_domain *);
+
 static void	keymgr_msg_recv(struct kore_msg *, const void *);
 static void	keymgr_entropy_request(struct kore_msg *, const void *);
 static void	keymgr_certificate_request(struct kore_msg *, const void *);
 static void	keymgr_submit_certificates(struct kore_domain *, u_int16_t);
 static void	keymgr_submit_file(u_int8_t, struct kore_domain *,
 		    const char *, u_int16_t, int);
+static void	keymgr_x509_msg(const char *, const void *, size_t, int, int);
 
 static void	keymgr_rsa_encrypt(struct kore_msg *, const void *,
 		    struct key *);
@@ -139,10 +230,10 @@ void
 kore_keymgr_run(void)
 {
 	int		quit;
-	u_int64_t	now, last_seed;
+	u_int64_t	now, netwait, last_seed;
 
 	if (keymgr_active == 0)
-		fatal("%s: called with keymgr_active == 0", __func__);
+		fatalx("%s: called with keymgr_active == 0", __func__);
 
 	quit = 0;
 
@@ -150,8 +241,10 @@ kore_keymgr_run(void)
 	kore_module_cleanup();
 
 	net_init();
+	kore_timer_init();
 	kore_connection_init();
 	kore_platform_event_init();
+
 	kore_msg_worker_init();
 	kore_msg_register(KORE_MSG_KEYMGR_REQ, keymgr_msg_recv);
 	kore_msg_register(KORE_MSG_ENTROPY_REQ, keymgr_entropy_request);
@@ -168,6 +261,9 @@ kore_keymgr_run(void)
 #endif
 	kore_worker_privdrop(keymgr_runas_user, keymgr_root_path);
 
+	if (!kore_quiet)
+		kore_log(LOG_NOTICE, "key manager started (pid#%d)", getpid());
+
 	if (rand_file != NULL) {
 		keymgr_load_randfile();
 		keymgr_save_randfile();
@@ -175,19 +271,16 @@ kore_keymgr_run(void)
 		kore_log(LOG_WARNING, "no rand_file location specified");
 	}
 
-	initialized = 1;
-
-	keymgr_reload();
 	RAND_poll();
 	last_seed = 0;
 
+	initialized = 1;
+	keymgr_reload();
+
 #if defined(__OpenBSD__)
 	if (pledge("stdio rpath", NULL) == -1)
-		fatal("failed to pledge keymgr process");
+		fatalx("failed to pledge keymgr process");
 #endif
-
-	if (!kore_quiet)
-		kore_log(LOG_NOTICE, "key manager started");
 
 	while (quit != 1) {
 		now = kore_time_ms();
@@ -195,6 +288,9 @@ kore_keymgr_run(void)
 			RAND_poll();
 			last_seed = now;
 		}
+
+		netwait = kore_timer_next_run(now);
+		kore_platform_event_wait(netwait);
 
 		if (sig_recv != 0) {
 			switch (sig_recv) {
@@ -212,7 +308,11 @@ kore_keymgr_run(void)
 			sig_recv = 0;
 		}
 
-		kore_platform_event_wait(1000);
+		if (quit)
+			break;
+
+		now = kore_time_ms();
+		kore_timer_run(now);
 		kore_connection_prune(KORE_CONNECTION_PRUNE_DISCONNECT);
 	}
 
@@ -254,7 +354,11 @@ keymgr_reload(void)
 	kore_keymgr_cleanup(0);
 	TAILQ_INIT(&keys);
 
-	kore_domain_callback(keymgr_load_privatekey);
+#if defined(KORE_USE_ACME)
+	keymgr_acme_init();
+#endif
+
+	kore_domain_callback(keymgr_load_domain_privatekey);
 
 	/* can't use kore_domain_callback() due to dst parameter. */
 	LIST_FOREACH(srv, &kore_servers, list) {
@@ -268,6 +372,15 @@ keymgr_reload(void)
 static void
 keymgr_submit_certificates(struct kore_domain *dom, u_int16_t dst)
 {
+	if (access(dom->certfile, R_OK) == -1) {
+#if defined(KORE_USE_ACME)
+		if (dom->acme && errno == ENOENT)
+			return;
+#endif
+		fatalx("cannot read '%s' for %s: %s",
+		    dom->certfile, dom->domain, errno_s);
+	}
+
 	keymgr_submit_file(KORE_MSG_CERTIFICATE, dom, dom->certfile, dst, 0);
 
 	if (dom->crlfile != NULL)
@@ -280,51 +393,27 @@ keymgr_submit_file(u_int8_t id, struct kore_domain *dom,
 {
 	int				fd;
 	struct stat			st;
-	ssize_t				ret;
-	size_t				len;
-	struct kore_x509_msg		*msg;
 	u_int8_t			*payload;
 
 	if ((fd = open(file, O_RDONLY)) == -1) {
 		if (errno == ENOENT && can_fail)
 			return;
-		fatal("open(%s): %s", file, errno_s);
+		fatalx("open(%s): %s", file, errno_s);
 	}
 
 	if (fstat(fd, &st) == -1)
-		fatal("stat(%s): %s", file, errno_s);
+		fatalx("stat(%s): %s", file, errno_s);
 
 	if (!S_ISREG(st.st_mode))
-		fatal("%s is not a file", file);
+		fatalx("%s is not a file", file);
 
-	if (st.st_size <= 0 || st.st_size > (1024 * 1024 * 10)) {
-		fatal("%s length is not valid (%jd)", file,
-		    (intmax_t)st.st_size);
-	}
+	payload = mmap(NULL, st.st_size, PROT_READ, MAP_SHARED, fd, 0);
+	if (payload == MAP_FAILED)
+		fatalx("mmap(): %s", errno_s);
 
-	len = sizeof(*msg) + st.st_size;
-	payload = kore_calloc(1, len);
+	keymgr_x509_msg(dom->domain, payload, st.st_size, dst, id);
 
-	msg = (struct kore_x509_msg *)payload;
-	msg->domain_len = strlen(dom->domain);
-	if (msg->domain_len > sizeof(msg->domain))
-		fatal("domain name '%s' too long", dom->domain);
-	memcpy(msg->domain, dom->domain, msg->domain_len);
-
-	msg->data_len = st.st_size;
-	ret = read(fd, &msg->data[0], msg->data_len);
-	if (ret == -1)
-		fatal("failed to read from %s: %s", file, errno_s);
-	if (ret == 0)
-		fatal("eof while reading %s", file);
-
-	if ((size_t)ret != msg->data_len) {
-		fatal("bad read on %s: expected %zu, got %zd",
-		    file, msg->data_len, ret);
-	}
-
-	kore_msg_send(dst, id, payload, len);
-	kore_free(payload);
+	(void)munmap(payload, st.st_size);
 	close(fd);
 }
 
@@ -341,26 +430,26 @@ keymgr_load_randfile(void)
 		return;
 
 	if ((fd = open(rand_file, O_RDONLY)) == -1)
-		fatal("open(%s): %s", rand_file, errno_s);
+		fatalx("open(%s): %s", rand_file, errno_s);
 
 	if (fstat(fd, &st) == -1)
-		fatal("stat(%s): %s", rand_file, errno_s);
+		fatalx("stat(%s): %s", rand_file, errno_s);
 	if (!S_ISREG(st.st_mode))
-		fatal("%s is not a file", rand_file);
+		fatalx("%s is not a file", rand_file);
 	if (st.st_size != RAND_FILE_SIZE)
-		fatal("%s has an invalid size", rand_file);
+		fatalx("%s has an invalid size", rand_file);
 
 	total = 0;
 
 	while (total != RAND_FILE_SIZE) {
 		ret = read(fd, buf, sizeof(buf));
 		if (ret == 0)
-			fatal("EOF on %s", rand_file);
+			fatalx("EOF on %s", rand_file);
 
 		if (ret == -1) {
 			if (errno == EINTR)
 				continue;
-			fatal("read(%s): %s", rand_file, errno_s);
+			fatalx("read(%s): %s", rand_file, errno_s);
 		}
 
 		total += (size_t)ret;
@@ -427,26 +516,44 @@ cleanup:
 }
 
 static void
-keymgr_load_privatekey(struct kore_domain *dom)
+keymgr_load_domain_privatekey(struct kore_domain *dom)
 {
-	FILE			*fp;
-	struct key		*key;
+	struct key	*key;
 
 	if (dom->server->tls == 0)
 		return;
 
-	if ((fp = fopen(dom->certkey, "r")) == NULL)
-		fatal("failed to open private key: %s", dom->certkey);
+	key = keymgr_load_privatekey(dom->certkey);
 
-	key = kore_calloc(1, sizeof(*key));
+	if (key->pkey == NULL) {
+#if defined(KORE_USE_ACME)
+		if (dom->acme)
+			keymgr_acme_domainkey(dom, key);
+#endif
+		if (key->pkey == NULL) {
+			fatalx("failed to load private key for '%s' (%s)",
+			    dom->domain, errno_s);
+		}
+	}
+
 	key->dom = dom;
 
-	if ((key->pkey = PEM_read_PrivateKey(fp, NULL, NULL, NULL)) == NULL)
-		fatal("PEM_read_PrivateKey: %s", ssl_errno_s);
+	kore_log(LOG_INFO, "loaded private key for '%s'", dom->domain);
+}
 
-	(void)fclose(fp);
+static struct key *
+keymgr_load_privatekey(const char *path)
+{
+	struct key		*key;
 
+	key = kore_calloc(1, sizeof(*key));
 	TAILQ_INSERT_TAIL(&keys, key, list);
+
+	/* Caller should check if pkey was loaded. */
+	if (path)
+		key->pkey = kore_rsakey_load(path);
+
+	return (key);
 }
 
 static void
@@ -492,27 +599,48 @@ keymgr_msg_recv(struct kore_msg *msg, const void *data)
 
 	if (msg->length != (sizeof(*req) + req->data_len))
 		return;
-	if (req->domain_len > KORE_DOMAINNAME_LEN)
+
+	if (req->domain[KORE_DOMAINNAME_LEN] != '\0')
 		return;
 
 	key = NULL;
 	TAILQ_FOREACH(key, &keys, list) {
-		if (!strncmp(key->dom->domain, req->domain, req->domain_len))
+		if (key->dom == NULL)
+			continue;
+		if (!strcmp(key->dom->domain, req->domain))
 			break;
 	}
 
 	if (key == NULL)
 		return;
 
-	switch (EVP_PKEY_id(key->pkey)) {
-	case EVP_PKEY_RSA:
-		keymgr_rsa_encrypt(msg, data, key);
+	switch (msg->id) {
+	case KORE_MSG_KEYMGR_REQ:
+		switch (EVP_PKEY_id(key->pkey)) {
+		case EVP_PKEY_RSA:
+			keymgr_rsa_encrypt(msg, data, key);
+			break;
+		case EVP_PKEY_EC:
+			keymgr_ecdsa_sign(msg, data, key);
+			break;
+		default:
+			break;
+		}
 		break;
-	case EVP_PKEY_EC:
-		keymgr_ecdsa_sign(msg, data, key);
+#if defined(KORE_USE_ACME)
+	case KORE_ACME_CSR_REQUEST:
+		keymgr_acme_csr(req, key);
 		break;
-	default:
+	case KORE_ACME_ORDER_FAILED:
+		keymgr_acme_order_failed(req->data, req->data_len, key);
 		break;
+	case KORE_ACME_CHALLENGE_CERT:
+		keymgr_acme_challenge_cert(req->data, req->data_len, key);
+		break;
+	case KORE_ACME_INSTALL_CERT:
+		keymgr_acme_install_cert(req->data, req->data_len, key);
+		break;
+#endif
 	}
 }
 
@@ -572,3 +700,652 @@ keymgr_ecdsa_sign(struct kore_msg *msg, const void *data, struct key *key)
 
 	kore_msg_send(msg->src, KORE_MSG_KEYMGR_RESP, sig, siglen);
 }
+
+static void
+keymgr_x509_msg(const char *domain, const void *data, size_t len,
+    int target, int msg)
+{
+	struct kore_buf			buf;
+	struct kore_x509_msg		hdr;
+
+	memset(&hdr, 0, sizeof(hdr));
+
+	hdr.data_len = len;
+
+	if (kore_strlcpy(hdr.domain, domain, sizeof(hdr.domain)) >=
+	    sizeof(hdr.domain))
+		fatalx("%s: domain truncated", __func__);
+
+	kore_buf_init(&buf, sizeof(hdr) + len);
+	kore_buf_append(&buf, &hdr, sizeof(hdr));
+	kore_buf_append(&buf, data, len);
+
+	kore_msg_send(target, msg, buf.data, buf.offset);
+	kore_buf_cleanup(&buf);
+}
+
+#if defined(KORE_USE_ACME)
+static void
+keymgr_acme_init(void)
+{
+	RSA		*rsa;
+	struct key	*key;
+	char		*e, *n;
+	int		needsreg;
+	const BIGNUM	*be, *bn;
+
+	if (acme_provider == NULL)
+		return;
+
+	if (mkdir(KORE_ACME_CERTDIR, 0700) == -1) {
+		if (errno != EEXIST)
+			fatalx("mkdir(%s): %s", KORE_ACME_CERTDIR, errno_s);
+	}
+
+	umask(S_IWGRP | S_IWOTH | S_IRGRP | S_IROTH);
+
+	needsreg = 0;
+	acmeproc_ready = 0;
+	key = keymgr_load_privatekey(KORE_ACME_ACCOUNT_KEY);
+
+	if (acme_renewal != NULL)
+		kore_timer_remove(acme_renewal);
+
+	acme_renewal = kore_timer_add(keymgr_acme_renewal,
+	    ACME_RENEWAL_TIMER, NULL, 0);
+
+	if (key->pkey == NULL) {
+		kore_log(LOG_NOTICE, "generating new ACME account key");
+		key->pkey = kore_rsakey_generate(KORE_ACME_ACCOUNT_KEY);
+		needsreg = 1;
+	} else {
+		kore_log(LOG_INFO, "loaded existing ACME account key");
+	}
+
+#if defined(KORE_OPENSSL_NEWER_API)
+	rsa = EVP_PKEY_get0_RSA(key->pkey);
+	RSA_get0_key(rsa, &bn, &be, NULL);
+#else
+	rsa = key->pkey->pkey.rsa;
+	be = rsa->e;
+	bn = rsa->n;
+#endif
+
+	e = keymgr_bignum_base64(be);
+	n = keymgr_bignum_base64(bn);
+
+	kore_msg_send(KORE_WORKER_ACME, KORE_ACME_RSAKEY_E, e, strlen(e));
+	kore_msg_send(KORE_WORKER_ACME, KORE_ACME_RSAKEY_N, n, strlen(n));
+
+	kore_free(e);
+	kore_free(n);
+
+	if (needsreg) {
+		kore_msg_send(KORE_WORKER_ACME,
+		    KORE_ACME_ACCOUNT_CREATE, NULL, 0);
+	} else {
+		kore_msg_send(KORE_WORKER_ACME,
+		    KORE_ACME_ACCOUNT_RESOLVE, NULL, 0);
+	}
+
+	kore_msg_register(KORE_ACME_SIGN, keymgr_acme_sign);
+	kore_msg_register(KORE_ACME_CSR_REQUEST, keymgr_msg_recv);
+	kore_msg_register(KORE_ACME_PROC_READY, keymgr_acme_ready);
+	kore_msg_register(KORE_ACME_ORDER_FAILED, keymgr_msg_recv);
+	kore_msg_register(KORE_ACME_INSTALL_CERT, keymgr_msg_recv);
+	kore_msg_register(KORE_ACME_CHALLENGE_CERT, keymgr_msg_recv);
+}
+
+static void
+keymgr_acme_domainkey(struct kore_domain *dom, struct key *key)
+{
+	char		*p;
+
+	kore_log(LOG_NOTICE, "generated new domain key for %s", dom->domain);
+
+	if ((p = strrchr(dom->certkey, '/')) == NULL)
+		fatalx("invalid certkey path '%s'", dom->certkey);
+
+	*p = '\0';
+
+	if (mkdir(dom->certkey, 0700) == -1) {
+		if (errno != EEXIST)
+			fatalx("mkdir(%s): %s", dom->certkey, errno_s);
+	}
+
+	*p = '/';
+	key->pkey = kore_rsakey_generate(dom->certkey);
+}
+
+static void
+keymgr_acme_order_create(const char *domain)
+{
+	struct acme_order	*order;
+
+	order = kore_calloc(1, sizeof(*order));
+
+	order->state = ACME_ORDER_STATE_INIT;
+	order->domain = kore_strdup(domain);
+	order->timer = kore_timer_add(keymgr_acme_order_start,
+	    1000, order, KORE_TIMER_ONESHOT);
+}
+
+static void
+keymgr_acme_order_redo(void *udata, u_int64_t now)
+{
+	struct kore_domain	*dom = udata;
+
+	kore_log(LOG_INFO, "[%s] redoing order", dom->domain);
+	keymgr_acme_order_create(dom->domain);
+}
+
+static void
+keymgr_acme_order_start(void *udata, u_int64_t now)
+{
+	struct acme_order	*order = udata;
+
+	switch (order->state) {
+	case ACME_ORDER_STATE_INIT:
+		if (acmeproc_ready == 0)
+			break;
+		order->state = ACME_ORDER_STATE_SUBMIT;
+		/* fallthrough */
+	case ACME_ORDER_STATE_SUBMIT:
+		kore_msg_send(KORE_WORKER_ACME, KORE_ACME_ORDER_CREATE,
+		    order->domain, strlen(order->domain));
+		kore_free(order->domain);
+		kore_free(order);
+		order = NULL;
+		break;
+	default:
+		fatalx("%s: unknown order state %d", __func__, order->state);
+	}
+
+	if (order != NULL) {
+		order->timer = kore_timer_add(keymgr_acme_order_start,
+		    5000, order, KORE_TIMER_ONESHOT);
+	}
+}
+
+static void
+keymgr_acme_ready(struct kore_msg *msg, const void *data)
+{
+	acmeproc_ready = 1;
+	kore_log(LOG_INFO, "acme process ready to receive orders");
+
+	keymgr_acme_renewal(NULL, kore_time_ms());
+}
+
+static void
+keymgr_acme_check(struct kore_domain *dom)
+{
+	FILE			*fp;
+	int			days;
+	X509			*x509;
+	time_t			expires, now;
+
+	if (dom->acme == 0)
+		return;
+
+	if (access(dom->certfile, R_OK) == -1) {
+		if (errno == ENOENT) {
+			keymgr_acme_order_create(dom->domain);
+			return;
+		}
+		kore_log(LOG_ERR, "access(%s): %s", dom->certfile, errno_s);
+		return;
+	}
+
+	if ((fp = fopen(dom->certfile, "r")) == NULL) {
+		kore_log(LOG_ERR, "fopen(%s): %s", dom->certfile, errno_s);
+		return;
+	}
+
+	if ((x509 = PEM_read_X509(fp, NULL, NULL, NULL)) == NULL) {
+		fclose(fp);
+		kore_log(LOG_ERR, "PEM_read_X509: %s", ssl_errno_s);
+		return;
+	}
+
+	fclose(fp);
+
+	if (!keymgr_x509_not_after(x509, &expires)) {
+		X509_free(x509);
+		return;
+	}
+
+	time(&now);
+	days = (expires - now) / 86400;
+
+	kore_log(LOG_INFO, "%s certificate expires in %d days",
+	    dom->domain, days);
+
+	if (days <= ACME_RENEWAL_THRESHOLD) {
+		kore_log(LOG_INFO, "%s renewing certificate", dom->domain);
+		keymgr_acme_order_create(dom->domain);
+	}
+
+	X509_free(x509);
+}
+
+static void
+keymgr_acme_renewal(void *udata, u_int64_t now)
+{
+	kore_domain_callback(keymgr_acme_check);
+}
+
+static void
+keymgr_acme_sign(struct kore_msg *msg, const void *data)
+{
+	u_int32_t		id;
+	struct kore_buf		buf;
+	const u_int8_t		*ptr;
+	u_int8_t		*sig;
+	EVP_MD_CTX		*ctx;
+	struct key		*key;
+	char			*b64;
+	unsigned int		siglen;
+
+	TAILQ_FOREACH(key, &keys, list) {
+		if (key->dom == NULL)
+			break;
+	}
+
+	if (key == NULL)
+		fatalx("%s: missing key", __func__);
+
+	if (msg->length < sizeof(id))
+		fatalx("%s: invalid length (%zu)", __func__, msg->length);
+
+	ptr = data;
+	memcpy(&id, ptr, sizeof(id));
+
+	ptr += sizeof(id);
+	msg->length -= sizeof(id);
+
+	sig = kore_calloc(1, EVP_PKEY_size(key->pkey));
+
+	if ((ctx = EVP_MD_CTX_create()) == NULL)
+		fatalx("EVP_MD_CTX_create: %s", ssl_errno_s);
+
+	if (!EVP_SignInit_ex(ctx, EVP_sha256(), NULL))
+		fatalx("EVP_SignInit_ex: %s", ssl_errno_s);
+
+	if (!EVP_SignUpdate(ctx, ptr, msg->length))
+		fatalx("EVP_SignUpdate: %s", ssl_errno_s);
+
+	if (!EVP_SignFinal(ctx, sig, &siglen, key->pkey))
+		fatalx("EVP_SignFinal: %s", ssl_errno_s);
+
+	if (!kore_base64url_encode(sig, siglen, &b64, KORE_BASE64_RAW))
+		fatalx("%s: failed to b64url encode signed data", __func__);
+
+	kore_buf_init(&buf, siglen + sizeof(id));
+	kore_buf_append(&buf, &id, sizeof(id));
+	kore_buf_append(&buf, b64, strlen(b64));
+
+	kore_msg_send(KORE_WORKER_ACME,
+	    KORE_ACME_SIGN_RESULT, buf.data, buf.offset);
+
+	EVP_MD_CTX_destroy(ctx);
+
+	kore_free(sig);
+	kore_free(b64);
+	kore_buf_cleanup(&buf);
+}
+
+static void
+keymgr_acme_install_cert(const void *data, size_t len, struct key *key)
+{
+	int		fd;
+	ssize_t		ret;
+
+	fd = open(key->dom->certfile, O_CREAT | O_TRUNC | O_WRONLY, 0700);
+	if (fd == -1)
+		fatal("open(%s): %s", key->dom->certfile, errno_s);
+
+	kore_log(LOG_INFO, "writing %zu bytes of data", len);
+
+	for (;;) {
+		ret = write(fd, data, len);
+		if (ret == -1) {
+			if (errno == EINTR)
+				continue;
+			fatal("write(%s): %s", key->dom->certfile, errno_s);
+		}
+
+		break;
+	}
+
+	if ((size_t)ret != len) {
+		fatal("incorrect write on %s (%zd/%zu)",
+		    key->dom->certfile, ret, len);
+	}
+
+	if (close(fd) == -1) {
+		kore_log(LOG_NOTICE,
+		    "close error on '%s' (%s)", key->dom->certfile, errno_s);
+	}
+
+	keymgr_submit_certificates(key->dom, KORE_MSG_WORKER_ALL);
+
+	keymgr_x509_msg(key->dom->domain, NULL, 0,
+	    KORE_MSG_WORKER_ALL, KORE_ACME_CHALLENGE_CLEAR_CERT);
+}
+
+static void
+keymgr_acme_order_failed(const void *data, size_t len, struct key *key)
+{
+	u_int32_t	retry;
+
+	if (len != sizeof(retry)) {
+		kore_log(LOG_ERR, "%s: invalid payload (%zu)", __func__, len);
+		return;
+	}
+
+	memcpy(&retry, data, len);
+
+	kore_timer_add(keymgr_acme_order_redo, retry, key->dom,
+	    KORE_TIMER_ONESHOT);
+}
+
+static void
+keymgr_acme_challenge_cert(const void *data, size_t len, struct key *key)
+{
+	STACK_OF(X509_EXTENSION)	*sk;
+	size_t				idx;
+	time_t				now;
+	X509_EXTENSION			*ext;
+	X509_NAME			*name;
+	X509				*x509;
+	const u_int8_t			*digest;
+	u_int8_t			*cert, *uptr;
+	int				slen, acme, i;
+	char				hex[(SHA256_DIGEST_LENGTH * 2) + 1];
+
+	kore_log(LOG_INFO, "[%s] generating tls-alpn-01 challenge cert",
+	    key->dom->domain);
+
+	if (len != SHA256_DIGEST_LENGTH)
+		fatalx("invalid digest length of %zu bytes", len);
+
+	digest = data;
+
+	for (idx = 0; idx < SHA256_DIGEST_LENGTH; idx++) {
+		slen = snprintf(hex + (idx * 2), sizeof(hex) - (idx * 2),
+		    "%02x", digest[idx]);
+		if (slen == -1 || (size_t)slen >= sizeof(hex))
+			fatal("failed to convert digest to hex");
+	}
+
+	if ((x509 = X509_new()) == NULL)
+		fatalx("X509_new(): %s", ssl_errno_s);
+
+	if (!X509_set_version(x509, 2))
+		fatalx("X509_set_version(): %s", ssl_errno_s);
+
+	time(&now);
+	if (!ASN1_INTEGER_set(X509_get_serialNumber(x509), now))
+		fatalx("ASN1_INTEGER_set(): %s", ssl_errno_s);
+
+	if (!X509_gmtime_adj(X509_get_notBefore(x509), 0))
+		fatalx("X509_gmtime_adj(): %s", ssl_errno_s);
+
+	if (!X509_gmtime_adj(X509_get_notAfter(x509), ACME_X509_EXPIRATION))
+		fatalx("X509_gmtime_adj(): %s", ssl_errno_s);
+
+	if (!X509_set_pubkey(x509, key->pkey))
+		fatalx("X509_set_pubkey(): %s", ssl_errno_s);
+
+	if ((name = X509_get_subject_name(x509)) == NULL)
+		fatalx("X509_get_subject_name(): %s", ssl_errno_s);
+
+	if (!X509_NAME_add_entry_by_txt(name, "CN",
+	    MBSTRING_ASC, (const unsigned char *)key->dom->domain, -1, -1, 0))
+		fatalx("X509_NAME_add_entry_by_txt(): CN %s", ssl_errno_s);
+
+	if (!X509_set_issuer_name(x509, name))
+		fatalx("X509_set_issuer_name(): %s", ssl_errno_s);
+
+	acme = OBJ_create(ACME_TLS_ALPN_01_OID, "acme", "acmeIdentifier");
+	X509V3_EXT_add_alias(acme, NID_subject_key_identifier);
+
+	sk = sk_X509_EXTENSION_new_null();
+	keymgr_x509_ext(sk, acme, "critical,%s", hex);
+	keymgr_x509_ext(sk, NID_subject_alt_name, "DNS:%s", key->dom->domain);
+
+	for (i = 0; i < sk_X509_EXTENSION_num(sk); i++) {
+		ext = sk_X509_EXTENSION_value(sk, i);
+		if (!X509_add_ext(x509, ext, 0))
+			fatalx("X509_add_ext(): %s", ssl_errno_s);
+	}
+
+	if (!X509_sign(x509, key->pkey, EVP_sha256()))
+		fatalx("X509_sign(): %s", ssl_errno_s);
+
+	if ((slen = i2d_X509(x509, NULL)) <= 0)
+		fatalx("i2d_X509: %s", ssl_errno_s);
+
+	cert = kore_calloc(1, slen);
+	uptr = cert;
+
+	if (i2d_X509(x509, &uptr) <= 0)
+		fatalx("i2d_X509: %s", ssl_errno_s);
+
+	keymgr_x509_msg(key->dom->domain, cert, slen,
+	    KORE_MSG_WORKER_ALL, KORE_ACME_CHALLENGE_SET_CERT);
+
+	kore_free(cert);
+	X509_free(x509);
+	sk_X509_EXTENSION_pop_free(sk, X509_EXTENSION_free);
+}
+
+static void
+keymgr_acme_csr(const struct kore_keyreq *req, struct key *key)
+{
+	int				len;
+	STACK_OF(X509_EXTENSION)	*sk;
+	X509_REQ			*csr;
+	X509_NAME			*name;
+	u_int8_t			*data, *uptr;
+
+	kore_log(LOG_INFO, "[%s] creating CSR", req->domain);
+
+	if ((csr = X509_REQ_new()) == NULL)
+		fatal("X509_REQ_new: %s", ssl_errno_s);
+
+	if (!X509_REQ_set_version(csr, 3))
+		fatalx("X509_REQ_set_version(): %s", ssl_errno_s);
+
+	if (!X509_REQ_set_pubkey(csr, key->pkey))
+		fatalx("X509_REQ_set_pubkey(): %s", ssl_errno_s);
+
+	if ((name = X509_REQ_get_subject_name(csr)) == NULL)
+		fatalx("X509_REQ_get_subject_name(): %s", ssl_errno_s);
+
+	if (!X509_NAME_add_entry_by_txt(name, "CN",
+	    MBSTRING_ASC, (const unsigned char *)key->dom->domain, -1, -1, 0))
+		fatalx("X509_NAME_add_entry_by_txt(): %s", ssl_errno_s);
+
+	sk = sk_X509_EXTENSION_new_null();
+	keymgr_x509_ext(sk, NID_subject_alt_name, "DNS:%s", key->dom->domain);
+
+	if (!X509_REQ_add_extensions(csr, sk))
+		fatalx("X509_REQ_add_extensions(): %s", ssl_errno_s);
+
+	if (!X509_REQ_sign(csr, key->pkey, EVP_sha256()))
+		fatalx("X509_REQ_sign(): %s", ssl_errno_s);
+
+	if ((len = i2d_X509_REQ(csr, NULL)) <= 0)
+		fatalx("i2d_X509_REQ: %s", ssl_errno_s);
+
+	data = kore_calloc(1, len);
+	uptr = data;
+
+	if (i2d_X509_REQ(csr, &uptr) <= 0)
+		fatalx("i2d_X509_REQ: %s", ssl_errno_s);
+
+	keymgr_x509_msg(key->dom->domain, data, len,
+	    KORE_WORKER_ACME, KORE_ACME_CSR_RESPONSE);
+
+	kore_free(data);
+	X509_REQ_free(csr);
+
+	sk_X509_EXTENSION_pop_free(sk, X509_EXTENSION_free);
+}
+
+static void
+keymgr_x509_ext(STACK_OF(X509_EXTENSION) *sk, int extnid, const char *fmt, ...)
+{
+	int			len;
+	va_list			args;
+	X509_EXTENSION		*ext;
+	char			buf[1024];
+
+	va_start(args, fmt);
+	len = vsnprintf(buf, sizeof(buf), fmt, args);
+	va_end(args);
+
+	if (len == -1 || (size_t)len >= sizeof(buf))
+		fatalx("failed to create buffer for extension %d", extnid);
+
+	if ((ext = X509V3_EXT_conf_nid(NULL, NULL, extnid, buf)) == NULL) {
+		fatalx("X509V3_EXT_conf_nid(%d, %s): %s",
+		    extnid, buf, ssl_errno_s);
+	}
+
+	sk_X509_EXTENSION_push(sk, ext);
+}
+
+static char *
+keymgr_bignum_base64(const BIGNUM *bn)
+{
+	int		len;
+	void		*buf;
+	char		*encoded;
+
+	len = BN_num_bytes(bn);
+	buf = kore_calloc(1, len);
+
+	if (BN_bn2bin(bn, buf) != len)
+		fatalx("BN_bn2bin: %s", ssl_errno_s);
+
+	if (!kore_base64url_encode(buf, len, &encoded, KORE_BASE64_RAW))
+		fatalx("failed to base64 encode BIGNUM");
+
+	return (encoded);
+}
+
+static int
+keymgr_x509_not_after(X509 *x509, time_t *out)
+{
+	const ASN1_TIME		*na;
+	int			ret;
+
+	ret = KORE_RESULT_ERROR;
+
+	if ((na = X509_get_notAfter(x509)) == NULL) {
+		kore_log(LOG_ERR, "no notAfter date in x509");
+		return (KORE_RESULT_ERROR);
+	}
+
+	switch (na->type) {
+	case V_ASN1_UTCTIME:
+		ret = keymgr_asn1_convert_utctime(na, out);
+		break;
+	case V_ASN1_GENERALIZEDTIME:
+		ret = keymgr_asn1_convert_generalizedtime(na->data,
+		    na->length, out);
+		break;
+	default:
+		kore_log(LOG_ERR, "invalid notAfter type (%d)", na->type);
+		break;
+	}
+
+	return (ret);
+}
+
+static int
+keymgr_asn1_convert_utctime(const ASN1_TIME *na, time_t *out)
+{
+	int	len, year;
+	char	buf[ASN1_GENERALIZEDTIME_LEN + 1];
+
+	if (na->length != ASN1_UTCTIME_LEN) {
+		kore_log(LOG_ERR, "invalid UTCTIME: too short (%d)",
+		    na->length);
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (!isdigit(na->data[0]) || !isdigit(na->data[1])) {
+		kore_log(LOG_ERR, "invalid UTCTIME: YY are not digits");
+		return (KORE_RESULT_ERROR);
+	}
+
+	year = (na->data[0] - '0') * 10 + (na->data[1] - '0');
+
+	/* RFC 5280 says years >= 50 are intepreted as 19YY */
+	if (year >= 50)
+		year = 1900 + year;
+	else
+		year = 2000 + year;
+
+	/* Convert it to GENERALIZEDTIME format and call that parser. */
+	len = snprintf(buf, sizeof(buf), "%04d%.*s", year,
+	    na->length - 2, (const char *)na->data+ 2);
+	if (len == -1 || (size_t)len >= sizeof(buf)) {
+		kore_log(LOG_ERR, "invalid UTCTIME: failed to convert");
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (keymgr_asn1_convert_generalizedtime(buf, len, out));
+}
+
+static int
+keymgr_asn1_convert_generalizedtime(const void *ptr, size_t len, time_t *out)
+{
+	size_t			i;
+	struct tm		tm;
+	const u_int8_t		*buf;
+
+	if (len != ASN1_GENERALIZEDTIME_LEN) {
+		kore_log(LOG_ERR, "invalid GENERALIZEDTIME: too short (%zu)",
+		    len);
+		return (KORE_RESULT_ERROR);
+	}
+
+	buf = ptr;
+
+	for (i = 0; i < len - 1; i++) {
+		if (!isdigit(buf[i])) {
+			kore_log(LOG_ERR,
+			    "invalid GENERALIZEDTIME: invalid bytes");
+			return (KORE_RESULT_ERROR);
+		}
+	}
+
+	/* RFC 5280 states that Zulu time must be used (Z). */
+	if (buf[i] != 'Z') {
+		kore_log(LOG_ERR, "invalid GENERALIZEDTIME: not Zulu time");
+		return (KORE_RESULT_ERROR);
+	}
+
+	memset(&tm, 0, sizeof(tm));
+
+	tm.tm_year = (buf[0] - '0') * 1000 + (buf[1] - '0') * 100 +
+	    (buf[2] - '0') * 10 + (buf[3] - '0');
+
+	tm.tm_mon = (buf[4] - '0') * 10 + (buf[5] - '0');
+	tm.tm_mday = (buf[6] - '0') * 10 + (buf[7] - '0');
+	tm.tm_hour = (buf[8] - '0') * 10 + (buf[9] - '0');
+	tm.tm_min = (buf[10] - '0') * 10 + (buf[11] - '0');
+	tm.tm_sec = (buf[12] - '0') * 10 + (buf[13] - '0');
+
+	tm.tm_mon = tm.tm_mon - 1;
+	tm.tm_year = tm.tm_year - 1900;
+
+	*out = mktime(&tm);
+
+	return (KORE_RESULT_OK);
+}
+#endif

@@ -103,6 +103,7 @@ static struct sock_filter filter_kore[] = {
 #if defined(SYS_poll)
 	KORE_SYSCALL_ALLOW(poll),
 #endif
+	KORE_SYSCALL_ALLOW(ppoll),
 	KORE_SYSCALL_ALLOW(sendto),
 	KORE_SYSCALL_ALLOW(accept),
 	KORE_SYSCALL_ALLOW(sendfile),
@@ -154,7 +155,7 @@ static struct sock_filter	*seccomp_filter_update(struct sock_filter *,
 #define filter_prologue_len	KORE_FILTER_LEN(filter_prologue)
 #define filter_epilogue_len	KORE_FILTER_LEN(filter_epilogue)
 
-static void	seccomp_register_violation(struct kore_worker *);
+static void	seccomp_register_violation(pid_t);
 
 struct filter {
 	char			*name;
@@ -313,35 +314,34 @@ kore_seccomp_traceme(void)
 }
 
 int
-kore_seccomp_trace(struct kore_worker *kw, int status)
+kore_seccomp_trace(pid_t pid, int status)
 {
+	int	evt;
+
 	if (kore_seccomp_tracing == 0)
 		return (KORE_RESULT_ERROR);
 
 	if (WIFSTOPPED(status) && WSTOPSIG(status) == SIGSTOP) {
-		if (kw->tracing == 0) {
-			kw->tracing = 1;
-			if (ptrace(PTRACE_SETOPTIONS, kw->pid, NULL,
-			    PTRACE_O_TRACESECCOMP) == -1)
-				fatal("ptrace: %s", errno_s);
-			if (ptrace(PTRACE_CONT, kw->pid, NULL, NULL) == -1)
-				fatal("ptrace: %s", errno_s);
-		}
-
-		return (KORE_RESULT_OK);
-	}
-
-	if (WIFSTOPPED(status) && WSTOPSIG(status) == SIGTRAP) {
-		if ((status >> 8) ==
-		    (SIGTRAP | (PTRACE_EVENT_SECCOMP << 8)))
-			seccomp_register_violation(kw);
-		if (ptrace(PTRACE_CONT, kw->pid, NULL, NULL) == -1)
+		if (ptrace(PTRACE_SETOPTIONS, pid, NULL,
+		    PTRACE_O_TRACESECCOMP | PTRACE_O_TRACECLONE |
+		    PTRACE_O_TRACEFORK) == -1)
+			fatal("ptrace: %s", errno_s);
+		if (ptrace(PTRACE_CONT, pid, NULL, NULL) == -1)
 			fatal("ptrace: %s", errno_s);
 		return (KORE_RESULT_OK);
 	}
 
-	if (WIFSTOPPED(status) && kw->tracing) {
-		if (ptrace(PTRACE_CONT, kw->pid, NULL, WSTOPSIG(status)) == -1)
+	if (WIFSTOPPED(status) && WSTOPSIG(status) == SIGTRAP) {
+		evt = status >> 8;
+		if (evt == (SIGTRAP | (PTRACE_EVENT_SECCOMP << 8)))
+			seccomp_register_violation(pid);
+		if (ptrace(PTRACE_CONT, pid, NULL, NULL) == -1)
+			fatal("ptrace: %s", errno_s);
+		return (KORE_RESULT_OK);
+	}
+
+	if (WIFSTOPPED(status)) {
+		if (ptrace(PTRACE_CONT, pid, NULL, WSTOPSIG(status)) == -1)
 			fatal("ptrace: %s", errno_s);
 		return (KORE_RESULT_OK);
 	}
@@ -420,16 +420,19 @@ kore_seccomp_syscall_flag(const char *name, int action, int arg, int value)
 }
 
 static void
-seccomp_register_violation(struct kore_worker *kw)
+seccomp_register_violation(pid_t pid)
 {
+	int				idx;
+	struct kore_worker		*kw;
 	struct iovec			iov;
 	struct user_regs_struct		regs;
 	long				sysnr;
+	const char			*name;
 
 	iov.iov_base = &regs;
 	iov.iov_len = sizeof(regs);
 
-	if (ptrace(PTRACE_GETREGSET, kw->pid, 1, &iov) == -1)
+	if (ptrace(PTRACE_GETREGSET, pid, 1, &iov) == -1)
 		fatal("ptrace: %s", errno_s);
 
 #if SECCOMP_AUDIT_ARCH == AUDIT_ARCH_X86_64
@@ -442,8 +445,20 @@ seccomp_register_violation(struct kore_worker *kw)
 #error "platform not yet supported"
 #endif
 
-	kore_log(LOG_INFO, "seccomp violation, worker=%d, syscall=%s",
-	    kw->id, kore_seccomp_syscall_name(sysnr));
+	name = NULL;
+	for (idx = 0; idx < worker_count; idx++) {
+		kw = kore_worker_data(idx);
+		if (kw->pid == pid) {
+			name = kore_worker_name(kw->id);
+			break;
+		}
+	}
+
+	if (name == NULL)
+		name = "<child>";
+
+	kore_log(LOG_INFO, "seccomp violation, %s pid=%d, syscall=%ld:%s",
+	    name, pid, sysnr, kore_seccomp_syscall_name(sysnr));
 }
 
 static struct sock_filter *

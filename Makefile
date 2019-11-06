@@ -102,6 +102,13 @@ ifeq ("$(OSNAME)", "freebsd")
 	KORE_CURL_INC=-I/usr/local/include
 endif
 
+ifneq ("$(ACME)", "")
+	S_SRC+=src/acme.c
+	CURL=1
+	CFLAGS+=-DKORE_USE_ACME
+	FEATURES+=-DKORE_USE_ACME
+endif
+
 ifneq ("$(CURL)", "")
 	S_SRC+=src/curl.c
 	KORE_CURL_LIB?=$(shell curl-config --libs)

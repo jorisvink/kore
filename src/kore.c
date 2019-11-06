@@ -45,6 +45,10 @@
 #include "python_api.h"
 #endif
 
+#if defined(KORE_USE_ACME)
+#include "acme.h"
+#endif
+
 volatile sig_atomic_t	sig_recv;
 struct kore_server_list	kore_servers;
 u_int8_t		nlisteners;
@@ -255,6 +259,9 @@ main(int argc, char *argv[])
 	kore_auth_init();
 	kore_validator_init();
 	kore_filemap_init();
+#endif
+#if defined(KORE_USE_ACME)
+	kore_acme_init();
 #endif
 	kore_domain_init();
 	kore_module_init();

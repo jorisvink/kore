@@ -23,8 +23,8 @@
  * your workers with custom callbacks defined per message ID.
  */
 
-/* Your code shouldn't use IDs < 100. */
-#define MY_MESSAGE_ID		100
+/* Your code shouldn't use IDs <= KORE_MSG_APP_BASE. */
+#define MY_MESSAGE_ID		KORE_MSG_APP_BASE + 1
 
 int	init(int);
 int	page(struct http_request *);
