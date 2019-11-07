@@ -19,6 +19,7 @@ Key Features
 * Optional asynchronous PostgreSQL support
 * Optional support for page handlers in Python
 * Reload private keys and certificates on-the-fly
+* Automatic X509 certificates via ACME (with privsep)
 * Private keys isolated in separate process (RSA and ECDSA)
 * Default sane TLS ciphersuites (PFS in all major browsers)
 * Modules can be reloaded on-the-fly, even while serving content
@@ -78,6 +79,7 @@ $ make
 If you would like to build a specific flavor, you can enable
 those by setting a shell environment variable before running **_make_**.
 
+* ACME=1 (compiles in ACME support)
 * CURL=1 (compiles in asynchronous curl support)
 * TASKS=1 (compiles in task support)
 * PGSQL=1 (compiles in pgsql support)
