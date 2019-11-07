@@ -168,6 +168,9 @@ static int			acmeproc_ready = 0;
 /* Renewal timer for all domains under acme control. */
 static struct kore_timer	*acme_renewal = NULL;
 
+/* oid for acme extension. */
+static int			acme_oid = -1;
+
 struct acme_order {
 	int			state;
 	struct kore_timer	*timer;
@@ -226,6 +229,12 @@ int	keymgr_active = 0;
 char	*keymgr_root_path = NULL;
 char	*keymgr_runas_user = NULL;
 
+#if defined(KORE_USE_ACME)
+static const char *keymgr_pledges = "stdio rpath wpath cpath";
+#else
+static const char *keymgr_pledges = "stdio rpath";
+#endif
+
 void
 kore_keymgr_run(void)
 {
@@ -278,8 +287,13 @@ kore_keymgr_run(void)
 	keymgr_reload();
 
 #if defined(__OpenBSD__)
-	if (pledge("stdio rpath", NULL) == -1)
+	if (pledge(keymgr_pledges, NULL) == -1)
 		fatalx("failed to pledge keymgr process");
+#endif
+
+#if defined(KORE_USE_ACME)
+	acme_oid = OBJ_create(ACME_TLS_ALPN_01_OID, "acme", "acmeIdentifier");
+	X509V3_EXT_add_alias(acme_oid, NID_subject_key_identifier);
 #endif
 
 	while (quit != 1) {
@@ -1059,8 +1073,8 @@ keymgr_acme_challenge_cert(const void *data, size_t len, struct key *key)
 	X509_NAME			*name;
 	X509				*x509;
 	const u_int8_t			*digest;
+	int				slen, i;
 	u_int8_t			*cert, *uptr;
-	int				slen, acme, i;
 	char				hex[(SHA256_DIGEST_LENGTH * 2) + 1];
 
 	kore_log(LOG_INFO, "[%s] generating tls-alpn-01 challenge cert",
@@ -1107,11 +1121,8 @@ keymgr_acme_challenge_cert(const void *data, size_t len, struct key *key)
 	if (!X509_set_issuer_name(x509, name))
 		fatalx("X509_set_issuer_name(): %s", ssl_errno_s);
 
-	acme = OBJ_create(ACME_TLS_ALPN_01_OID, "acme", "acmeIdentifier");
-	X509V3_EXT_add_alias(acme, NID_subject_key_identifier);
-
 	sk = sk_X509_EXTENSION_new_null();
-	keymgr_x509_ext(sk, acme, "critical,%s", hex);
+	keymgr_x509_ext(sk, acme_oid, "critical,%s", hex);
 	keymgr_x509_ext(sk, NID_subject_alt_name, "DNS:%s", key->dom->domain);
 
 	for (i = 0; i < sk_X509_EXTENSION_num(sk); i++) {
