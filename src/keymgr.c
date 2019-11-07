@@ -229,10 +229,12 @@ int	keymgr_active = 0;
 char	*keymgr_root_path = NULL;
 char	*keymgr_runas_user = NULL;
 
+#if defined(__OpenBSD__)
 #if defined(KORE_USE_ACME)
 static const char *keymgr_pledges = "stdio rpath wpath cpath";
 #else
 static const char *keymgr_pledges = "stdio rpath";
+#endif
 #endif
 
 void
