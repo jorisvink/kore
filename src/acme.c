@@ -369,6 +369,27 @@ kore_acme_tls_alpn(SSL *ssl, const unsigned char **out, unsigned char *outlen,
 	return (SSL_TLSEXT_ERR_OK);
 }
 
+void
+kore_acme_get_paths(const char *domain, char **key, char **cert)
+{
+	int		len;
+	char		path[MAXPATHLEN];
+
+	len = snprintf(path, sizeof(path), "%s/%s/fullchain.pem",
+	    KORE_ACME_CERTDIR, domain);
+	if (len == -1 || (size_t)len >= sizeof(path))
+		fatal("failed to create certfile path");
+
+	*cert = kore_strdup(path);
+
+	len = snprintf(path, sizeof(path), "%s/%s/key.pem",
+	    KORE_ACME_CERTDIR, domain);
+	if (len == -1 || (size_t)len >= sizeof(path))
+		fatal("failed to create certkey path");
+
+	*key = kore_strdup(path);
+}
+
 static void
 acme_tls_challenge_use_cert(SSL *ssl, struct kore_domain *dom)
 {

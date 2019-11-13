@@ -150,6 +150,9 @@ version(void)
 #if defined(KORE_USE_PYTHON)
 	printf("python-%s ", PY_VERSION);
 #endif
+#if defined(KORE_USE_ACME)
+	printf("acme ");
+#endif
 	printf("\n");
 	exit(0);
 }

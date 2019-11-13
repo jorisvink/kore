@@ -39,6 +39,10 @@
 #include "curl.h"
 #endif
 
+#if defined(KORE_USE_ACME)
+#include "acme.h"
+#endif
+
 #include "python_api.h"
 #include "python_methods.h"
 
@@ -1876,6 +1880,10 @@ python_kore_tracer(PyObject *self, PyObject *args)
 static PyObject *
 python_kore_domain(PyObject *self, PyObject *args, PyObject *kwargs)
 {
+#if defined(KORE_USE_ACME)
+	int			acme;
+	char			*acert, *akey;
+#endif
 	struct kore_server	*srv;
 	long			depth;
 	const char		*name;
@@ -1911,6 +1919,17 @@ python_kore_domain(PyObject *self, PyObject *args, PyObject *kwargs)
 	if (srv->tls) {
 		key = python_string_from_dict(kwargs, "key");
 		cert = python_string_from_dict(kwargs, "cert");
+
+#if defined(KORE_USE_ACME)
+		acme = 0;
+		python_bool_from_dict(kwargs, "acme", &acme);
+
+		if (acme) {
+			kore_acme_get_paths(name, &akey, &acert);
+			key = akey;
+			cert = acert;
+		}
+#endif
 
 		if (key == NULL || cert == NULL) {
 			PyErr_Format(PyExc_RuntimeError,
@@ -1949,6 +1968,14 @@ python_kore_domain(PyObject *self, PyObject *args, PyObject *kwargs)
 		domain->config->certkey = kore_strdup(key);
 		domain->config->certfile = kore_strdup(cert);
 
+#if defined(KORE_USE_ACME)
+		domain->config->acme = acme;
+
+		if (domain->config->acme) {
+			kore_free(akey);
+			kore_free(acert);
+		}
+#endif
 		if (ca != NULL) {
 			domain->config->cafile = kore_strdup(ca);
 			domain->config->x509_verify_depth = depth;

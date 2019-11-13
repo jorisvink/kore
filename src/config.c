@@ -586,9 +586,6 @@ configure_tls(char *yesno)
 static int
 configure_acme(char *yesno)
 {
-	int		len;
-	char		path[MAXPATHLEN];
-
 	if (current_domain == NULL) {
 		printf("acme directive not inside a domain context\n");
 		return (KORE_RESULT_ERROR);
@@ -608,19 +605,9 @@ configure_acme(char *yesno)
 		kore_free(current_domain->certkey);
 		kore_free(current_domain->certfile);
 
-		len = snprintf(path, sizeof(path), "%s/%s/fullchain.pem",
-		    KORE_ACME_CERTDIR, current_domain->domain);
-		if (len == -1 || (size_t)len >= sizeof(path))
-			fatal("failed to create certfile path");
+		kore_acme_get_paths(current_domain->domain,
+		    &current_domain->certkey, &current_domain->certfile);
 
-		current_domain->certfile = kore_strdup(path);
-
-		len = snprintf(path, sizeof(path), "%s/%s/key.pem",
-		    KORE_ACME_CERTDIR, current_domain->domain);
-		if (len == -1 || (size_t)len >= sizeof(path))
-			fatal("failed to create certkey path");
-
-		current_domain->certkey = kore_strdup(path);
 	} else {
 		printf("invalid '%s' for yes|no acme option\n", yesno);
 		return (KORE_RESULT_ERROR);

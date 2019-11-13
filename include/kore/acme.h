@@ -47,6 +47,7 @@ extern "C" {
 void	kore_acme_init(void);
 void	kore_acme_run(void);
 void	kore_acme_setup(void);
+void	kore_acme_get_paths(const char *, char **, char **);
 
 int	kore_acme_tls_alpn(SSL *, const unsigned char **, unsigned char *,
 	    const unsigned char *, unsigned int, void *);
