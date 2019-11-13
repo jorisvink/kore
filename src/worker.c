@@ -627,6 +627,8 @@ kore_worker_keymgr_response_verify(struct kore_msg *msg, const void *data,
 	if (out == NULL)
 		return (KORE_RESULT_OK);
 
+	dom = NULL;
+
 	LIST_FOREACH(srv, &kore_servers, list) {
 		dom = NULL;
 

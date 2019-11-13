@@ -1991,7 +1991,7 @@ http_response_normal(struct http_request *req, struct connection *c,
 	kore_buf_append(header_buf, http_version, http_version_len);
 
 	if ((c->flags & CONN_CLOSE_EMPTY) ||
-	    (req->flags & HTTP_VERSION_1_0)) {
+	    (req != NULL && (req->flags & HTTP_VERSION_1_0))) {
 		connection_close = 1;
 	} else {
 		connection_close = 0;
