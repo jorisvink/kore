@@ -22,6 +22,7 @@
 #include <sys/user.h>
 #include <sys/syscall.h>
 
+#include <linux/ptrace.h>
 #include <linux/seccomp.h>
 #include <linux/filter.h>
 #include <linux/audit.h>
