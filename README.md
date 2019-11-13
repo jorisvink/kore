@@ -27,7 +27,7 @@ Key Features
 * Event driven (epoll/kqueue) architecture with per CPU worker processes
 * Build your web application as a precompiled dynamic library or single binary
 
-And loads more.
+And lots more.
 
 License
 -------
