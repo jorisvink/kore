@@ -1896,6 +1896,10 @@ python_kore_domain(PyObject *self, PyObject *args, PyObject *kwargs)
 	cert = NULL;
 	attach = NULL;
 
+#if defined(KORE_USE_ACME)
+	acme = 0;
+#endif
+
 	if (!PyArg_ParseTuple(args, "s", &name))
 		return (NULL);
 
@@ -1921,7 +1925,6 @@ python_kore_domain(PyObject *self, PyObject *args, PyObject *kwargs)
 		cert = python_string_from_dict(kwargs, "cert");
 
 #if defined(KORE_USE_ACME)
-		acme = 0;
 		python_bool_from_dict(kwargs, "acme", &acme);
 
 		if (acme) {
