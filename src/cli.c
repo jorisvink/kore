@@ -295,7 +295,7 @@ static const char *config_data =
 	"\tcertfile\tcert/server.pem\n"
 	"\tcertkey\t\tcert/key.pem\n"
 	"\n"
-	"\tstatic\t/\tpage\n"
+	"\troute\t/\tpage\n"
 	"}\n";
 
 static const char *build_data =
@@ -344,7 +344,7 @@ static const char *python_config_data =
 	"\tcertfile\tcert/server.pem\n"
 	"\tcertkey\t\tcert/key.pem\n"
 	"\n"
-	"\tstatic\t/\tkoreapp.index\n"
+	"\troute\t/\tkoreapp.index\n"
 	"}\n";
 
 static const char *python_init_data =
