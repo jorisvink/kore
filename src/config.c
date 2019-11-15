@@ -107,11 +107,11 @@ static int		configure_client_verify(char *);
 static int		configure_client_verify_depth(char *);
 
 #if !defined(KORE_NO_HTTP)
+static int		configure_route(char *);
 static int		configure_filemap(char *);
-static int		configure_restrict(char *);
-static int		configure_handler(int, char *);
 static int		configure_static_handler(char *);
 static int		configure_dynamic_handler(char *);
+static int		configure_restrict(char *);
 static int		configure_accesslog(char *);
 static int		configure_http_header_max(char *);
 static int		configure_http_header_timeout(char *);
@@ -186,6 +186,7 @@ static struct {
 	{ "python_import",		configure_python_import },
 #endif
 #if !defined(KORE_NO_HTTP)
+	{ "route",			configure_route},
 	{ "filemap",			configure_filemap },
 	{ "static",			configure_static_handler },
 	{ "dynamic",			configure_dynamic_handler },
@@ -971,35 +972,43 @@ configure_attach(char *name)
 static int
 configure_static_handler(char *options)
 {
-	return (configure_handler(HANDLER_TYPE_STATIC, options));
+	kore_log(LOG_NOTICE, "static keyword removed, use route instead");
+	return (KORE_RESULT_ERROR);
 }
 
 static int
 configure_dynamic_handler(char *options)
 {
-	return (configure_handler(HANDLER_TYPE_DYNAMIC, options));
+	kore_log(LOG_NOTICE, "dynamic keyword removed, use route instead");
+	return (KORE_RESULT_ERROR);
 }
 
 static int
-configure_handler(int type, char *options)
+configure_route(char *options)
 {
+	int		type;
 	char		*argv[4];
 
 	if (current_domain == NULL) {
-		printf("page handler not specified in domain context\n");
+		printf("route not specified in domain context\n");
 		return (KORE_RESULT_ERROR);
 	}
 
 	kore_split_string(options, " ", argv, 4);
 
 	if (argv[0] == NULL || argv[1] == NULL) {
-		printf("missing parameters for page handler\n");
+		printf("missing parameters for route \n");
 		return (KORE_RESULT_ERROR);
 	}
 
+	if (*argv[0] == '/')
+		type = HANDLER_TYPE_STATIC;
+	else
+		type = HANDLER_TYPE_DYNAMIC;
+
 	if (!kore_module_handler_new(current_domain,
 	    argv[0], argv[1], argv[2], type)) {
-		printf("cannot create handler for %s\n", argv[0]);
+		printf("cannot create route for %s\n", argv[0]);
 		return (KORE_RESULT_ERROR);
 	}
 
