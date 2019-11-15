@@ -85,6 +85,10 @@ static struct sock_filter filter_keymgr[] = {
 	KORE_SYSCALL_ALLOW(futex),
 	KORE_SYSCALL_ALLOW(writev),
 	KORE_SYSCALL_ALLOW(openat),
+#if defined(SYS_access)
+	KORE_SYSCALL_ALLOW(access),
+#endif
+	KORE_SYSCALL_ALLOW(faccessat),
 
 	/* Net related. */
 #if defined(SYS_poll)
@@ -126,10 +130,6 @@ static struct sock_filter filter_keymgr[] = {
 #endif
 	KORE_SYSCALL_ALLOW(mkdirat),
 	KORE_SYSCALL_ALLOW(umask),
-#if defined(SYS_access)
-	KORE_SYSCALL_ALLOW(access),
-#endif
-	KORE_SYSCALL_ALLOW(faccessat),
 #endif
 };
 #endif
