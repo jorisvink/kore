@@ -1940,7 +1940,7 @@ python_kore_domain(PyObject *self, PyObject *args, PyObject *kwargs)
 			return (NULL);
 		}
 
-		ca = python_string_from_dict(kwargs, "client_authority");
+		ca = python_string_from_dict(kwargs, "client_verify");
 		if (ca != NULL) {
 			python_long_from_dict(kwargs, "verify_depth", &depth);
 			if (depth < 0) {
