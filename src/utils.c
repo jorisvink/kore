@@ -607,16 +607,16 @@ kore_x509_subject_name(struct connection *c, char **out, int flags)
 	if ((name = X509_get_subject_name(c->cert)) == NULL)
 		goto cleanup;
 
-	namelen = sk_X509_NAME_ENTRY_num(name->entries);
+	namelen = X509_NAME_entry_count(name);
 	if (namelen == 0)
 		goto cleanup;
 
 	for (idx = 0; idx < namelen; idx++) {
-		entry = sk_X509_NAME_ENTRY_value(name->entries, idx);
+		entry = X509_NAME_get_entry(name, idx);
 		if (entry == NULL)
 			goto cleanup;
 
-		nid = OBJ_obj2nid(entry->object);
+		nid = OBJ_obj2nid(X509_NAME_ENTRY_get_object(entry));
 		if ((field = OBJ_nid2sn(nid)) == NULL)
 			goto cleanup;
 
