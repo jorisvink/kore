@@ -125,6 +125,9 @@ kore_json_find(struct kore_json_item *root, const char *path, int type)
 void
 kore_json_cleanup(struct kore_json *json)
 {
+	if (json == NULL)
+		return;
+
 	kore_buf_cleanup(&json->tmpbuf);
 	kore_json_item_free(json->root);
 }
@@ -321,6 +324,9 @@ void
 kore_json_item_free(struct kore_json_item *item)
 {
 	struct kore_json_item	*node;
+
+	if (item == NULL)
+		return;
 
 	switch (item->type) {
 	case KORE_JSON_TYPE_OBJECT:
