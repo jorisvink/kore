@@ -126,11 +126,7 @@ extern int daemon(int, int);
 #define NETBUF_IS_STREAM	0x10
 #define NETBUF_IS_FILEREF	0x20
 
-#define X509_GET_CN(c, o, l)					\
-	X509_NAME_get_text_by_NID(X509_get_subject_name(c),	\
-	    NID_commonName, o, l)
-
-#define X509_CN_LENGTH		(ub_common_name + 1)
+#define KORE_X509_COMMON_NAME_ONLY	0x0001
 
 #define KORE_PEM_CERT_CHAIN	1
 #define KORE_DER_CERT_DATA	2
@@ -203,6 +199,7 @@ TAILQ_HEAD(netbuf_head, netbuf);
 #define CONN_WS_CLOSE_SENT	0x04
 #define CONN_IS_BUSY		0x08
 #define CONN_ACME_CHALLENGE	0x10
+#define CONN_LOG_TLS_FAILURE	0x20
 
 #define KORE_IDLE_TIMER_MAX	5000
 
@@ -236,8 +233,9 @@ struct connection {
 	struct listener		*owner;
 	X509			*cert;
 	SSL			*ssl;
+	char			*tls_sni;
 	int			tls_reneg;
-	u_int8_t		flags;
+	u_int16_t		flags;
 	void			*hdlr_extra;
 
 	int			(*handle)(struct connection *);
@@ -417,6 +415,7 @@ struct kore_module {
 };
 
 #if !defined(KORE_NO_HTTP)
+
 struct kore_module_handle {
 	char					*path;
 	char					*func;
@@ -866,6 +865,7 @@ char		*kore_read_line(FILE *, char *, size_t);
 
 EVP_PKEY	*kore_rsakey_load(const char *);
 EVP_PKEY	*kore_rsakey_generate(const char *);
+int		kore_x509_subject_name(struct connection *, char **, int);
 
 #if !defined(KORE_NO_HTTP)
 void		kore_websocket_handshake(struct http_request *,

@@ -1486,6 +1486,7 @@ static struct http_request *
 http_request_new(struct connection *c, const char *host,
     const char *method, char *path, const char *version)
 {
+	struct kore_domain		*dom;
 	struct http_request		*req;
 	struct kore_module_handle	*hdlr;
 	char				*p, *hp;
@@ -1548,6 +1549,23 @@ http_request_new(struct connection *c, const char *host,
 		if ((hp = strrchr(host, ':')) != NULL)
 			*hp = '\0';
 		break;
+	}
+
+	if (c->owner->server->tls && c->tls_sni != NULL) {
+		if (strcasecmp(c->tls_sni, host)) {
+			http_error_response(c, HTTP_STATUS_MISDIRECTED_REQUEST);
+			return (NULL);
+		}
+	}
+
+	if ((dom = kore_domain_lookup(c->owner->server, host)) == NULL) {
+		http_error_response(c, HTTP_STATUS_NOT_FOUND);
+		return (NULL);
+	}
+
+	if (dom->cafile != NULL && c->cert == NULL) {
+		http_error_response(c, HTTP_STATUS_FORBIDDEN);
+		return (NULL);
 	}
 
 	req = kore_pool_get(&http_request_pool);
@@ -2208,6 +2226,9 @@ http_status_text(int status)
 		break;
 	case HTTP_STATUS_EXPECTATION_FAILED:
 		r = "Expectation Failed";
+		break;
+	case HTTP_STATUS_MISDIRECTED_REQUEST:
+		r = "Misdirected Request";
 		break;
 	case HTTP_STATUS_INTERNAL_ERROR:
 		r = "Internal Server Error";

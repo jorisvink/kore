@@ -63,12 +63,13 @@ kore_connection_new(void *owner)
 
 	c->ssl = NULL;
 	c->cert = NULL;
-	c->tls_reneg = 0;
 	c->flags = 0;
 	c->rnb = NULL;
 	c->snb = NULL;
 	c->owner = owner;
 	c->handle = NULL;
+	c->tls_reneg = 0;
+	c->tls_sni = NULL;
 	c->disconnect = NULL;
 	c->hdlr_extra = NULL;
 	c->proto = CONN_PROTO_UNKNOWN;
@@ -251,7 +252,6 @@ kore_connection_handle(struct connection *c)
 {
 	int			r;
 	struct listener		*listener;
-	char			cn[X509_CN_LENGTH];
 
 	kore_debug("kore_connection_handle(%p) -> %d", c, c->state);
 	kore_connection_stop_idletimer(c);
@@ -280,6 +280,9 @@ kore_connection_handle(struct connection *c)
 				    ssl_errno_s);
 				return (KORE_RESULT_ERROR);
 			}
+
+			if (primary_dom->cafile != NULL)
+				c->flags |= CONN_LOG_TLS_FAILURE;
 		}
 
 		ERR_clear_error();
@@ -293,6 +296,10 @@ kore_connection_handle(struct connection *c)
 				return (KORE_RESULT_OK);
 			default:
 				kore_debug("SSL_accept(): %s", ssl_errno_s);
+				if (c->flags & CONN_LOG_TLS_FAILURE) {
+					kore_log(LOG_NOTICE,
+					    "SSL_accept: %s", ssl_errno_s);
+				}
 				return (KORE_RESULT_ERROR);
 			}
 		}
@@ -308,14 +315,7 @@ kore_connection_handle(struct connection *c)
 		if (SSL_get_verify_mode(c->ssl) & SSL_VERIFY_PEER) {
 			c->cert = SSL_get_peer_certificate(c->ssl);
 			if (c->cert == NULL) {
-				kore_log(LOG_NOTICE,
-				    "no client certificate presented?");
-				return (KORE_RESULT_ERROR);
-			}
-
-			if (X509_GET_CN(c->cert, cn, sizeof(cn)) == -1) {
-				kore_log(LOG_NOTICE,
-				    "no CN found in client certificate");
+				kore_log(LOG_NOTICE, "no peer certificate");
 				return (KORE_RESULT_ERROR);
 			}
 		} else {
@@ -384,6 +384,9 @@ kore_connection_remove(struct connection *c)
 
 	if (c->cert != NULL)
 		X509_free(c->cert);
+
+	if (c->tls_sni != NULL)
+		kore_free(c->tls_sni);
 
 	close(c->fd);
 

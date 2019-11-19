@@ -585,6 +585,78 @@ kore_worker_name(int id)
 	return (buf);
 }
 
+int
+kore_x509_subject_name(struct connection *c, char **out, int flags)
+{
+	struct kore_buf		buf;
+	u_int8_t		*data;
+	ASN1_STRING		*astr;
+	X509_NAME		*name;
+	X509_NAME_ENTRY		*entry;
+	const char		*field;
+	int			ret, idx, namelen, nid, len;
+
+	data = NULL;
+	ret = KORE_RESULT_ERROR;
+
+	kore_buf_init(&buf, 1024);
+
+	if (c->cert == NULL)
+		goto cleanup;
+
+	if ((name = X509_get_subject_name(c->cert)) == NULL)
+		goto cleanup;
+
+	namelen = sk_X509_NAME_ENTRY_num(name->entries);
+	if (namelen == 0)
+		goto cleanup;
+
+	for (idx = 0; idx < namelen; idx++) {
+		entry = sk_X509_NAME_ENTRY_value(name->entries, idx);
+		if (entry == NULL)
+			goto cleanup;
+
+		nid = OBJ_obj2nid(entry->object);
+		if ((field = OBJ_nid2sn(nid)) == NULL)
+			goto cleanup;
+
+		if ((astr = X509_NAME_ENTRY_get_data(entry)) == NULL)
+			goto cleanup;
+
+		data = NULL;
+		if ((len = ASN1_STRING_to_UTF8(&data, astr)) < 0)
+			goto cleanup;
+
+		if (flags & KORE_X509_COMMON_NAME_ONLY) {
+			if (nid == NID_commonName) {
+				kore_buf_append(&buf, data, len);
+				break;
+			}
+		} else {
+			kore_buf_appendf(&buf, "%s=", field);
+			kore_buf_append(&buf, data, len);
+			if (idx != (namelen - 1))
+				kore_buf_appendf(&buf, " ");
+		}
+
+		OPENSSL_free(data);
+		data = NULL;
+	}
+
+	ret = KORE_RESULT_OK;
+	*out = kore_buf_stringify(&buf, NULL);
+
+	buf.offset = 0;
+	buf.data = NULL;
+
+cleanup:
+	if (data != NULL)
+		OPENSSL_free(data);
+
+	kore_buf_cleanup(&buf);
+	return (ret);
+}
+
 void
 fatal(const char *fmt, ...)
 {

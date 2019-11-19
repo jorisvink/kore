@@ -373,6 +373,10 @@ net_write_tls(struct connection *c, size_t len, size_t *written)
 			/* FALLTHROUGH */
 		default:
 			kore_debug("SSL_write(): %s", ssl_errno_s);
+			if (c->flags & CONN_LOG_TLS_FAILURE) {
+				kore_log(LOG_NOTICE,
+				    "SSL_write(): %s", ssl_errno_s);
+			}
 			return (KORE_RESULT_ERROR);
 		}
 	}
@@ -401,6 +405,8 @@ net_read_tls(struct connection *c, size_t *bytes)
 		case SSL_ERROR_WANT_WRITE:
 			c->evt.flags &= ~KORE_EVENT_READ;
 			return (KORE_RESULT_OK);
+		case SSL_ERROR_ZERO_RETURN:
+			return (KORE_RESULT_ERROR);
 		case SSL_ERROR_SYSCALL:
 			switch (errno) {
 			case EINTR:
@@ -416,6 +422,10 @@ net_read_tls(struct connection *c, size_t *bytes)
 			/* FALLTHROUGH */
 		default:
 			kore_debug("SSL_read(): %s", ssl_errno_s);
+			if (c->flags & CONN_LOG_TLS_FAILURE) {
+				kore_log(LOG_NOTICE,
+				    "SSL_read(): %s", ssl_errno_s);
+			}
 			return (KORE_RESULT_ERROR);
 		}
 	}

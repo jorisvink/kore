@@ -47,7 +47,6 @@ static void	accesslog_flush(struct kore_domain *, u_int64_t, int);
 
 static u_int64_t	time_cache = 0;
 static char		tbuf[128] = { '\0' };
-char			cnbuf[1024] = { '\0' };
 
 static struct kore_buf	*logbuf = NULL;
 
@@ -67,8 +66,8 @@ kore_accesslog(struct http_request *req)
 	size_t			avail;
 	time_t			curtime;
 	int			len, attempts;
-	char			addr[INET6_ADDRSTRLEN];
 	const char		*ptr, *method, *cn, *referer;
+	char			addr[INET6_ADDRSTRLEN], *cn_value;
 
 	switch (req->method) {
 	case HTTP_METHOD_GET:
@@ -103,9 +102,12 @@ kore_accesslog(struct http_request *req)
 		req->agent = "-";
 
 	cn = "-";
+	cn_value = NULL;
+
 	if (req->owner->cert != NULL) {
-		if (X509_GET_CN(req->owner->cert, cnbuf, sizeof(cnbuf)) != -1)
-			cn = cnbuf;
+		if (kore_x509_subject_name(req->owner, &cn_value,
+		    KORE_X509_COMMON_NAME_ONLY))
+			cn = cn_value;
 	}
 
 	switch (req->owner->family) {
@@ -193,6 +195,7 @@ kore_accesslog(struct http_request *req)
 		break;
 	}
 
+	kore_free(cn_value);
 	accesslog_unlock(worker);
 }
 

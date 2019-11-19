@@ -360,6 +360,9 @@ kore_tls_sni_cb(SSL *ssl, int *ad, void *arg)
 	sname = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
 	kore_debug("kore_tls_sni_cb(): received host %s", sname);
 
+	if (sname != NULL)
+		c->tls_sni = kore_strdup(sname);
+
 	if (sname != NULL &&
 	    (dom = kore_domain_lookup(c->owner->server, sname)) != NULL) {
 		if (dom->ssl_ctx == NULL) {
@@ -375,6 +378,7 @@ kore_tls_sni_cb(SSL *ssl, int *ad, void *arg)
 		if (dom->cafile != NULL) {
 			SSL_set_verify(ssl, SSL_VERIFY_PEER |
 			    SSL_VERIFY_FAIL_IF_NO_PEER_CERT, NULL);
+			c->flags |= CONN_LOG_TLS_FAILURE;
 		} else {
 			SSL_set_verify(ssl, SSL_VERIFY_NONE, NULL);
 		}
