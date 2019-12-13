@@ -585,8 +585,6 @@ kore_listener_init(struct listener *l, int family, const char *ccb)
 		fatal("unknown address family %d", family);
 	}
 
-	l->host = NULL;
-	l->port = NULL;
 	l->family = family;
 
 	if ((l->fd = socket(family, SOCK_STREAM, 0)) == -1) {
