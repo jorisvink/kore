@@ -429,9 +429,8 @@ kore_server_bind(struct kore_server *srv, const char *ip, const char *port,
 	l->host = kore_strdup(ip);
 	l->port = kore_strdup(port);
 
-	if (kore_listener_init(l, results->ai_family, ccb) == -1) {
+	if (!kore_listener_init(l, results->ai_family, ccb)) {
 		freeaddrinfo(results);
-		kore_listener_free(l);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -482,10 +481,8 @@ kore_server_bind_unix(struct kore_server *srv, const char *path,
 	l = kore_listener_create(srv);
 	l->host = kore_strdup(path);
 
-	if (kore_listener_init(l, AF_UNIX, ccb) == -1) {
-		kore_listener_free(l);
+	if (!kore_listener_init(l, AF_UNIX, ccb))
 		return (KORE_RESULT_ERROR);
-	}
 
 	if (bind(l->fd, (struct sockaddr *)&sun, socklen) == -1) {
 		kore_log(LOG_ERR, "bind: %s", errno_s);
@@ -588,6 +585,8 @@ kore_listener_init(struct listener *l, int family, const char *ccb)
 		fatal("unknown address family %d", family);
 	}
 
+	l->host = NULL;
+	l->port = NULL;
 	l->family = family;
 
 	if ((l->fd = socket(family, SOCK_STREAM, 0)) == -1) {
