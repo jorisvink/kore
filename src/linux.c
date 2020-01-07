@@ -233,8 +233,6 @@ kore_platform_sendfile(struct connection *c, struct netbuf *nb)
 	ssize_t		sent;
 	size_t		len, prevoff;
 
-	printf("sendfile is used\n");
-
 	prevoff = nb->fd_off;
 	smin = nb->fd_len - nb->fd_off;
 	len = MIN(SENDFILE_PAYLOAD_MAX, smin);
