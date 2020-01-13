@@ -52,6 +52,7 @@ void	kore_acme_get_paths(const char *, char **, char **);
 int	kore_acme_tls_alpn(SSL *, const unsigned char **, unsigned char *,
 	    const unsigned char *, unsigned int, void *);
 
+extern char	*acme_email;
 extern char	*acme_provider;
 
 #if defined(__cplusplus)

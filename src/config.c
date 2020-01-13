@@ -70,6 +70,7 @@ static int		configure_file(char *);
 static int		configure_acme(char *);
 static int		configure_acme_root(char *);
 static int		configure_acme_runas(char *);
+static int		configure_acme_email(char *);
 static int		configure_acme_provider(char *);
 #endif
 
@@ -228,6 +229,7 @@ static struct {
 #if defined(KORE_USE_ACME)
 	{ "acme_runas",			configure_acme_runas },
 	{ "acme_root",			configure_acme_root },
+	{ "acme_email",			configure_acme_email },
 	{ "acme_provider",		configure_acme_provider },
 #endif
 #if defined(KORE_USE_PLATFORM_PLEDGE)
@@ -631,6 +633,15 @@ configure_acme_root(char *root)
 {
 	kore_free(acme_root_path);
 	acme_root_path = kore_strdup(root);
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_acme_email(char *email)
+{
+	kore_free(acme_email);
+	acme_email = kore_strdup(email);
 
 	return (KORE_RESULT_OK);
 }

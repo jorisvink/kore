@@ -244,6 +244,7 @@ static char		*account_url = NULL;
 static u_int8_t acme_alpn_name[] =
     { 0xa, 'a', 'c', 'm', 'e', '-', 't', 'l', 's', '/', '1' };
 
+char			*acme_email = NULL;
 char			*acme_provider = NULL;
 char			*acme_root_path = NULL;
 char			*acme_runas_user = NULL;
@@ -505,7 +506,9 @@ acme_account_resolve(struct kore_msg *msg, const void *data)
 static void
 acme_account_reg(int resolve_only)
 {
-	struct kore_json_item	*json;
+	int			len;
+	char			mail[1024];
+	struct kore_json_item	*json, *contact;
 
 	if (account_url == NULL)
 		return;
@@ -518,6 +521,15 @@ acme_account_reg(int resolve_only)
 
 	json = kore_json_create_object(NULL, NULL);
 	kore_json_create_literal(json, "termsOfServiceAgreed", KORE_JSON_TRUE);
+
+	if (acme_email) {
+		len = snprintf(mail, sizeof(mail), "mailto:%s", acme_email);
+		if (len == -1 || (size_t)len >= sizeof(mail))
+			fatalx("mail contact '%s' too large", acme_email);
+
+		contact = kore_json_create_array(json, "contact");
+		kore_json_create_string(contact, NULL, mail);
+	}
 
 	if (resolve_only) {
 		kore_json_create_literal(json,
