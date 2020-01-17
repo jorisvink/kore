@@ -223,8 +223,11 @@ kore_worker_shutdown(void)
 			kw = WORKER(idx);
 			if (kw->pid != 0) {
 				pid = waitpid(kw->pid, &status, 0);
-				if (pid == -1)
+				if (pid == -1) {
+					if (errno == ECHILD)
+						kw->pid = 0;
 					continue;
+				}
 
 #if defined(__linux__)
 				kore_seccomp_trace(kw->pid, status);
