@@ -177,6 +177,7 @@ kore_worker_spawn(u_int16_t idx, u_int16_t id, u_int16_t cpu)
 	kw->cpu = cpu;
 	kw->has_lock = 0;
 	kw->active_hdlr = NULL;
+	kw->running = 1;
 
 	if (socketpair(AF_UNIX, SOCK_STREAM, 0, kw->pipe) == -1)
 		fatal("socketpair(): %s", errno_s);
@@ -221,25 +222,24 @@ kore_worker_shutdown(void)
 	for (;;) {
 		for (idx = 0; idx < worker_count; idx++) {
 			kw = WORKER(idx);
+			if (kw->running == 0)
+				continue;
+
 			if (kw->pid != 0) {
 				pid = waitpid(kw->pid, &status, 0);
-				if (pid == -1) {
-					if (errno == ECHILD)
-						kw->pid = 0;
+				if (pid == -1)
 					continue;
-				}
 
 #if defined(__linux__)
 				kore_seccomp_trace(kw->pid, status);
 #endif
 
-				if (WIFEXITED(status)) {
-					kw->pid = 0;
+				kw->pid = 0;
+				kw->running = 0;
 
-					if (!kore_quiet) {
-						kore_log(LOG_NOTICE,
-						    "worker %d exited", kw->id);
-					}
+				if (!kore_quiet) {
+					kore_log(LOG_NOTICE,
+					    "worker %d exited", kw->id);
 				}
 			}
 		}
@@ -247,8 +247,10 @@ kore_worker_shutdown(void)
 		done = 0;
 		for (idx = 0; idx < worker_count; idx++) {
 			kw = WORKER(idx);
-			if (kw->pid == 0)
+			if (kw->running == 0) {
 				done++;
+				continue;
+			}
 		}
 
 		if (done == worker_count)

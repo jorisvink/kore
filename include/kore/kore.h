@@ -447,6 +447,7 @@ struct kore_alog_header {
 struct kore_worker {
 	u_int16_t			id;
 	u_int16_t			cpu;
+	int				running;
 #if defined(__linux__)
 	int				tracing;
 #endif
