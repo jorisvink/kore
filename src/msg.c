@@ -265,8 +265,10 @@ msg_disconnected_worker(struct connection *c)
 static void
 msg_type_shutdown(struct kore_msg *msg, const void *data)
 {
-	kore_log(LOG_NOTICE,
-	    "shutdown requested by worker %u, going down", msg->src);
+	if (!kore_quiet) {
+		kore_log(LOG_NOTICE,
+		    "shutdown requested by worker %u, going down", msg->src);
+	}
 
 	(void)raise(SIGQUIT);
 }
