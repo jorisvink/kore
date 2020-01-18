@@ -46,6 +46,10 @@
 #include "python_api.h"
 #include "python_methods.h"
 
+#if defined(KORE_USE_CURL)
+#include "python_curlopt.h"
+#endif
+
 #include <frameobject.h>
 
 struct reqcall {
@@ -115,7 +119,8 @@ static int		pykore_pgsql_params(struct pykore_pgsql *, PyObject *);
 #endif
 
 #if defined(KORE_USE_CURL)
-static void		python_curl_callback(struct kore_curl *, void *);
+static void		python_curl_http_callback(struct kore_curl *, void *);
+static void		python_curl_handle_callback(struct kore_curl *, void *);
 static PyObject		*pyhttp_client_request(struct pyhttp_client *, int,
 			    PyObject *);
 #endif
@@ -383,7 +388,7 @@ kore_python_coro_run(void)
 
 #if defined(KORE_USE_CURL)
 	/*
-	 * If a coroutine fired off an httpclient instance, immediately
+	 * If a coroutine fired off a curl instance, immediately
 	 * let it make progress.
 	 */
 	kore_curl_do_timeout();
@@ -1506,7 +1511,13 @@ python_module_init(void)
 #endif
 
 #if defined(KORE_USE_CURL)
+	python_push_type("pycurlhandle", pykore, &pycurl_handle_type);
 	python_push_type("pyhttpclient", pykore, &pyhttp_client_type);
+
+	for (i = 0; py_curlopt[i].name != NULL; i++) {
+		python_push_integer(pykore, py_curlopt[i].name,
+		    py_curlopt[i].value);
+	}
 #endif
 
 	python_push_type("pyhttp_file", pykore, &pyhttp_file_type);
@@ -5349,6 +5360,176 @@ pykore_pgsql_result(struct pykore_pgsql *pysql)
 
 #if defined(KORE_USE_CURL)
 static PyObject *
+python_kore_curl_handle(PyObject *self, PyObject *args)
+{
+	const char		*url;
+	struct pycurl_handle	*handle;
+
+	if (!PyArg_ParseTuple(args, "s", &url))
+		return (NULL);
+
+	handle = PyObject_New(struct pycurl_handle, &pycurl_handle_type);
+	if (handle == NULL)
+		return (NULL);
+
+	handle->url = kore_strdup(url);
+	memset(&handle->curl, 0, sizeof(handle->curl));
+
+	if (!kore_curl_init(&handle->curl, handle->url, KORE_CURL_ASYNC)) {
+		Py_DECREF((PyObject *)handle);
+		PyErr_SetString(PyExc_RuntimeError, "failed to setup call");
+		return (NULL);
+	}
+
+	return ((PyObject *)handle);
+}
+
+static void
+pycurl_handle_dealloc(struct pycurl_handle *handle)
+{
+	kore_free(handle->url);
+	kore_curl_cleanup(&handle->curl);
+
+	PyObject_Del((PyObject *)handle);
+}
+
+static PyObject *
+pycurl_handle_setopt(struct pycurl_handle *handle, PyObject *args)
+{
+	int		i, opt;
+	PyObject	*value;
+
+	if (!PyArg_ParseTuple(args, "iO", &opt, &value))
+		return (NULL);
+
+	for (i = 0; py_curlopt[i].name != NULL; i++) {
+		if (py_curlopt[i].value == opt)
+			break;
+	}
+
+	if (py_curlopt[i].name == NULL) {
+		PyErr_Format(PyExc_RuntimeError, "invalid option '%d'", opt);
+		return (NULL);
+	}
+
+	if (py_curlopt[i].cb == NULL) {
+		PyErr_Format(PyExc_RuntimeError, "option '%s' not implemented",
+		    py_curlopt[i].name);
+		return (NULL);
+	}
+
+	return (py_curlopt[i].cb(handle, i, value));
+}
+
+static PyObject *
+pycurl_handle_setopt_string(struct pycurl_handle *handle, int idx,
+    PyObject *obj)
+{
+	const char		*str;
+
+	if (!PyUnicode_Check(obj)) {
+		PyErr_Format(PyExc_RuntimeError,
+		    "option '%s' requires a string as argument",
+		    py_curlopt[idx]);
+		return (NULL);
+	}
+
+	if ((str = PyUnicode_AsUTF8(obj)) == NULL)
+		return (NULL);
+
+	curl_easy_setopt(&handle->curl, py_curlopt[idx].value, str);
+
+	Py_RETURN_TRUE;
+}
+
+static PyObject *
+pycurl_handle_setopt_long(struct pycurl_handle *handle, int idx, PyObject *obj)
+{
+	long		val;
+
+	if (!PyLong_CheckExact(obj)) {
+		PyErr_Format(PyExc_RuntimeError,
+		    "option '%s' requires a long as argument", py_curlopt[idx]);
+		return (NULL);
+	}
+
+	PyErr_Clear();
+	val = PyLong_AsLong(obj);
+	if (val == -1 && PyErr_Occurred())
+		return (NULL);
+
+	curl_easy_setopt(&handle->curl, py_curlopt[idx].value, val);
+
+	Py_RETURN_TRUE;
+}
+
+static PyObject *
+pycurl_handle_run(struct pycurl_handle *handle, PyObject *args)
+{
+	struct pycurl_handle_op		*op;
+
+	op = PyObject_New(struct pycurl_handle_op, &pycurl_handle_op_type);
+	if (op == NULL)
+		return (NULL);
+
+	Py_INCREF(handle);
+
+	op->handle = handle;
+	op->coro = coro_running;
+	op->state = CURL_CLIENT_OP_RUN;
+
+	kore_curl_bind_callback(&handle->curl, python_curl_handle_callback, op);
+
+	return ((PyObject *)op);
+}
+
+static void
+pycurl_handle_op_dealloc(struct pycurl_handle_op *op)
+{
+	Py_DECREF(op->handle);
+	PyObject_Del((PyObject *)op);
+}
+
+static PyObject *
+pycurl_handle_op_await(PyObject *op)
+{
+	Py_INCREF(op);
+	return (op);
+}
+
+static PyObject *
+pycurl_handle_op_iternext(struct pycurl_handle_op *op)
+{
+	size_t			len;
+	PyObject		*result;
+	const u_int8_t		*response;
+
+	if (op->state == CURL_CLIENT_OP_RUN) {
+		kore_curl_run(&op->handle->curl);
+		op->state = CURL_CLIENT_OP_RESULT;
+		Py_RETURN_NONE;
+	}
+
+	if (!kore_curl_success(&op->handle->curl)) {
+		/* Do not log the url here, may contain some sensitive data. */
+		PyErr_Format(PyExc_RuntimeError, "request failed: %s",
+		    kore_curl_strerror(&op->handle->curl));
+		return (NULL);
+	}
+
+	kore_curl_response_as_bytes(&op->handle->curl, &response, &len);
+
+	if ((result = PyBytes_FromStringAndSize((const char *)response,
+	    len)) == NULL)
+		return (NULL);
+
+	PyErr_SetObject(PyExc_StopIteration, result);
+	Py_DECREF(result);
+
+	return (NULL);
+}
+
+static PyObject *
 python_kore_httpclient(PyObject *self, PyObject *args, PyObject *kwargs)
 {
 	struct pyhttp_client	*client;
@@ -5524,13 +5705,13 @@ pyhttp_client_request(struct pyhttp_client *client, int m, PyObject *kwargs)
 
 	op->headers = 0;
 	op->coro = coro_running;
-	op->state = PYHTTP_CLIENT_OP_RUN;
+	op->state = CURL_CLIENT_OP_RUN;
 
 	Py_INCREF(client);
 	op->client = client;
 
 	kore_curl_http_setup(&op->curl, m, ptr, length);
-	kore_curl_bind_callback(&op->curl, python_curl_callback, op);
+	kore_curl_bind_callback(&op->curl, python_curl_http_callback, op);
 
 	/* Go in with our own bare hands. */
 	if (client->unix != NULL) {
@@ -5611,9 +5792,9 @@ pyhttp_client_op_iternext(struct pyhttp_client_op *op)
 	const u_int8_t		*response;
 	PyObject		*result, *tuple, *dict, *value;
 
-	if (op->state == PYHTTP_CLIENT_OP_RUN) {
+	if (op->state == CURL_CLIENT_OP_RUN) {
 		kore_curl_run(&op->curl);
-		op->state = PYHTTP_CLIENT_OP_RESULT;
+		op->state = CURL_CLIENT_OP_RESULT;
 		Py_RETURN_NONE;
 	}
 
@@ -5673,9 +5854,20 @@ pyhttp_client_op_iternext(struct pyhttp_client_op *op)
 }
 
 static void
-python_curl_callback(struct kore_curl *curl, void *arg)
+python_curl_http_callback(struct kore_curl *curl, void *arg)
 {
 	struct pyhttp_client_op		*op = arg;
+
+	if (op->coro->request != NULL)
+		http_request_wakeup(op->coro->request);
+	else
+		python_coro_wakeup(op->coro);
+}
+
+static void
+python_curl_handle_callback(struct kore_curl *curl, void *arg)
+{
+	struct pycurl_handle_op		*op = arg;
 
 	if (op->coro->request != NULL)
 		http_request_wakeup(op->coro->request);

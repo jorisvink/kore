@@ -11,8 +11,10 @@ MAN_DIR?=$(PREFIX)/share/man
 SHARE_DIR=$(PREFIX)/share/kore
 INCLUDE_DIR=$(PREFIX)/include/kore
 
+GENERATED=
 PLATFORM=platform.h
 VERSION=src/version.c
+PYTHON_CURLOPT=misc/curl/python_curlopt.h
 
 S_SRC=	src/kore.c src/buf.c src/config.c src/connection.c \
 	src/domain.c src/filemap.c src/fileref.c src/json.c src/mem.c \
@@ -88,6 +90,7 @@ endif
 
 ifneq ("$(PYTHON)", "")
 	S_SRC+=src/python.c
+	GENERATED+=$(PYTHON_CURLOPT)
 	KORE_PYTHON_LIB?=$(shell ./misc/python3-config.sh --ldflags)
 	KORE_PYTHON_INC?=$(shell ./misc/python3-config.sh --includes)
 	LDFLAGS+=$(KORE_PYTHON_LIB)
@@ -142,12 +145,15 @@ endif
 
 S_OBJS=	$(S_SRC:src/%.c=$(OBJDIR)/%.o)
 
-all: $(PLATFORM) $(VERSION) $(KORE) $(KODEV)
+all: $(PLATFORM) $(GENERATED) $(VERSION) $(KORE) $(KODEV)
 
 $(PLATFORM): $(OBJDIR) force
 	@if [ -f misc/$(OSNAME)-platform.sh ]; then \
 		misc/$(OSNAME)-platform.sh > $(OBJDIR)/$(PLATFORM) ; \
 	fi
+
+$(PYTHON_CURLOPT): $(OBJDIR) force
+	@cp $(PYTHON_CURLOPT) $(OBJDIR)
 
 $(VERSION): force
 	@if [ -d .git ]; then \
@@ -171,7 +177,7 @@ $(KORE): $(OBJDIR) $(S_OBJS)
 	$(CC) $(S_OBJS) $(LDFLAGS) -o $(KORE)
 	@echo $(FEATURES) $(FEATURES_INC) > kore.features
 
-objects: $(OBJDIR) $(PLATFORM) $(S_OBJS)
+objects: $(OBJDIR) $(PLATFORM) $(GENERATED) $(S_OBJS)
 	@echo $(LDFLAGS) > $(OBJDIR)/ldflags
 	@echo "$(FEATURES) $(FEATURES_INC)" > $(OBJDIR)/features
 

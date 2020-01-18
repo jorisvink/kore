@@ -67,6 +67,7 @@ static PyObject		*python_kore_pgsql_register(PyObject *, PyObject *);
 #endif
 
 #if defined(KORE_USE_CURL)
+static PyObject		*python_kore_curl_handle(PyObject *, PyObject *);
 static PyObject		*python_kore_httpclient(PyObject *,
 			    PyObject *, PyObject *);
 #endif
@@ -109,6 +110,7 @@ static struct PyMethodDef pykore_methods[] = {
 	    METH_VARARGS | METH_KEYWORDS),
 #endif
 #if defined(KORE_USE_CURL)
+	METHOD("curl", python_kore_curl_handle, METH_VARARGS),
 	METHOD("httpclient", python_kore_httpclient,
 	    METH_VARARGS | METH_KEYWORDS),
 #endif
@@ -788,6 +790,70 @@ static PyTypeObject pyhttp_file_type = {
 };
 
 #if defined(KORE_USE_CURL)
+
+#define CURL_CLIENT_OP_RUN	1
+#define CURL_CLIENT_OP_RESULT	2
+
+struct pycurl_handle {
+	PyObject_HEAD
+	char			*url;
+	struct kore_curl	curl;
+};
+
+struct pycurl_handle_op {
+	PyObject_HEAD
+	int			state;
+	struct python_coro	*coro;
+	struct pycurl_handle	*handle;
+};
+
+static PyObject	*pycurl_handle_op_await(PyObject *);
+static PyObject	*pycurl_handle_op_iternext(struct pycurl_handle_op *);
+
+static void	pycurl_handle_dealloc(struct pycurl_handle *);
+static void	pycurl_handle_op_dealloc(struct pycurl_handle_op *);
+
+static PyObject *pycurl_handle_run(struct pycurl_handle *, PyObject *);
+static PyObject *pycurl_handle_setopt(struct pycurl_handle *, PyObject *);
+
+static PyObject *pycurl_handle_setopt_string(struct pycurl_handle *,
+		    int, PyObject *);
+static PyObject *pycurl_handle_setopt_long(struct pycurl_handle *,
+		    int, PyObject *);
+
+static PyMethodDef pycurl_handle_methods[] = {
+	METHOD("run", pycurl_handle_run, METH_VARARGS),
+	METHOD("setopt", pycurl_handle_setopt, METH_VARARGS),
+	METHOD(NULL, NULL, -1)
+};
+
+static PyTypeObject pycurl_handle_type = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "kore.curl",
+	.tp_doc = "An asynchronous CURL handle",
+	.tp_methods = pycurl_handle_methods,
+	.tp_basicsize = sizeof(struct pycurl_handle),
+	.tp_dealloc = (destructor)pycurl_handle_dealloc,
+	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+};
+
+static PyAsyncMethods pycurl_handle_op_async = {
+	(unaryfunc)pycurl_handle_op_await,
+	NULL,
+	NULL
+};
+
+static PyTypeObject pycurl_handle_op_type = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "kore.curlop",
+	.tp_doc = "Asynchronous CURL operation",
+	.tp_as_async = &pycurl_handle_op_async,
+	.tp_iternext = (iternextfunc)pycurl_handle_op_iternext,
+	.tp_basicsize = sizeof(struct pycurl_handle_op),
+	.tp_dealloc = (destructor)pycurl_handle_op_dealloc,
+	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+};
+
 struct pyhttp_client {
 	PyObject_HEAD
 	char			*url;
@@ -797,9 +863,6 @@ struct pyhttp_client {
 	char			*cabundle;
 	int			tlsverify;
 };
-
-#define PYHTTP_CLIENT_OP_RUN	1
-#define PYHTTP_CLIENT_OP_RESULT	2
 
 struct pyhttp_client_op {
 	PyObject_HEAD
