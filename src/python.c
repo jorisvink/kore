@@ -2273,7 +2273,7 @@ python_kore_corotrace(PyObject *self, PyObject *args)
 }
 
 static PyObject *
-python_kore_timer(PyObject *self, PyObject *args)
+python_kore_timer(PyObject *self, PyObject *args, PyObject *kwargs)
 {
 	u_int64_t		ms;
 	PyObject		*obj;
@@ -2291,12 +2291,20 @@ python_kore_timer(PyObject *self, PyObject *args)
 	if ((timer = PyObject_New(struct pytimer, &pytimer_type)) == NULL)
 		return (NULL);
 
+	timer->udata = NULL;
 	timer->flags = flags;
 	timer->callable = obj;
 	timer->run = kore_timer_add(pytimer_run, ms, timer, flags);
 
 	Py_INCREF((PyObject *)timer);
 	Py_INCREF(timer->callable);
+
+	if (kwargs != NULL) {
+		if ((obj = PyDict_GetItemString(kwargs, "data")) != NULL) {
+			Py_INCREF(obj);
+			timer->udata = obj;
+		}
+	}
 
 	return ((PyObject *)timer);
 }
@@ -2581,9 +2589,11 @@ pytimer_run(void *arg, u_int64_t now)
 	struct pytimer	*timer = arg;
 
 	PyErr_Clear();
-	ret = PyObject_CallObject(timer->callable, NULL);
+	ret = PyObject_CallFunctionObjArgs(timer->callable, timer->udata, NULL);
 	Py_XDECREF(ret);
+	Py_XDECREF(timer->udata);
 
+	timer->udata = NULL;
 	kore_python_log_error("pytimer_run");
 
 	if (timer->flags & KORE_TIMER_ONESHOT) {
@@ -2619,6 +2629,11 @@ pytimer_close(struct pytimer *timer, PyObject *args)
 	if (timer->callable != NULL) {
 		Py_DECREF(timer->callable);
 		timer->callable = NULL;
+	}
+
+	if (timer->udata != NULL) {
+		Py_DECREF(timer->udata);
+		timer->udata = NULL;
 	}
 
 	Py_INCREF((PyObject *)timer);

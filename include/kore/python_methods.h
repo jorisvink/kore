@@ -38,7 +38,6 @@ static PyObject		*python_kore_log(PyObject *, PyObject *);
 static PyObject		*python_kore_time(PyObject *, PyObject *);
 static PyObject		*python_kore_lock(PyObject *, PyObject *);
 static PyObject		*python_kore_proc(PyObject *, PyObject *);
-static PyObject		*python_kore_timer(PyObject *, PyObject *);
 static PyObject		*python_kore_fatal(PyObject *, PyObject *);
 static PyObject		*python_kore_queue(PyObject *, PyObject *);
 static PyObject		*python_kore_worker(PyObject *, PyObject *);
@@ -53,6 +52,7 @@ static PyObject		*python_kore_task_kill(PyObject *, PyObject *);
 static PyObject		*python_kore_prerequest(PyObject *, PyObject *);
 static PyObject		*python_kore_task_create(PyObject *, PyObject *);
 static PyObject		*python_kore_socket_wrap(PyObject *, PyObject *);
+static PyObject		*python_kore_timer(PyObject *, PyObject *, PyObject *);
 static PyObject		*python_kore_domain(PyObject *, PyObject *, PyObject *);
 static PyObject		*python_kore_gather(PyObject *, PyObject *, PyObject *);
 static PyObject		*python_kore_sendobj(PyObject *, PyObject *,
@@ -84,7 +84,6 @@ static struct PyMethodDef pykore_methods[] = {
 	METHOD("time", python_kore_time, METH_NOARGS),
 	METHOD("lock", python_kore_lock, METH_NOARGS),
 	METHOD("proc", python_kore_proc, METH_VARARGS),
-	METHOD("timer", python_kore_timer, METH_VARARGS),
 	METHOD("queue", python_kore_queue, METH_VARARGS),
 	METHOD("worker", python_kore_worker, METH_VARARGS),
 	METHOD("tracer", python_kore_tracer, METH_VARARGS),
@@ -99,6 +98,7 @@ static struct PyMethodDef pykore_methods[] = {
 	METHOD("prerequest", python_kore_prerequest, METH_VARARGS),
 	METHOD("task_create", python_kore_task_create, METH_VARARGS),
 	METHOD("socket_wrap", python_kore_socket_wrap, METH_VARARGS),
+	METHOD("timer", python_kore_timer, METH_VARARGS | METH_KEYWORDS),
 	METHOD("server", python_kore_server, METH_VARARGS | METH_KEYWORDS),
 	METHOD("gather", python_kore_gather, METH_VARARGS | METH_KEYWORDS),
 	METHOD("domain", python_kore_domain, METH_VARARGS | METH_KEYWORDS),
@@ -256,6 +256,7 @@ struct pytimer {
 	int			flags;
 	struct kore_timer	*run;
 	PyObject		*callable;
+	PyObject		*udata;
 };
 
 static PyObject	*pytimer_close(struct pytimer *, PyObject *);
