@@ -134,6 +134,7 @@ extern int daemon(int, int);
 /* XXX hackish. */
 #if !defined(KORE_NO_HTTP)
 struct http_request;
+struct http_redirect;
 #endif
 
 #define KORE_FILEREF_SOFT_REMOVED	0x1000
@@ -323,6 +324,7 @@ struct kore_domain {
 	int					x509_verify_depth;
 #if !defined(KORE_NO_HTTP)
 	TAILQ_HEAD(, kore_module_handle)	handlers;
+	TAILQ_HEAD(, http_redirect)		redirects;
 #endif
 	TAILQ_ENTRY(kore_domain)		list;
 };
@@ -927,7 +929,7 @@ int		kore_module_handler_new(struct kore_domain *, const char *,
 		    const char *, const char *, int);
 void		kore_module_handler_free(struct kore_module_handle *);
 struct kore_module_handle	*kore_module_handler_find(struct http_request *,
-				    const char *, const char *);
+				    struct kore_domain *);
 #endif
 
 struct kore_runtime_call	*kore_runtime_getcall(const char *);

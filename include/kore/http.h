@@ -236,6 +236,13 @@ struct reqcall;
 struct kore_task;
 struct http_client;
 
+struct http_redirect {
+	regex_t				rctx;
+	int				status;
+	char				*target;
+	TAILQ_ENTRY(http_redirect)	list;
+};
+
 struct http_request {
 	u_int8_t			method;
 	u_int8_t			fsm_state;
@@ -345,6 +352,9 @@ int		http_media_register(const char *, const char *);
 int		http_check_timeout(struct connection *, u_int64_t);
 ssize_t		http_body_read(struct http_request *, void *, size_t);
 int		http_body_digest(struct http_request *, char *, size_t);
+
+int		http_redirect_add(struct kore_domain *,
+		    const char *, int, const char *);
 void		http_response(struct http_request *, int, const void *, size_t);
 void		http_response_fileref(struct http_request *, int,
 		    struct kore_fileref *);

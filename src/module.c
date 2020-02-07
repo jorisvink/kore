@@ -284,24 +284,19 @@ kore_module_handler_free(struct kore_module_handle *hdlr)
 }
 
 struct kore_module_handle *
-kore_module_handler_find(struct http_request *req, const char *domain,
-    const char *path)
+kore_module_handler_find(struct http_request *req, struct kore_domain *dom)
 {
 	struct connection		*c;
-	struct kore_domain		*dom;
 	struct kore_module_handle	*hdlr;
 
 	c = req->owner;
 
-	if ((dom = kore_domain_lookup(c->owner->server, domain)) == NULL)
-		return (NULL);
-
 	TAILQ_FOREACH(hdlr, &(dom->handlers), list) {
 		if (hdlr->type == HANDLER_TYPE_STATIC) {
-			if (!strcmp(hdlr->path, path))
+			if (!strcmp(hdlr->path, req->path))
 				return (hdlr);
 		} else {
-			if (!regexec(&(hdlr->rctx), path,
+			if (!regexec(&(hdlr->rctx), req->path,
 			    HTTP_CAPTURE_GROUPS, req->cgroups, 0))
 				return (hdlr);
 		}

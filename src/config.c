@@ -110,6 +110,7 @@ static int		configure_client_verify_depth(char *);
 #if !defined(KORE_NO_HTTP)
 static int		configure_route(char *);
 static int		configure_filemap(char *);
+static int		configure_redirect(char *);
 static int		configure_static_handler(char *);
 static int		configure_dynamic_handler(char *);
 static int		configure_restrict(char *);
@@ -189,6 +190,7 @@ static struct {
 #if !defined(KORE_NO_HTTP)
 	{ "route",			configure_route},
 	{ "filemap",			configure_filemap },
+	{ "redirect",			configure_redirect },
 	{ "static",			configure_static_handler },
 	{ "dynamic",			configure_dynamic_handler },
 	{ "accesslog",			configure_accesslog },
@@ -1020,6 +1022,37 @@ configure_route(char *options)
 	if (!kore_module_handler_new(current_domain,
 	    argv[0], argv[1], argv[2], type)) {
 		printf("cannot create route for %s\n", argv[0]);
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_redirect(char *options)
+{
+	char		*argv[4];
+	int		elm, status, err;
+
+	if (current_domain == NULL) {
+		printf("redirect outside of domain context\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	elm = kore_split_string(options, " ", argv, 4);
+	if (elm != 3) {
+		printf("missing parameters for redirect\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	status = kore_strtonum(argv[1], 10, 300, 399, &err);
+	if (err != KORE_RESULT_OK) {
+		printf("invalid status code on redirect (%s)\n", argv[1]);
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (!http_redirect_add(current_domain, argv[0], status, argv[2])) {
+		printf("invalid regex on redirect path\n");
 		return (KORE_RESULT_ERROR);
 	}
 

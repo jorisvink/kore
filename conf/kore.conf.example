@@ -10,8 +10,15 @@
 #socket_backlog			5000
 
 # Server configuration.
-bind		127.0.0.1 443
-#bind_unix	/var/run/kore.sock
+server tls {
+	bind		127.0.0.1 443
+	#bind_unix	/var/run/kore.sock
+}
+
+#server notls {
+#	bind		127.0.0.1 80
+#	tls		no
+#}
 
 # The worker process root directory. If chrooting was not disabled
 # at startup the worker processes will chroot into this directory.
@@ -276,6 +283,8 @@ authentication auth_example {
 
 # Example domain that responds to localhost.
 domain localhost {
+	attach		tls
+
 	certfile	cert/server.crt
 	certkey		cert/server.key
 	accesslog	/var/log/kore_access.log
@@ -333,6 +342,17 @@ domain localhost {
 		validate	post_id		v_number
 	}
 }
+
+# Example redirect 80->443.
+#domain localhost {
+#	attach		notls
+#
+#	# specific redirect with a capture group and arguments
+#	redirect	^/account/(.*)$	301	https://localhost/account/$1
+#
+#	# redirect the others back to root.
+#	redirect	^/.*$		301	https://localhost
+#}
 
 #domain domain.com {
 #	certfile		cert/other/server.crt

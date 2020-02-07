@@ -188,6 +188,7 @@ kore_domain_new(const char *domain)
 
 #if !defined(KORE_NO_HTTP)
 	TAILQ_INIT(&(dom->handlers));
+	TAILQ_INIT(&(dom->redirects));
 #endif
 
 	if (dom->id < KORE_DOMAIN_CACHE) {
@@ -225,7 +226,8 @@ void
 kore_domain_free(struct kore_domain *dom)
 {
 #if !defined(KORE_NO_HTTP)
-	struct kore_module_handle *hdlr;
+	struct http_redirect		*rdr;
+	struct kore_module_handle	*hdlr;
 #endif
 	if (dom == NULL)
 		return;
@@ -254,6 +256,13 @@ kore_domain_free(struct kore_domain *dom)
 	while ((hdlr = TAILQ_FIRST(&(dom->handlers))) != NULL) {
 		TAILQ_REMOVE(&(dom->handlers), hdlr, list);
 		kore_module_handler_free(hdlr);
+	}
+
+	while ((rdr = TAILQ_FIRST(&(dom->redirects))) != NULL) {
+		TAILQ_REMOVE(&(dom->redirects), rdr, list);
+		regfree(&rdr->rctx);
+		kore_free(rdr->target);
+		kore_free(rdr);
 	}
 #endif
 	kore_free(dom);

@@ -123,6 +123,8 @@ static void	http_error_response(struct connection *, int);
 static void	http_write_response_cookie(struct http_cookie *);
 static void	http_argument_add(struct http_request *, char *, char *,
 		    int, int);
+static int	http_check_redirect(struct http_request *,
+		    struct kore_domain *);
 static void	http_response_normal(struct http_request *,
 		    struct connection *, int, const void *, size_t);
 static void	multipart_add_field(struct http_request *, struct kore_buf *,
@@ -1482,13 +1484,82 @@ http_runlock_release(struct http_runlock *lock, struct http_request *req)
 	}
 }
 
+int
+http_redirect_add(struct kore_domain *dom, const char *path, int status,
+    const char *target)
+{
+	struct http_redirect	*rdr;
+
+	rdr = kore_calloc(1, sizeof(*rdr));
+
+	if (regcomp(&(rdr->rctx), path, REG_EXTENDED)) {
+		kore_free(rdr);
+		return (KORE_RESULT_ERROR);
+	}
+
+	rdr->status = status;
+	rdr->target = kore_strdup(target);
+
+	TAILQ_INSERT_TAIL(&dom->redirects, rdr, list);
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+http_check_redirect(struct http_request *req, struct kore_domain *dom)
+{
+	int			idx;
+	struct http_redirect	*rdr;
+	const char		*uri;
+	char			key[4];
+	struct kore_buf		location;
+
+	TAILQ_FOREACH(rdr, &dom->redirects, list) {
+		if (!regexec(&(rdr->rctx), req->path,
+		    HTTP_CAPTURE_GROUPS, req->cgroups, 0))
+			break;
+	}
+
+	if (rdr == NULL)
+		return (KORE_RESULT_ERROR);
+
+	kore_buf_init(&location, 128);
+	kore_buf_appendf(&location, "%s", rdr->target);
+
+	if (req->query_string != NULL) {
+		kore_buf_replace_string(&location, "$qs",
+		    req->query_string, strlen(req->query_string));
+	}
+
+	/* Starts at 1 to skip the full path. */
+	for (idx = 1; idx < HTTP_CAPTURE_GROUPS - 1; idx++) {
+		if (req->cgroups[idx].rm_so == -1 ||
+		    req->cgroups[idx].rm_eo == -1)
+			break;
+
+		(void)snprintf(key, sizeof(key), "$%d", idx);
+
+		kore_buf_replace_string(&location, key,
+		    req->path + req->cgroups[idx].rm_so,
+		    req->cgroups[idx].rm_eo - req->cgroups[idx].rm_so);
+	}
+
+	uri = kore_buf_stringify(&location, NULL);
+
+	http_response_header(req, "location", uri);
+	http_response(req, rdr->status, NULL, 0);
+
+	kore_buf_cleanup(&location);
+
+	return (KORE_RESULT_OK);
+}
+
 static struct http_request *
 http_request_new(struct connection *c, const char *host,
     const char *method, char *path, const char *version)
 {
 	struct kore_domain		*dom;
 	struct http_request		*req;
-	struct kore_module_handle	*hdlr;
 	char				*p, *hp;
 	int				m, flags;
 	size_t				hostlen, pathlen, qsoff;
@@ -1523,7 +1594,6 @@ http_request_new(struct connection *c, const char *host,
 	}
 
 	if ((p = strchr(path, '?')) != NULL) {
-		*p = '\0';
 		qsoff = p - path;
 	} else {
 		qsoff = 0;
@@ -1568,20 +1638,8 @@ http_request_new(struct connection *c, const char *host,
 		return (NULL);
 	}
 
-	req = kore_pool_get(&http_request_pool);
-	req->owner = c;
-
-	if ((hdlr = kore_module_handler_find(req, host, path)) == NULL) {
-		kore_pool_put(&http_request_pool, req);
-		http_error_response(c, 404);
-		return (NULL);
-	}
-
 	if (hp != NULL)
 		*hp = ':';
-
-	if (p != NULL)
-		*p = '?';
 
 	if (!strcasecmp(method, "get")) {
 		m = HTTP_METHOD_GET;
@@ -1605,7 +1663,6 @@ http_request_new(struct connection *c, const char *host,
 		m = HTTP_METHOD_PATCH;
 		flags |= HTTP_REQUEST_EXPECT_BODY;
 	} else {
-		kore_pool_put(&http_request_pool, req);
 		http_error_response(c, 400);
 		return (NULL);
 	}
@@ -1613,17 +1670,12 @@ http_request_new(struct connection *c, const char *host,
 	if (flags & HTTP_VERSION_1_0) {
 		if (m != HTTP_METHOD_GET && m != HTTP_METHOD_POST &&
 		    m != HTTP_METHOD_HEAD) {
-			kore_pool_put(&http_request_pool, req);
 			http_error_response(c, HTTP_STATUS_METHOD_NOT_ALLOWED);
 			return (NULL);
 		}
 	}
 
-	if (!(hdlr->methods & m)) {
-		kore_pool_put(&http_request_pool, req);
-		http_error_response(c, HTTP_STATUS_METHOD_NOT_ALLOWED);
-		return (NULL);
-	}
+	req = kore_pool_get(&http_request_pool);
 
 	req->end = 0;
 	req->total = 0;
@@ -1631,7 +1683,6 @@ http_request_new(struct connection *c, const char *host,
 	req->owner = c;
 	req->status = 0;
 	req->method = m;
-	req->hdlr = hdlr;
 	req->agent = NULL;
 	req->onfree = NULL;
 	req->referer = NULL;
@@ -1663,6 +1714,9 @@ http_request_new(struct connection *c, const char *host,
 		req->query_string = NULL;
 	}
 
+	/* Checked further down below if we need to 404. */
+	req->hdlr = kore_module_handler_find(req, dom);
+
 	TAILQ_INIT(&(req->resp_headers));
 	TAILQ_INIT(&(req->req_headers));
 	TAILQ_INIT(&(req->resp_cookies));
@@ -1681,6 +1735,23 @@ http_request_new(struct connection *c, const char *host,
 	http_request_count++;
 	TAILQ_INSERT_HEAD(&http_requests, req, list);
 	TAILQ_INSERT_TAIL(&(c->http_requests), req, olist);
+
+	if (http_check_redirect(req, dom)) {
+		http_request_free(req);
+		return (NULL);
+	}
+
+	if (req->hdlr == NULL) {
+		http_request_free(req);
+		http_error_response(c, HTTP_STATUS_NOT_FOUND);
+		return (NULL);
+	}
+
+	if (!(req->hdlr->methods & m)) {
+		http_request_free(req);
+		http_error_response(c, HTTP_STATUS_METHOD_NOT_ALLOWED);
+		return (NULL);
+	}
 
 	return (req);
 }
