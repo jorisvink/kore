@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 Joris Vink <joris@coders.se>
+ * Copyright (c) 2017-2020 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
