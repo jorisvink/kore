@@ -286,10 +286,7 @@ kore_module_handler_free(struct kore_module_handle *hdlr)
 struct kore_module_handle *
 kore_module_handler_find(struct http_request *req, struct kore_domain *dom)
 {
-	struct connection		*c;
 	struct kore_module_handle	*hdlr;
-
-	c = req->owner;
 
 	TAILQ_FOREACH(hdlr, &(dom->handlers), list) {
 		if (hdlr->type == HANDLER_TYPE_STATIC) {
