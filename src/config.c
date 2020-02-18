@@ -128,6 +128,7 @@ static int		configure_http_request_ms(char *);
 static int		configure_http_request_limit(char *);
 static int		configure_http_body_disk_offload(char *);
 static int		configure_http_body_disk_path(char *);
+static int		configure_http_server_version(char *);
 static int		configure_validator(char *);
 static int		configure_params(char *);
 static int		configure_validate(char *);
@@ -254,6 +255,7 @@ static struct {
 	{ "http_request_limit",		configure_http_request_limit },
 	{ "http_body_disk_offload",	configure_http_body_disk_offload },
 	{ "http_body_disk_path",	configure_http_body_disk_path },
+	{ "http_server_version",	configure_http_server_version },
 	{ "websocket_maxframe",		configure_websocket_maxframe },
 	{ "websocket_timeout",		configure_websocket_timeout },
 #endif
@@ -1288,6 +1290,14 @@ configure_http_body_disk_path(char *path)
 		kore_free(http_body_disk_path);
 
 	http_body_disk_path = kore_strdup(path);
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_http_server_version(char *version)
+{
+	http_server_version(version);
+
 	return (KORE_RESULT_OK);
 }
 

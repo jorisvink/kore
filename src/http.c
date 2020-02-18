@@ -185,12 +185,14 @@ http_init(void)
 	header_buf = kore_buf_alloc(HTTP_HEADER_BUFSIZE);
 	ckhdr_buf = kore_buf_alloc(HTTP_COOKIE_BUFSIZE);
 
-	l = snprintf(http_version, sizeof(http_version),
-	    "server: kore (%s)\r\n", kore_version);
-	if (l == -1 || (size_t)l >= sizeof(http_version))
-		fatal("http_init(): http_version buffer too small");
+	if (!http_version_len) {
+		l = snprintf(http_version, sizeof(http_version),
+		    "server: kore (%s)\r\n", kore_version);
+		if (l == -1 || (size_t)l >= sizeof(http_version))
+			fatal("http_init(): http_version buffer too small");
 
-	http_version_len = l;
+		http_version_len = l;
+	}
 
 	prealloc = MIN((worker_max_connections / 10), 1000);
 	kore_pool_init(&http_request_pool, "http_request_pool",
