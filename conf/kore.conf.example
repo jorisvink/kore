@@ -149,6 +149,8 @@ workers		4
 #	http_request_ms		The number of milliseconds workers can max
 #				spend inside the HTTP processing loop.
 #
+#	http_server_version	Override the server version string.
+#
 #http_header_max	4096
 #http_header_timeout	10
 #http_body_max		1024000
@@ -159,6 +161,7 @@ workers		4
 #http_request_ms	10
 #http_body_disk_offload	0
 #http_body_disk_path	tmp_files
+#http_server_version	kore
 
 # Websocket specific settings.
 #	websocket_maxframe	Specifies the maximum frame size we can receive
