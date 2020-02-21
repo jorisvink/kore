@@ -219,6 +219,10 @@ kore_domain_attach(struct kore_domain *dom, struct kore_server *server)
 	dom->server = server;
 	TAILQ_INSERT_TAIL(&server->domains, dom, list);
 
+	/* The primary domain should be attached to a TLS context. */
+	if (server->tls == 0 && dom == primary_dom)
+		primary_dom = NULL;
+
 	return (KORE_RESULT_OK);
 }
 
