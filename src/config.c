@@ -130,6 +130,7 @@ static int		configure_http_request_limit(char *);
 static int		configure_http_body_disk_offload(char *);
 static int		configure_http_body_disk_path(char *);
 static int		configure_http_server_version(char *);
+static int		configure_http_pretty_error(char *);
 static int		configure_validator(char *);
 static int		configure_params(char *);
 static int		configure_validate(char *);
@@ -258,6 +259,7 @@ static struct {
 	{ "http_body_disk_offload",	configure_http_body_disk_offload },
 	{ "http_body_disk_path",	configure_http_body_disk_path },
 	{ "http_server_version",	configure_http_server_version },
+	{ "http_pretty_error",		configure_http_pretty_error },
 	{ "websocket_maxframe",		configure_websocket_maxframe },
 	{ "websocket_timeout",		configure_websocket_timeout },
 #endif
@@ -1330,6 +1332,21 @@ static int
 configure_http_server_version(char *version)
 {
 	http_server_version(version);
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_http_pretty_error(char *yesno)
+{
+	if (!strcmp(yesno, "no")) {
+		http_pretty_error = 0;
+	} else if (!strcmp(yesno, "yes")) {
+		http_pretty_error = 1;
+	} else {
+		printf("invalid '%s' for yes|no http_pretty_error option\n", yesno);
+		return (KORE_RESULT_ERROR);
+	}
 
 	return (KORE_RESULT_OK);
 }

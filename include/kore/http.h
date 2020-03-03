@@ -327,6 +327,7 @@ extern u_int16_t	http_keepalive_time;
 extern u_int32_t	http_request_limit;
 extern u_int32_t	http_request_count;
 extern u_int64_t	http_body_disk_offload;
+extern int		http_pretty_error;
 extern char		*http_body_disk_path;
 extern struct kore_pool	http_header_pool;
 

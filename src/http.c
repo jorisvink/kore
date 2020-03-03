@@ -140,6 +140,7 @@ static int	multipart_parse_headers(struct http_request *,
 static struct http_request	*http_request_new(struct connection *,
 				    const char *, const char *, char *,
 				    const char *);
+static struct kore_buf		*http_pretty_error_page(int);
 
 static struct kore_buf			*header_buf;
 static struct kore_buf			*ckhdr_buf;
@@ -167,6 +168,8 @@ u_int16_t	http_header_timeout = HTTP_HEADER_TIMEOUT;
 size_t		http_body_max = HTTP_BODY_MAX_LEN;
 char		*http_body_disk_path = HTTP_BODY_DISK_PATH;
 u_int64_t	http_body_disk_offload = HTTP_BODY_DISK_OFFLOAD;
+
+int		http_pretty_error = 0;
 
 void
 http_parent_init(void)
@@ -2077,6 +2080,8 @@ http_response_normal(struct http_request *req, struct connection *c,
 	const char		*conn;
 	char			version;
 	int			connection_close;
+	int			send_body = 1;
+	u_int8_t		*error_page = NULL;
 
 	kore_buf_reset(header_buf);
 
@@ -2129,6 +2134,12 @@ http_response_normal(struct http_request *req, struct connection *c,
 		    http_hsts_enable);
 	}
 
+	if (http_pretty_error && d == NULL && status >= 400) {
+		struct kore_buf *page = http_pretty_error_page(status);
+		error_page = kore_buf_release(page, &len);
+		d = error_page;
+	}
+
 	if (req != NULL) {
 		TAILQ_FOREACH(ck, &(req->resp_cookies), list)
 			http_write_response_cookie(ck);
@@ -2153,7 +2164,10 @@ http_response_normal(struct http_request *req, struct connection *c,
 	kore_buf_append(header_buf, "\r\n", 2);
 	net_send_queue(c, header_buf->data, header_buf->offset);
 
-	if (d != NULL && req != NULL && req->method != HTTP_METHOD_HEAD)
+	if (req != NULL && req->method == HTTP_METHOD_HEAD)
+		send_body = 0;
+
+	if (d != NULL && send_body)
 		net_send_queue(c, d, len);
 
 	if (!(c->flags & CONN_CLOSE_EMPTY) && !(c->flags & CONN_IS_BUSY))
@@ -2161,6 +2175,9 @@ http_response_normal(struct http_request *req, struct connection *c,
 
 	if (req != NULL)
 		req->content_length = len;
+
+	if (error_page)
+		kore_free(error_page);
 }
 
 static void
@@ -2480,4 +2497,22 @@ http_validate_header(char *header)
 	}
 
 	return (value);
+}
+
+static struct kore_buf *
+http_pretty_error_page(int status)
+{
+	const char *error_template =
+	"<html>\n<head>\n\t<title>%d %s</title>"
+	"</head>\n<body>\n\t"
+	"<h1>%d %s</h1>\n"
+	"</body>\n</html>\n";
+
+	const char *status_text = http_status_text(status);
+
+	struct kore_buf *r = kore_buf_alloc(128);
+	kore_buf_appendf(r, error_template,
+	    status, status_text, status, status_text);
+
+	return r;
 }
