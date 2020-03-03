@@ -1500,7 +1500,11 @@ http_redirect_add(struct kore_domain *dom, const char *path, int status,
 	}
 
 	rdr->status = status;
-	rdr->target = kore_strdup(target);
+
+	if (target != NULL)
+		rdr->target = kore_strdup(target);
+	else
+		rdr->target = NULL;
 
 	TAILQ_INSERT_TAIL(&dom->redirects, rdr, list);
 
@@ -1525,33 +1529,41 @@ http_check_redirect(struct http_request *req, struct kore_domain *dom)
 	if (rdr == NULL)
 		return (KORE_RESULT_ERROR);
 
+	uri = NULL;
 	kore_buf_init(&location, 128);
-	kore_buf_appendf(&location, "%s", rdr->target);
 
-	if (req->query_string != NULL) {
-		kore_buf_replace_string(&location, "$qs",
-		    req->query_string, strlen(req->query_string));
+	if (rdr->target) {
+		kore_buf_appendf(&location, "%s", rdr->target);
+
+		if (req->query_string != NULL) {
+			kore_buf_replace_string(&location, "$qs",
+			    req->query_string, strlen(req->query_string));
+		}
+
+		/* Starts at 1 to skip the full path. */
+		for (idx = 1; idx < HTTP_CAPTURE_GROUPS - 1; idx++) {
+			if (req->cgroups[idx].rm_so == -1 ||
+			    req->cgroups[idx].rm_eo == -1)
+				break;
+
+			(void)snprintf(key, sizeof(key), "$%d", idx);
+
+			kore_buf_replace_string(&location, key,
+			    req->path + req->cgroups[idx].rm_so,
+			    req->cgroups[idx].rm_eo - req->cgroups[idx].rm_so);
+		}
+
+		uri = kore_buf_stringify(&location, NULL);
 	}
 
-	/* Starts at 1 to skip the full path. */
-	for (idx = 1; idx < HTTP_CAPTURE_GROUPS - 1; idx++) {
-		if (req->cgroups[idx].rm_so == -1 ||
-		    req->cgroups[idx].rm_eo == -1)
-			break;
+	if (uri)
+		http_response_header(req, "location", uri);
 
-		(void)snprintf(key, sizeof(key), "$%d", idx);
-
-		kore_buf_replace_string(&location, key,
-		    req->path + req->cgroups[idx].rm_so,
-		    req->cgroups[idx].rm_eo - req->cgroups[idx].rm_so);
-	}
-
-	uri = kore_buf_stringify(&location, NULL);
-
-	http_response_header(req, "location", uri);
 	http_response(req, rdr->status, NULL, 0);
-
 	kore_buf_cleanup(&location);
+
+	if (dom->accesslog)
+		kore_accesslog(req);
 
 	return (KORE_RESULT_OK);
 }
