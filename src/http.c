@@ -118,6 +118,15 @@ static const char http_field_content[] = {
 	'x' , 'y' , 'z' , '{' , '|' , '}' , '~' , 0x00
 };
 
+/*
+ * Fixed "pretty" HTTP error HTML page.
+ */
+static const char *pretty_error_fmt =
+	"<html>\n<head>\n\t<title>%d %s</title>"
+	"</head>\n<body>\n\t"
+	"<h1>%d %s</h1>\n"
+	"</body>\n</html>\n";
+
 static int	http_body_recv(struct netbuf *);
 static void	http_error_response(struct connection *, int);
 static void	http_write_response_cookie(struct http_cookie *);
@@ -140,7 +149,6 @@ static int	multipart_parse_headers(struct http_request *,
 static struct http_request	*http_request_new(struct connection *,
 				    const char *, const char *, char *,
 				    const char *);
-static struct kore_buf		*http_pretty_error_page(int);
 
 static struct kore_buf			*header_buf;
 static struct kore_buf			*ckhdr_buf;
@@ -156,6 +164,7 @@ static struct kore_pool			http_rlq_pool;
 
 struct kore_pool			http_header_pool;
 
+int		http_pretty_error = 0;
 u_int32_t	http_request_count = 0;
 u_int32_t	http_request_ms = HTTP_REQUEST_MS;
 u_int16_t	http_body_timeout = HTTP_BODY_TIMEOUT;
@@ -168,8 +177,6 @@ u_int16_t	http_header_timeout = HTTP_HEADER_TIMEOUT;
 size_t		http_body_max = HTTP_BODY_MAX_LEN;
 char		*http_body_disk_path = HTTP_BODY_DISK_PATH;
 u_int64_t	http_body_disk_offload = HTTP_BODY_DISK_OFFLOAD;
-
-int		http_pretty_error = 0;
 
 void
 http_parent_init(void)
@@ -2075,14 +2082,17 @@ static void
 http_response_normal(struct http_request *req, struct connection *c,
     int status, const void *d, size_t len)
 {
+	struct kore_buf		buf;
 	struct http_cookie	*ck;
 	struct http_header	*hdr;
-	const char		*conn;
 	char			version;
-	int			connection_close;
-	int			send_body = 1;
-	u_int8_t		*error_page = NULL;
+	const char		*conn, *text;
+	int			connection_close, send_body;
 
+	send_body = 1;
+	text = http_status_text(status);
+
+	kore_buf_init(&buf, 1024);
 	kore_buf_reset(header_buf);
 
 	if (req != NULL) {
@@ -2095,7 +2105,7 @@ http_response_normal(struct http_request *req, struct connection *c,
 	}
 
 	kore_buf_appendf(header_buf, "HTTP/1.%c %d %s\r\n",
-	    version, status, http_status_text(status));
+	    version, status, text);
 	kore_buf_append(header_buf, http_version, http_version_len);
 
 	if ((c->flags & CONN_CLOSE_EMPTY) ||
@@ -2135,9 +2145,11 @@ http_response_normal(struct http_request *req, struct connection *c,
 	}
 
 	if (http_pretty_error && d == NULL && status >= 400) {
-		struct kore_buf *page = http_pretty_error_page(status);
-		error_page = kore_buf_release(page, &len);
-		d = error_page;
+		kore_buf_appendf(&buf, pretty_error_fmt,
+		    status, text, status, text);
+
+		d = buf.data;
+		len = buf.offset;
 	}
 
 	if (req != NULL) {
@@ -2176,8 +2188,7 @@ http_response_normal(struct http_request *req, struct connection *c,
 	if (req != NULL)
 		req->content_length = len;
 
-	if (error_page)
-		kore_free(error_page);
+	kore_buf_cleanup(&buf);
 }
 
 static void
@@ -2497,22 +2508,4 @@ http_validate_header(char *header)
 	}
 
 	return (value);
-}
-
-static struct kore_buf *
-http_pretty_error_page(int status)
-{
-	const char *error_template =
-	"<html>\n<head>\n\t<title>%d %s</title>"
-	"</head>\n<body>\n\t"
-	"<h1>%d %s</h1>\n"
-	"</body>\n</html>\n";
-
-	const char *status_text = http_status_text(status);
-
-	struct kore_buf *r = kore_buf_alloc(128);
-	kore_buf_appendf(r, error_template,
-	    status, status_text, status, status_text);
-
-	return r;
 }

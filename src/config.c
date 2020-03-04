@@ -1344,7 +1344,8 @@ configure_http_pretty_error(char *yesno)
 	} else if (!strcmp(yesno, "yes")) {
 		http_pretty_error = 1;
 	} else {
-		printf("invalid '%s' for yes|no http_pretty_error option\n", yesno);
+		printf("invalid '%s' for yes|no http_pretty_error option\n",
+		    yesno);
 		return (KORE_RESULT_ERROR);
 	}
 
