@@ -724,11 +724,12 @@ void		kore_worker_init(void);
 void		kore_worker_make_busy(void);
 void		kore_worker_shutdown(void);
 void		kore_worker_dispatch_signal(int);
-void		kore_worker_entry(struct kore_worker *);
 void		kore_worker_privdrop(const char *, const char *);
 void		kore_worker_spawn(u_int16_t, u_int16_t, u_int16_t);
 int		kore_worker_keymgr_response_verify(struct kore_msg *,
 		    const void *, struct kore_domain **);
+
+void	kore_worker_entry(struct kore_worker *) __attribute__((noreturn));
 
 struct kore_worker	*kore_worker_data(u_int8_t);
 
