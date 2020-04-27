@@ -643,7 +643,7 @@ json_parse_string(struct kore_json *json, struct kore_json_item *string)
 	char		*value;
 
 	if ((value = json_get_string(json)) == NULL)
-		return (KORE_RESULT_ERROR); 
+		return (KORE_RESULT_ERROR);
 
 	string->type = KORE_JSON_TYPE_STRING;
 	string->data.string = kore_strdup(value);
