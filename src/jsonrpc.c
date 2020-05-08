@@ -156,7 +156,7 @@ parse_json_body(struct jsonrpc_request *req)
 {
 	static const char	*proto_path[] = { "jsonrpc", NULL };
 	static const char	*id_path[] = { "id", NULL };
-	static const char	*method_path[] = { "method", NULL }; 
+	static const char	*method_path[] = { "method", NULL };
 	static const char	*params_path[] = { "params", NULL };
 
 	/* Check protocol first. */
