@@ -62,6 +62,11 @@ kore_msg_parent_init(void)
 				continue;
 		}
 
+#if !defined(KORE_USE_ACME)
+		if (idx == KORE_WORKER_ACME_IDX)
+			continue;
+#endif
+
 		kw = kore_worker_data(idx);
 		kore_msg_parent_add(kw);
 	}
