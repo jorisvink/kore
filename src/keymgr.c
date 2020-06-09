@@ -81,7 +81,9 @@ static struct sock_filter filter_keymgr[] = {
 	KORE_SYSCALL_ALLOW(lseek),
 	KORE_SYSCALL_ALLOW(write),
 	KORE_SYSCALL_ALLOW(close),
+#if defined(SYS_stat)
 	KORE_SYSCALL_ALLOW(stat),
+#endif
 	KORE_SYSCALL_ALLOW(fstat),
 	KORE_SYSCALL_ALLOW(futex),
 	KORE_SYSCALL_ALLOW(writev),
