@@ -2425,11 +2425,18 @@ python_import(const char *path)
 		fatal("python_import: '%s' is not a file or directory", path);
 
 	copy = kore_strdup(path);
-
-	if ((file = basename(copy)) == NULL)
-		fatal("basename: %s: %s", path, errno_s);
-	if ((dir = dirname(copy)) == NULL)
+	if ((p = dirname(copy)) == NULL)
 		fatal("dirname: %s: %s", path, errno_s);
+
+	dir = kore_strdup(p);
+	kore_free(copy);
+
+	copy = kore_strdup(path);
+	if ((p = basename(copy)) == NULL)
+		fatal("basename: %s: %s", path, errno_s);
+
+	file = kore_strdup(p);
+	kore_free(copy);
 
 	if ((p = strrchr(file, '.')) != NULL)
 		*p = '\0';
@@ -2443,7 +2450,8 @@ python_import(const char *path)
 	if (module == NULL)
 		PyErr_Print();
 
-	kore_free(copy);
+	kore_free(dir);
+	kore_free(file);
 
 	return (module);
 }
