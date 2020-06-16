@@ -465,6 +465,8 @@ kore_worker_entry(struct kore_worker *kw)
 		netwait = kore_timer_next_run(now);
 
 		if (netwait == KORE_WAIT_INFINITE) {
+			if (sig_recv != 0)
+				netwait = 10;
 #if !defined(KORE_NO_HTTP)
 			if (http_request_count > 0)
 				netwait = 100;
