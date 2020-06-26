@@ -349,7 +349,7 @@ kore_worker_entry(struct kore_worker *kw)
 	struct kore_runtime_call	*rcall;
 	u_int64_t			last_seed;
 	int				quit, had_lock;
-	u_int64_t			netwait, now, next_prune;
+	u_int64_t			netwait, now, next_timeo;
 
 	worker = kw;
 
@@ -400,7 +400,7 @@ kore_worker_entry(struct kore_worker *kw)
 
 	quit = 0;
 	had_lock = 0;
-	next_prune = 0;
+	next_timeo = 0;
 	accept_avail = 1;
 	worker_active_connections = 0;
 
@@ -525,11 +525,12 @@ kore_worker_entry(struct kore_worker *kw)
 #if defined(KORE_USE_PYTHON)
 		kore_python_coro_run();
 #endif
-		if (next_prune <= now) {
+		if (next_timeo <= now) {
 			kore_connection_check_timeout(now);
-			kore_connection_prune(KORE_CONNECTION_PRUNE_DISCONNECT);
-			next_prune = now + 500;
+			next_timeo = now + 500;
 		}
+
+		kore_connection_prune(KORE_CONNECTION_PRUNE_DISCONNECT);
 	}
 
 	rcall = kore_runtime_getcall("kore_worker_teardown");
