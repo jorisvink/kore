@@ -990,6 +990,12 @@ python_coro_run(struct python_coro *coro)
 				Py_XDECREF(traceback);
 			} else {
 				kore_python_log_error("coroutine");
+
+				if (coro->request != NULL) {
+					http_response(coro->request,
+					    HTTP_STATUS_INTERNAL_ERROR,
+					    NULL, 0);
+				}
 			}
 
 			coro_running = NULL;
