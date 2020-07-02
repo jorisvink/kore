@@ -57,7 +57,7 @@ Requirements
   (note: libressl 3.0.0+ works as a replacement)
 
 Requirement for asynchronous curl (optional)
-* libcurl
+* libcurl (7.64.0 or higher)
 
 Requirements for background tasks (optional)
 * pthreads

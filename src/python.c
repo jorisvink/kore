@@ -5404,6 +5404,9 @@ python_kore_curl_handle(PyObject *self, PyObject *args)
 	handle->url = kore_strdup(url);
 	memset(&handle->curl, 0, sizeof(handle->curl));
 
+	handle->body = NULL;
+	LIST_INIT(&handle->slists);
+
 	if (!kore_curl_init(&handle->curl, handle->url, KORE_CURL_ASYNC)) {
 		Py_DECREF((PyObject *)handle);
 		PyErr_SetString(PyExc_RuntimeError, "failed to setup call");
@@ -5416,10 +5419,63 @@ python_kore_curl_handle(PyObject *self, PyObject *args)
 static void
 pycurl_handle_dealloc(struct pycurl_handle *handle)
 {
+	struct pycurl_slist	*psl;
+
+	while ((psl = LIST_FIRST(&handle->slists))) {
+		LIST_REMOVE(psl, list);
+		curl_slist_free_all(psl->slist);
+		kore_free(psl);
+	}
+
+	if (handle->body != NULL)
+		kore_buf_free(handle->body);
+
 	kore_free(handle->url);
 	kore_curl_cleanup(&handle->curl);
 
 	PyObject_Del((PyObject *)handle);
+}
+
+static PyObject *
+pycurl_handle_setbody(struct pycurl_handle *handle, PyObject *args)
+{
+	PyObject		*obj;
+	char			*ptr;
+	Py_ssize_t		length;
+
+	if (!PyArg_ParseTuple(args, "O", &obj))
+		return (NULL);
+
+	if (handle->body != NULL) {
+		PyErr_SetString(PyExc_RuntimeError,
+		    "curl handle already has body attached");
+		return (NULL);
+	}
+
+	if (!PyBytes_CheckExact(obj)) {
+		PyErr_SetString(PyExc_RuntimeError,
+		    "curl.setbody expects bytes");
+		return (NULL);
+	}
+
+	if (PyBytes_AsStringAndSize(obj, &ptr, &length) == -1)
+		return (NULL);
+
+	if (length < 0) {
+		PyErr_SetString(PyExc_TypeError, "invalid length");
+		return (NULL);
+	}
+
+	handle->body = kore_buf_alloc(length);
+	kore_buf_append(handle->body, ptr, length);
+	kore_buf_reset(handle->body);
+
+	curl_easy_setopt(handle->curl.handle,
+	    CURLOPT_READFUNCTION, kore_curl_frombuf);
+	curl_easy_setopt(handle->curl.handle, CURLOPT_READDATA, handle->body);
+	curl_easy_setopt(handle->curl.handle, CURLOPT_UPLOAD, 1);
+
+	Py_RETURN_TRUE;
 }
 
 static PyObject *
@@ -5459,14 +5515,15 @@ pycurl_handle_setopt_string(struct pycurl_handle *handle, int idx,
 	if (!PyUnicode_Check(obj)) {
 		PyErr_Format(PyExc_RuntimeError,
 		    "option '%s' requires a string as argument",
-		    py_curlopt[idx]);
+		    py_curlopt[idx].name);
 		return (NULL);
 	}
 
 	if ((str = PyUnicode_AsUTF8(obj)) == NULL)
 		return (NULL);
 
-	curl_easy_setopt(&handle->curl, py_curlopt[idx].value, str);
+	curl_easy_setopt(handle->curl.handle,
+	    CURLOPTTYPE_OBJECTPOINT + py_curlopt[idx].value, str);
 
 	Py_RETURN_TRUE;
 }
@@ -5478,7 +5535,8 @@ pycurl_handle_setopt_long(struct pycurl_handle *handle, int idx, PyObject *obj)
 
 	if (!PyLong_CheckExact(obj)) {
 		PyErr_Format(PyExc_RuntimeError,
-		    "option '%s' requires a long as argument", py_curlopt[idx]);
+		    "option '%s' requires a long as argument",
+		    py_curlopt[idx].name);
 		return (NULL);
 	}
 
@@ -5487,7 +5545,51 @@ pycurl_handle_setopt_long(struct pycurl_handle *handle, int idx, PyObject *obj)
 	if (val == -1 && PyErr_Occurred())
 		return (NULL);
 
-	curl_easy_setopt(&handle->curl, py_curlopt[idx].value, val);
+	curl_easy_setopt(handle->curl.handle,
+	    CURLOPTTYPE_LONG + py_curlopt[idx].value, val);
+
+	Py_RETURN_TRUE;
+}
+
+static PyObject *
+pycurl_handle_setopt_slist(struct pycurl_handle *handle, int idx, PyObject *obj)
+{
+	struct pycurl_slist	*psl;
+	PyObject		*item;
+	const char		*sval;
+	struct curl_slist	*slist;
+	Py_ssize_t		list_len, i;
+
+	if (!PyList_CheckExact(obj)) {
+		PyErr_Format(PyExc_RuntimeError,
+		    "option '%s' requires a list as argument",
+		    py_curlopt[idx].name);
+		return (NULL);
+	}
+
+	slist = NULL;
+	list_len = PyList_Size(obj);
+
+	for (i = 0; i < list_len; i++) {
+		if ((item = PyList_GetItem(obj, i)) == NULL)
+			return (NULL);
+
+		if (!PyUnicode_Check(item))
+			return (NULL);
+
+		if ((sval = PyUnicode_AsUTF8AndSize(item, NULL)) == NULL)
+			return (NULL);
+
+		if ((slist = curl_slist_append(slist, sval)) == NULL)
+			fatal("%s: curl_slist_append failed", __func__);
+	}
+
+	psl = kore_calloc(1, sizeof(*psl));
+	psl->slist = slist;
+	LIST_INSERT_HEAD(&handle->slists, psl, list);
+
+	curl_easy_setopt(handle->curl.handle,
+	    CURLOPTTYPE_OBJECTPOINT + py_curlopt[idx].value, slist);
 
 	Py_RETURN_TRUE;
 }
@@ -5537,6 +5639,11 @@ pycurl_handle_op_iternext(struct pycurl_handle_op *op)
 		kore_curl_run(&op->handle->curl);
 		op->state = CURL_CLIENT_OP_RESULT;
 		Py_RETURN_NONE;
+	}
+
+	if (op->handle->body != NULL) {
+		kore_buf_free(op->handle->body);
+		op->handle->body = NULL;
 	}
 
 	if (!kore_curl_success(&op->handle->curl)) {
@@ -5684,7 +5791,7 @@ pyhttp_client_request(struct pyhttp_client *client, int m, PyObject *kwargs)
 	    ((headers = PyDict_GetItemString(kwargs, "headers")) != NULL)) {
 		if (!PyDict_CheckExact(headers)) {
 			PyErr_SetString(PyExc_RuntimeError,
-			    "header keyword must be a dict");
+			    "headers keyword must be a dict");
 			return (NULL);
 		}
 	}
