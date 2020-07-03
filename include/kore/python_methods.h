@@ -795,10 +795,17 @@ static PyTypeObject pyhttp_file_type = {
 #define CURL_CLIENT_OP_RUN	1
 #define CURL_CLIENT_OP_RESULT	2
 
+struct pycurl_slist {
+	struct curl_slist		*slist;
+	LIST_ENTRY(pycurl_slist)	list;
+};
+
 struct pycurl_handle {
 	PyObject_HEAD
-	char			*url;
-	struct kore_curl	curl;
+	struct kore_curl		curl;
+	char				*url;
+	struct kore_buf			*body;
+	LIST_HEAD(, pycurl_slist)	slists;
 };
 
 struct pycurl_handle_op {
@@ -816,15 +823,19 @@ static void	pycurl_handle_op_dealloc(struct pycurl_handle_op *);
 
 static PyObject *pycurl_handle_run(struct pycurl_handle *, PyObject *);
 static PyObject *pycurl_handle_setopt(struct pycurl_handle *, PyObject *);
+static PyObject *pycurl_handle_setbody(struct pycurl_handle *, PyObject *);
 
 static PyObject *pycurl_handle_setopt_string(struct pycurl_handle *,
 		    int, PyObject *);
 static PyObject *pycurl_handle_setopt_long(struct pycurl_handle *,
 		    int, PyObject *);
+static PyObject *pycurl_handle_setopt_slist(struct pycurl_handle *,
+		    int, PyObject *);
 
 static PyMethodDef pycurl_handle_methods[] = {
 	METHOD("run", pycurl_handle_run, METH_VARARGS),
 	METHOD("setopt", pycurl_handle_setopt, METH_VARARGS),
+	METHOD("setbody", pycurl_handle_setbody, METH_VARARGS),
 	METHOD(NULL, NULL, -1)
 };
 

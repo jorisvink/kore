@@ -32,15 +32,16 @@ struct {
 } py_curlopt[] = {
 __EOF
 
-egrep "^.*CINIT\(.*\),$" "$1/curl.h" | \
+egrep "^.*CURLOPT\(.*\),$" "$1/curl.h" | \
     cut -d'(' -f 2 | cut -d ')' -f 1 | sed 's/,/ /g' | \
-    sed 's/OBJECTPOINT/NULL/g' | \
-    sed 's/STRINGPOINT/pycurl_handle_setopt_string/g' | \
-    sed 's/LONG/pycurl_handle_setopt_long/g' | \
-    sed 's/SLISTPOINT/NULL/g' | \
-    sed 's/FUNCTIONPOINT/NULL/g' | \
-    sed 's/OFF_T/NULL/g' | \
-    awk '{ printf "\t{ \"CURLOPT_%s\", %s, %s },\n", $1, $3, $2 } '
+    sed 's/CURLOPTTYPE_OBJECTPOINT/NULL/g' | \
+    sed 's/CURLOPTTYPE_STRINGPOINT/pycurl_handle_setopt_string/g' | \
+    sed 's/CURLOPTTYPE_LONG/pycurl_handle_setopt_long/g' | \
+    sed 's/CURLOPTTYPE_SLISTPOINT/pycurl_handle_setopt_slist/g' | \
+    sed 's/CURLOPTTYPE_FUNCTIONPOINT/NULL/g' | \
+    sed 's/CURLOPTTYPE_OFF_T/NULL/g' | \
+    sed 's/CURLOPTTYPE_BLOB/NULL/g' | \
+    awk '{ printf "\t{ \"%s\", %s, %s },\n", $1, $3, $2 } '
 
 echo "\t{ NULL, 0, 0 }"
 echo "};"
