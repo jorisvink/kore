@@ -266,6 +266,7 @@ static struct coro_list			coro_suspended;
 extern const char *__progname;
 
 static PyObject		*pickle = NULL;
+static PyObject		*kore_app = NULL;
 static PyObject		*pickle_dumps = NULL;
 static PyObject		*pickle_loads = NULL;
 static PyObject		*python_tracer = NULL;
@@ -1640,6 +1641,29 @@ python_kore_pgsql_register(PyObject *self, PyObject *args)
 	Py_RETURN_TRUE;
 }
 #endif
+
+static PyObject *
+python_kore_app(PyObject *self, PyObject *args)
+{
+	PyObject	*obj;
+
+	if (!PyArg_ParseTuple(args, "O", &obj)) {
+		PyErr_Clear();
+
+		if (kore_app == NULL)
+			Py_RETURN_NONE;
+
+		Py_INCREF(kore_app);
+		return (kore_app);
+	}
+
+	Py_XDECREF(kore_app);
+
+	kore_app = obj;
+	Py_INCREF(kore_app);
+
+	Py_RETURN_TRUE;
+}
 
 static PyObject *
 python_kore_log(PyObject *self, PyObject *args)

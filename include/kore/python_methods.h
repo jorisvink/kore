@@ -34,6 +34,7 @@ struct python_coro {
 
 TAILQ_HEAD(coro_list, python_coro);
 
+static PyObject		*python_kore_app(PyObject *, PyObject *);
 static PyObject		*python_kore_log(PyObject *, PyObject *);
 static PyObject		*python_kore_time(PyObject *, PyObject *);
 static PyObject		*python_kore_lock(PyObject *, PyObject *);
@@ -80,6 +81,7 @@ static PyObject		*python_websocket_broadcast(PyObject *, PyObject *);
 #define GETSET(n, g, s)		{ n, (getter)g, (setter)s, NULL, NULL }
 
 static struct PyMethodDef pykore_methods[] = {
+	METHOD("app", python_kore_app, METH_VARARGS),
 	METHOD("log", python_kore_log, METH_VARARGS),
 	METHOD("time", python_kore_time, METH_NOARGS),
 	METHOD("lock", python_kore_lock, METH_NOARGS),
