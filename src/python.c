@@ -410,6 +410,13 @@ kore_python_coro_delete(void *obj)
 	Py_DECREF(coro->obj);
 	coro_running = NULL;
 
+	if (coro->lockop != NULL) {
+		coro->lockop->active = 0;
+		TAILQ_REMOVE(&coro->lockop->lock->ops, coro->lockop, list);
+		Py_DECREF((PyObject *)coro->lockop);
+		coro->lockop = NULL;
+	}
+
 	if (coro->state == CORO_STATE_RUNNABLE)
 		TAILQ_REMOVE(&coro_runnable, coro, list);
 	else
@@ -947,6 +954,7 @@ python_coro_create(PyObject *obj, struct http_request *req)
 	coro->name = NULL;
 	coro->result = NULL;
 	coro->sockop = NULL;
+	coro->lockop = NULL;
 	coro->gatherop = NULL;
 	coro->exception = NULL;
 	coro->exception_msg = NULL;
@@ -3575,6 +3583,7 @@ pylock_dealloc(struct pylock *lock)
 	while ((op = TAILQ_FIRST(&lock->ops)) != NULL) {
 		TAILQ_REMOVE(&lock->ops, op, list);
 		op->active = 0;
+		op->coro->lockop = NULL;
 		Py_DECREF((PyObject *)op);
 	}
 
@@ -3615,6 +3624,9 @@ pylock_aenter(struct pylock *lock, PyObject *args)
 {
 	struct pylock_op	*op;
 
+	if (coro_running->lockop != NULL)
+		fatal("%s: lockop not NULL for %u", __func__, coro_running->id);
+
 	if (lock->owner != NULL && lock->owner->id == coro_running->id) {
 		PyErr_SetString(PyExc_RuntimeError, "recursive lock detected");
 		return (NULL);
@@ -3627,6 +3639,8 @@ pylock_aenter(struct pylock *lock, PyObject *args)
 	op->lock = lock;
 	op->locking = 1;
 	op->coro = coro_running;
+
+	coro_running->lockop = op;
 
 	Py_INCREF((PyObject *)op);
 	Py_INCREF((PyObject *)lock);
@@ -3641,6 +3655,9 @@ pylock_aexit(struct pylock *lock, PyObject *args)
 {
 	struct pylock_op	*op;
 
+	if (coro_running->lockop != NULL)
+		fatal("%s: lockop not NULL for %u", __func__, coro_running->id);
+
 	if (lock->owner == NULL || lock->owner->id != coro_running->id) {
 		PyErr_SetString(PyExc_RuntimeError, "invalid lock owner");
 		return (NULL);
@@ -3653,6 +3670,8 @@ pylock_aexit(struct pylock *lock, PyObject *args)
 	op->lock = lock;
 	op->locking = 0;
 	op->coro = coro_running;
+
+	coro_running->lockop = op;
 
 	Py_INCREF((PyObject *)op);
 	Py_INCREF((PyObject *)lock);
@@ -3674,7 +3693,8 @@ pylock_do_release(struct pylock *lock)
 			continue;
 
 		op->active = 0;
-		TAILQ_REMOVE(&op->lock->ops, op, list);
+		op->coro->lockop = NULL;
+		TAILQ_REMOVE(&lock->ops, op, list);
 
 		if (op->coro->request != NULL)
 			http_request_wakeup(op->coro->request);
@@ -3693,6 +3713,8 @@ pylock_op_dealloc(struct pylock_op *op)
 		TAILQ_REMOVE(&op->lock->ops, op, list);
 		op->active = 0;
 	}
+
+	op->coro->lockop = NULL;
 
 	Py_DECREF((PyObject *)op->lock);
 	PyObject_Del((PyObject *)op);
@@ -3741,6 +3763,7 @@ pylock_op_iternext(struct pylock_op *op)
 
 	if (op->active) {
 		op->active = 0;
+		op->coro->lockop = NULL;
 		TAILQ_REMOVE(&op->lock->ops, op, list);
 		Py_DECREF((PyObject *)op);
 	}

@@ -24,6 +24,7 @@ struct python_coro {
 	PyObject			*obj;
 	char				*name;
 	PyObject			*result;
+	struct pylock_op		*lockop;
 	struct pysocket_op		*sockop;
 	struct pygather_op		*gatherop;
 	struct http_request		*request;
