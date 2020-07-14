@@ -214,8 +214,18 @@ static PyMemAllocatorEx allocator = {
 
 static struct sock_filter filter_python[] = {
 	/* Required for kore.proc */
+#if defined(SYS_dup2)
 	KORE_SYSCALL_ALLOW(dup2),
+#endif
+#if defined(SYS_dup3)
+	KORE_SYSCALL_ALLOW(dup3),
+#endif
+#if defined(SYS_pipe)
 	KORE_SYSCALL_ALLOW(pipe),
+#endif
+#if defined(SYS_pipe2)
+	KORE_SYSCALL_ALLOW(pipe2),
+#endif
 	KORE_SYSCALL_ALLOW(wait4),
 	KORE_SYSCALL_ALLOW(execve),
 
