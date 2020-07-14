@@ -64,6 +64,7 @@
  * we will have to reinclude the ones curl does.
  */
 static struct sock_filter filter_acme[] = {
+	KORE_SYSCALL_ALLOW(prctl),
 #if defined(SYS_poll)
 	KORE_SYSCALL_ALLOW(poll),
 #endif
@@ -75,9 +76,11 @@ static struct sock_filter filter_acme[] = {
 #endif
 	KORE_SYSCALL_ALLOW(epoll_pwait),
 	KORE_SYSCALL_ALLOW(recvmsg),
+	KORE_SYSCALL_ALLOW(sendmsg),
 	KORE_SYSCALL_ALLOW(sendmmsg),
 	KORE_SYSCALL_ALLOW(getpeername),
 
+	KORE_SYSCALL_ALLOW(gettid),
 	KORE_SYSCALL_ALLOW(exit),
 
 	KORE_SYSCALL_ALLOW(brk),
