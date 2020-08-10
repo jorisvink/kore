@@ -686,6 +686,8 @@ worker_reaper(pid_t pid, int status)
 			    kw->id, pid, status);
 		}
 
+		kw->running = 0;
+
 		if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
 			kw->pid = 0;
 			break;
