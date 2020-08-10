@@ -417,8 +417,6 @@ kore_python_coro_delete(void *obj)
 	python_coro_trace(coro->killed ? "killed" : "deleted", coro);
 
 	coro_running = coro;
-	Py_DECREF(coro->obj);
-	coro_running = NULL;
 
 	if (coro->lockop != NULL) {
 		coro->lockop->active = 0;
@@ -426,6 +424,9 @@ kore_python_coro_delete(void *obj)
 		Py_DECREF((PyObject *)coro->lockop);
 		coro->lockop = NULL;
 	}
+
+	Py_DECREF(coro->obj);
+	coro_running = NULL;
 
 	if (coro->state == CORO_STATE_RUNNABLE)
 		TAILQ_REMOVE(&coro_runnable, coro, list);
@@ -1808,6 +1809,12 @@ python_kore_task_kill(PyObject *self, PyObject *args)
 
 	if (!PyArg_ParseTuple(args, "I", &id))
 		return (NULL);
+
+	if (coro_running->id == id) {
+		PyErr_SetString(PyExc_RuntimeError,
+		    "refusing to kill active coroutine");
+		return (NULL);
+	}
 
 	/* Remember active coro, as delete sets coro_running to NULL. */
 	active = coro_running;
@@ -3762,6 +3769,7 @@ pylock_op_iternext(struct pylock_op *op)
 			 */
 			if (op->active == 0) {
 				op->active = 1;
+				op->coro->lockop = op;
 				TAILQ_INSERT_HEAD(&op->lock->ops, op, list);
 				Py_INCREF((PyObject *)op);
 			}
