@@ -214,8 +214,18 @@ static PyMemAllocatorEx allocator = {
 
 static struct sock_filter filter_python[] = {
 	/* Required for kore.proc */
+#if defined(SYS_dup2)
 	KORE_SYSCALL_ALLOW(dup2),
+#endif
+#if defined(SYS_dup3)
+	KORE_SYSCALL_ALLOW(dup3),
+#endif
+#if defined(SYS_pipe)
 	KORE_SYSCALL_ALLOW(pipe),
+#endif
+#if defined(SYS_pipe2)
+	KORE_SYSCALL_ALLOW(pipe2),
+#endif
 	KORE_SYSCALL_ALLOW(wait4),
 	KORE_SYSCALL_ALLOW(execve),
 
@@ -266,6 +276,7 @@ static struct coro_list			coro_suspended;
 extern const char *__progname;
 
 static PyObject		*pickle = NULL;
+static PyObject		*kore_app = NULL;
 static PyObject		*pickle_dumps = NULL;
 static PyObject		*pickle_loads = NULL;
 static PyObject		*python_tracer = NULL;
@@ -406,6 +417,14 @@ kore_python_coro_delete(void *obj)
 	python_coro_trace(coro->killed ? "killed" : "deleted", coro);
 
 	coro_running = coro;
+
+	if (coro->lockop != NULL) {
+		coro->lockop->active = 0;
+		TAILQ_REMOVE(&coro->lockop->lock->ops, coro->lockop, list);
+		Py_DECREF((PyObject *)coro->lockop);
+		coro->lockop = NULL;
+	}
+
 	Py_DECREF(coro->obj);
 	coro_running = NULL;
 
@@ -946,6 +965,7 @@ python_coro_create(PyObject *obj, struct http_request *req)
 	coro->name = NULL;
 	coro->result = NULL;
 	coro->sockop = NULL;
+	coro->lockop = NULL;
 	coro->gatherop = NULL;
 	coro->exception = NULL;
 	coro->exception_msg = NULL;
@@ -1642,6 +1662,29 @@ python_kore_pgsql_register(PyObject *self, PyObject *args)
 #endif
 
 static PyObject *
+python_kore_app(PyObject *self, PyObject *args)
+{
+	PyObject	*obj;
+
+	if (!PyArg_ParseTuple(args, "O", &obj)) {
+		PyErr_Clear();
+
+		if (kore_app == NULL)
+			Py_RETURN_NONE;
+
+		Py_INCREF(kore_app);
+		return (kore_app);
+	}
+
+	Py_XDECREF(kore_app);
+
+	kore_app = obj;
+	Py_INCREF(kore_app);
+
+	Py_RETURN_TRUE;
+}
+
+static PyObject *
 python_kore_log(PyObject *self, PyObject *args)
 {
 	int		prio;
@@ -1766,6 +1809,12 @@ python_kore_task_kill(PyObject *self, PyObject *args)
 
 	if (!PyArg_ParseTuple(args, "I", &id))
 		return (NULL);
+
+	if (coro_running->id == id) {
+		PyErr_SetString(PyExc_RuntimeError,
+		    "refusing to kill active coroutine");
+		return (NULL);
+	}
 
 	/* Remember active coro, as delete sets coro_running to NULL. */
 	active = coro_running;
@@ -3551,6 +3600,7 @@ pylock_dealloc(struct pylock *lock)
 	while ((op = TAILQ_FIRST(&lock->ops)) != NULL) {
 		TAILQ_REMOVE(&lock->ops, op, list);
 		op->active = 0;
+		op->coro->lockop = NULL;
 		Py_DECREF((PyObject *)op);
 	}
 
@@ -3591,6 +3641,9 @@ pylock_aenter(struct pylock *lock, PyObject *args)
 {
 	struct pylock_op	*op;
 
+	if (coro_running->lockop != NULL)
+		fatal("%s: lockop not NULL for %u", __func__, coro_running->id);
+
 	if (lock->owner != NULL && lock->owner->id == coro_running->id) {
 		PyErr_SetString(PyExc_RuntimeError, "recursive lock detected");
 		return (NULL);
@@ -3603,6 +3656,8 @@ pylock_aenter(struct pylock *lock, PyObject *args)
 	op->lock = lock;
 	op->locking = 1;
 	op->coro = coro_running;
+
+	coro_running->lockop = op;
 
 	Py_INCREF((PyObject *)op);
 	Py_INCREF((PyObject *)lock);
@@ -3617,6 +3672,9 @@ pylock_aexit(struct pylock *lock, PyObject *args)
 {
 	struct pylock_op	*op;
 
+	if (coro_running->lockop != NULL)
+		fatal("%s: lockop not NULL for %u", __func__, coro_running->id);
+
 	if (lock->owner == NULL || lock->owner->id != coro_running->id) {
 		PyErr_SetString(PyExc_RuntimeError, "invalid lock owner");
 		return (NULL);
@@ -3629,6 +3687,8 @@ pylock_aexit(struct pylock *lock, PyObject *args)
 	op->lock = lock;
 	op->locking = 0;
 	op->coro = coro_running;
+
+	coro_running->lockop = op;
 
 	Py_INCREF((PyObject *)op);
 	Py_INCREF((PyObject *)lock);
@@ -3650,7 +3710,8 @@ pylock_do_release(struct pylock *lock)
 			continue;
 
 		op->active = 0;
-		TAILQ_REMOVE(&op->lock->ops, op, list);
+		op->coro->lockop = NULL;
+		TAILQ_REMOVE(&lock->ops, op, list);
 
 		if (op->coro->request != NULL)
 			http_request_wakeup(op->coro->request);
@@ -3669,6 +3730,8 @@ pylock_op_dealloc(struct pylock_op *op)
 		TAILQ_REMOVE(&op->lock->ops, op, list);
 		op->active = 0;
 	}
+
+	op->coro->lockop = NULL;
 
 	Py_DECREF((PyObject *)op->lock);
 	PyObject_Del((PyObject *)op);
@@ -3706,6 +3769,7 @@ pylock_op_iternext(struct pylock_op *op)
 			 */
 			if (op->active == 0) {
 				op->active = 1;
+				op->coro->lockop = op;
 				TAILQ_INSERT_HEAD(&op->lock->ops, op, list);
 				Py_INCREF((PyObject *)op);
 			}
@@ -3717,6 +3781,7 @@ pylock_op_iternext(struct pylock_op *op)
 
 	if (op->active) {
 		op->active = 0;
+		op->coro->lockop = NULL;
 		TAILQ_REMOVE(&op->lock->ops, op, list);
 		Py_DECREF((PyObject *)op);
 	}
