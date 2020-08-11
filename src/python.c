@@ -2804,11 +2804,15 @@ static PyObject *
 pysocket_send(struct pysocket *sock, PyObject *args)
 {
 	Py_buffer	buf;
+	PyObject	*ret;
 
 	if (!PyArg_ParseTuple(args, "y*", &buf))
 		return (NULL);
 
-	return (pysocket_op_create(sock, PYSOCKET_TYPE_SEND, buf.buf, buf.len));
+	ret = pysocket_op_create(sock, PYSOCKET_TYPE_SEND, buf.buf, buf.len);
+	PyBuffer_Release(&buf);
+
+	return (ret);
 }
 
 static PyObject *
@@ -2839,6 +2843,7 @@ pysocket_sendto(struct pysocket *sock, PyObject *args)
 	}
 
 	ret = pysocket_op_create(sock, PYSOCKET_TYPE_SENDTO, buf.buf, buf.len);
+	PyBuffer_Release(&buf);
 
 	op = (struct pysocket_op *)ret;
 
@@ -2990,7 +2995,8 @@ pysocket_op_dealloc(struct pysocket_op *op)
 {
 	if (op->type == PYSOCKET_TYPE_RECV ||
 	    op->type == PYSOCKET_TYPE_RECVFROM ||
-	    op->type == PYSOCKET_TYPE_SEND)
+	    op->type == PYSOCKET_TYPE_SEND ||
+	    op->type == PYSOCKET_TYPE_SENDTO)
 		kore_buf_cleanup(&op->buffer);
 
 	switch (op->type) {
@@ -3940,6 +3946,8 @@ pyproc_send(struct pyproc *proc, PyObject *args)
 
 	ret = pysocket_op_create(proc->in,
 	    PYSOCKET_TYPE_SEND, buf.buf, buf.len);
+
+	PyBuffer_Release(&buf);
 
 	return (ret);
 }
