@@ -1810,7 +1810,7 @@ python_kore_task_kill(PyObject *self, PyObject *args)
 	if (!PyArg_ParseTuple(args, "I", &id))
 		return (NULL);
 
-	if (coro_running->id == id) {
+	if (coro_running != NULL && coro_running->id == id) {
 		PyErr_SetString(PyExc_RuntimeError,
 		    "refusing to kill active coroutine");
 		return (NULL);
