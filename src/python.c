@@ -319,7 +319,10 @@ kore_python_init(void)
 	PyMem_SetAllocator(PYMEM_DOMAIN_OBJ, &allocator);
 	PyMem_SetAllocator(PYMEM_DOMAIN_MEM, &allocator);
 	PyMem_SetAllocator(PYMEM_DOMAIN_RAW, &allocator);
+
+#if defined(KORE_DEBUG)
 	PyMem_SetupDebugHooks();
+#endif
 
 	kore_msg_register(KORE_PYTHON_SEND_OBJ, python_kore_recvobj);
 
