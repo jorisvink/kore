@@ -44,7 +44,6 @@ endif
 ifneq ("$(DEBUG)", "")
 	CFLAGS+=-DKORE_DEBUG -g
 	FEATURES+=-DKORE_DEBUG
-	NOOPT=1
 endif
 
 ifneq ("$(NOOPT)", "")

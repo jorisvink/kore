@@ -319,7 +319,10 @@ kore_python_init(void)
 	PyMem_SetAllocator(PYMEM_DOMAIN_OBJ, &allocator);
 	PyMem_SetAllocator(PYMEM_DOMAIN_MEM, &allocator);
 	PyMem_SetAllocator(PYMEM_DOMAIN_RAW, &allocator);
+
+#if defined(KORE_DEBUG)
 	PyMem_SetupDebugHooks();
+#endif
 
 	kore_msg_register(KORE_PYTHON_SEND_OBJ, python_kore_recvobj);
 
@@ -1810,7 +1813,7 @@ python_kore_task_kill(PyObject *self, PyObject *args)
 	if (!PyArg_ParseTuple(args, "I", &id))
 		return (NULL);
 
-	if (coro_running->id == id) {
+	if (coro_running != NULL && coro_running->id == id) {
 		PyErr_SetString(PyExc_RuntimeError,
 		    "refusing to kill active coroutine");
 		return (NULL);
