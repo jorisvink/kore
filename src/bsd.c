@@ -160,12 +160,25 @@ kore_platform_event_all(int fd, void *c)
 }
 
 void
+kore_platform_event_level_all(int fd, void *c)
+{
+	kore_platform_event_schedule(fd, EVFILT_READ, EV_ADD, c);
+	kore_platform_event_schedule(fd, EVFILT_WRITE, EV_ADD, c);
+}
+
+void
+kore_platform_event_level_read(int fd, void *c)
+{
+	kore_platform_event_schedule(fd, EVFILT_READ, EV_ADD, c);
+}
+
+void
 kore_platform_event_schedule(int fd, int type, int flags, void *data)
 {
 	struct kevent		event[1];
 
 	EV_SET(&event[0], fd, type, flags, 0, 0, data);
-	if (kevent(kfd, event, 1, NULL, 0, NULL) == -1)
+	if (kevent(kfd, event, 1, NULL, 0, NULL) == -1 && errno != ENOENT)
 		fatal("kevent: %s", errno_s);
 }
 

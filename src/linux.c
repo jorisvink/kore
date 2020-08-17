@@ -142,6 +142,18 @@ kore_platform_event_wait(u_int64_t timer)
 }
 
 void
+kore_platform_event_level_all(int fd, void *c)
+{
+	kore_platform_event_schedule(fd, EPOLLIN | EPOLLOUT | EPOLLRDHUP, 0, c);
+}
+
+void
+kore_platform_event_level_read(int fd, void *c)
+{
+	kore_platform_event_schedule(fd, EPOLLIN | EPOLLRDHUP, 0, c);
+}
+
+void
 kore_platform_event_all(int fd, void *c)
 {
 	kore_platform_event_schedule(fd,
