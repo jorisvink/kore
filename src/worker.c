@@ -517,6 +517,7 @@ kore_worker_entry(struct kore_worker *kw)
 
 		kore_timer_run(now);
 #if defined(KORE_USE_CURL)
+		kore_curl_run_scheduled();
 		kore_curl_do_timeout();
 #endif
 #if !defined(KORE_NO_HTTP)

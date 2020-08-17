@@ -743,6 +743,8 @@ void		kore_platform_enable_accept(void);
 void		kore_platform_disable_accept(void);
 void		kore_platform_event_wait(u_int64_t);
 void		kore_platform_event_all(int, void *);
+void		kore_platform_event_level_all(int, void *);
+void		kore_platform_event_level_read(int, void *);
 void		kore_platform_proctitle(const char *);
 void		kore_platform_schedule_read(int, void *);
 void		kore_platform_schedule_write(int, void *);

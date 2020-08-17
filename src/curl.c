@@ -62,14 +62,24 @@ struct fd_cache {
 	LIST_ENTRY(fd_cache)	list;
 };
 
+struct curl_run {
+	int			eof;
+	struct fd_cache		*fdc;
+	TAILQ_ENTRY(curl_run)	list;
+};
+
 static void	curl_process(void);
 static void	curl_event_handle(void *, int);
 static void	curl_timeout(void *, u_int64_t);
 static int	curl_timer(CURLM *, long, void *);
+static void	curl_run_handle(struct curl_run *);
+static void	curl_run_schedule(struct fd_cache *, int);
 static int	curl_socket(CURL *, curl_socket_t, int, void *, void *);
 
 static struct fd_cache	*fd_cache_get(int);
 
+static TAILQ_HEAD(, curl_run)	runlist;
+static struct kore_pool		run_pool;
 static int			running = 0;
 static CURLM			*multi = NULL;
 static struct kore_timer	*timer = NULL;
@@ -107,8 +117,11 @@ kore_curl_sysinit(void)
 	for (i = 0; i < FD_CACHE_BUCKETS; i++)
 		LIST_INIT(&cache[i]);
 
+	TAILQ_INIT(&runlist);
+
 	kore_pool_init(&fd_cache_pool, "fd_cache_pool", 100,
 	    sizeof(struct fd_cache));
+	kore_pool_init(&run_pool, "run_pool", 100, sizeof(struct curl_run));
 
 	len = snprintf(user_agent, sizeof(user_agent), "kore/%s", kore_version);
 	if (len == -1 || (size_t)len >= sizeof(user_agent))
@@ -204,6 +217,20 @@ kore_curl_do_timeout(void)
 		if (running == 0)
 			curl_timer(multi, -1, NULL);
 	}
+}
+
+void
+kore_curl_run_scheduled(void)
+{
+	struct curl_run		*run;
+
+	while ((run = TAILQ_FIRST(&runlist))) {
+		TAILQ_REMOVE(&runlist, run, list);
+		curl_run_handle(run);
+		kore_pool_put(&run_pool, run);
+	}
+
+	curl_process();
 }
 
 size_t
@@ -529,10 +556,19 @@ curl_socket(CURL *easy, curl_socket_t fd, int action, void *arg, void *sock)
 	case CURL_POLL_NONE:
 		break;
 	case CURL_POLL_IN:
+		if (fdc->scheduled) {
+			kore_platform_disable_read(fd);
+#if !defined(__linux__)
+			kore_platform_disable_write(fd);
+#endif
+		}
+		fdc->scheduled = 1;
+		kore_platform_event_level_read(fd, fdc);
+		break;
 	case CURL_POLL_OUT:
 	case CURL_POLL_INOUT:
 		if (fdc->scheduled == 0) {
-			kore_platform_event_all(fd, fdc);
+			kore_platform_event_level_all(fd, fdc);
 			fdc->scheduled = 1;
 		}
 		break;
@@ -550,22 +586,8 @@ curl_socket(CURL *easy, curl_socket_t fd, int action, void *arg, void *sock)
 		fatal("unknown action value: %d", action);
 	}
 
-	/*
-	 * XXX - libcurl hates edge triggered io.
-	 */
-	if (action == CURL_POLL_OUT || action == CURL_POLL_INOUT) {
-		if (fdc->evt.flags & KORE_EVENT_WRITE) {
-			if (fdc->scheduled) {
-				kore_platform_disable_read(fdc->fd);
-#if !defined(__linux__)
-				kore_platform_disable_write(fdc->fd);
-#endif
-			}
-
-			fdc->evt.flags = 0;
-			kore_platform_event_all(fdc->fd, fdc);
-		}
-	}
+	if (action != CURL_POLL_NONE && action != CURL_POLL_REMOVE)
+		curl_run_schedule(fdc, 0);
 
 	return (CURLM_OK);
 }
@@ -657,13 +679,29 @@ curl_timer(CURLM *mctx, long timeout, void *arg)
 }
 
 static void
+curl_run_schedule(struct fd_cache *fdc, int eof)
+{
+	struct curl_run		*run;
+
+	run = kore_pool_get(&run_pool);
+	run->fdc = fdc;
+	run->eof = eof;
+
+	TAILQ_INSERT_TAIL(&runlist, run, list);
+}
+
+static void
 curl_event_handle(void *arg, int eof)
+{
+	curl_run_schedule(arg, eof);
+}
+
+static void
+curl_run_handle(struct curl_run *run)
 {
 	CURLMcode		res;
 	int			flags;
-	ssize_t			bytes;
-	char			buf[32];
-	struct fd_cache		*fdc = arg;
+	struct fd_cache		*fdc = run->fdc;
 
 	flags = 0;
 
@@ -673,33 +711,12 @@ curl_event_handle(void *arg, int eof)
 	if (fdc->evt.flags & KORE_EVENT_WRITE)
 		flags |= CURL_CSELECT_OUT;
 
-	if (eof)
+	if (run->eof)
 		flags |= CURL_CSELECT_ERR;
 
 	res = curl_multi_socket_action(multi, fdc->fd, flags, &running);
 	if (res != CURLM_OK)
 		fatal("curl_multi_socket_action: %s", curl_multi_strerror(res));
-
-	/*
-	 * XXX - libcurl doesn't work with edge triggered i/o so check
-	 * if we need to reprime the event. Not optimal.
-	 */
-	if (fdc->evt.flags & KORE_EVENT_READ) {
-		bytes = recv(fdc->fd, buf, sizeof(buf), MSG_PEEK);
-		if (bytes > 0) {
-			if (fdc->scheduled) {
-				kore_platform_disable_read(fdc->fd);
-#if !defined(__linux__)
-				kore_platform_disable_write(fdc->fd);
-#endif
-			}
-
-			fdc->evt.flags = 0;
-			kore_platform_event_all(fdc->fd, fdc);
-		}
-	}
-
-	curl_process();
 }
 
 static struct fd_cache *
