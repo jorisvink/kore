@@ -567,10 +567,14 @@ curl_socket(CURL *easy, curl_socket_t fd, int action, void *arg, void *sock)
 		break;
 	case CURL_POLL_OUT:
 	case CURL_POLL_INOUT:
-		if (fdc->scheduled == 0) {
-			kore_platform_event_level_all(fd, fdc);
-			fdc->scheduled = 1;
+		if (fdc->scheduled) {
+			kore_platform_disable_read(fd);
+#if !defined(__linux__)
+			kore_platform_disable_write(fd);
+#endif
 		}
+		fdc->scheduled = 1;
+		kore_platform_event_level_all(fd, fdc);
 		break;
 	case CURL_POLL_REMOVE:
 		if (fdc->scheduled) {
