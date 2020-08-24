@@ -537,7 +537,7 @@ json_parse_object(struct kore_json *json, struct kore_json_item *object)
 
 		if (!item->parse(json, item))
 			goto cleanup;
- 
+
 		key = NULL;
 
 		if (!json_consume_whitespace(json))
@@ -608,7 +608,7 @@ json_parse_array(struct kore_json *json, struct kore_json_item *array)
 
 		if (!item->parse(json, item))
 			goto cleanup;
- 
+
 		key = NULL;
 
 		if (!json_consume_whitespace(json))
