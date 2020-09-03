@@ -10,10 +10,6 @@ case "$PLATFORM" in
 		seccomp_audit_arch=AUDIT_ARCH_X86_64
 		syscall_file=$BASE/linux/x86_64_syscall.h.in
 		;;
-	i*86*)
-		seccomp_audit_arch=AUDIT_ARCH_I386
-		syscall_file=$BASE/linux/i386_syscall.h.in
-		;;
 	arm*)
 		seccomp_audit_arch=AUDIT_ARCH_ARM
 		syscall_file=$BASE/linux/arm_syscall.h.in

@@ -48,6 +48,8 @@ Platforms supported
 * FreeBSD
 * MacOS
 
+Kore only supports x64, arm and aarch64 architectures.
+
 Building Kore
 -------------
 Clone this repository or get the latest release at [https://kore.io/releases/4.0.0](https://kore.io/releases/4.0.0).

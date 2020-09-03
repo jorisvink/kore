@@ -438,8 +438,6 @@ seccomp_register_violation(pid_t pid)
 
 #if SECCOMP_AUDIT_ARCH == AUDIT_ARCH_X86_64
 	sysnr = regs.orig_rax;
-#elif SECCOMP_AUDIT_ARCH == AUDIT_ARCH_I386
-	sysnr = regs.orig_ax;
 #elif SECCOMP_AUDIT_ARCH == AUDIT_ARCH_AARCH64
 	sysnr = regs.regs[8];
 #else
