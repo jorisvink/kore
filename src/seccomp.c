@@ -441,7 +441,7 @@ seccomp_register_violation(pid_t pid)
 #elif SECCOMP_AUDIT_ARCH == AUDIT_ARCH_AARCH64
 	sysnr = regs.regs[8];
 #else
-#error "platform not yet supported"
+#error "platform not supported"
 #endif
 
 	name = NULL;
