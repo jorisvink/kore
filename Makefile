@@ -203,6 +203,8 @@ uninstall:
 $(OBJDIR)/%.o: src/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
+src/python.c: $(PYTHON_CURLOPT)
+
 clean:
 	rm -f $(VERSION)
 	find . -type f -name \*.o -exec rm {} \;
