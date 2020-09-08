@@ -453,8 +453,8 @@ kore_worker_entry(struct kore_worker *kw)
 		}
 
 		if (!worker->has_lock && accept_avail) {
-			accept_avail = 0;
 			if (worker_acceptlock_obtain()) {
+				accept_avail = 0;
 				if (had_lock == 0) {
 					kore_platform_enable_accept();
 					had_lock = 1;
