@@ -73,8 +73,11 @@ extern char		**environ;
 extern char		*__progname;
 static size_t		proctitle_maxlen = 0;
 
+#if !defined(KORE_SINGLE_BINARY)
 static void	usage(void);
 static void	version(void);
+#endif
+
 static void	kore_write_kore_pid(void);
 static void	kore_proctitle_setup(void);
 static void	kore_server_sslstart(void);
@@ -92,10 +95,11 @@ static const char	*parent_daemonized_hook = KORE_DAEMONIZED_HOOK;
 #endif
 #endif
 
+#if !defined(KORE_SINGLE_BINARY)
 static void
 usage(void)
 {
-#if !defined(KORE_SINGLE_BINARY) && defined(KORE_USE_PYTHON)
+#if defined(KORE_USE_PYTHON)
 	printf("Usage: %s [options] [app | app.py]\n", __progname);
 #else
 	printf("Usage: %s [options]\n", __progname);
@@ -103,9 +107,7 @@ usage(void)
 
 	printf("\n");
 	printf("Available options:\n");
-#if !defined(KORE_SINGLE_BINARY)
 	printf("\t-c\tconfiguration to use\n");
-#endif
 #if defined(KORE_DEBUG)
 	printf("\t-d\trun with debug on\n");
 #endif
@@ -116,11 +118,7 @@ usage(void)
 	printf("\t-r\tdo not drop privileges\n");
 	printf("\t-v\tdisplay %s build information\n", __progname);
 
-#if !defined(KORE_SINGLE_BINARY)
 	printf("\nFind more information on https://kore.io\n");
-#else
-	printf("\nBuilt using https://kore.io\n");
-#endif
 
 	exit(1);
 }
@@ -144,9 +142,6 @@ version(void)
 #if defined(KORE_DEBUG)
 	printf("debug ");
 #endif
-#if defined(KORE_SINGLE_BINARY)
-	printf("single ");
-#endif
 #if defined(KORE_USE_PYTHON)
 	printf("python-%s ", PY_VERSION);
 #endif
@@ -156,12 +151,16 @@ version(void)
 	printf("\n");
 	exit(0);
 }
+#endif
 
 int
 main(int argc, char *argv[])
 {
 	struct kore_runtime_call	*rcall;
-	int				ch, flags;
+	int				flags;
+#if !defined(KORE_SINGLE_BINARY)
+	int				ch;
+#endif
 #if !defined(KORE_SINGLE_BINARY) && defined(KORE_USE_PYTHON)
 	struct stat			st;
 #endif
@@ -173,18 +172,13 @@ main(int argc, char *argv[])
 
 #if !defined(KORE_SINGLE_BINARY)
 	while ((ch = getopt(argc, argv, "c:dfhnqrv")) != -1) {
-#else
-	while ((ch = getopt(argc, argv, "dfhnqrv")) != -1) {
-#endif
 		flags++;
 		switch (ch) {
-#if !defined(KORE_SINGLE_BINARY)
 		case 'c':
 			free(config_file);
 			if ((config_file = strdup(optarg)) == NULL)
 				fatal("strdup");
 			break;
-#endif
 #if defined(KORE_DEBUG)
 		case 'd':
 			kore_debug = 1;
@@ -212,13 +206,16 @@ main(int argc, char *argv[])
 			usage();
 		}
 	}
+#endif
 
 	kore_mem_init();
 	kore_progname = kore_strdup(argv[0]);
 	kore_proctitle_setup();
 
+#if !defined(KORE_SINGLE_BINARY)
 	argc -= optind;
 	argv += optind;
+#endif
 
 #if !defined(KORE_SINGLE_BINARY) && defined(KORE_USE_PYTHON)
 	if (argc > 0) {
