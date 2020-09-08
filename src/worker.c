@@ -238,8 +238,8 @@ kore_worker_shutdown(void)
 				kw->running = 0;
 
 				if (!kore_quiet) {
-					kore_log(LOG_NOTICE,
-					    "worker %d exited", kw->id);
+					kore_log(LOG_NOTICE, "worker %s exited",
+					    kore_worker_name(kw->id));
 				}
 			}
 		}
