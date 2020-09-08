@@ -32,7 +32,7 @@ class KoreApp:
     # The query handler that fires of the query and returns a coroutine.
     #
     # Kore will resume this handler when the query returns a result or
-    # is succesfull.
+    # is successful.
     #
     # The kore.pgsql() method can throw exceptions, most notably a
     # GeneratorExit in case the client connection went away before

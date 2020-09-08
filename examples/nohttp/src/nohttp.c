@@ -50,7 +50,7 @@ connection_setup(struct connection *c)
 }
 
 /*
- * This function is called everytime a new event is triggered on the
+ * This function is called every time a new event is triggered on the
  * connection. In this demo we just use it as a stub for the normal
  * callback kore_connection_handle().
  *
@@ -69,7 +69,7 @@ connection_handle(struct connection *c)
 }
 
 /*
- * This function is called everytime we get up to 128 bytes of data.
+ * This function is called every time we get up to 128 bytes of data.
  * The connection can be found under nb->owner.
  * The data received can be found under nb->buf.
  * The length of the received data can be found under s_off.

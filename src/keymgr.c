@@ -1300,7 +1300,7 @@ keymgr_asn1_convert_utctime(const ASN1_TIME *na, time_t *out)
 
 	year = (na->data[0] - '0') * 10 + (na->data[1] - '0');
 
-	/* RFC 5280 says years >= 50 are intepreted as 19YY */
+	/* RFC 5280 says years >= 50 are interpreted as 19YY */
 	if (year >= 50)
 		year = 1900 + year;
 	else

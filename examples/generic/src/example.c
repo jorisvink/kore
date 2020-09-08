@@ -45,7 +45,7 @@ char *b64tests[] = {
 	"any carnal pleasure.",
 	"any carnal pleasure",
 	"any carnal pleas",
-	"I am a nobody, nobody is perfect, therefor I am.",
+	"I am a nobody, nobody is perfect, therefore I am.",
 	NULL
 };
 
