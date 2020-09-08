@@ -35,7 +35,7 @@ License
 
 Documentation
 --------------
-[Read the documentation](https://docs.kore.io/3.3.0/)
+[Read the documentation](https://docs.kore.io/4.0.0/)
 
 Performance
 -----------
@@ -48,9 +48,11 @@ Platforms supported
 * FreeBSD
 * MacOS
 
+Kore only supports x64, arm and aarch64 architectures.
+
 Building Kore
 -------------
-Clone this repository or get the latest release at [https://kore.io/releases/3.2.0](https://kore.io/releases/3.2.0).
+Clone this repository or get the latest release at [https://kore.io/releases/4.0.0](https://kore.io/releases/4.0.0).
 
 Requirements
 * openssl (1.0.2, 1.1.0 or 1.1.1)

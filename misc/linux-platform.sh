@@ -11,8 +11,8 @@ case "$PLATFORM" in
 		syscall_file=$BASE/linux/x86_64_syscall.h.in
 		;;
 	i*86*)
-		seccomp_audit_arch=AUDIT_ARCH_I386
-		syscall_file=$BASE/linux/i386_syscall.h.in
+		>&2 echo "i386 not supported"
+		exit 1
 		;;
 	arm*)
 		seccomp_audit_arch=AUDIT_ARCH_ARM

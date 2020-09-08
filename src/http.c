@@ -1002,7 +1002,8 @@ http_argument_urldecode(char *arg)
 			return (KORE_RESULT_ERROR);
 		}
 
-		if (!isxdigit(*(p + 1)) || !isxdigit(*(p + 2))) {
+		if (!isxdigit((unsigned char)*(p + 1)) ||
+		    !isxdigit((unsigned char)*(p + 2))) {
 			*in++ = *p++;
 			continue;
 		}

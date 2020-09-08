@@ -238,8 +238,8 @@ kore_worker_shutdown(void)
 				kw->running = 0;
 
 				if (!kore_quiet) {
-					kore_log(LOG_NOTICE,
-					    "worker %d exited", kw->id);
+					kore_log(LOG_NOTICE, "worker %s exited",
+					    kore_worker_name(kw->id));
 				}
 			}
 		}
@@ -453,8 +453,8 @@ kore_worker_entry(struct kore_worker *kw)
 		}
 
 		if (!worker->has_lock && accept_avail) {
-			accept_avail = 0;
 			if (worker_acceptlock_obtain()) {
+				accept_avail = 0;
 				if (had_lock == 0) {
 					kore_platform_enable_accept();
 					had_lock = 1;
@@ -834,7 +834,7 @@ worker_unlock(void)
 {
 	accept_lock->current = 0;
 	if (!__sync_bool_compare_and_swap(&(accept_lock->lock), 1, 0))
-		kore_log(LOG_NOTICE, "worker_unlock(): wasnt locked");
+		kore_log(LOG_NOTICE, "worker_unlock(): wasn't locked");
 }
 
 static void

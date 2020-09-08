@@ -56,7 +56,7 @@ syslog. Messages are added with jsonrpc_log().
 By default messages of the log are added to the data member of the error
 responses if at levels EMERG, ERROR, WARNING and NOTICE.
 
-If you dont want log messages to be outputted zero the log_levels flag of the
+If you don't want log messages to be outputted zero the log_levels flag of the
 jsonrpc_request.
 
 

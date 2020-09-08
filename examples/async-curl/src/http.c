@@ -112,7 +112,7 @@ state_result(struct http_request *req)
 	/* Get the state attached to the HTTP request. */
 	client = http_state_get(req);
 
-	/* Check if we were succesfull, if not log an error. */
+	/* Check if we were successful, if not log an error. */
 	if (!kore_curl_success(client)) {
 		kore_curl_logerror(client);
 		http_response(req, 500, NULL, 0);

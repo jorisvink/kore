@@ -780,7 +780,7 @@ json_get_string(struct kore_json *json)
 		if (ch == '"')
 			break;
 
-		if (ch >= 0 && ch <= 0x1f)
+		if (ch <= 0x1f)
 			goto cleanup;
 
 		if (ch == '\\') {

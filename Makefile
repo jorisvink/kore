@@ -1,6 +1,7 @@
 # Kore Makefile
 
 CC?=cc
+DESTDIR?=
 PREFIX?=/usr/local
 OBJDIR?=obj
 KORE=kore
@@ -27,6 +28,7 @@ FEATURES_INC=
 CFLAGS+=-Wall -Werror -Wstrict-prototypes -Wmissing-prototypes
 CFLAGS+=-Wmissing-declarations -Wshadow -Wpointer-arith -Wcast-qual
 CFLAGS+=-Wsign-compare -Iinclude/kore -I$(OBJDIR) -std=c99 -pedantic
+CFLAGS+=-Wtype-limits
 CFLAGS+=-DPREFIX='"$(PREFIX)"' -fstack-protector-all
 
 ifneq ("$(OPENSSL_PATH)", "")
@@ -184,14 +186,14 @@ $(OBJDIR):
 	@mkdir -p $(OBJDIR)
 
 install:
-	mkdir -p $(SHARE_DIR)
-	mkdir -p $(INCLUDE_DIR)
-	mkdir -p $(INSTALL_DIR)
-	mkdir -p $(MAN_DIR)/man1
-	install -m 644 share/man/kodev.1 $(MAN_DIR)/man1/kodev.1
-	install -m 555 $(KORE) $(INSTALL_DIR)/$(KORE)
-	install -m 644 kore.features $(SHARE_DIR)/features
-	install -m 644 include/kore/*.h $(INCLUDE_DIR)
+	mkdir -p $(DESTDIR)$(SHARE_DIR)
+	mkdir -p $(DESTDIR)$(INCLUDE_DIR)
+	mkdir -p $(DESTDIR)$(INSTALL_DIR)
+	mkdir -p $(DESTDIR)$(MAN_DIR)/man1
+	install -m 644 share/man/kodev.1 $(DESTDIR)$(MAN_DIR)/man1/kodev.1
+	install -m 555 $(KORE) $(DESTDIR)$(INSTALL_DIR)/$(KORE)
+	install -m 644 kore.features $(DESTDIR)$(SHARE_DIR)/features
+	install -m 644 include/kore/*.h $(DESTDIR)$(INCLUDE_DIR)
 	$(MAKE) -C kodev install
 
 uninstall:
@@ -202,6 +204,8 @@ uninstall:
 
 $(OBJDIR)/%.o: src/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
+
+src/python.c: $(PYTHON_CURLOPT)
 
 clean:
 	rm -f $(VERSION)
