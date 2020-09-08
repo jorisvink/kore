@@ -1120,7 +1120,7 @@ cli_build_asset(char *fpath, struct dirent *dp)
 
 	/* Replace dots, spaces, etc etc with underscores. */
 	for (p = name; *p != '\0'; p++) {
-		if (*p == '.' || isspace(*p) || *p == '-')
+		if (*p == '.' || isspace((unsigned char)*p) || *p == '-')
 			*p = '_';
 	}
 
