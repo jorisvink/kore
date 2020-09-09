@@ -602,6 +602,7 @@ cli_build(int argc, char **argv)
 	struct buildopt		*bopt;
 	struct timeval		times[2];
 	char			*build_path;
+	char			*vsrc, *vobj;
 	int			requires_relink;
 	char			*sofile, *config;
 	char			*assets_path, *p, *src_path;
@@ -667,6 +668,12 @@ cli_build(int argc, char **argv)
 		(void)cli_vasprintf(&src_path, "%s/src", bopt->kore_source);
 		cli_find_files(src_path, cli_register_kore_file);
 		free(src_path);
+
+		(void)cli_vasprintf(&vsrc, "%s/version.c", object_dir);
+		(void)cli_vasprintf(&vobj, "%s/version.o", object_dir);
+
+		cli_add_source_file("version.c",
+		    vsrc, vobj, NULL, BUILD_NOBUILD);
 	}
 
 	printf("building %s (%s)\n", appl, flavor);
@@ -1263,7 +1270,11 @@ cli_add_source_file(char *name, char *fpath, char *opath, struct stat *st,
 	source_files_count++;
 	cf = cli_malloc(sizeof(*cf));
 
-	cf->st = *st;
+	if (st != NULL)
+		cf->st = *st;
+	else
+		memset(&cf->st, 0, sizeof(cf->st));
+
 	cf->build = build;
 	cf->fpath = fpath;
 	cf->opath = opath;
