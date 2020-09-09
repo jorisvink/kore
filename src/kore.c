@@ -157,7 +157,6 @@ int
 main(int argc, char *argv[])
 {
 	struct kore_runtime_call	*rcall;
-	int				flags;
 #if !defined(KORE_SINGLE_BINARY)
 	int				ch;
 #endif
@@ -165,14 +164,11 @@ main(int argc, char *argv[])
 	struct stat			st;
 #endif
 
-	flags = 0;
-
 	kore_argc = argc;
 	kore_argv = argv;
 
 #if !defined(KORE_SINGLE_BINARY)
 	while ((ch = getopt(argc, argv, "c:dfhnqrv")) != -1) {
-		flags++;
 		switch (ch) {
 		case 'c':
 			free(config_file);
