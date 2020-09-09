@@ -611,7 +611,7 @@ cli_build(int argc, char **argv)
 	if (getcwd(pwd, sizeof(pwd)) == NULL)
 		fatal("could not get cwd: %s", errno_s);
 
-	appl = basename(pwd);
+	appl = cli_strdup(basename(pwd));
 
 	if ((p = getenv("CC")) != NULL) {
 		compiler_c = p;
