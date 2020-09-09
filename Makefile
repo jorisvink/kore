@@ -228,16 +228,16 @@ uninstall:
 
 tools-build: $(KODEV)
 	for t in $(TOOLS); do \
-		pushd tools/$$t; \
+		cd tools/$$t; \
 		env KODEV_OUTPUT=$(KOREPATH) $(KOREPATH)/$(KODEV) build; \
-		popd; \
+		cd $(KOREPATH); \
 	done
 
 tools-clean: $(KODEV)
 	for t in $(TOOLS); do \
-		pushd tools/$$t; \
+		cd tools/$$t; \
 		$(KOREPATH)/$(KODEV) clean; \
-		popd; \
+		cd $(KOREPATH); \
 	done
 
 tools-install:
