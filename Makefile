@@ -6,11 +6,14 @@ PREFIX?=/usr/local
 OBJDIR?=obj
 KORE=kore
 KODEV=kodev/kodev
+KOREPATH?=$(shell pwd)
 KORE_CRYPTO?=crypto
 INSTALL_DIR=$(PREFIX)/bin
 MAN_DIR?=$(PREFIX)/share/man
 SHARE_DIR=$(PREFIX)/share/kore
 INCLUDE_DIR=$(PREFIX)/include/kore
+
+TOOLS=	kore-serve
 
 GENERATED=
 PLATFORM=platform.h
@@ -222,6 +225,26 @@ uninstall:
 	rm -rf $(INCLUDE_DIR)
 	rm -rf $(SHARE_DIR)
 	$(MAKE) -C kodev uninstall
+
+tools-build: $(KODEV)
+	for t in $(TOOLS); do \
+		pushd tools/$$t; \
+		env KODEV_OUTPUT=$(KOREPATH) $(KOREPATH)/$(KODEV) build; \
+		popd; \
+	done
+
+tools-clean: $(KODEV)
+	for t in $(TOOLS); do \
+		pushd tools/$$t; \
+		$(KOREPATH)/$(KODEV) clean; \
+		popd; \
+	done
+
+tools-install:
+	mkdir -p $(DESTDIR)$(INSTALL_DIR)
+	for t in $(TOOLS); do \
+		install -m 555 $$t $(DESTDIR)$(INSTALL_DIR)/$$t; \
+	done
 
 $(OBJDIR)/%.o: src/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
