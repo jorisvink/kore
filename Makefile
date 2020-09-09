@@ -229,7 +229,10 @@ uninstall:
 tools-build: $(KODEV)
 	for t in $(TOOLS); do \
 		cd tools/$$t; \
-		env KODEV_OUTPUT=$(KOREPATH) KORE_BUILD_FLAVOR=$(OSNAME) \
+		env \
+		    KODEV_OUTPUT=$(KOREPATH) \
+		    KORE_SOURCE=$(KOREPATH) \
+		    KORE_BUILD_FLAVOR=$(OSNAME) \
 		    $(KOREPATH)/$(KODEV) build; \
 		cd $(KOREPATH); \
 	done
