@@ -175,7 +175,7 @@ $(VERSION): force
 		exit 1; \
 	fi
 
-$(KODEV):
+$(KODEV): src/cli.c
 	$(MAKE) -C kodev
 
 $(KORE): $(OBJDIR) $(S_OBJS)
@@ -229,7 +229,8 @@ uninstall:
 tools-build: $(KODEV)
 	for t in $(TOOLS); do \
 		cd tools/$$t; \
-		env KODEV_OUTPUT=$(KOREPATH) $(KOREPATH)/$(KODEV) build; \
+		env KODEV_OUTPUT=$(KOREPATH) KORE_BUILD_FLAVOR=$(OSNAME) \
+		    $(KOREPATH)/$(KODEV) build; \
 		cd $(KOREPATH); \
 	done
 
