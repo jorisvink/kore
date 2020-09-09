@@ -197,6 +197,7 @@ static void		cli_help(int, char **);
 static void		cli_info(int, char **);
 static void		cli_build(int, char **);
 static void		cli_clean(int, char **);
+static void		cli_source(int, char **);
 static void		cli_reload(int, char **);
 static void		cli_flavor(int, char **);
 
@@ -221,6 +222,7 @@ static struct cmd cmds[] = {
 	{ "info",	"show info on kore on this system",	cli_info },
 	{ "build",	"build an application",			cli_build },
 	{ "clean",	"cleanup the build files",		cli_clean },
+	{ "source",	"print the path to kore sources",	cli_source },
 #if !defined(KODEV_MINIMAL)
 	{ "create",	"create a new application skeleton",	cli_create },
 #endif
@@ -752,6 +754,12 @@ cli_build(int argc, char **argv)
 
 	if (run_after == 0)
 		cli_buildopt_cleanup();
+}
+
+static void
+cli_source(int argc, char **argv)
+{
+	printf("%s/share/kore/\n", prefix);
 }
 
 static void
@@ -1723,9 +1731,10 @@ cli_buildopt_new(const char *name)
 	bopt->ldflags = NULL;
 	bopt->flavor_nohttp = 0;
 	bopt->single_binary = 0;
-	bopt->kore_source = NULL;
 	bopt->kore_flavor = NULL;
 	bopt->name = cli_strdup(name);
+
+	(void)cli_vasprintf(&bopt->kore_source, "%s/share/kore/", prefix);
 
 	TAILQ_INSERT_TAIL(&build_options, bopt, list);
 	return (bopt);
