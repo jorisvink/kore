@@ -221,9 +221,9 @@ install-sources:
 	fi
 
 uninstall:
-	rm -f $(INSTALL_DIR)/$(KORE)
-	rm -rf $(INCLUDE_DIR)
-	rm -rf $(SHARE_DIR)
+	rm -f $(DESTDIR)$(INSTALL_DIR)/$(KORE)
+	rm -rf $(DESTDIR)$(INCLUDE_DIR)
+	rm -rf $(DESTDIR)$(SHARE_DIR)
 	$(MAKE) -C kodev uninstall
 
 tools-build: $(KODEV)

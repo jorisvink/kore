@@ -47,7 +47,7 @@ install: $(KODEV)
 	install -m 555 $(KODEV) $(DESTDIR)$(INSTALL_DIR)/$(KODEV)
 
 uninstall:
-	rm -f $(INSTALL_DIR)/$(KODEV)
+	rm -f $(DESTDIR)$(INSTALL_DIR)/$(KODEV)
 
 $(OBJDIR)/%.o: ../src/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
