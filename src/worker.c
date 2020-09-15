@@ -683,8 +683,8 @@ worker_reaper(pid_t pid, int status)
 
 		if (!kore_quiet) {
 			kore_log(LOG_NOTICE,
-			    "worker %d (%d) exited with status %d",
-			    kw->id, pid, status);
+			    "worker %s (%d) exited with status %d",
+			    kore_worker_name(kw->id), pid, status);
 		}
 
 		kw->running = 0;
