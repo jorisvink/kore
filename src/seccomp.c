@@ -427,7 +427,11 @@ seccomp_register_violation(pid_t pid)
 	int				idx;
 	struct kore_worker		*kw;
 	struct iovec			iov;
+#if defined(__arm__)
+	struct pt_regs			regs;
+#else
 	struct user_regs_struct		regs;
+#endif
 	long				sysnr;
 	const char			*name;
 
@@ -441,6 +445,8 @@ seccomp_register_violation(pid_t pid)
 	sysnr = regs.orig_rax;
 #elif SECCOMP_AUDIT_ARCH == AUDIT_ARCH_AARCH64
 	sysnr = regs.regs[8];
+#elif SECCOMP_AUDIT_ARCH == AUDIT_ARCH_ARM
+	sysnr = regs.uregs[7];
 #else
 #error "platform not supported"
 #endif
