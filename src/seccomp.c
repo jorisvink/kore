@@ -58,13 +58,25 @@ static struct sock_filter filter_kore[] = {
 #if defined(SYS_stat)
 	KORE_SYSCALL_ALLOW(stat),
 #endif
+#if defined(SYS_stat64)
+	KORE_SYSCALL_ALLOW(stat64),
+#endif
 #if defined(SYS_lstat)
 	KORE_SYSCALL_ALLOW(lstat),
 #endif
 	KORE_SYSCALL_ALLOW(fstat),
+#if defined(SYS_fstat64)
+	KORE_SYSCALL_ALLOW(fstat64),
+#endif
 	KORE_SYSCALL_ALLOW(write),
 	KORE_SYSCALL_ALLOW(fcntl),
+#if defined(SYS_fcntl64)
+	KORE_SYSCALL_ALLOW(fcntl64),
+#endif
 	KORE_SYSCALL_ALLOW(lseek),
+#if defined(SYS__llseek)
+	KORE_SYSCALL_ALLOW(_llseek),
+#endif
 	KORE_SYSCALL_ALLOW(close),
 	KORE_SYSCALL_ALLOW(openat),
 #if defined(SYS_access)
@@ -88,6 +100,9 @@ static struct sock_filter filter_kore[] = {
 	KORE_SYSCALL_ALLOW(exit_group),
 	KORE_SYSCALL_ALLOW(nanosleep),
 	KORE_SYSCALL_ALLOW(clock_nanosleep),
+#if defined(SYS_sigreturn)
+	KORE_SYSCALL_ALLOW(sigreturn),
+#endif
 
 	/* Memory related. */
 	KORE_SYSCALL_ALLOW(brk),
@@ -97,10 +112,16 @@ static struct sock_filter filter_kore[] = {
 #if defined(SYS_mmap)
 	KORE_SYSCALL_DENY_WITH_FLAG(mmap, 2, PROT_EXEC | PROT_WRITE, EINVAL),
 #endif
+#if defined(SYS_mmap2)
+	KORE_SYSCALL_DENY_WITH_FLAG(mmap2, 2, PROT_EXEC | PROT_WRITE, EINVAL),
+#endif
 	KORE_SYSCALL_DENY_WITH_FLAG(mprotect, 2, PROT_EXEC, EINVAL),
 
 #if defined(SYS_mmap)
 	KORE_SYSCALL_ALLOW(mmap),
+#endif
+#if defined(SYS_mmap2)
+	KORE_SYSCALL_ALLOW(mmap2),
 #endif
 	KORE_SYSCALL_ALLOW(madvise),
 	KORE_SYSCALL_ALLOW(mprotect),
@@ -110,9 +131,15 @@ static struct sock_filter filter_kore[] = {
 	KORE_SYSCALL_ALLOW(poll),
 #endif
 	KORE_SYSCALL_ALLOW(ppoll),
+#if defined(SYS_send)
+	KORE_SYSCALL_ALLOW(send),
+#endif
 	KORE_SYSCALL_ALLOW(sendto),
 	KORE_SYSCALL_ALLOW(accept),
 	KORE_SYSCALL_ALLOW(sendfile),
+#if defined(SYS_recv)
+	KORE_SYSCALL_ALLOW(recv),
+#endif
 	KORE_SYSCALL_ALLOW(recvfrom),
 	KORE_SYSCALL_ALLOW(epoll_ctl),
 	KORE_SYSCALL_ALLOW(setsockopt),

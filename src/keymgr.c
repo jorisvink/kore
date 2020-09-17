@@ -85,6 +85,9 @@ static struct sock_filter filter_keymgr[] = {
 	KORE_SYSCALL_ALLOW(stat),
 #endif
 	KORE_SYSCALL_ALLOW(fstat),
+#if defined(SYS_fstat64)
+	KORE_SYSCALL_ALLOW(fstat64),
+#endif
 	KORE_SYSCALL_ALLOW(futex),
 	KORE_SYSCALL_ALLOW(writev),
 	KORE_SYSCALL_ALLOW(openat),
@@ -97,7 +100,13 @@ static struct sock_filter filter_keymgr[] = {
 #if defined(SYS_poll)
 	KORE_SYSCALL_ALLOW(poll),
 #endif
+#if defined(SYS_send)
+	KORE_SYSCALL_ALLOW(send),
+#endif
 	KORE_SYSCALL_ALLOW(sendto),
+#if defined(SYS_recv)
+	KORE_SYSCALL_ALLOW(recv),
+#endif
 	KORE_SYSCALL_ALLOW(recvfrom),
 #if defined(SYS_epoll_wait)
 	KORE_SYSCALL_ALLOW(epoll_wait),
@@ -114,6 +123,9 @@ static struct sock_filter filter_keymgr[] = {
 #endif
 	KORE_SYSCALL_ALLOW(exit_group),
 	KORE_SYSCALL_ALLOW(sigaltstack),
+#if defined(SYS_sigreturn)
+	KORE_SYSCALL_ALLOW(sigreturn),
+#endif
 	KORE_SYSCALL_ALLOW(rt_sigreturn),
 	KORE_SYSCALL_ALLOW(rt_sigaction),
 	KORE_SYSCALL_ALLOW(rt_sigprocmask),
@@ -122,6 +134,9 @@ static struct sock_filter filter_keymgr[] = {
 	KORE_SYSCALL_ALLOW(brk),
 #if defined(SYS_mmap)
 	KORE_SYSCALL_ALLOW(mmap),
+#endif
+#if defined(SYS_mmap2)
+	KORE_SYSCALL_ALLOW(mmap2),
 #endif
 	KORE_SYSCALL_ALLOW(munmap),
 	KORE_SYSCALL_ALLOW(clock_gettime),
