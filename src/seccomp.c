@@ -94,10 +94,14 @@ static struct sock_filter filter_kore[] = {
 	KORE_SYSCALL_ALLOW(munmap),
 
 	/* Deny mmap/mprotect calls with PROT_EXEC/PROT_WRITE protection. */
+#if defined(SYS_mmap)
 	KORE_SYSCALL_DENY_WITH_FLAG(mmap, 2, PROT_EXEC | PROT_WRITE, EINVAL),
+#endif
 	KORE_SYSCALL_DENY_WITH_FLAG(mprotect, 2, PROT_EXEC, EINVAL),
 
+#if defined(SYS_mmap)
 	KORE_SYSCALL_ALLOW(mmap),
+#endif
 	KORE_SYSCALL_ALLOW(madvise),
 	KORE_SYSCALL_ALLOW(mprotect),
 

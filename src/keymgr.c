@@ -120,7 +120,9 @@ static struct sock_filter filter_keymgr[] = {
 
 	/* Other things. */
 	KORE_SYSCALL_ALLOW(brk),
+#if defined(SYS_mmap)
 	KORE_SYSCALL_ALLOW(mmap),
+#endif
 	KORE_SYSCALL_ALLOW(munmap),
 	KORE_SYSCALL_ALLOW(clock_gettime),
 #if defined(__NR_getrandom)

@@ -84,7 +84,9 @@ static struct sock_filter filter_acme[] = {
 	KORE_SYSCALL_ALLOW(exit),
 
 	KORE_SYSCALL_ALLOW(brk),
+#if defined(SYS_mmap)
 	KORE_SYSCALL_ALLOW(mmap),
+#endif
 	KORE_SYSCALL_ALLOW(ioctl),
 	KORE_SYSCALL_ALLOW(uname),
 	KORE_SYSCALL_ALLOW(munmap),
