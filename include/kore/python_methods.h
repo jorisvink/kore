@@ -315,6 +315,7 @@ static PyObject *pysocket_close(struct pysocket *, PyObject *);
 static PyObject *pysocket_accept(struct pysocket *, PyObject *);
 static PyObject *pysocket_sendto(struct pysocket *, PyObject *);
 static PyObject *pysocket_connect(struct pysocket *, PyObject *);
+static PyObject *pysocket_recvmsg(struct pysocket *, PyObject *);
 static PyObject *pysocket_recvfrom(struct pysocket *, PyObject *);
 
 static PyMethodDef pysocket_methods[] = {
@@ -324,6 +325,7 @@ static PyMethodDef pysocket_methods[] = {
 	METHOD("accept", pysocket_accept, METH_NOARGS),
 	METHOD("sendto", pysocket_sendto, METH_VARARGS),
 	METHOD("connect", pysocket_connect, METH_VARARGS),
+	METHOD("recvmsg", pysocket_recvmsg, METH_VARARGS),
 	METHOD("recvfrom", pysocket_recvfrom, METH_VARARGS),
 	METHOD(NULL, NULL, -1),
 };
@@ -346,6 +348,7 @@ static PyTypeObject pysocket_type = {
 #define PYSOCKET_TYPE_SEND	4
 #define PYSOCKET_TYPE_RECVFROM	5
 #define PYSOCKET_TYPE_SENDTO	6
+#define PYSOCKET_TYPE_RECVMSG	7
 
 struct pysocket_op {
 	PyObject_HEAD
