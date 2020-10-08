@@ -73,10 +73,8 @@ extern char		**environ;
 extern char		*__progname;
 static size_t		proctitle_maxlen = 0;
 
-#if !defined(KORE_SINGLE_BINARY)
 static void	usage(void);
 static void	version(void);
-#endif
 
 static void	kore_write_kore_pid(void);
 static void	kore_proctitle_setup(void);
@@ -95,7 +93,6 @@ static const char	*parent_daemonized_hook = KORE_DAEMONIZED_HOOK;
 #endif
 #endif
 
-#if !defined(KORE_SINGLE_BINARY)
 static void
 usage(void)
 {
@@ -107,7 +104,9 @@ usage(void)
 
 	printf("\n");
 	printf("Available options:\n");
+#if !defined(KORE_SINGLE_BINARY)
 	printf("\t-c\tconfiguration to use\n");
+#endif
 #if defined(KORE_DEBUG)
 	printf("\t-d\trun with debug on\n");
 #endif
@@ -151,15 +150,11 @@ version(void)
 	printf("\n");
 	exit(0);
 }
-#endif
 
 int
 main(int argc, char *argv[])
 {
 	struct kore_runtime_call	*rcall;
-#if !defined(KORE_SINGLE_BINARY)
-	int				ch;
-#endif
 #if !defined(KORE_SINGLE_BINARY) && defined(KORE_USE_PYTHON)
 	struct stat			st;
 #endif
@@ -168,40 +163,7 @@ main(int argc, char *argv[])
 	kore_argv = argv;
 
 #if !defined(KORE_SINGLE_BINARY)
-	while ((ch = getopt(argc, argv, "c:dfhnqrv")) != -1) {
-		switch (ch) {
-		case 'c':
-			free(config_file);
-			if ((config_file = strdup(optarg)) == NULL)
-				fatal("strdup");
-			break;
-#if defined(KORE_DEBUG)
-		case 'd':
-			kore_debug = 1;
-			break;
-#endif
-		case 'f':
-			foreground = 1;
-			break;
-		case 'h':
-			usage();
-			break;
-		case 'n':
-			skip_chroot = 1;
-			break;
-		case 'q':
-			kore_quiet = 1;
-			break;
-		case 'r':
-			skip_runas = 1;
-			break;
-		case 'v':
-			version();
-			break;
-		default:
-			usage();
-		}
-	}
+	kore_default_getopt(argc, argv);
 #endif
 
 	kore_mem_init();
@@ -338,6 +300,53 @@ main(int argc, char *argv[])
 	kore_mem_cleanup();
 
 	return (0);
+}
+
+void
+kore_default_getopt(int argc, char **argv)
+{
+	int		ch;
+
+#if !defined(KORE_SINGLE_BINARY)
+	while ((ch = getopt(argc, argv, "c:dfhnqrv")) != -1) {
+#else
+	while ((ch = getopt(argc, argv, "dfhnqrv")) != -1) {
+#endif
+		switch (ch) {
+#if !defined(KORE_SINGLE_BINARY)
+		case 'c':
+			free(config_file);
+			if ((config_file = strdup(optarg)) == NULL)
+				fatal("strdup");
+			break;
+#endif
+#if defined(KORE_DEBUG)
+		case 'd':
+			kore_debug = 1;
+			break;
+#endif
+		case 'f':
+			foreground = 1;
+			break;
+		case 'h':
+			usage();
+			break;
+		case 'n':
+			skip_chroot = 1;
+			break;
+		case 'q':
+			kore_quiet = 1;
+			break;
+		case 'r':
+			skip_runas = 1;
+			break;
+		case 'v':
+			version();
+			break;
+		default:
+			usage();
+		}
+	}
 }
 
 int
