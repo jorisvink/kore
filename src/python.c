@@ -66,6 +66,7 @@ static PyObject		*python_callable(PyObject *, const char *);
 static void		python_split_arguments(char *, char **, size_t);
 static void		python_kore_recvobj(struct kore_msg *, const void *);
 
+static PyObject		*python_cmsg_to_list(struct msghdr *);
 static const char	*python_string_from_dict(PyObject *, const char *);
 static int		python_bool_from_dict(PyObject *, const char *, int *);
 static int		python_long_from_dict(PyObject *, const char *, long *);
@@ -844,6 +845,38 @@ python_string_from_dict(PyObject *dict, const char *key)
 		return (NULL);
 
 	return (PyUnicode_AsUTF8AndSize(obj, NULL));
+}
+
+static PyObject *
+python_cmsg_to_list(struct msghdr *msg)
+{
+	struct cmsghdr		*c;
+	Py_ssize_t		idx;
+	PyObject		*list, *tuple;
+
+	if ((list = PyList_New(0)) == NULL)
+		return (NULL);
+
+	idx = 0;
+
+	for (c = CMSG_FIRSTHDR(msg); c != NULL; c = CMSG_NXTHDR(msg, c)) {
+		tuple = Py_BuildValue("(Iiiy#)", c->cmsg_len,
+		    c->cmsg_level, c->cmsg_type, CMSG_DATA(c), c->cmsg_len);
+
+		if (tuple == NULL) {
+			Py_DECREF(list);
+			return (NULL);
+		}
+
+		/* Steals a reference to tuple. */
+		if (PyList_Insert(list, idx++, tuple) == -1) {
+			Py_DECREF(tuple);
+			Py_DECREF(list);
+			return (NULL);
+		}
+	}
+
+	return (list);
 }
 
 static void *
@@ -2904,6 +2937,17 @@ pysocket_recv(struct pysocket *sock, PyObject *args)
 }
 
 static PyObject *
+pysocket_recvmsg(struct pysocket *sock, PyObject *args)
+{
+	Py_ssize_t	len;
+
+	if (!PyArg_ParseTuple(args, "n", &len))
+		return (NULL);
+
+	return (pysocket_op_create(sock, PYSOCKET_TYPE_RECVMSG, NULL, len));
+}
+
+static PyObject *
 pysocket_recvfrom(struct pysocket *sock, PyObject *args)
 {
 	Py_ssize_t	len;
@@ -2997,6 +3041,7 @@ static void
 pysocket_op_dealloc(struct pysocket_op *op)
 {
 	if (op->type == PYSOCKET_TYPE_RECV ||
+	    op->type == PYSOCKET_TYPE_RECVMSG ||
 	    op->type == PYSOCKET_TYPE_RECVFROM ||
 	    op->type == PYSOCKET_TYPE_SEND ||
 	    op->type == PYSOCKET_TYPE_SENDTO)
@@ -3005,6 +3050,7 @@ pysocket_op_dealloc(struct pysocket_op *op)
 	switch (op->type) {
 	case PYSOCKET_TYPE_RECV:
 	case PYSOCKET_TYPE_ACCEPT:
+	case PYSOCKET_TYPE_RECVMSG:
 	case PYSOCKET_TYPE_RECVFROM:
 		if (op->socket->recvop != op)
 			fatal("recvop mismatch");
@@ -3041,6 +3087,7 @@ pysocket_op_create(struct pysocket *sock, int type, const void *ptr, size_t len)
 	switch (type) {
 	case PYSOCKET_TYPE_RECV:
 	case PYSOCKET_TYPE_ACCEPT:
+	case PYSOCKET_TYPE_RECVMSG:
 	case PYSOCKET_TYPE_RECVFROM:
 		if (sock->recvop != NULL) {
 			PyErr_SetString(PyExc_RuntimeError,
@@ -3077,6 +3124,7 @@ pysocket_op_create(struct pysocket *sock, int type, const void *ptr, size_t len)
 
 	switch (type) {
 	case PYSOCKET_TYPE_RECV:
+	case PYSOCKET_TYPE_RECVMSG:
 	case PYSOCKET_TYPE_RECVFROM:
 		sock->recvop = op;
 		kore_buf_init(&op->buffer, len);
@@ -3149,6 +3197,7 @@ pysocket_op_iternext(struct pysocket_op *op)
 		ret = pysocket_async_accept(op);
 		break;
 	case PYSOCKET_TYPE_RECV:
+	case PYSOCKET_TYPE_RECVMSG:
 	case PYSOCKET_TYPE_RECVFROM:
 		ret = pysocket_async_recv(op);
 		break;
@@ -3247,23 +3296,44 @@ pysocket_async_accept(struct pysocket_op *op)
 static PyObject *
 pysocket_async_recv(struct pysocket_op *op)
 {
-	ssize_t		ret;
-	size_t		len;
-	u_int16_t	port;
-	socklen_t	socklen;
-	struct sockaddr *sendaddr;
-	const char	*ptr, *ip;
-	PyObject	*bytes, *result, *tuple;
+	ssize_t			ret;
+	size_t			len;
+	u_int16_t		port;
+	struct iovec		iov;
+	struct msghdr		msg;
+	socklen_t		socklen;
+	struct sockaddr 	*sendaddr;
+	const char		*ptr, *ip;
+	u_int8_t		ancdata[1024];
+	PyObject		*bytes, *result, *tuple, *list;
 
 	if (!(op->socket->event.evt.flags & KORE_EVENT_READ)) {
 		Py_RETURN_NONE;
 	}
 
 	for (;;) {
-		if (op->type == PYSOCKET_TYPE_RECV) {
+		switch (op->type) {
+		case PYSOCKET_TYPE_RECV:
 			ret = read(op->socket->fd, op->buffer.data,
 			    op->buffer.length);
-		} else {
+			break;
+		case PYSOCKET_TYPE_RECVMSG:
+			memset(&msg, 0, sizeof(msg));
+
+			iov.iov_base = op->buffer.data;
+			iov.iov_len = op->buffer.length;
+
+			msg.msg_iov = &iov;
+			msg.msg_iovlen = 1;
+			msg.msg_name = &op->sendaddr;
+			msg.msg_namelen = sizeof(op->sendaddr);
+			msg.msg_control = ancdata;
+			msg.msg_controllen = sizeof(ancdata);
+
+			memset(&op->sendaddr, 0, sizeof(op->sendaddr));
+			ret = recvmsg(op->socket->fd, &msg, 0);
+			break;
+		case PYSOCKET_TYPE_RECVFROM:
 			sendaddr = (struct sockaddr *)&op->sendaddr;
 			switch (op->socket->family) {
 			case AF_INET:
@@ -3273,12 +3343,15 @@ pysocket_async_recv(struct pysocket_op *op)
 				socklen = sizeof(op->sendaddr.sun);
 				break;
 			default:
-				fatal("non AF_INET/AF_UNIX in %s", __func__);
+				fatal("%s: non AF_INET/AF_UNIX", __func__);
 			}
 
 			memset(sendaddr, 0, socklen);
 			ret = recvfrom(op->socket->fd, op->buffer.data,
 			    op->buffer.length, 0, sendaddr, &socklen);
+			break;
+		default:
+			fatal("%s: unknown type %d", __func__, op->type);
 		}
 
 		if (ret == -1) {
@@ -3312,10 +3385,22 @@ pysocket_async_recv(struct pysocket_op *op)
 	if ((bytes = PyBytes_FromStringAndSize(ptr, ret)) == NULL)
 		return (NULL);
 
-	if (op->type == PYSOCKET_TYPE_RECV) {
+	list = NULL;
+
+	switch (op->type) {
+	case PYSOCKET_TYPE_RECV:
 		PyErr_SetObject(PyExc_StopIteration, bytes);
 		Py_DECREF(bytes);
 		return (NULL);
+	case PYSOCKET_TYPE_RECVMSG:
+		socklen = msg.msg_namelen;
+		if ((list = python_cmsg_to_list(&msg)) == NULL)
+			return (NULL);
+		break;
+	case PYSOCKET_TYPE_RECVFROM:
+		break;
+	default:
+		fatal("%s: unknown type %d", __func__, op->type);
 	}
 
 	switch(op->socket->family) {
@@ -3323,8 +3408,10 @@ pysocket_async_recv(struct pysocket_op *op)
 		port = ntohs(op->sendaddr.ipv4.sin_port);
 		ip = inet_ntoa(op->sendaddr.ipv4.sin_addr);
 
-		if ((tuple = Py_BuildValue("(sHN)", ip, port, bytes)) == NULL)
-			return (NULL);
+		if (op->type == PYSOCKET_TYPE_RECV)
+			tuple = Py_BuildValue("(sHN)", ip, port, bytes);
+		else
+			tuple = Py_BuildValue("(sHNN)", ip, port, bytes, list);
 		break;
 	case AF_UNIX:
 		len = strlen(op->sendaddr.sun.sun_path);
@@ -3336,18 +3423,29 @@ pysocket_async_recv(struct pysocket_op *op)
 		}
 #endif
 		if (len == 0) {
-			if ((tuple = Py_BuildValue("(ON)",
-			    Py_None, bytes)) == NULL)
-				return (NULL);
-			break;
+			if (op->type == PYSOCKET_TYPE_RECVFROM) {
+				tuple = Py_BuildValue("(ON)", Py_None, bytes);
+			} else {
+				tuple = Py_BuildValue("(ONN)",
+				    Py_None, bytes, list);
+			}
+		} else {
+			if (op->type == PYSOCKET_TYPE_RECVFROM) {
+				tuple = Py_BuildValue("(sN)",
+				    op->sendaddr.sun.sun_path, bytes);
+			} else {
+				tuple = Py_BuildValue("(sNN)",
+				    op->sendaddr.sun.sun_path, bytes, list);
+			}
 		}
-
-		if ((tuple = Py_BuildValue("(sN)",
-		    op->sendaddr.sun.sun_path, bytes)) == NULL)
-			return (NULL);
 		break;
 	default:
-		PyErr_SetString(PyExc_RuntimeError, "Unsupported family");
+		fatal("%s: non AF_INET/AF_UNIX", __func__);
+	}
+
+	if (tuple == NULL) {
+		Py_XDECREF(list);
+		Py_DECREF(bytes);
 		return (NULL);
 	}
 

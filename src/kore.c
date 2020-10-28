@@ -75,6 +75,7 @@ static size_t		proctitle_maxlen = 0;
 
 static void	usage(void);
 static void	version(void);
+
 static void	kore_write_kore_pid(void);
 static void	kore_proctitle_setup(void);
 static void	kore_server_sslstart(void);
@@ -95,7 +96,7 @@ static const char	*parent_daemonized_hook = KORE_DAEMONIZED_HOOK;
 static void
 usage(void)
 {
-#if !defined(KORE_SINGLE_BINARY) && defined(KORE_USE_PYTHON)
+#if defined(KORE_USE_PYTHON)
 	printf("Usage: %s [options] [app | app.py]\n", __progname);
 #else
 	printf("Usage: %s [options]\n", __progname);
@@ -116,11 +117,7 @@ usage(void)
 	printf("\t-r\tdo not drop privileges\n");
 	printf("\t-v\tdisplay %s build information\n", __progname);
 
-#if !defined(KORE_SINGLE_BINARY)
 	printf("\nFind more information on https://kore.io\n");
-#else
-	printf("\nBuilt using https://kore.io\n");
-#endif
 
 	exit(1);
 }
@@ -144,9 +141,6 @@ version(void)
 #if defined(KORE_DEBUG)
 	printf("debug ");
 #endif
-#if defined(KORE_SINGLE_BINARY)
-	printf("single ");
-#endif
 #if defined(KORE_USE_PYTHON)
 	printf("python-%s ", PY_VERSION);
 #endif
@@ -161,64 +155,25 @@ int
 main(int argc, char *argv[])
 {
 	struct kore_runtime_call	*rcall;
-	int				ch, flags;
 #if !defined(KORE_SINGLE_BINARY) && defined(KORE_USE_PYTHON)
 	struct stat			st;
 #endif
-
-	flags = 0;
 
 	kore_argc = argc;
 	kore_argv = argv;
 
 #if !defined(KORE_SINGLE_BINARY)
-	while ((ch = getopt(argc, argv, "c:dfhnqrv")) != -1) {
-#else
-	while ((ch = getopt(argc, argv, "dfhnqrv")) != -1) {
+	kore_default_getopt(argc, argv);
 #endif
-		flags++;
-		switch (ch) {
-#if !defined(KORE_SINGLE_BINARY)
-		case 'c':
-			free(config_file);
-			if ((config_file = strdup(optarg)) == NULL)
-				fatal("strdup");
-			break;
-#endif
-#if defined(KORE_DEBUG)
-		case 'd':
-			kore_debug = 1;
-			break;
-#endif
-		case 'f':
-			foreground = 1;
-			break;
-		case 'h':
-			usage();
-			break;
-		case 'n':
-			skip_chroot = 1;
-			break;
-		case 'q':
-			kore_quiet = 1;
-			break;
-		case 'r':
-			skip_runas = 1;
-			break;
-		case 'v':
-			version();
-			break;
-		default:
-			usage();
-		}
-	}
 
 	kore_mem_init();
 	kore_progname = kore_strdup(argv[0]);
 	kore_proctitle_setup();
 
+#if !defined(KORE_SINGLE_BINARY)
 	argc -= optind;
 	argv += optind;
+#endif
 
 #if !defined(KORE_SINGLE_BINARY) && defined(KORE_USE_PYTHON)
 	if (argc > 0) {
@@ -345,6 +300,53 @@ main(int argc, char *argv[])
 	kore_mem_cleanup();
 
 	return (0);
+}
+
+void
+kore_default_getopt(int argc, char **argv)
+{
+	int		ch;
+
+#if !defined(KORE_SINGLE_BINARY)
+	while ((ch = getopt(argc, argv, "c:dfhnqrv")) != -1) {
+#else
+	while ((ch = getopt(argc, argv, "dfhnqrv")) != -1) {
+#endif
+		switch (ch) {
+#if !defined(KORE_SINGLE_BINARY)
+		case 'c':
+			free(config_file);
+			if ((config_file = strdup(optarg)) == NULL)
+				fatal("strdup");
+			break;
+#endif
+#if defined(KORE_DEBUG)
+		case 'd':
+			kore_debug = 1;
+			break;
+#endif
+		case 'f':
+			foreground = 1;
+			break;
+		case 'h':
+			usage();
+			break;
+		case 'n':
+			skip_chroot = 1;
+			break;
+		case 'q':
+			kore_quiet = 1;
+			break;
+		case 'r':
+			skip_runas = 1;
+			break;
+		case 'v':
+			version();
+			break;
+		default:
+			usage();
+		}
+	}
 }
 
 int

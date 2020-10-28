@@ -84,7 +84,12 @@ static struct sock_filter filter_acme[] = {
 	KORE_SYSCALL_ALLOW(exit),
 
 	KORE_SYSCALL_ALLOW(brk),
+#if defined(SYS_mmap)
 	KORE_SYSCALL_ALLOW(mmap),
+#endif
+#if defined(SYS_mmap2)
+	KORE_SYSCALL_ALLOW(mmap2),
+#endif
 	KORE_SYSCALL_ALLOW(ioctl),
 	KORE_SYSCALL_ALLOW(uname),
 	KORE_SYSCALL_ALLOW(munmap),
@@ -180,7 +185,7 @@ static int	acme_status_type(const char *);
 static int	acme_request_run(struct acme_request *);
 static void	acme_request_cleanup(struct acme_request *);
 static void	acme_request_prepare(struct acme_request *,
-		    int, const char *, const void *, size_t); 
+		    int, const char *, const void *, size_t);
 static void	acme_request_json(struct kore_buf *, const char *,
 		    const char *, const char *);
 

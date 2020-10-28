@@ -209,6 +209,11 @@ validator	v_session	function	v_session_validate
 # By default Kore will use the following promises: "stdio rpath inet error"
 #pledge dns wpath
 
+# seccomp specific settings.
+# If set to "yes", Kore will trace its child processes and properly
+# log seccomp violations while still allowing the syscalls.
+#seccomp_tracing	yes
+
 # Authentication configuration
 #
 # Using authentication blocks you can define a standard way for

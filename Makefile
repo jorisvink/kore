@@ -6,21 +6,24 @@ PREFIX?=/usr/local
 OBJDIR?=obj
 KORE=kore
 KODEV=kodev/kodev
+KOREPATH?=$(shell pwd)
 KORE_CRYPTO?=crypto
 INSTALL_DIR=$(PREFIX)/bin
 MAN_DIR?=$(PREFIX)/share/man
 SHARE_DIR=$(PREFIX)/share/kore
 INCLUDE_DIR=$(PREFIX)/include/kore
 
+TOOLS=	kore-serve
+
 GENERATED=
 PLATFORM=platform.h
-VERSION=src/version.c
+VERSION=$(OBJDIR)/version.c
 PYTHON_CURLOPT=misc/curl/python_curlopt.h
 
 S_SRC=	src/kore.c src/buf.c src/config.c src/connection.c \
 	src/domain.c src/filemap.c src/fileref.c src/json.c src/mem.c \
 	src/msg.c src/module.c src/net.c src/pool.c src/runtime.c src/timer.c \
-	src/utils.c src/worker.c src/keymgr.c $(VERSION)
+	src/utils.c src/worker.c src/keymgr.c
 
 FEATURES=
 FEATURES_INC=
@@ -145,6 +148,7 @@ else
 endif
 
 S_OBJS=	$(S_SRC:src/%.c=$(OBJDIR)/%.o)
+S_OBJS+=$(OBJDIR)/version.o
 
 all: $(PLATFORM) $(GENERATED) $(VERSION) $(KORE) $(KODEV)
 
@@ -171,7 +175,7 @@ $(VERSION): force
 		exit 1; \
 	fi
 
-$(KODEV):
+$(KODEV): src/cli.c
 	$(MAKE) -C kodev
 
 $(KORE): $(OBJDIR) $(S_OBJS)
@@ -195,12 +199,56 @@ install:
 	install -m 644 kore.features $(DESTDIR)$(SHARE_DIR)/features
 	install -m 644 include/kore/*.h $(DESTDIR)$(INCLUDE_DIR)
 	$(MAKE) -C kodev install
+	$(MAKE) install-sources
+
+install-sources:
+	@mkdir -p $(DESTDIR)$(SHARE_DIR)
+	@cp Makefile $(DESTDIR)$(SHARE_DIR)
+	@cp -R src $(DESTDIR)$(SHARE_DIR)
+	@cp -R include $(DESTDIR)$(SHARE_DIR)
+	@cp -R misc $(DESTDIR)$(SHARE_DIR)
+	@if [ -d .git ]; then \
+		GIT_REVISION=`git rev-parse --short=8 HEAD`; \
+		GIT_BRANCH=`git rev-parse --abbrev-ref HEAD`; \
+		rm -f $(VERSION); \
+		echo "$$GIT_BRANCH-$$GIT_REVISION" > \
+		    $(DESTDIR)$(SHARE_DIR)/RELEASE; \
+	elif [ -f RELEASE ]; then \
+		cp RELEASE $(DESTDIR)$(SHARE_DIR); \
+	else \
+		echo "No version information found (no .git or RELEASE)"; \
+		exit 1; \
+	fi
 
 uninstall:
-	rm -f $(INSTALL_DIR)/$(KORE)
-	rm -rf $(INCLUDE_DIR)
-	rm -rf $(SHARE_DIR)
+	rm -f $(DESTDIR)$(INSTALL_DIR)/$(KORE)
+	rm -rf $(DESTDIR)$(INCLUDE_DIR)
+	rm -rf $(DESTDIR)$(SHARE_DIR)
 	$(MAKE) -C kodev uninstall
+
+tools-build: $(KODEV)
+	for t in $(TOOLS); do \
+		cd tools/$$t; \
+		env \
+		    KODEV_OUTPUT=$(KOREPATH) \
+		    KORE_SOURCE=$(KOREPATH) \
+		    KORE_BUILD_FLAVOR=$(OSNAME) \
+		    $(KOREPATH)/$(KODEV) build; \
+		cd $(KOREPATH); \
+	done
+
+tools-clean: $(KODEV)
+	for t in $(TOOLS); do \
+		cd tools/$$t; \
+		$(KOREPATH)/$(KODEV) clean; \
+		cd $(KOREPATH); \
+	done
+
+tools-install:
+	mkdir -p $(DESTDIR)$(INSTALL_DIR)
+	for t in $(TOOLS); do \
+		install -m 555 $$t $(DESTDIR)$(INSTALL_DIR)/$$t; \
+	done
 
 $(OBJDIR)/%.o: src/%.c
 	$(CC) $(CFLAGS) -c $< -o $@

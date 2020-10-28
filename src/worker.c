@@ -271,6 +271,10 @@ kore_worker_dispatch_signal(int sig)
 
 	for (idx = 0; idx < worker_count; idx++) {
 		kw = WORKER(idx);
+
+		if (kw->pid == -1 || kw->pid == 0)
+			continue;
+
 		if (kill(kw->pid, sig) == -1) {
 			kore_debug("kill(%d, %d): %s", kw->pid, sig, errno_s);
 		}
@@ -683,8 +687,8 @@ worker_reaper(pid_t pid, int status)
 
 		if (!kore_quiet) {
 			kore_log(LOG_NOTICE,
-			    "worker %d (%d) exited with status %d",
-			    kw->id, pid, status);
+			    "worker %s (%d) exited with status %d",
+			    kore_worker_name(kw->id), pid, status);
 		}
 
 		kw->running = 0;

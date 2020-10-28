@@ -197,6 +197,7 @@ static void		cli_help(int, char **);
 static void		cli_info(int, char **);
 static void		cli_build(int, char **);
 static void		cli_clean(int, char **);
+static void		cli_source(int, char **);
 static void		cli_reload(int, char **);
 static void		cli_flavor(int, char **);
 
@@ -221,6 +222,7 @@ static struct cmd cmds[] = {
 	{ "info",	"show info on kore on this system",	cli_info },
 	{ "build",	"build an application",			cli_build },
 	{ "clean",	"cleanup the build files",		cli_clean },
+	{ "source",	"print the path to kore sources",	cli_source },
 #if !defined(KODEV_MINIMAL)
 	{ "create",	"create a new application skeleton",	cli_create },
 #endif
@@ -600,6 +602,7 @@ cli_build(int argc, char **argv)
 	struct buildopt		*bopt;
 	struct timeval		times[2];
 	char			*build_path;
+	char			*vsrc, *vobj;
 	int			requires_relink;
 	char			*sofile, *config;
 	char			*assets_path, *p, *src_path;
@@ -608,7 +611,7 @@ cli_build(int argc, char **argv)
 	if (getcwd(pwd, sizeof(pwd)) == NULL)
 		fatal("could not get cwd: %s", errno_s);
 
-	appl = basename(pwd);
+	appl = cli_strdup(basename(pwd));
 
 	if ((p = getenv("CC")) != NULL) {
 		compiler_c = p;
@@ -665,6 +668,12 @@ cli_build(int argc, char **argv)
 		(void)cli_vasprintf(&src_path, "%s/src", bopt->kore_source);
 		cli_find_files(src_path, cli_register_kore_file);
 		free(src_path);
+
+		(void)cli_vasprintf(&vsrc, "%s/version.c", object_dir);
+		(void)cli_vasprintf(&vobj, "%s/version.o", object_dir);
+
+		cli_add_source_file("version.c",
+		    vsrc, vobj, NULL, BUILD_NOBUILD);
 	}
 
 	printf("building %s (%s)\n", appl, flavor);
@@ -752,6 +761,12 @@ cli_build(int argc, char **argv)
 
 	if (run_after == 0)
 		cli_buildopt_cleanup();
+}
+
+static void
+cli_source(int argc, char **argv)
+{
+	printf("%s/share/kore/\n", prefix);
 }
 
 static void
@@ -1255,7 +1270,11 @@ cli_add_source_file(char *name, char *fpath, char *opath, struct stat *st,
 	source_files_count++;
 	cf = cli_malloc(sizeof(*cf));
 
-	cf->st = *st;
+	if (st != NULL)
+		cf->st = *st;
+	else
+		memset(&cf->st, 0, sizeof(cf->st));
+
 	cf->build = build;
 	cf->fpath = fpath;
 	cf->opath = opath;
@@ -1723,9 +1742,10 @@ cli_buildopt_new(const char *name)
 	bopt->ldflags = NULL;
 	bopt->flavor_nohttp = 0;
 	bopt->single_binary = 0;
-	bopt->kore_source = NULL;
 	bopt->kore_flavor = NULL;
 	bopt->name = cli_strdup(name);
+
+	(void)cli_vasprintf(&bopt->kore_source, "%s/share/kore/", prefix);
 
 	TAILQ_INSERT_TAIL(&build_options, bopt, list);
 	return (bopt);
