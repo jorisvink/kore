@@ -255,6 +255,8 @@ $(OBJDIR)/%.o: src/%.c
 
 src/python.c: $(PYTHON_CURLOPT)
 
+src/seccomp.c: $(PLATFORM)
+
 clean:
 	rm -f $(VERSION)
 	find . -type f -name \*.o -exec rm {} \;
