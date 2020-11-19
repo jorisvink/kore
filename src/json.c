@@ -24,7 +24,7 @@
 
 #include "kore.h"
 
-static int	json_guess_type(u_int8_t, int *);
+static int	json_guess_type(u_int8_t, u_int32_t *);
 static int	json_next(struct kore_json *, u_int8_t *);
 static int	json_peek(struct kore_json *, u_int8_t *);
 
@@ -42,7 +42,7 @@ static int	json_parse_literal(struct kore_json *, struct kore_json_item *);
 static struct kore_json_item	*json_item_alloc(int, const char *,
 				    struct kore_json_item *);
 static struct kore_json_item	*json_find_item(struct kore_json_item *,
-				    char **, int, int);
+				    char **, u_int32_t, int);
 
 static u_int8_t		json_null_literal[] = { 'n', 'u', 'l', 'l' };
 static u_int8_t		json_true_literal[] = { 't', 'r', 'u', 'e' };
@@ -78,10 +78,12 @@ int
 kore_json_parse(struct kore_json *json)
 {
 	u_int8_t	ch;
-	int		type;
+	u_int32_t	type;
 
 	if (json->root)
 		return (KORE_RESULT_OK);
+
+	json_consume_whitespace(json);
 
 	if (!json_peek(json, &ch))
 		return (KORE_RESULT_ERROR);
@@ -99,11 +101,18 @@ kore_json_parse(struct kore_json *json)
 		return (KORE_RESULT_ERROR);
 	}
 
+	/* Don't allow garbage at the end. */
+	json_consume_whitespace(json);
+	if (json->offset != json->length) {
+		json->error = KORE_JSON_ERR_INVALID_JSON;
+		return (KORE_RESULT_ERROR);
+	}
+
 	return (KORE_RESULT_OK);
 }
 
 struct kore_json_item *
-kore_json_find(struct kore_json_item *root, const char *path, int type)
+kore_json_find(struct kore_json_item *root, const char *path, u_int32_t type)
 {
 	struct kore_json_item	*item;
 	char			*copy;
@@ -143,7 +152,7 @@ kore_json_strerror(struct kore_json *json)
 
 struct kore_json_item *
 kore_json_create_item(struct kore_json_item *parent, const char *name,
-    int type, ...)
+    u_int32_t type, ...)
 {
 	const char			*p;
 	va_list				args;
@@ -167,6 +176,12 @@ kore_json_create_item(struct kore_json_item *parent, const char *name,
 		break;
 	case KORE_JSON_TYPE_NUMBER:
 		item->data.number = va_arg(args, double);
+		break;
+	case KORE_JSON_TYPE_INTEGER:
+		item->data.s64 = va_arg(args, int64_t);
+		break;
+	case KORE_JSON_TYPE_INTEGER_U64:
+		item->data.u64 = va_arg(args, u_int64_t);
 		break;
 	case KORE_JSON_TYPE_LITERAL:
 		item->data.literal = va_arg(args, int);
@@ -228,6 +243,12 @@ kore_json_item_tobuf(struct kore_json_item *item, struct kore_buf *buf)
 	case KORE_JSON_TYPE_NUMBER:
 		kore_buf_appendf(buf, "%f", item->data.number);
 		break;
+	case KORE_JSON_TYPE_INTEGER:
+		kore_buf_appendf(buf, "%" PRId64, item->data.s64);
+		break;
+	case KORE_JSON_TYPE_INTEGER_U64:
+		kore_buf_appendf(buf, "%" PRIu64, item->data.u64);
+		break;
 	case KORE_JSON_TYPE_LITERAL:
 		switch (item->data.literal) {
 		case KORE_JSON_TRUE:
@@ -253,7 +274,8 @@ kore_json_item_tobuf(struct kore_json_item *item, struct kore_buf *buf)
 }
 
 static struct kore_json_item *
-json_find_item(struct kore_json_item *object, char **tokens, int type, int pos)
+json_find_item(struct kore_json_item *object, char **tokens,
+    u_int32_t type, int pos)
 {
 	char			*p, *str;
 	struct kore_json_item	*item, *nitem;
@@ -341,6 +363,8 @@ kore_json_item_free(struct kore_json_item *item)
 		break;
 	case KORE_JSON_TYPE_NUMBER:
 	case KORE_JSON_TYPE_LITERAL:
+	case KORE_JSON_TYPE_INTEGER:
+	case KORE_JSON_TYPE_INTEGER_U64:
 		break;
 	default:
 		fatal("%s: unknown type %d", __func__, item->type);
@@ -372,6 +396,8 @@ json_item_alloc(int type, const char *name, struct kore_json_item *parent)
 		item->parse = json_parse_string;
 		break;
 	case KORE_JSON_TYPE_NUMBER:
+	case KORE_JSON_TYPE_INTEGER:
+	case KORE_JSON_TYPE_INTEGER_U64:
 		item->parse = json_parse_number;
 		break;
 	case KORE_JSON_TYPE_LITERAL:
@@ -444,7 +470,7 @@ json_consume_whitespace(struct kore_json *json)
 }
 
 static int
-json_guess_type(u_int8_t ch, int *type)
+json_guess_type(u_int8_t ch, u_int32_t *type)
 {
 	if (ch == '-' || (ch >= '0' && ch <= '9')) {
 		*type = KORE_JSON_TYPE_NUMBER;
@@ -477,9 +503,10 @@ static int
 json_parse_object(struct kore_json *json, struct kore_json_item *object)
 {
 	u_int8_t		ch;
+	u_int32_t		type;
 	char			*key;
 	struct kore_json_item	*item;
-	int			ret, type;
+	int			ret, hasnext;
 
 	if (json->depth++ >= KORE_JSON_DEPTH_MAX) {
 		json->error = KORE_JSON_ERR_DEPTH;
@@ -487,6 +514,7 @@ json_parse_object(struct kore_json *json, struct kore_json_item *object)
 	}
 
 	key = NULL;
+	hasnext = 0;
 	ret = KORE_RESULT_ERROR;
 
 	if (!json_next(json, &ch))
@@ -504,6 +532,10 @@ json_parse_object(struct kore_json *json, struct kore_json_item *object)
 
 		switch (ch) {
 		case '}':
+			if (hasnext) {
+				json->error = KORE_JSON_ERR_INVALID_JSON;
+				goto cleanup;
+			}
 			json->offset++;
 			ret = KORE_RESULT_OK;
 			goto cleanup;
@@ -546,8 +578,10 @@ json_parse_object(struct kore_json *json, struct kore_json_item *object)
 		if (!json_next(json, &ch))
 			goto cleanup;
 
-		if (ch == ',')
+		if (ch == ',') {
+			hasnext = 1;
 			continue;
+		}
 
 		if (ch == '}') {
 			ret = KORE_RESULT_OK;
@@ -570,9 +604,10 @@ static int
 json_parse_array(struct kore_json *json, struct kore_json_item *array)
 {
 	u_int8_t		ch;
+	u_int32_t		type;
 	char			*key;
 	struct kore_json_item	*item;
-	int			ret, type;
+	int			ret, hasnext;
 
 	if (json->depth++ >= KORE_JSON_DEPTH_MAX) {
 		json->error = KORE_JSON_ERR_DEPTH;
@@ -580,6 +615,7 @@ json_parse_array(struct kore_json *json, struct kore_json_item *array)
 	}
 
 	key = NULL;
+	hasnext = 0;
 	ret = KORE_RESULT_ERROR;
 
 	if (!json_next(json, &ch))
@@ -596,6 +632,10 @@ json_parse_array(struct kore_json *json, struct kore_json_item *array)
 			goto cleanup;
 
 		if (ch == ']') {
+			if (hasnext) {
+				json->error = KORE_JSON_ERR_INVALID_JSON;
+				goto cleanup;
+			}
 			json->offset++;
 			ret = KORE_RESULT_OK;
 			goto cleanup;
@@ -617,8 +657,10 @@ json_parse_array(struct kore_json *json, struct kore_json_item *array)
 		if (!json_next(json, &ch))
 			goto cleanup;
 
-		if (ch == ',')
+		if (ch == ',') {
+			hasnext = 1;
 			continue;
+		}
 
 		if (ch == ']') {
 			ret = KORE_RESULT_OK;
@@ -657,16 +699,32 @@ json_parse_number(struct kore_json *json, struct kore_json_item *number)
 	u_int8_t	ch;
 	int		ret;
 	char		*str;
+	u_int32_t	type;
 
 	str = NULL;
 	ret = KORE_RESULT_ERROR;
 	kore_buf_reset(&json->tmpbuf);
 
+	type = KORE_JSON_TYPE_NUMBER | KORE_JSON_TYPE_INTEGER |
+	    KORE_JSON_TYPE_INTEGER_U64;
+
 	for (;;) {
 		if (!json_peek(json, &ch))
-			goto cleanup;
+			break;
 
 		switch (ch) {
+		case 'e':
+		case 'E':
+		case '.':
+			type = KORE_JSON_TYPE_NUMBER;
+			kore_buf_append(&json->tmpbuf, &ch, sizeof(ch));
+			json->offset++;
+			continue;
+		case '-':
+			if (json->tmpbuf.offset != 0)
+				goto cleanup;
+			type &= ~KORE_JSON_TYPE_INTEGER_U64;
+			/* FALLTHROUGH */
 		case '0':
 		case '1':
 		case '2':
@@ -678,10 +736,6 @@ json_parse_number(struct kore_json *json, struct kore_json_item *number)
 		case '8':
 		case '9':
 		case '+':
-		case '-':
-		case 'e':
-		case 'E':
-		case '.':
 			kore_buf_append(&json->tmpbuf, &ch, sizeof(ch));
 			json->offset++;
 			continue;
@@ -690,13 +744,30 @@ json_parse_number(struct kore_json *json, struct kore_json_item *number)
 		break;
 	}
 
+	if (type & KORE_JSON_TYPE_INTEGER_U64)
+		type = KORE_JSON_TYPE_INTEGER_U64;
+
+	if (type & KORE_JSON_TYPE_INTEGER)
+		type = KORE_JSON_TYPE_INTEGER;
+
 	str = kore_buf_stringify(&json->tmpbuf, NULL);
 
-	number->data.number = kore_strtodouble(str, -DBL_MAX, DBL_MAX, &ret);
-	if (ret != KORE_RESULT_OK)
+	switch (type) {
+	case KORE_JSON_TYPE_NUMBER:
+		number->data.number =
+		    kore_strtodouble(str, -DBL_MAX, DBL_MAX, &ret);
+		break;
+	case KORE_JSON_TYPE_INTEGER:
+		number->data.s64 = (int64_t)kore_strtonum64(str, 1, &ret);
+		break;
+	case KORE_JSON_TYPE_INTEGER_U64:
+		number->data.s64 = kore_strtonum64(str, 0, &ret);
+		break;
+	default:
 		goto cleanup;
+	}
 
-	number->type = KORE_JSON_TYPE_NUMBER;
+	number->type = type;
 
 cleanup:
 	if (ret == KORE_RESULT_ERROR && json->error == 0)
@@ -804,7 +875,11 @@ json_get_string(struct kore_json *json)
 			case 'r':
 				ch = '\r';
 				break;
+			case 't':
+				ch = '\t';
+				break;
 			case 'u':
+			default:
 				/* XXX - not supported. */
 				goto cleanup;
 			}
