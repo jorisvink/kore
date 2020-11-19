@@ -99,6 +99,13 @@ kore_json_parse(struct kore_json *json)
 		return (KORE_RESULT_ERROR);
 	}
 
+	/* Don't allow garbage at the end. */
+	json_consume_whitespace(json);
+	if (json->offset != json->length) {
+		json->error = KORE_JSON_ERR_INVALID_JSON;
+		return (KORE_RESULT_ERROR);
+	}
+
 	return (KORE_RESULT_OK);
 }
 
@@ -479,7 +486,7 @@ json_parse_object(struct kore_json *json, struct kore_json_item *object)
 	u_int8_t		ch;
 	char			*key;
 	struct kore_json_item	*item;
-	int			ret, type;
+	int			ret, type, hasnext;
 
 	if (json->depth++ >= KORE_JSON_DEPTH_MAX) {
 		json->error = KORE_JSON_ERR_DEPTH;
@@ -487,6 +494,7 @@ json_parse_object(struct kore_json *json, struct kore_json_item *object)
 	}
 
 	key = NULL;
+	hasnext = 0;
 	ret = KORE_RESULT_ERROR;
 
 	if (!json_next(json, &ch))
@@ -504,6 +512,10 @@ json_parse_object(struct kore_json *json, struct kore_json_item *object)
 
 		switch (ch) {
 		case '}':
+			if (hasnext) {
+				json->error = KORE_JSON_ERR_INVALID_JSON;
+				goto cleanup;
+			}
 			json->offset++;
 			ret = KORE_RESULT_OK;
 			goto cleanup;
@@ -546,8 +558,10 @@ json_parse_object(struct kore_json *json, struct kore_json_item *object)
 		if (!json_next(json, &ch))
 			goto cleanup;
 
-		if (ch == ',')
+		if (ch == ',') {
+			hasnext = 1;
 			continue;
+		}
 
 		if (ch == '}') {
 			ret = KORE_RESULT_OK;
@@ -572,7 +586,7 @@ json_parse_array(struct kore_json *json, struct kore_json_item *array)
 	u_int8_t		ch;
 	char			*key;
 	struct kore_json_item	*item;
-	int			ret, type;
+	int			ret, type, hasnext;
 
 	if (json->depth++ >= KORE_JSON_DEPTH_MAX) {
 		json->error = KORE_JSON_ERR_DEPTH;
@@ -580,6 +594,7 @@ json_parse_array(struct kore_json *json, struct kore_json_item *array)
 	}
 
 	key = NULL;
+	hasnext = 0;
 	ret = KORE_RESULT_ERROR;
 
 	if (!json_next(json, &ch))
@@ -596,6 +611,10 @@ json_parse_array(struct kore_json *json, struct kore_json_item *array)
 			goto cleanup;
 
 		if (ch == ']') {
+			if (hasnext) {
+				json->error = KORE_JSON_ERR_INVALID_JSON;
+				goto cleanup;
+			}
 			json->offset++;
 			ret = KORE_RESULT_OK;
 			goto cleanup;
@@ -617,8 +636,10 @@ json_parse_array(struct kore_json *json, struct kore_json_item *array)
 		if (!json_next(json, &ch))
 			goto cleanup;
 
-		if (ch == ',')
+		if (ch == ',') {
+			hasnext = 1;
 			continue;
+		}
 
 		if (ch == ']') {
 			ret = KORE_RESULT_OK;
