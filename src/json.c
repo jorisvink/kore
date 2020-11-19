@@ -827,6 +827,9 @@ json_get_string(struct kore_json *json)
 			case 'r':
 				ch = '\r';
 				break;
+			case 't':
+				ch = '\t';
+				break;
 			case 'u':
 			default:
 				/* XXX - not supported. */
