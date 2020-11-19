@@ -83,6 +83,8 @@ kore_json_parse(struct kore_json *json)
 	if (json->root)
 		return (KORE_RESULT_OK);
 
+	json_consume_whitespace(json);
+
 	if (!json_peek(json, &ch))
 		return (KORE_RESULT_ERROR);
 
