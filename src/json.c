@@ -83,7 +83,10 @@ kore_json_parse(struct kore_json *json)
 	if (json->root)
 		return (KORE_RESULT_OK);
 
-	json_consume_whitespace(json);
+	if (json_consume_whitespace(json) == -1) {
+		json->error = KORE_JSON_ERR_INVALID_JSON;
+		return (KORE_RESULT_ERROR);
+	}
 
 	if (!json_peek(json, &ch))
 		return (KORE_RESULT_ERROR);
@@ -102,7 +105,7 @@ kore_json_parse(struct kore_json *json)
 	}
 
 	/* Don't allow garbage at the end. */
-	json_consume_whitespace(json);
+	(void)json_consume_whitespace(json);
 	if (json->offset != json->length) {
 		json->error = KORE_JSON_ERR_INVALID_JSON;
 		return (KORE_RESULT_ERROR);
