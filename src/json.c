@@ -64,7 +64,7 @@ static const char *json_errtab[] = {
 };
 
 void
-kore_json_init(struct kore_json *json, const u_int8_t *data, size_t len)
+kore_json_init(struct kore_json *json, const void *data, size_t len)
 {
 	memset(json, 0, sizeof(*json));
 
