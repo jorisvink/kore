@@ -17,6 +17,7 @@
 #include <sys/types.h>
 
 #include <float.h>
+#include <inttypes.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -64,7 +65,7 @@ static const char *json_errtab[] = {
 };
 
 void
-kore_json_init(struct kore_json *json, const u_int8_t *data, size_t len)
+kore_json_init(struct kore_json *json, const void *data, size_t len)
 {
 	memset(json, 0, sizeof(*json));
 
@@ -83,7 +84,10 @@ kore_json_parse(struct kore_json *json)
 	if (json->root)
 		return (KORE_RESULT_OK);
 
-	json_consume_whitespace(json);
+	if (json_consume_whitespace(json) == -1) {
+		json->error = KORE_JSON_ERR_INVALID_JSON;
+		return (KORE_RESULT_ERROR);
+	}
 
 	if (!json_peek(json, &ch))
 		return (KORE_RESULT_ERROR);
@@ -102,7 +106,7 @@ kore_json_parse(struct kore_json *json)
 	}
 
 	/* Don't allow garbage at the end. */
-	json_consume_whitespace(json);
+	(void)json_consume_whitespace(json);
 	if (json->offset != json->length) {
 		json->error = KORE_JSON_ERR_INVALID_JSON;
 		return (KORE_RESULT_ERROR);

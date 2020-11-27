@@ -1037,7 +1037,7 @@ void	kore_buf_replace_string(struct kore_buf *,
 int	kore_json_parse(struct kore_json *);
 void	kore_json_cleanup(struct kore_json *);
 void	kore_json_item_free(struct kore_json_item *);
-void	kore_json_init(struct kore_json *, const u_int8_t *, size_t);
+void	kore_json_init(struct kore_json *, const void *, size_t);
 void	kore_json_item_tobuf(struct kore_json_item *, struct kore_buf *);
 
 const char		*kore_json_strerror(struct kore_json *);
