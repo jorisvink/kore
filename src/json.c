@@ -17,6 +17,7 @@
 #include <sys/types.h>
 
 #include <float.h>
+#include <inttypes.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdarg.h>
