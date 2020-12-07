@@ -475,11 +475,12 @@ kore_worker_entry(struct kore_worker *kw)
 			if (http_request_count > 0)
 				netwait = 100;
 #endif
-#if defined(KORE_USE_PYTHON)
-			if (kore_python_coro_pending())
-				netwait = 10;
-#endif
 		}
+
+#if defined(KORE_USE_PYTHON)
+		if (kore_python_coro_pending())
+			netwait = 0;
+#endif
 
 		kore_platform_event_wait(netwait);
 		now = kore_time_ms();
