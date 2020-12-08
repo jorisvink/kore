@@ -84,7 +84,7 @@ kore_log_init(void)
 {
 #if defined(KORE_SINGLE_BINARY)
 	extern const char	*__progname;
-	const char		*name = __progname;
+	const char		*name = kore_strdup(__progname);
 #else
 	const char		*name = "kore";
 #endif
