@@ -151,7 +151,7 @@ struct acme_auth {
 #define ACME_ORDER_STATE_FETCH_CERT		7
 #define ACME_ORDER_STATE_COMPLETE		8
 #define ACME_ORDER_TICK				1000
-#define ACME_ORDER_TIMEOUT			60000
+#define ACME_ORDER_TIMEOUT			120000
 
 #define ACME_ORDER_CSR_REQUESTED		0x1000
 
@@ -201,7 +201,6 @@ static char	*acme_nonce_fetch(void);
 static char	*acme_thumbprint_component(void);
 static char	*acme_base64url(const void *, size_t);
 static char	*acme_protected_component(const char *, const char *);
-static void	acme_tls_challenge_use_cert(SSL *, struct kore_domain *);
 static void	acme_keymgr_key_req(const char *, const void *, size_t, int);
 
 static void	acme_parse_directory(void);
@@ -367,13 +366,10 @@ int
 kore_acme_tls_alpn(SSL *ssl, const unsigned char **out, unsigned char *outlen,
     const unsigned char *in, unsigned int inlen, void *udata)
 {
-	struct kore_domain	*dom = udata;
+	struct connection	*c;
 
-	if (dom->acme == 0)
-		return (SSL_TLSEXT_ERR_NOACK);
-
-	if (dom->acme_challenge == 0)
-		return (SSL_TLSEXT_ERR_NOACK);
+	if ((c = SSL_get_ex_data(ssl, 0)) == NULL)
+		fatal("%s: no connection data present", __func__);
 
 	if (inlen != sizeof(acme_alpn_name))
 		return (SSL_TLSEXT_ERR_NOACK);
@@ -381,13 +377,20 @@ kore_acme_tls_alpn(SSL *ssl, const unsigned char **out, unsigned char *outlen,
 	if (memcmp(acme_alpn_name, in, sizeof(acme_alpn_name)))
 		return (SSL_TLSEXT_ERR_NOACK);
 
-	kore_log(LOG_NOTICE, "[%s] acme-tls/1 challenge requested",
-	    dom->domain);
-
 	*out = in + 1;
 	*outlen = inlen - 1;
 
-	acme_tls_challenge_use_cert(ssl, dom);
+	c->flags |= CONN_TLS_ALPN_ACME_SEEN;
+
+	/*
+	 * If SNI was already done, we can continue, otherwise we mark
+	 * that we saw the right ALPN negotiation on this connection
+	 * and wait for the SNI extension to be parsed.
+	 */
+	if (c->flags & CONN_TLS_SNI_SEEN) {
+		/* SNI was seen, we are on the right domain. */
+		kore_acme_tls_challenge_use_cert(ssl, udata);
+	}
 
 	return (SSL_TLSEXT_ERR_OK);
 }
@@ -413,12 +416,26 @@ kore_acme_get_paths(const char *domain, char **key, char **cert)
 	*key = kore_strdup(path);
 }
 
-static void
-acme_tls_challenge_use_cert(SSL *ssl, struct kore_domain *dom)
+void
+kore_acme_tls_challenge_use_cert(SSL *ssl, struct kore_domain *dom)
 {
 	struct connection	*c;
 	const unsigned char	*ptr;
 	X509			*x509;
+
+	if (dom->acme == 0) {
+		kore_log(LOG_NOTICE, "[%s] ACME not active", dom->domain);
+		return;
+	}
+
+	if (dom->acme_challenge == 0) {
+		kore_log(LOG_NOTICE,
+		    "[%s] ACME auth challenge not active", dom->domain);
+		return;
+	}
+
+	kore_log(LOG_NOTICE, "[%s] acme-tls/1 challenge requested",
+	    dom->domain);
 
 	if ((c = SSL_get_ex_data(ssl, 0)) == NULL)
 		fatal("%s: no connection data present", __func__);
@@ -433,7 +450,7 @@ acme_tls_challenge_use_cert(SSL *ssl, struct kore_domain *dom)
 	SSL_clear_chain_certs(ssl);
 	SSL_set_verify(ssl, SSL_VERIFY_NONE, NULL);
 
-	c->flags |= CONN_ACME_CHALLENGE;
+	c->proto = CONN_PROTO_ACME_ALPN;
 }
 
 static void

@@ -305,7 +305,7 @@ kore_connection_handle(struct connection *c)
 		}
 
 #if defined(KORE_USE_ACME)
-		if (c->flags & CONN_ACME_CHALLENGE) {
+		if (c->proto == CONN_PROTO_ACME_ALPN) {
 			kore_log(LOG_INFO, "disconnecting acme client");
 			kore_connection_disconnect(c);
 			return (KORE_RESULT_OK);

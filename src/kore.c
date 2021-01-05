@@ -385,6 +385,16 @@ kore_tls_sni_cb(SSL *ssl, int *ad, void *arg)
 			SSL_set_verify(ssl, SSL_VERIFY_NONE, NULL);
 		}
 
+#if defined(KORE_USE_ACME)
+		/*
+		 * If ALPN callback was called before SNI was parsed we
+		 * must make sure we swap to the correct certificate now.
+		 */
+		if (c->flags & CONN_TLS_ALPN_ACME_SEEN)
+			kore_acme_tls_challenge_use_cert(ssl, dom);
+
+		c->flags |= CONN_TLS_SNI_SEEN;
+#endif
 		return (SSL_TLSEXT_ERR_OK);
 	}
 
