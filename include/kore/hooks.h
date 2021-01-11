@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 Joris Vink <joris@coders.se>
+ * Copyright (c) 2021 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -14,12 +14,18 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include <kore/kore.h>
-#include <kore/hooks.h>
+#ifndef __H_HOOKS_H
+#define __H_HOOKS_H
 
-/* Let kore handle the default option parsing. */
-void
-kore_parent_configure(int argc, char **argv)
-{
-	kore_default_getopt(argc, argv);
-}
+#define KORE_CONFIG_HOOK	"kore_parent_configure"
+#define KORE_TEARDOWN_HOOK	"kore_parent_teardown"
+#define KORE_DAEMONIZED_HOOK	"kore_parent_daemonized"
+
+void	kore_seccomp_hook(void);
+void	kore_worker_teardown(void);
+void	kore_parent_teardown(void);
+void	kore_worker_configure(void);
+void	kore_parent_daemonized(void);
+void	kore_parent_configure(int, char **);
+
+#endif

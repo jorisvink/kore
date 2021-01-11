@@ -100,10 +100,6 @@ extern int daemon(int, int);
 #define KORE_PIDFILE_DEFAULT		"kore.pid"
 #define KORE_DEFAULT_CIPHER_LIST	"ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA256:DHE-DSS-AES256-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:HIGH:!aNULL:!eNULL:!EXPORT:!DES:!3DES:!MD5:!PSK:!kRSA:!kDSA"
 
-#define KORE_CONFIG_HOOK	"kore_parent_configure"
-#define KORE_TEARDOWN_HOOK	"kore_parent_teardown"
-#define KORE_DAEMONIZED_HOOK	"kore_parent_daemonized"
-
 #if defined(KORE_DEBUG)
 #define kore_debug(...)		\
 	if (kore_debug)		\
@@ -1051,13 +1047,6 @@ struct kore_json_item	*kore_json_create_item(struct kore_json_item *,
 
 void	kore_keymgr_run(void);
 void	kore_keymgr_cleanup(int);
-
-void	kore_seccomp_hook(void);
-void	kore_worker_teardown(void);
-void	kore_parent_teardown(void);
-void	kore_worker_configure(void);
-void	kore_parent_daemonized(void);
-void	kore_parent_configure(int, char **);
 
 #if defined(__cplusplus)
 }

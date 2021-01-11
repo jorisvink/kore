@@ -28,6 +28,7 @@
 #include <signal.h>
 
 #include "kore.h"
+#include "hooks.h"
 
 #if !defined(KORE_NO_HTTP)
 #include "http.h"
