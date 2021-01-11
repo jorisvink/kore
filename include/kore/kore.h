@@ -692,11 +692,12 @@ extern char	*config_file;
 #endif
 
 extern pid_t	kore_pid;
-extern int	foreground;
 extern int	kore_quiet;
 extern int	kore_debug;
 extern int	skip_chroot;
 extern int	skip_runas;
+extern int	kore_foreground;
+
 extern char	*kore_pidfile;
 extern char	*kore_root_path;
 extern char	*kore_runas_user;

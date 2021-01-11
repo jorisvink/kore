@@ -1858,11 +1858,11 @@ static int
 configure_deployment(char *value)
 {
 	if (!strcmp(value, "dev") || !strcmp(value, "development")) {
-		foreground = 1;
+		kore_foreground = 1;
 		skip_runas = 1;
 		skip_chroot = 1;
 	} else if (!strcmp(value, "production")) {
-		foreground = 0;
+		kore_foreground = 0;
 		skip_runas = 0;
 		skip_chroot = 0;
 	} else {

@@ -89,7 +89,7 @@ kore_log_init(void)
 	const char		*name = "kore";
 #endif
 
-	if (!foreground)
+	if (!kore_foreground)
 		openlog(name, LOG_NDELAY | LOG_PID, LOG_DAEMON);
 }
 
@@ -107,12 +107,12 @@ kore_log(int prio, const char *fmt, ...)
 	if (worker != NULL) {
 		name = kore_worker_name(worker->id);
 
-		if (foreground)
+		if (kore_foreground)
 			printf("%s: %s\n", name, buf);
 		else
 			syslog(prio, "%s: %s", name, buf);
 	} else {
-		if (foreground)
+		if (kore_foreground)
 			printf("[parent]: %s\n", buf);
 		else
 			syslog(prio, "[parent]: %s", buf);
@@ -693,7 +693,7 @@ fatal_log(const char *fmt, va_list args)
 
 	(void)vsnprintf(buf, sizeof(buf), fmt, args);
 
-	if (!foreground)
+	if (!kore_foreground)
 		kore_log(LOG_ERR, "%s", buf);
 
 	if (worker != NULL && worker->id == KORE_WORKER_KEYMGR)
