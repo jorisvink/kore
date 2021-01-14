@@ -804,8 +804,8 @@ utils_base64_decode(const char *in, u_int8_t **out, size_t *olen,
 		}
 
 		kore_buf_init(&buf, len + plen);
-		kore_buf_appendf(&buf, in, len);
-		kore_buf_appendf(&buf, pad, plen);
+		kore_buf_append(&buf, in, len);
+		kore_buf_append(&buf, pad, plen);
 
 		len = len + plen;
 		ptr = (const char *)buf.data;
