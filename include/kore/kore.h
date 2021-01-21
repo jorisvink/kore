@@ -68,6 +68,11 @@ extern int daemon(int, int);
 #if LIBRESSL_VERSION_NUMBER >= 0x3000000fL
 #define KORE_OPENSSL_NEWER_API		1
 #endif
+
+#if LIBRESSL_VERSION_NUMBER >= 0x3020200fL
+#define TLS1_3_VERSION			0x0304
+#endif
+
 #else
 #if OPENSSL_VERSION_NUMBER >= 0x10100000L
 #define KORE_OPENSSL_NEWER_API		1
