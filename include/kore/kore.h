@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2020 Joris Vink <joris@coders.se>
+ * Copyright (c) 2013-2021 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -68,6 +68,11 @@ extern int daemon(int, int);
 #if LIBRESSL_VERSION_NUMBER >= 0x3000000fL
 #define KORE_OPENSSL_NEWER_API		1
 #endif
+
+#if LIBRESSL_VERSION_NUMBER >= 0x3020200fL
+#define TLS1_3_VERSION			0x0304
+#endif
+
 #else
 #if OPENSSL_VERSION_NUMBER >= 0x10100000L
 #define KORE_OPENSSL_NEWER_API		1
@@ -99,10 +104,6 @@ extern int daemon(int, int);
 #define KORE_DOMAINNAME_LEN		255
 #define KORE_PIDFILE_DEFAULT		"kore.pid"
 #define KORE_DEFAULT_CIPHER_LIST	"ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA256:DHE-DSS-AES256-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:HIGH:!aNULL:!eNULL:!EXPORT:!DES:!3DES:!MD5:!PSK:!kRSA:!kDSA"
-
-#define KORE_CONFIG_HOOK	"kore_parent_configure"
-#define KORE_TEARDOWN_HOOK	"kore_parent_teardown"
-#define KORE_DAEMONIZED_HOOK	"kore_parent_daemonized"
 
 #if defined(KORE_DEBUG)
 #define kore_debug(...)		\
@@ -190,17 +191,19 @@ TAILQ_HEAD(netbuf_head, netbuf);
 #define CONN_PROTO_HTTP		1
 #define CONN_PROTO_WEBSOCKET	2
 #define CONN_PROTO_MSG		3
+#define CONN_PROTO_ACME_ALPN	200
 
 #define KORE_EVENT_READ		0x01
 #define KORE_EVENT_WRITE	0x02
 #define KORE_EVENT_ERROR	0x04
 
-#define CONN_IDLE_TIMER_ACT	0x01
-#define CONN_CLOSE_EMPTY	0x02
-#define CONN_WS_CLOSE_SENT	0x04
-#define CONN_IS_BUSY		0x08
-#define CONN_ACME_CHALLENGE	0x10
-#define CONN_LOG_TLS_FAILURE	0x20
+#define CONN_IDLE_TIMER_ACT	0x0001
+#define CONN_CLOSE_EMPTY	0x0002
+#define CONN_WS_CLOSE_SENT	0x0004
+#define CONN_IS_BUSY		0x0008
+#define CONN_LOG_TLS_FAILURE	0x0020
+#define CONN_TLS_ALPN_ACME_SEEN	0x0040
+#define CONN_TLS_SNI_SEEN	0x0080
 
 #define KORE_IDLE_TIMER_MAX	5000
 
@@ -690,11 +693,12 @@ extern char	*config_file;
 #endif
 
 extern pid_t	kore_pid;
-extern int	foreground;
 extern int	kore_quiet;
 extern int	kore_debug;
 extern int	skip_chroot;
 extern int	skip_runas;
+extern int	kore_foreground;
+
 extern char	*kore_pidfile;
 extern char	*kore_root_path;
 extern char	*kore_runas_user;
@@ -1048,13 +1052,6 @@ struct kore_json_item	*kore_json_create_item(struct kore_json_item *,
 
 void	kore_keymgr_run(void);
 void	kore_keymgr_cleanup(int);
-
-void	kore_seccomp_hook(void);
-void	kore_worker_teardown(void);
-void	kore_parent_teardown(void);
-void	kore_worker_configure(void);
-void	kore_parent_daemonized(void);
-void	kore_parent_configure(int, char **);
 
 #if defined(__cplusplus)
 }

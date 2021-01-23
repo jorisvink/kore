@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019-2020 Joris Vink <joris@coders.se>
+ * Copyright (c) 2019-2021 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -136,6 +136,7 @@ struct acme_sign_op {
 
 struct acme_auth {
 	char				*url;
+	struct acme_order		*order;
 	int				status;
 	struct acme_challenge		*challenge;
 	LIST_ENTRY(acme_auth)		list;
@@ -143,8 +144,14 @@ struct acme_auth {
 
 #define ACME_ORDER_STATE_RUNNING		1
 #define ACME_ORDER_STATE_ERROR			2
+#define ACME_ORDER_STATE_CANCELLED		3
+#define ACME_ORDER_STATE_UPDATE			4
+#define ACME_ORDER_STATE_UPDATE_AUTH		5
+#define ACME_ORDER_STATE_WAITING		6
+#define ACME_ORDER_STATE_FETCH_CERT		7
+#define ACME_ORDER_STATE_COMPLETE		8
 #define ACME_ORDER_TICK				1000
-#define ACME_ORDER_TIMEOUT			60000
+#define ACME_ORDER_TIMEOUT			120000
 
 #define ACME_ORDER_CSR_REQUESTED		0x1000
 
@@ -152,6 +159,7 @@ struct acme_order {
 	int				state;
 	int				status;
 	int				flags;
+	int				auths;
 	u_int64_t			start;
 	char				*id;
 	char				*final;
@@ -193,7 +201,6 @@ static char	*acme_nonce_fetch(void);
 static char	*acme_thumbprint_component(void);
 static char	*acme_base64url(const void *, size_t);
 static char	*acme_protected_component(const char *, const char *);
-static void	acme_tls_challenge_use_cert(SSL *, struct kore_domain *);
 static void	acme_keymgr_key_req(const char *, const void *, size_t, int);
 
 static void	acme_parse_directory(void);
@@ -217,8 +224,12 @@ static void	acme_account_reg_submit(struct acme_sign_op *,
 static void	acme_order_retry(const char *);
 static void	acme_order_process(void *, u_int64_t);
 static void	acme_order_update(struct acme_order *);
+static void	acme_order_update_submit(struct acme_sign_op *,
+		    struct kore_buf *);
 static void	acme_order_request_csr(struct acme_order *);
-static int	acme_order_fetch_certificate(struct acme_order *);
+static void	acme_order_fetch_certificate(struct acme_order *);
+static void	acme_order_fetch_certificate_submit(struct acme_sign_op *,
+		    struct kore_buf *);
 static void	acme_order_create(struct kore_msg *, const void *);
 static void	acme_order_remove(struct acme_order *, const char *);
 static void	acme_order_csr_response(struct kore_msg *, const void *);
@@ -229,8 +240,10 @@ static void	acme_order_auth_log_error(struct acme_order *);
 static void	acme_order_auth_deactivate(struct acme_order *);
 static int	acme_order_auth_process(struct acme_order *,
 		    struct acme_auth *);
-static int	acme_order_auth_update(struct acme_order *,
+static void	acme_order_auth_update(struct acme_order *,
 		    struct acme_auth *);
+static void	acme_order_auth_update_submit(struct acme_sign_op *,
+		    struct kore_buf *);
 
 static int	acme_challenge_tls_alpn_01(struct acme_order *,
 		    struct acme_challenge *);
@@ -353,13 +366,10 @@ int
 kore_acme_tls_alpn(SSL *ssl, const unsigned char **out, unsigned char *outlen,
     const unsigned char *in, unsigned int inlen, void *udata)
 {
-	struct kore_domain	*dom = udata;
+	struct connection	*c;
 
-	if (dom->acme == 0)
-		return (SSL_TLSEXT_ERR_NOACK);
-
-	if (dom->acme_challenge == 0)
-		return (SSL_TLSEXT_ERR_NOACK);
+	if ((c = SSL_get_ex_data(ssl, 0)) == NULL)
+		fatal("%s: no connection data present", __func__);
 
 	if (inlen != sizeof(acme_alpn_name))
 		return (SSL_TLSEXT_ERR_NOACK);
@@ -367,13 +377,20 @@ kore_acme_tls_alpn(SSL *ssl, const unsigned char **out, unsigned char *outlen,
 	if (memcmp(acme_alpn_name, in, sizeof(acme_alpn_name)))
 		return (SSL_TLSEXT_ERR_NOACK);
 
-	kore_log(LOG_NOTICE, "[%s] acme-tls/1 challenge requested",
-	    dom->domain);
-
 	*out = in + 1;
 	*outlen = inlen - 1;
 
-	acme_tls_challenge_use_cert(ssl, dom);
+	c->flags |= CONN_TLS_ALPN_ACME_SEEN;
+
+	/*
+	 * If SNI was already done, we can continue, otherwise we mark
+	 * that we saw the right ALPN negotiation on this connection
+	 * and wait for the SNI extension to be parsed.
+	 */
+	if (c->flags & CONN_TLS_SNI_SEEN) {
+		/* SNI was seen, we are on the right domain. */
+		kore_acme_tls_challenge_use_cert(ssl, udata);
+	}
 
 	return (SSL_TLSEXT_ERR_OK);
 }
@@ -399,12 +416,26 @@ kore_acme_get_paths(const char *domain, char **key, char **cert)
 	*key = kore_strdup(path);
 }
 
-static void
-acme_tls_challenge_use_cert(SSL *ssl, struct kore_domain *dom)
+void
+kore_acme_tls_challenge_use_cert(SSL *ssl, struct kore_domain *dom)
 {
 	struct connection	*c;
 	const unsigned char	*ptr;
 	X509			*x509;
+
+	if (dom->acme == 0) {
+		kore_log(LOG_NOTICE, "[%s] ACME not active", dom->domain);
+		return;
+	}
+
+	if (dom->acme_challenge == 0) {
+		kore_log(LOG_NOTICE,
+		    "[%s] ACME auth challenge not active", dom->domain);
+		return;
+	}
+
+	kore_log(LOG_NOTICE, "[%s] acme-tls/1 challenge requested",
+	    dom->domain);
 
 	if ((c = SSL_get_ex_data(ssl, 0)) == NULL)
 		fatal("%s: no connection data present", __func__);
@@ -419,7 +450,7 @@ acme_tls_challenge_use_cert(SSL *ssl, struct kore_domain *dom)
 	SSL_clear_chain_certs(ssl);
 	SSL_set_verify(ssl, SSL_VERIFY_NONE, NULL);
 
-	c->flags |= CONN_ACME_CHALLENGE;
+	c->proto = CONN_PROTO_ACME_ALPN;
 }
 
 static void
@@ -616,8 +647,8 @@ acme_order_create_submit(struct acme_sign_op *op, struct kore_buf *payload)
 	struct kore_json		json;
 	int				stval;
 	const u_int8_t			*body;
-	struct acme_order		*order;
 	struct acme_auth		*auth;
+	struct acme_order		*order;
 	const char			*header;
 	const char			*domain;
 	struct kore_json_item		*item, *array, *final, *status;
@@ -701,7 +732,7 @@ acme_order_create_submit(struct acme_sign_op *op, struct kore_buf *payload)
 	order->start = kore_time_ms();
 	order->id = kore_strdup(header);
 	order->domain = kore_strdup(domain);
-	order->state = ACME_ORDER_STATE_RUNNING;
+	order->state = ACME_ORDER_STATE_UPDATE;
 	order->final = kore_strdup(final->data.string);
 
 	kore_timer_add(acme_order_process, ACME_ORDER_TICK,
@@ -712,6 +743,7 @@ acme_order_create_submit(struct acme_sign_op *op, struct kore_buf *payload)
 			continue;
 
 		auth = kore_calloc(1, sizeof(*auth));
+		auth->order = order;
 		auth->url = kore_strdup(item->data.string);
 		LIST_INSERT_HEAD(&order->auth, auth, list);
 	}
@@ -730,14 +762,25 @@ cleanup:
 static void
 acme_order_update(struct acme_order *order)
 {
+	acme_sign_submit(NULL, order->id, order, acme_order_update_submit);
+}
+
+static void
+acme_order_update_submit(struct acme_sign_op *op, struct kore_buf *payload)
+{
 	struct acme_request		req;
 	size_t				len;
 	struct kore_json		json;
+	struct acme_order		*order;
 	const u_int8_t			*body;
 	int				stval, ret;
 	struct kore_json_item		*status, *cert;
 
-	acme_request_prepare(&req, HTTP_METHOD_GET, order->id, NULL, 0);
+	order = op->udata;
+	op->udata = NULL;
+
+	acme_request_prepare(&req, HTTP_METHOD_POST, order->id,
+	    payload->data, payload->offset);
 
 	if (!acme_request_run(&req)) {
 		acme_request_cleanup(&req);
@@ -798,6 +841,8 @@ acme_order_update(struct acme_order *order)
 cleanup:
 	if (ret == KORE_RESULT_ERROR)
 		order->state = ACME_ORDER_STATE_ERROR;
+	else
+		order->state = ACME_ORDER_STATE_UPDATE_AUTH;
 
 	kore_json_cleanup(&json);
 	acme_request_cleanup(&req);
@@ -821,20 +866,18 @@ acme_order_retry(const char *domain)
 	    KORE_ACME_ORDER_FAILED);
 }
 
+/*
+ * Process an order, step by step.
+ *
+ * This callback is called every second to check on an active order.
+ * It will first update the order if required, and updated any of its
+ * active awuthoritizations to get the latest data.
+ */
 static void
 acme_order_process(void *udata, u_int64_t now)
 {
 	struct acme_auth	*auth;
 	struct acme_order	*order = udata;
-
-	acme_order_update(order);
-
-	LIST_FOREACH(auth, &order->auth, list) {
-		if (!acme_order_auth_update(order, auth)) {
-			acme_order_remove(order, "cancelled");
-			return;
-		}
-	}
 
 	if ((now - order->start) >= ACME_ORDER_TIMEOUT) {
 		acme_order_auth_deactivate(order);
@@ -843,6 +886,32 @@ acme_order_process(void *udata, u_int64_t now)
 	}
 
 	switch (order->state) {
+	case ACME_ORDER_STATE_WAITING:
+		break;
+	case ACME_ORDER_STATE_UPDATE:
+		acme_order_update(order);
+		order->state = ACME_ORDER_STATE_WAITING;
+		break;
+	case ACME_ORDER_STATE_UPDATE_AUTH:
+		order->auths = 0;
+		LIST_FOREACH(auth, &order->auth, list) {
+			acme_order_auth_update(order, auth);
+			order->auths++;
+		}
+		order->state = ACME_ORDER_STATE_WAITING;
+		break;
+	case ACME_ORDER_STATE_CANCELLED:
+		acme_order_remove(order, "cancelled");
+		order = NULL;
+		break;
+	case ACME_ORDER_STATE_COMPLETE:
+		acme_order_remove(order, "completed");
+		order = NULL;
+		break;
+	case ACME_ORDER_STATE_FETCH_CERT:
+		acme_order_fetch_certificate(order);
+		order->state = ACME_ORDER_STATE_WAITING;
+		break;
 	case ACME_ORDER_STATE_RUNNING:
 		switch (order->status) {
 		case ACME_STATUS_PENDING:
@@ -862,13 +931,7 @@ acme_order_process(void *udata, u_int64_t now)
 		case ACME_STATUS_VALID:
 			kore_log(LOG_INFO, "[%s] certificate available",
 			    order->domain);
-			if (!acme_order_fetch_certificate(order)) {
-				acme_order_remove(order,
-				    "failed to fetch certificate");
-			} else {
-				acme_order_remove(order, "completed");
-			}
-			order = NULL;
+			order->state = ACME_ORDER_STATE_FETCH_CERT;
 			break;
 		case ACME_STATUS_INVALID:
 			kore_log(LOG_INFO, "[%s] order authorization failed",
@@ -894,6 +957,10 @@ acme_order_process(void *udata, u_int64_t now)
 	}
 
 	if (order != NULL) {
+		/* Do not go back to update if we are ready for the cert. */
+		if (order->state != ACME_ORDER_STATE_FETCH_CERT)
+			order->state = ACME_ORDER_STATE_UPDATE;
+
 		kore_timer_add(acme_order_process, ACME_ORDER_TICK,
 		    order, KORE_TIMER_ONESHOT);
 	}
@@ -933,21 +1000,32 @@ acme_order_remove(struct acme_order *order, const char *reason)
 	kore_free(order);
 }
 
-static int
+static void
 acme_order_fetch_certificate(struct acme_order *order)
+{
+	acme_sign_submit(NULL, order->certloc, order,
+	    acme_order_fetch_certificate_submit);
+}
+
+static void
+acme_order_fetch_certificate_submit(struct acme_sign_op *op,
+    struct kore_buf *payload)
 {
 	struct acme_request	req;
 	size_t			len;
 	const u_int8_t		*body;
+	struct acme_order	*order;
 
-	if (order->certloc == NULL)
-		return (KORE_RESULT_ERROR);
+	order = op->udata;
+	op->udata = NULL;
 
-	acme_request_prepare(&req, HTTP_METHOD_GET, order->certloc, NULL, 0);
+	acme_request_prepare(&req, HTTP_METHOD_POST, order->certloc,
+	    payload->data, payload->offset);
 
 	if (!acme_request_run(&req)) {
 		acme_request_cleanup(&req);
-		return (KORE_RESULT_ERROR);
+		order->state = ACME_ORDER_STATE_CANCELLED;
+		return;
 	}
 
 	if (req.curl.http.status != HTTP_STATUS_OK) {
@@ -955,7 +1033,8 @@ acme_order_fetch_certificate(struct acme_order *order)
 		    "[%s] request to '%s' failed: got %ld - expected 200",
 		    order->domain, order->certloc, req.curl.http.status);
 		acme_request_cleanup(&req);
-		return (KORE_RESULT_ERROR);
+		order->state = ACME_ORDER_STATE_CANCELLED;
+		return;
 	}
 
 	kore_curl_response_as_bytes(&req.curl, &body, &len);
@@ -964,8 +1043,7 @@ acme_order_fetch_certificate(struct acme_order *order)
 	acme_keymgr_key_req(order->domain, body, len, KORE_ACME_INSTALL_CERT);
 
 	acme_request_cleanup(&req);
-
-	return (KORE_RESULT_OK);
+	order->state = ACME_ORDER_STATE_COMPLETE;
 }
 
 static void
@@ -1097,33 +1175,46 @@ acme_order_auth_process(struct acme_order *order, struct acme_auth *auth)
 	return (ret);
 }
 
-static int
+static void
 acme_order_auth_update(struct acme_order *order, struct acme_auth *auth)
+{
+	acme_sign_submit(NULL, auth->url, auth, acme_order_auth_update_submit);
+}
+
+static void
+acme_order_auth_update_submit(struct acme_sign_op *op, struct kore_buf *payload)
 {
 	const char			*p;
 	struct acme_request		req;
 	size_t				len;
 	struct kore_json		json;
 	const u_int8_t			*body;
-	int				ret, stval;
+	struct acme_auth		*auth;
+	struct acme_order		*order;
 	struct acme_challenge		*challenge;
+	int				ret, stval;
 	struct kore_json_item		*status, *type, *url, *token;
 	struct kore_json_item		*array, *object, *err, *detail;
 
 	ret = KORE_RESULT_ERROR;
-	acme_request_prepare(&req, HTTP_METHOD_GET, auth->url, NULL, 0);
+	memset(&json, 0, sizeof(json));
 
-	if (!acme_request_run(&req)) {
-		acme_request_cleanup(&req);
-		return (ret);
-	}
+	auth = op->udata;
+	order = auth->order;
+
+	op->udata = NULL;
+
+	acme_request_prepare(&req, HTTP_METHOD_POST, auth->url,
+	    payload->data, payload->offset);
+
+	if (!acme_request_run(&req))
+		goto cleanup;
 
 	if (req.curl.http.status != HTTP_STATUS_OK) {
 		kore_log(LOG_NOTICE,
 		    "[%s:auth] request to '%s' failed: got %ld - expected 200",
 		    order->domain, auth->url, req.curl.http.status);
-		acme_request_cleanup(&req);
-		return (ret);
+		goto cleanup;
 	}
 
 	kore_curl_response_as_bytes(&req.curl, &body, &len);
@@ -1270,10 +1361,19 @@ acme_order_auth_update(struct acme_order *order, struct acme_auth *auth)
 	ret = KORE_RESULT_OK;
 
 cleanup:
+	if (ret != KORE_RESULT_OK) {
+		order->state = ACME_ORDER_STATE_CANCELLED;
+	} else {
+		order->auths--;
+		if (order->auths == 0) {
+			kore_log(LOG_NOTICE,
+			    "[%s:auth] authentications done", order->domain);
+			order->state = ACME_ORDER_STATE_RUNNING;
+		}
+	}
+
 	kore_json_cleanup(&json);
 	acme_request_cleanup(&req);
-
-	return (ret);
 }
 
 static int
@@ -1500,7 +1600,9 @@ acme_sign_submit(struct kore_json_item *json, const char *url, void *udata,
 	}
 
 	kore_buf_init(&buf, 1024);
-	kore_json_item_tobuf(json, &buf);
+
+	if (json != NULL)
+		kore_json_item_tobuf(json, &buf);
 
 	op = kore_calloc(1, sizeof(*op));
 	LIST_INSERT_HEAD(&signops, op, list);

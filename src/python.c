@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2016 Stanislav Yudin <stan@endlessinsomnia.com>
- * Copyright (c) 2017-2020 Joris Vink <joris@coders.se>
+ * Copyright (c) 2017-2021 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -2285,7 +2285,7 @@ python_kore_recvobj(struct kore_msg *msg, const void *data)
 
 	if ((bytes = PyBytes_FromStringAndSize(data, msg->length)) == NULL) {
 		Py_DECREF(onmsg);
-		kore_python_log_error("kore.recvobj");
+		kore_python_log_error("koreapp.onmsg");
 		return;
 	}
 
@@ -2294,11 +2294,12 @@ python_kore_recvobj(struct kore_msg *msg, const void *data)
 
 	if (obj == NULL) {
 		Py_DECREF(onmsg);
-		kore_python_log_error("kore.recvobj");
+		kore_python_log_error("koreapp.onmsg");
 		return;
 	}
 
 	ret = PyObject_CallFunctionObjArgs(onmsg, obj, NULL);
+	kore_python_log_error("koreapp.onmsg");
 
 	Py_DECREF(obj);
 	Py_DECREF(onmsg);

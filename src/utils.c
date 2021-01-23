@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2020 Joris Vink <joris@coders.se>
+ * Copyright (c) 2013-2021 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -84,12 +84,12 @@ kore_log_init(void)
 {
 #if defined(KORE_SINGLE_BINARY)
 	extern const char	*__progname;
-	const char		*name = __progname;
+	const char		*name = kore_strdup(__progname);
 #else
 	const char		*name = "kore";
 #endif
 
-	if (!foreground)
+	if (!kore_foreground)
 		openlog(name, LOG_NDELAY | LOG_PID, LOG_DAEMON);
 }
 
@@ -107,12 +107,12 @@ kore_log(int prio, const char *fmt, ...)
 	if (worker != NULL) {
 		name = kore_worker_name(worker->id);
 
-		if (foreground)
+		if (kore_foreground)
 			printf("%s: %s\n", name, buf);
 		else
 			syslog(prio, "%s: %s", name, buf);
 	} else {
-		if (foreground)
+		if (kore_foreground)
 			printf("[parent]: %s\n", buf);
 		else
 			syslog(prio, "[parent]: %s", buf);
@@ -693,7 +693,7 @@ fatal_log(const char *fmt, va_list args)
 
 	(void)vsnprintf(buf, sizeof(buf), fmt, args);
 
-	if (!foreground)
+	if (!kore_foreground)
 		kore_log(LOG_ERR, "%s", buf);
 
 	if (worker != NULL && worker->id == KORE_WORKER_KEYMGR)
@@ -804,8 +804,8 @@ utils_base64_decode(const char *in, u_int8_t **out, size_t *olen,
 		}
 
 		kore_buf_init(&buf, len + plen);
-		kore_buf_appendf(&buf, in, len);
-		kore_buf_appendf(&buf, pad, plen);
+		kore_buf_append(&buf, in, len);
+		kore_buf_append(&buf, pad, plen);
 
 		len = len + plen;
 		ptr = (const char *)buf.data;

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2021 Joris Vink <joris@coders.se>
+ * Copyright (c) 2021 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -13,3 +13,19 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
+
+#ifndef __H_HOOKS_H
+#define __H_HOOKS_H
+
+#define KORE_CONFIG_HOOK	"kore_parent_configure"
+#define KORE_TEARDOWN_HOOK	"kore_parent_teardown"
+#define KORE_DAEMONIZED_HOOK	"kore_parent_daemonized"
+
+void	kore_seccomp_hook(void);
+void	kore_worker_teardown(void);
+void	kore_parent_teardown(void);
+void	kore_worker_configure(void);
+void	kore_parent_daemonized(void);
+void	kore_parent_configure(int, char **);
+
+#endif

@@ -15,6 +15,7 @@
  */
 
 #include <kore/kore.h>
+#include <kore/hooks.h>
 
 /* Let kore handle the default option parsing. */
 void

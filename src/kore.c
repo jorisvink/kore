@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2020 Joris Vink <joris@coders.se>
+ * Copyright (c) 2013-2021 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -28,6 +28,7 @@
 #include <signal.h>
 
 #include "kore.h"
+#include "hooks.h"
 
 #if !defined(KORE_NO_HTTP)
 #include "http.h"
@@ -55,13 +56,13 @@ u_int8_t		nlisteners;
 int			kore_argc = 0;
 pid_t			kore_pid = -1;
 u_int16_t		cpu_count = 1;
-int			foreground = 0;
 int			kore_debug = 0;
 int			kore_quiet = 0;
 int			skip_runas = 0;
 int			skip_chroot = 0;
 u_int8_t		worker_count = 0;
 char			**kore_argv = NULL;
+int			kore_foreground = 0;
 char			*kore_progname = NULL;
 char			*kore_root_path = NULL;
 char			*kore_runas_user = NULL;
@@ -326,7 +327,7 @@ kore_default_getopt(int argc, char **argv)
 			break;
 #endif
 		case 'f':
-			foreground = 1;
+			kore_foreground = 1;
 			break;
 		case 'h':
 			usage();
@@ -385,6 +386,16 @@ kore_tls_sni_cb(SSL *ssl, int *ad, void *arg)
 			SSL_set_verify(ssl, SSL_VERIFY_NONE, NULL);
 		}
 
+#if defined(KORE_USE_ACME)
+		/*
+		 * If ALPN callback was called before SNI was parsed we
+		 * must make sure we swap to the correct certificate now.
+		 */
+		if (c->flags & CONN_TLS_ALPN_ACME_SEEN)
+			kore_acme_tls_challenge_use_cert(ssl, dom);
+
+		c->flags |= CONN_TLS_SNI_SEEN;
+#endif
 		return (SSL_TLSEXT_ERR_OK);
 	}
 
@@ -727,7 +738,7 @@ kore_signal_setup(void)
 	if (sigaction(SIGCHLD, &sa, NULL) == -1)
 		fatal("sigaction: %s", errno_s);
 
-	if (foreground) {
+	if (kore_foreground) {
 		if (sigaction(SIGINT, &sa, NULL) == -1)
 			fatal("sigaction: %s", errno_s);
 	} else {
@@ -827,7 +838,7 @@ kore_server_start(int argc, char *argv[])
 	struct kore_runtime_call	*rcall;
 #endif
 
-	if (foreground == 0) {
+	if (kore_foreground == 0) {
 		if (daemon(1, 0) == -1)
 			fatal("cannot daemon(): %s", errno_s);
 #if defined(KORE_SINGLE_BINARY)
