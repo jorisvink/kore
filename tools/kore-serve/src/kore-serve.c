@@ -21,6 +21,7 @@
 
 #include <sys/types.h>
 #include <kore/kore.h>
+#include <kore/hooks.h>
 
 #include <stdlib.h>
 
@@ -46,8 +47,8 @@ kore_parent_configure(int argc, char *argv[])
 	port = "8888";
 	ip = "127.0.0.1";
 
-	foreground = 1;
 	kore_quiet = 1;
+	kore_foreground = 1;
 
 	skip_runas = 1;
 	skip_chroot = 1;
