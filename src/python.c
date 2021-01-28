@@ -1037,7 +1037,13 @@ python_coro_run(struct python_coro *coro)
 		python_coro_trace("running", coro);
 
 		PyErr_Clear();
+#if PY_VERSION_HEX < 0x030a00a1
 		item = _PyGen_Send((PyGenObject *)coro->obj, NULL);
+#else
+		/* Depend on the result in item only. */
+		(void)PyIter_Send(coro->obj, NULL, &item);
+#endif
+
 		if (item == NULL) {
 			if (coro->gatherop == NULL && PyErr_Occurred() &&
 			    PyErr_ExceptionMatches(PyExc_StopIteration)) {
