@@ -4552,12 +4552,7 @@ pyhttp_body_read(struct pyhttp_request *pyreq, PyObject *args)
 		return (NULL);
 	}
 
-	if (ret > INT_MAX) {
-		PyErr_SetString(PyExc_RuntimeError, "ret > INT_MAX");
-		return (NULL);
-	}
-
-	result = Py_BuildValue("ny#", ret, buf, (int)ret);
+	result = Py_BuildValue("ny#", ret, buf, ret);
 	if (result == NULL)
 		return (PyErr_NoMemory());
 
@@ -4676,12 +4671,7 @@ pyhttp_file_read(struct pyhttp_file *pyfile, PyObject *args)
 		return (NULL);
 	}
 
-	if (ret > INT_MAX) {
-		PyErr_SetString(PyExc_RuntimeError, "ret > INT_MAX");
-		return (NULL);
-	}
-
-	result = Py_BuildValue("ny#", ret, buf, (int)ret);
+	result = Py_BuildValue("ny#", ret, buf, ret);
 	if (result == NULL)
 		return (PyErr_NoMemory());
 
@@ -4725,8 +4715,9 @@ pyhttp_websocket_handshake(struct pyhttp_request *pyreq, PyObject *args)
 static PyObject *
 pyconnection_websocket_send(struct pyconnection *pyc, PyObject *args)
 {
+	int		op;
+	ssize_t		len;
 	const char	*data;
-	int		op, len;
 
 	if (pyc->c->proto != CONN_PROTO_WEBSOCKET) {
 		PyErr_SetString(PyExc_TypeError, "not a websocket connection");
@@ -4761,10 +4752,11 @@ static PyObject *
 python_websocket_broadcast(PyObject *self, PyObject *args)
 {
 	struct connection	*c;
+	ssize_t			len;
 	struct pyconnection	*pyc;
 	const char		*data;
 	PyObject		*pysrc;
-	int			op, broadcast, len;
+	int			op, broadcast;
 
 	len = -1;
 
