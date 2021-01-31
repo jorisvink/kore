@@ -31,7 +31,7 @@ FEATURES_INC=
 CFLAGS+=-Wall -Werror -Wstrict-prototypes -Wmissing-prototypes
 CFLAGS+=-Wmissing-declarations -Wshadow -Wpointer-arith -Wcast-qual
 CFLAGS+=-Wsign-compare -Iinclude/kore -I$(OBJDIR) -std=c99 -pedantic
-CFLAGS+=-Wtype-limits
+CFLAGS+=-Wtype-limits -fno-common
 CFLAGS+=-DPREFIX='"$(PREFIX)"' -fstack-protector-all
 
 ifneq ("$(OPENSSL_PATH)", "")
