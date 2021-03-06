@@ -24,6 +24,12 @@
 #include <sys/cpuset.h>
 #endif
 
+#if defined(__MACH__)
+#include <mach/mach_types.h>
+#include <mach/thread_act.h>
+#include <mach/thread_policy.h>
+#endif
+
 #include <errno.h>
 #include <string.h>
 
@@ -72,6 +78,13 @@ kore_platform_worker_setcpu(struct kore_worker *kw)
 	if (cpuset_setaffinity(CPU_LEVEL_WHICH, CPU_WHICH_PID,
 	    -1, sizeof(cpuset), &cpuset) == -1) {
 		fatal("failed: %s", errno_s);
+	}
+#elif defined(__MACH__)
+	thread_affinity_policy_data_t cpuset = {kw->cpu};
+
+	if (thread_policy_set(pthread_mach_thread_np(pthread_self()), THREAD_AFFINITY_POLICY,
+            (thread_policy_t)&cpuset, THREAD_AFFINITY_POLICY_COUNT) != KERN_SUCCESS) {
+		fatal("kore_platform_worker_setcpu(): thread_policy_set: %s", errno_s);
 	}
 #endif /* __FreeBSD_version */
 }
