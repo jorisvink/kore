@@ -160,7 +160,7 @@ $(PLATFORM): $(OBJDIR) force
 $(PYTHON_CURLOPT): $(OBJDIR) force
 	@cp $(PYTHON_CURLOPT) $(OBJDIR)
 
-$(VERSION): force
+$(VERSION): $(OBJDIR) force
 	@if [ -d .git ]; then \
 		GIT_REVISION=`git rev-parse --short=8 HEAD`; \
 		GIT_BRANCH=`git rev-parse --abbrev-ref HEAD`; \
