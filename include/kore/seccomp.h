@@ -145,7 +145,7 @@
  *	KORE_SYSCALL_DENY_ERRNO(socket, EACCESS),
  *	KORE_SYSCALL_DENY_ERRNO(ioctl, EACCESS),
  *	KORE_SYSCALL_ALLOW(poll),
- * );
+ * )
  */
 #define KORE_SECCOMP_FILTER(name, ...)				\
 	struct sock_filter _scfilt[] = {			\
