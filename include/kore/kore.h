@@ -570,7 +570,6 @@ struct kore_buf {
 struct kore_json {
 	const u_int8_t			*data;
 	int				depth;
-	int				error;
 	size_t				length;
 	size_t				offset;
 
@@ -588,7 +587,7 @@ struct kore_json_item {
 		char				*string;
 		double				number;
 		int				literal;
-		int64_t				s64;
+		int64_t				integer;
 		u_int64_t			u64;
 	} data;
 
@@ -1038,13 +1037,14 @@ void	kore_buf_appendv(struct kore_buf *, const char *, va_list);
 void	kore_buf_replace_string(struct kore_buf *,
 	    const char *, const void *, size_t);
 
+int	kore_json_errno(void);
 int	kore_json_parse(struct kore_json *);
 void	kore_json_cleanup(struct kore_json *);
 void	kore_json_item_free(struct kore_json_item *);
 void	kore_json_init(struct kore_json *, const void *, size_t);
 void	kore_json_item_tobuf(struct kore_json_item *, struct kore_buf *);
 
-const char		*kore_json_strerror(struct kore_json *);
+const char		*kore_json_strerror(void);
 struct kore_json_item	*kore_json_find(struct kore_json_item *,
 			    const char *, u_int32_t);
 struct kore_json_item	*kore_json_create_item(struct kore_json_item *,
