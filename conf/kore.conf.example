@@ -12,7 +12,7 @@
 # Server configuration.
 server tls {
 	bind		127.0.0.1 443
-	#bind_unix	/var/run/kore.sock
+	#unix		/var/run/kore.sock
 }
 
 #server notls {
