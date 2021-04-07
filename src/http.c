@@ -2138,7 +2138,7 @@ http_response_normal(struct http_request *req, struct connection *c,
 		}
 	}
 
-	if (http_hsts_enable) {
+	if (c->ssl && http_hsts_enable) {
 		kore_buf_appendf(header_buf, "strict-transport-security: ");
 		kore_buf_appendf(header_buf,
 		    "max-age=%" PRIu64 "; includeSubDomains\r\n",
