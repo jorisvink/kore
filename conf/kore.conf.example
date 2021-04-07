@@ -299,24 +299,24 @@ domain localhost {
 	accesslog	/var/log/kore_access.log
 
 	# Page handlers with no authentication required.
-	static		/css/style.css		serve_style_css
-	static		/			serve_index
-	static		/intro.jpg		serve_intro
-	static		/b64test		serve_b64test
-	static		/upload			serve_file_upload
-	static		/lock-test		serve_lock_test
-	static		/validator		serve_validator
-	static		/params-test		serve_params_test
-	static		/private		serve_private
+	route		/css/style.css		serve_style_css
+	route		/			serve_index
+	route		/intro.jpg		serve_intro
+	route		/b64test		serve_b64test
+	route		/upload			serve_file_upload
+	route		/lock-test		serve_lock_test
+	route		/validator		serve_validator
+	route		/params-test		serve_params_test
+	route		/private		serve_private
 
 	# Restrict some URIs to certain methods
 	restrict /private post
 	restrict /validator post get head
 
 	# Page handlers with authentication.
-	static		/private/test	serve_private_test	auth_example
+	route		/private/test	serve_private_test	auth_example
 
-	# Allow access to files from the directory static_files via
+	# Allow access to files from the directory route_files via
 	# the /files/ URI.
 	#
 	# Note the directory given must be relative to the root configuration
@@ -370,7 +370,7 @@ domain localhost {
 #	client_verify		/other/ca.crt
 #	client_verify_depth	1
 
-#	static		/css/style.css		serve_style_css
-#	static		/			serve_index
-#	dynamic		^/[a-z0-9_]*$		serve_profile
+#	route		/css/style.css		serve_style_css
+#	route		/			serve_index
+#	route		^/[a-z0-9_]*$		serve_profile
 #}
