@@ -497,6 +497,15 @@ kore_server_bind_unix(struct kore_server *srv, const char *path,
 	if (!kore_listener_init(l, AF_UNIX, ccb))
 		return (KORE_RESULT_ERROR);
 
+	if (sun.sun_path[0] != '\0') {
+		if (unlink(sun.sun_path) == -1 && errno != ENOENT) {
+			kore_log(LOG_ERR, "unlink: %s: %s",
+			    sun.sun_path, errno_s);
+			kore_listener_free(l);
+			return (KORE_RESULT_ERROR);
+		}
+	}
+
 	if (bind(l->fd, (struct sockaddr *)&sun, socklen) == -1) {
 		kore_log(LOG_ERR, "bind: %s", errno_s);
 		kore_listener_free(l);
@@ -657,10 +666,29 @@ kore_server_free(struct kore_server *srv)
 void
 kore_listener_free(struct listener *l)
 {
+	int	rm;
+
 	LIST_REMOVE(l, list);
 
 	if (l->fd != -1)
 		close(l->fd);
+
+	rm = 0;
+
+#if defined(__linux__)
+	if (worker == NULL && l->family == AF_UNIX && l->host[0] != '@')
+		rm++;
+#else
+	if (worker == NULL && l->family == AF_UNIX)
+		rm++;
+#endif
+	if (rm) {
+		if (unlink(l->host) == -1) {
+			kore_log(LOG_NOTICE,
+			    "failed to remove unix socket %s (%s)", l->host,
+			    errno_s);
+		}
+	}
 
 	kore_free(l->host);
 	kore_free(l->port);
