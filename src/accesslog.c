@@ -66,7 +66,7 @@ kore_accesslog(struct http_request *req)
 	size_t			avail;
 	time_t			curtime;
 	int			len, attempts;
-	const char		*ptr, *method, *cn, *referer;
+	const char		*ptr, *method, *http_version, *cn, *referer;
 	char			addr[INET6_ADDRSTRLEN], *cn_value;
 
 	switch (req->method) {
@@ -92,6 +92,12 @@ kore_accesslog(struct http_request *req)
 		method = "UNKNOWN";
 		break;
 	}
+
+	if (req->flags & HTTP_VERSION_1_0)
+		http_version = "HTTP/1.0";
+
+	if (req->flags & HTTP_VERSION_1_1)
+		http_version = "HTTP/1.1";
 
 	if (req->referer != NULL)
 		referer = req->referer;
@@ -168,9 +174,9 @@ kore_accesslog(struct http_request *req)
 		worker->lb.offset += sizeof(*hdr);
 
 		len = snprintf(worker->lb.buf + worker->lb.offset, avail,
-		    "%s - %s [%s] \"%s %s HTTP/1.1\" %d %zu \"%s\" \"%s\"\n",
-		    addr, cn, tbuf, method, req->path, req->status,
-		    req->content_length, referer, req->agent);
+		    "%s - %s [%s] \"%s %s %s\" %d %zu \"%s\" \"%s\"\n",
+		    addr, cn, tbuf, method, req->path, http_version,
+		    req->status, req->content_length, referer, req->agent);
 		if (len == -1)
 			fatal("failed to create log entry");
 
