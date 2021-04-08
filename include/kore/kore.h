@@ -1043,6 +1043,7 @@ void	kore_json_cleanup(struct kore_json *);
 void	kore_json_item_free(struct kore_json_item *);
 void	kore_json_init(struct kore_json *, const void *, size_t);
 void	kore_json_item_tobuf(struct kore_json_item *, struct kore_buf *);
+void	kore_json_item_attach(struct kore_json_item *, struct kore_json_item *);
 
 const char		*kore_json_strerror(void);
 struct kore_json_item	*kore_json_find(struct kore_json_item *,

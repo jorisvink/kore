@@ -292,6 +292,24 @@ kore_json_item_tobuf(struct kore_json_item *item, struct kore_buf *buf)
 	}
 }
 
+void
+kore_json_item_attach(struct kore_json_item *parent,
+    struct kore_json_item *item)
+{
+	if (item->parent != NULL)
+		fatal("%s: item already has parent", __func__);
+
+	item->parent = parent;
+
+	if (parent->type != KORE_JSON_TYPE_OBJECT &&
+	    parent->type != KORE_JSON_TYPE_ARRAY) {
+		fatal("%s: invalid parent type (%d)",
+		    __func__, parent->type);
+	}
+
+	TAILQ_INSERT_TAIL(&parent->data.items, item, list);
+}
+
 static struct kore_json_item *
 json_find_item(struct kore_json_item *object, char **tokens,
     u_int32_t type, int pos)
