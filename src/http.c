@@ -271,7 +271,7 @@ http_check_timeout(struct connection *c, u_int64_t now)
 		d = 0;
 
 	if (d >= c->http_timeout) {
-		http_error_response(c, 408);
+		http_error_response(c, HTTP_STATUS_REQUEST_TIMEOUT);
 		kore_connection_disconnect(c);
 		return (KORE_RESULT_ERROR);
 	}
@@ -746,13 +746,13 @@ http_header_recv(struct netbuf *nb)
 
 	h = kore_split_string(hbuf, "\r\n", headers, HTTP_REQ_HEADER_MAX);
 	if (h < 2) {
-		http_error_response(c, 400);
+		http_error_response(c, HTTP_STATUS_BAD_REQUEST);
 		return (KORE_RESULT_OK);
 	}
 
 	v = kore_split_string(headers[0], " ", request, 4);
 	if (v != 3) {
-		http_error_response(c, 400);
+		http_error_response(c, HTTP_STATUS_BAD_REQUEST);
 		return (KORE_RESULT_OK);
 	}
 
@@ -763,12 +763,12 @@ http_header_recv(struct netbuf *nb)
 			continue;
 
 		if ((host = http_validate_header(headers[i])) == NULL) {
-			http_error_response(c, 400);
+			http_error_response(c, HTTP_STATUS_BAD_REQUEST);
 			return (KORE_RESULT_OK);
 		}
 
 		if (*host == '\0') {
-			http_error_response(c, 400);
+			http_error_response(c, HTTP_STATUS_BAD_REQUEST);
 			return (KORE_RESULT_OK);
 		}
 
@@ -777,7 +777,7 @@ http_header_recv(struct netbuf *nb)
 	}
 
 	if (host == NULL) {
-		http_error_response(c, 400);
+		http_error_response(c, HTTP_STATUS_BAD_REQUEST);
 		return (KORE_RESULT_OK);
 	}
 
@@ -796,13 +796,13 @@ http_header_recv(struct netbuf *nb)
 
 		if ((value = http_validate_header(headers[i])) == NULL) {
 			req->flags |= HTTP_REQUEST_DELETE;
-			http_error_response(c, 400);
+			http_error_response(c, HTTP_STATUS_BAD_REQUEST);
 			return (KORE_RESULT_OK);
 		}
 
 		if (*value == '\0') {
 			req->flags |= HTTP_REQUEST_DELETE;
-			http_error_response(c, 400);
+			http_error_response(c, HTTP_STATUS_BAD_REQUEST);
 			return (KORE_RESULT_OK);
 		}
 
@@ -823,14 +823,16 @@ http_header_recv(struct netbuf *nb)
 	if (req->flags & HTTP_REQUEST_EXPECT_BODY) {
 		if (http_body_max == 0) {
 			req->flags |= HTTP_REQUEST_DELETE;
-			http_error_response(req->owner, 405);
+			http_error_response(req->owner,
+			    HTTP_STATUS_METHOD_NOT_ALLOWED);
 			return (KORE_RESULT_OK);
 		}
 
 		if (!http_request_header(req, "content-length", &clp)) {
 			kore_debug("expected body but no content-length");
 			req->flags |= HTTP_REQUEST_DELETE;
-			http_error_response(req->owner, 411);
+			http_error_response(req->owner,
+			    HTTP_STATUS_LENGTH_REQUIRED);
 			return (KORE_RESULT_OK);
 		}
 
@@ -838,7 +840,8 @@ http_header_recv(struct netbuf *nb)
 		if (v == KORE_RESULT_ERROR) {
 			kore_debug("content-length invalid: %s", clp);
 			req->flags |= HTTP_REQUEST_DELETE;
-			http_error_response(req->owner, 411);
+			http_error_response(req->owner,
+			    HTTP_STATUS_LENGTH_REQUIRED);
 			return (KORE_RESULT_OK);
 		}
 
@@ -852,7 +855,8 @@ http_header_recv(struct netbuf *nb)
 			kore_log(LOG_NOTICE, "body too large (%zu > %zu)",
 			    req->content_length, http_body_max);
 			req->flags |= HTTP_REQUEST_DELETE;
-			http_error_response(req->owner, 413);
+			http_error_response(req->owner,
+			    HTTP_STATUS_REQUEST_ENTITY_TOO_LARGE);
 			return (KORE_RESULT_OK);
 		}
 
@@ -865,7 +869,8 @@ http_header_recv(struct netbuf *nb)
 			    "%s/http_body.XXXXXX", http_body_disk_path);
 			if (l == -1 || (size_t)l >= HTTP_BODY_PATH_MAX) {
 				req->flags |= HTTP_REQUEST_DELETE;
-				http_error_response(req->owner, 500);
+				http_error_response(req->owner,
+				    HTTP_STATUS_INTERNAL_ERROR);
 				return (KORE_RESULT_ERROR);
 			}
 
@@ -873,7 +878,8 @@ http_header_recv(struct netbuf *nb)
 			req->http_body_fd = mkstemp(req->http_body_path);
 			if (req->http_body_fd == -1) {
 				req->flags |= HTTP_REQUEST_DELETE;
-				http_error_response(req->owner, 500);
+				http_error_response(req->owner,
+				    HTTP_STATUS_INTERNAL_ERROR);
 				return (KORE_RESULT_OK);
 			}
 
@@ -881,7 +887,8 @@ http_header_recv(struct netbuf *nb)
 			    end_headers, (nb->s_off - len));
 			if (ret == -1 || (size_t)ret != (nb->s_off - len)) {
 				req->flags |= HTTP_REQUEST_DELETE;
-				http_error_response(req->owner, 500);
+				http_error_response(req->owner,
+				    HTTP_STATUS_INTERNAL_ERROR);
 				return (KORE_RESULT_OK);
 			}
 		} else {
@@ -912,7 +919,8 @@ http_header_recv(struct netbuf *nb)
 			SHA256_Final(req->http_body_digest, &req->hashctx);
 			if (!http_body_rewind(req)) {
 				req->flags |= HTTP_REQUEST_DELETE;
-				http_error_response(req->owner, 500);
+				http_error_response(req->owner,
+				    HTTP_STATUS_INTERNAL_ERROR);
 				return (KORE_RESULT_OK);
 			}
 		}
@@ -1590,7 +1598,7 @@ http_request_new(struct connection *c, const char *host,
 	size_t				hostlen, pathlen, qsoff;
 
 	if (http_request_count >= http_request_limit) {
-		http_error_response(c, 503);
+		http_error_response(c, HTTP_STATUS_SERVICE_UNAVAILABLE);
 		return (NULL);
 	}
 
@@ -1598,18 +1606,18 @@ http_request_new(struct connection *c, const char *host,
 	    method, path, version);
 
 	if ((hostlen = strlen(host)) >= KORE_DOMAINNAME_LEN - 1) {
-		http_error_response(c, 400);
+		http_error_response(c, HTTP_STATUS_BAD_REQUEST);
 		return (NULL);
 	}
 
 	if ((pathlen = strlen(path)) >= HTTP_URI_LEN - 1) {
-		http_error_response(c, 414);
+		http_error_response(c, HTTP_STATUS_REQUEST_URI_TOO_LARGE);
 		return (NULL);
 	}
 
 	if (strcasecmp(version, "http/1.1")) {
 		if (strcasecmp(version, "http/1.0")) {
-			http_error_response(c, 505);
+			http_error_response(c, HTTP_STATUS_BAD_VERSION);
 			return (NULL);
 		}
 
@@ -1630,7 +1638,7 @@ http_request_new(struct connection *c, const char *host,
 	case AF_INET6:
 		if (*host == '[') {
 			if ((hp = strrchr(host, ']')) == NULL) {
-				http_error_response(c, 400);
+				http_error_response(c, HTTP_STATUS_BAD_REQUEST);
 				return (NULL);
 			}
 			hp++;
@@ -1688,7 +1696,7 @@ http_request_new(struct connection *c, const char *host,
 		m = HTTP_METHOD_PATCH;
 		flags |= HTTP_REQUEST_EXPECT_BODY;
 	} else {
-		http_error_response(c, 400);
+		http_error_response(c, HTTP_STATUS_BAD_REQUEST);
 		return (NULL);
 	}
 
@@ -2024,14 +2032,16 @@ http_body_recv(struct netbuf *nb)
 		ret = write(req->http_body_fd, nb->buf, nb->s_off);
 		if (ret == -1 || (size_t)ret != nb->s_off) {
 			req->flags |= HTTP_REQUEST_DELETE;
-			http_error_response(req->owner, 500);
+			http_error_response(req->owner,
+			    HTTP_STATUS_INTERNAL_ERROR);
 			return (KORE_RESULT_ERROR);
 		}
 	} else if (req->http_body != NULL) {
 		kore_buf_append(req->http_body, nb->buf, nb->s_off);
 	} else {
 		req->flags |= HTTP_REQUEST_DELETE;
-		http_error_response(req->owner, 500);
+		http_error_response(req->owner,
+		    HTTP_STATUS_INTERNAL_ERROR);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -2045,7 +2055,8 @@ http_body_recv(struct netbuf *nb)
 		req->content_length = req->http_body_length;
 		if (!http_body_rewind(req)) {
 			req->flags |= HTTP_REQUEST_DELETE;
-			http_error_response(req->owner, 500);
+			http_error_response(req->owner,
+			    HTTP_STATUS_INTERNAL_ERROR);
 			return (KORE_RESULT_ERROR);
 		}
 		SHA256_Final(req->http_body_digest, &req->hashctx);
