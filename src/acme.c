@@ -483,7 +483,7 @@ acme_parse_directory(void)
 	if (!kore_json_parse(&json)) {
 		kore_log(LOG_NOTICE,
 		    "failed to parse directory payload from ACME server (%s)",
-		    kore_json_strerror(&json));
+		    kore_json_strerror());
 		goto cleanup;
 	}
 
@@ -688,7 +688,7 @@ acme_order_create_submit(struct acme_sign_op *op, struct kore_buf *payload)
 	if (!kore_json_parse(&json)) {
 		kore_log(LOG_NOTICE,
 		    "[%s] failed to parse order payload from ACME server (%s)",
-		    domain, kore_json_strerror(&json));
+		    domain, kore_json_strerror());
 		goto cleanup;
 	}
 
@@ -806,7 +806,7 @@ acme_order_update_submit(struct acme_sign_op *op, struct kore_buf *payload)
 	if (!kore_json_parse(&json)) {
 		kore_log(LOG_NOTICE,
 		    "[%s] failed to parse order payload from ACME server (%s)",
-		    order->domain, kore_json_strerror(&json));
+		    order->domain, kore_json_strerror());
 		goto cleanup;
 	}
 
@@ -1224,7 +1224,7 @@ acme_order_auth_update_submit(struct acme_sign_op *op, struct kore_buf *payload)
 	if (!kore_json_parse(&json)) {
 		kore_log(LOG_NOTICE,
 		    "[%s:auth] failed to parse payload from ACME server (%s)",
-		    order->domain, kore_json_strerror(&json));
+		    order->domain, kore_json_strerror());
 		goto cleanup;
 	}
 
