@@ -209,7 +209,6 @@ static void		file_create_src(void);
 static void		file_create_config(void);
 static void		file_create_gitignore(void);
 static void		file_create_python_src(void);
-static void		file_create_python_config(void);
 
 static void		cli_generate_certs(void);
 static void		cli_file_create(const char *, const char *, size_t);
@@ -253,7 +252,6 @@ static const char *python_gen_dirs[] = {
 
 static struct filegen python_gen_files[] = {
 	{ file_create_python_src },
-	{ file_create_python_config },
 	{ file_create_gitignore },
 	{ NULL }
 };
@@ -336,41 +334,33 @@ static const char *build_data =
 	"#	included if you build with the \"prod\" flavor.\n"
 	"#}\n";
 
-static const char *python_config_data =
-	"# %s configuration\n"
-	"\n"
-	"server tls {\n"
-	"\tbind 127.0.0.1 8888\n"
-	"}\n"
-	"tls_dhparam\tdh2048.pem\n"
-	"\n"
-	"domain * {\n"
-	"\tattach\t\ttls\n"
-	"\n"
-	"\tcertfile\tcert/server.pem\n"
-	"\tcertkey\t\tcert/key.pem\n"
-	"\n"
-	"\troute\t/\tkoreapp.index\n"
-	"}\n";
-
 static const char *python_init_data =
 	"from .app import koreapp\n";
 
 static const char *python_app_data =
 	"import kore\n"
 	"\n"
-	"class App:\n"
+	"class KoreApp:\n"
 	"    def __init__(self):\n"
 	"        pass\n"
 	"\n"
 	"    def configure(self, args):\n"
-	"        kore.config.file = \"kore.conf\"\n"
+	"        kore.config.tls_dhparam = \"dh2048.pem\"\n"
 	"        kore.config.deployment = \"development\"\n"
+	"        kore.server(\"default\", ip=\"127.0.0.1\", port=\"8888\")\n"
+	"\n"
+	"        d = kore.domain(\"*\",\n"
+	"            attach=\"default\",\n"
+	"            key=\"cert/key.pem\",\n"
+	"            cert=\"cert/server.pem\",\n"
+	"        )\n"
+	"\n"
+	"        d.route(\"/\", self.index, methods=[\"get\"])\n"
 	"\n"
 	"    async def index(self, req):\n"
 	"        req.response(200, b'')\n"
 	"\n"
-	"koreapp = App()";
+	"koreapp = KoreApp()";
 
 static const char *dh2048_data =
 	"-----BEGIN DH PARAMETERS-----\n"
@@ -873,19 +863,6 @@ file_create_python_src(void)
 	(void)cli_vasprintf(&name, "%s/app.py", appl);
 	cli_file_create(name, python_app_data, strlen(python_app_data));
 	free(name);
-}
-
-static void
-file_create_python_config(void)
-{
-	int		l;
-	char		*name, *data;
-
-	(void)cli_vasprintf(&name, "%s/kore.conf", appl);
-	l = cli_vasprintf(&data, python_config_data, appl);
-	cli_file_create(name, data, l);
-	free(name);
-	free(data);
 }
 
 static void
@@ -1616,10 +1593,8 @@ cli_run_kore_python(void)
 		fatal("could not get cwd: %s", errno_s);
 
 	args[0] = cmd;
-	args[1] = "-frnc";
-	args[2] = "kore.conf";
-	args[3] = pwd;
-	args[4] = NULL;
+	args[1] = pwd;
+	args[2] = NULL;
 
 	execvp(args[0], args);
 	fatal("failed to start '%s': %s", args[0], errno_s);
