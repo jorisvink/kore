@@ -35,7 +35,7 @@ License
 
 Documentation
 --------------
-[Read the documentation](https://docs.kore.io/4.0.0/)
+[Read the documentation](https://docs.kore.io/4.1.0/)
 
 Performance
 -----------
@@ -55,8 +55,7 @@ Building Kore
 Clone this repository or get the latest release at [https://kore.io/releases/4.1.0](https://kore.io/releases/4.1.0).
 
 Requirements
-* openssl (1.0.2, 1.1.0 or 1.1.1)
-  (note: libressl 3.0.0+ works as a replacement)
+* openssl 1.1.1 or libressl 3.x
 
 Requirement for asynchronous curl (optional)
 * libcurl (7.64.0 or higher)

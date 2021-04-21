@@ -198,6 +198,7 @@ install:
 	install -m 555 $(KORE) $(DESTDIR)$(INSTALL_DIR)/$(KORE)
 	install -m 644 kore.features $(DESTDIR)$(SHARE_DIR)/features
 	install -m 644 include/kore/*.h $(DESTDIR)$(INCLUDE_DIR)
+	install -m 644 misc/ffdhe4096.pem $(DESTDIR)$(SHARE_DIR)/ffdhe4096.pem
 	$(MAKE) -C kodev install
 	$(MAKE) install-sources
 

@@ -287,7 +287,7 @@ static const char *config_data =
 	"\n"
 	"load\t\t./%s.so\n"
 	"\n"
-	"tls_dhparam\tdh2048.pem\n"
+	"tls_dhparam\tdh4096.pem\n"
 	"\n"
 	"domain * {\n"
 	"\tattach\t\ttls\n"
@@ -342,7 +342,7 @@ static const char *python_app_data =
 	"\n"
 	"class KoreApp:\n"
 	"    def configure(self, args):\n"
-	"        kore.config.tls_dhparam = \"dh2048.pem\"\n"
+	"        kore.config.tls_dhparam = \"dh4096.pem\"\n"
 	"        kore.config.deployment = \"development\"\n"
 	"        kore.server(\"default\", ip=\"127.0.0.1\", port=\"8888\")\n"
 	"\n"
@@ -359,15 +359,20 @@ static const char *python_app_data =
 	"\n"
 	"koreapp = KoreApp()";
 
-static const char *dh2048_data =
+static const char *dh4096_data =
 	"-----BEGIN DH PARAMETERS-----\n"
-	"MIIBCAKCAQEAn4f4Qn5SudFjEYPWTbUaOTLUH85YWmmPFW1+b5bRa9ygr+1wfamv\n"
-	"VKVT7jO8c4msSNikUf6eEfoH0H4VTCaj+Habwu+Sj+I416r3mliMD4SjNsUJrBrY\n"
-	"Y0QV3ZUgZz4A8ARk/WwQcRl8+ZXJz34IaLwAcpyNhoV46iHVxW0ty8ND0U4DIku/\n"
-	"PNayKimu4BXWXk4RfwNVP59t8DQKqjshZ4fDnbotskmSZ+e+FHrd+Kvrq/WButvV\n"
-	"Bzy9fYgnUlJ82g/bziCI83R2xAdtH014fR63MpElkqdNeChb94pPbEdFlNUvYIBN\n"
-	"xx2vTUQMqRbB4UdG2zuzzr5j98HDdblQ+wIBAg==\n"
-	"-----END DH PARAMETERS-----";
+	"MIICCAKCAgEA//////////+t+FRYortKmq/cViAnPTzx2LnFg84tNpWp4TZBFGQz\n"
+	"+8yTnc4kmz75fS/jY2MMddj2gbICrsRhetPfHtXV/WVhJDP1H18GbtCFY2VVPe0a\n"
+	"87VXE15/V8k1mE8McODmi3fipona8+/och3xWKE2rec1MKzKT0g6eXq8CrGCsyT7\n"
+	"YdEIqUuyyOP7uWrat2DX9GgdT0Kj3jlN9K5W7edjcrsZCwenyO4KbXCeAvzhzffi\n"
+	"7MA0BM0oNC9hkXL+nOmFg/+OTxIy7vKBg8P+OxtMb61zO7X8vC7CIAXFjvGDfRaD\n"
+	"ssbzSibBsu/6iGtCOGEfz9zeNVs7ZRkDW7w09N75nAI4YbRvydbmyQd62R0mkff3\n"
+	"7lmMsPrBhtkcrv4TCYUTknC0EwyTvEN5RPT9RFLi103TZPLiHnH1S/9croKrnJ32\n"
+	"nuhtK8UiNjoNq8Uhl5sN6todv5pC1cRITgq80Gv6U93vPBsg7j/VnXwl5B0rZp4e\n"
+	"8W5vUsMWTfT7eTDp5OWIV7asfV9C1p9tGHdjzx1VA0AEh/VbpX4xzHpxNciG77Qx\n"
+	"iu1qHgEtnmgyqQdgCpGBMMRtx3j5ca0AOAkpmaMzy4t6Gh25PXFAADwqTs6p+Y0K\n"
+	"zAqCkc3OyX3Pjsm1Wn+IpGtNtahR9EGC4caKAH5eZV9q//////////8CAQI=\n"
+	"-----END DH PARAMETERS-----\n";
 
 static const char *gitignore = "*.o\n.flavor\n.objs\n%s.so\nassets.h\ncert\n";
 
@@ -1371,7 +1376,7 @@ cli_generate_certs(void)
 	char			issuer[64];
 
 	/* Write out DH parameters. */
-	cli_file_create("dh2048.pem", dh2048_data, strlen(dh2048_data));
+	cli_file_create("dh4096.pem", dh4096_data, strlen(dh4096_data));
 
 	/* Create new certificate. */
 	if ((x509 = X509_new()) == NULL)
