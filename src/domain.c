@@ -222,7 +222,6 @@ kore_domain_tlsinit(struct kore_domain *dom, int type,
 {
 	const u_int8_t		*ptr;
 	RSA			*rsa;
-	BIO			*bio;
 	X509			*x509;
 	EVP_PKEY		*pkey;
 	STACK_OF(X509_NAME)	*certs;
@@ -327,16 +326,8 @@ kore_domain_tlsinit(struct kore_domain *dom, int type,
 		    dom->domain, ssl_errno_s);
 	}
 
-	if (tls_dhparam == NULL) {
-		if ((bio = BIO_new_file(KORE_DHPARAM_PATH, "r")) == NULL)
-			fatal("failed to open %s", KORE_DHPARAM_PATH);
-
-		tls_dhparam = PEM_read_bio_DHparams(bio, NULL, NULL, NULL);
-		BIO_free(bio);
-
-		if (tls_dhparam == NULL)
-			fatal("PEM_read_bio_DHparams(): %s", ssl_errno_s);
-	}
+	if (tls_dhparam == NULL)
+		fatal("no DH parameters specified");
 
 	SSL_CTX_set_tmp_dh(dom->ssl_ctx, tls_dhparam);
 	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_SINGLE_DH_USE);

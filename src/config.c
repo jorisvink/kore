@@ -304,6 +304,7 @@ void
 kore_parse_config(void)
 {
 	FILE		*fp;
+	BIO		*bio;
 	char		path[PATH_MAX];
 
 	if (finalized)
@@ -327,6 +328,17 @@ kore_parse_config(void)
 		(void)fclose(fp);
 	}
 
+	if (tls_dhparam == NULL) {
+		if ((bio = BIO_new_file(KORE_DHPARAM_PATH, "r")) == NULL)
+			fatal("failed to open %s", KORE_DHPARAM_PATH);
+
+		tls_dhparam = PEM_read_bio_DHparams(bio, NULL, NULL, NULL);
+		BIO_free(bio);
+
+		if (tls_dhparam == NULL)
+			fatal("PEM_read_bio_DHparams(): %s", ssl_errno_s);
+	}
+
 	if (!kore_module_loaded())
 		fatal("no application module was loaded");
 
@@ -341,17 +353,14 @@ kore_parse_config(void)
 		}
 	}
 
-	if (getuid() != 0 && skip_chroot == 0) {
+	if (getuid() != 0 && skip_chroot == 0)
 		fatal("cannot chroot, use -n to skip it");
-	}
 
-	if (skip_runas != 1 && kore_runas_user == NULL) {
+	if (skip_runas != 1 && kore_runas_user == NULL)
 		fatal("missing runas user, use -r to skip it");
-	}
 
-	if (getuid() != 0 && skip_runas == 0) {
+	if (getuid() != 0 && skip_runas == 0)
 		fatal("cannot drop privileges, use -r to skip it");
-	}
 
 	if (skip_runas) {
 		if (!kore_quiet)
