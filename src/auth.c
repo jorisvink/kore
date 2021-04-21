@@ -90,12 +90,12 @@ kore_auth_run(struct http_request *req, struct kore_auth *auth)
 	kore_debug("kore_auth_run() for %s failed", req->path);
 
 	if (auth->redirect == NULL) {
-		http_response(req, 403, NULL, 0);
+		http_response(req, HTTP_STATUS_FORBIDDEN, NULL, 0);
 		return (KORE_RESULT_ERROR);
 	}
 
 	http_response_header(req, "location", auth->redirect);
-	http_response(req, 302, NULL, 0);
+	http_response(req, HTTP_STATUS_FOUND, NULL, 0);
 
 	return (KORE_RESULT_ERROR);
 }
