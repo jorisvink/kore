@@ -1876,12 +1876,9 @@ configure_deployment(char *value)
 		skip_chroot = 0;
 	} else {
 		kore_log(LOG_NOTICE,
-		    "pyko.config.deployment: bad value '%s'", value);
+		    "kore.config.deployment: bad value '%s'", value);
 		return (KORE_RESULT_ERROR);
 	}
-
-	if (!kore_quiet)
-		kore_log(LOG_NOTICE, "deployment set to %s", value);
 
 	return (KORE_RESULT_OK);
 }

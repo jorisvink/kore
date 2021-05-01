@@ -909,6 +909,10 @@ kore_server_start(int argc, char *argv[])
 		kore_call_parent_configure(argc, argv);
 #endif
 
+#if defined(KORE_USE_PYTHON)
+	kore_python_routes_resolve();
+#endif
+
 	/* Check if keymgr will be active. */
 	LIST_FOREACH(srv, &kore_servers, list) {
 		if (srv->tls) {

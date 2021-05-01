@@ -283,23 +283,38 @@ kore_module_handler_free(struct kore_module_handle *hdlr)
 	kore_free(hdlr);
 }
 
-struct kore_module_handle *
-kore_module_handler_find(struct http_request *req, struct kore_domain *dom)
+int
+kore_module_handler_find(struct http_request *req, struct kore_domain *dom,
+    int method, struct kore_module_handle **out)
 {
 	struct kore_module_handle	*hdlr;
+	int				exists;
+
+	exists = 0;
+	*out = NULL;
 
 	TAILQ_FOREACH(hdlr, &(dom->handlers), list) {
 		if (hdlr->type == HANDLER_TYPE_STATIC) {
-			if (!strcmp(hdlr->path, req->path))
-				return (hdlr);
+			if (!strcmp(hdlr->path, req->path)) {
+				if (hdlr->methods & method) {
+					*out = hdlr;
+					return (1);
+				}
+				exists++;
+			}
 		} else {
 			if (!regexec(&(hdlr->rctx), req->path,
-			    HTTP_CAPTURE_GROUPS, req->cgroups, 0))
-				return (hdlr);
+			    HTTP_CAPTURE_GROUPS, req->cgroups, 0)) {
+				if (hdlr->methods & method) {
+					*out = hdlr;
+					return (1);
+				}
+				exists++;
+			}
 		}
 	}
 
-	return (NULL);
+	return (exists);
 }
 #endif /* !KORE_NO_HTTP */
 

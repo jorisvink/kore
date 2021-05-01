@@ -1594,7 +1594,7 @@ http_request_new(struct connection *c, const char *host,
 	struct kore_domain		*dom;
 	struct http_request		*req;
 	char				*p, *hp;
-	int				m, flags;
+	int				m, flags, exists;
 	size_t				hostlen, pathlen, qsoff;
 
 	if (http_request_count >= http_request_limit) {
@@ -1748,7 +1748,7 @@ http_request_new(struct connection *c, const char *host,
 	}
 
 	/* Checked further down below if we need to 404. */
-	req->hdlr = kore_module_handler_find(req, dom);
+	exists = kore_module_handler_find(req, dom, m, &req->hdlr);
 
 	TAILQ_INIT(&(req->resp_headers));
 	TAILQ_INIT(&(req->req_headers));
@@ -1774,13 +1774,13 @@ http_request_new(struct connection *c, const char *host,
 		return (NULL);
 	}
 
-	if (req->hdlr == NULL) {
+	if (exists == 0) {
 		http_request_free(req);
 		http_error_response(c, HTTP_STATUS_NOT_FOUND);
 		return (NULL);
 	}
 
-	if (!(req->hdlr->methods & m)) {
+	if (req->hdlr == NULL) {
 		http_request_free(req);
 		http_error_response(c, HTTP_STATUS_METHOD_NOT_ALLOWED);
 		return (NULL);

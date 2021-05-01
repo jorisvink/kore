@@ -54,6 +54,7 @@ static PyObject		*python_kore_task_kill(PyObject *, PyObject *);
 static PyObject		*python_kore_prerequest(PyObject *, PyObject *);
 static PyObject		*python_kore_task_create(PyObject *, PyObject *);
 static PyObject		*python_kore_socket_wrap(PyObject *, PyObject *);
+static PyObject		*python_kore_route(PyObject *, PyObject *, PyObject *);
 static PyObject		*python_kore_timer(PyObject *, PyObject *, PyObject *);
 static PyObject		*python_kore_domain(PyObject *, PyObject *, PyObject *);
 static PyObject		*python_kore_gather(PyObject *, PyObject *, PyObject *);
@@ -61,6 +62,7 @@ static PyObject		*python_kore_sendobj(PyObject *, PyObject *,
 			    PyObject *);
 static PyObject		*python_kore_server(PyObject *, PyObject *,
 			    PyObject *);
+
 
 #if defined(KORE_USE_PGSQL)
 static PyObject		*python_kore_pgsql_query(PyObject *, PyObject *,
@@ -101,10 +103,11 @@ static struct PyMethodDef pykore_methods[] = {
 	METHOD("prerequest", python_kore_prerequest, METH_VARARGS),
 	METHOD("task_create", python_kore_task_create, METH_VARARGS),
 	METHOD("socket_wrap", python_kore_socket_wrap, METH_VARARGS),
+	METHOD("route", python_kore_route, METH_VARARGS | METH_KEYWORDS),
 	METHOD("timer", python_kore_timer, METH_VARARGS | METH_KEYWORDS),
+	METHOD("domain", python_kore_domain, METH_VARARGS | METH_KEYWORDS),
 	METHOD("server", python_kore_server, METH_VARARGS | METH_KEYWORDS),
 	METHOD("gather", python_kore_gather, METH_VARARGS | METH_KEYWORDS),
-	METHOD("domain", python_kore_domain, METH_VARARGS | METH_KEYWORDS),
 	METHOD("sendobj", python_kore_sendobj, METH_VARARGS | METH_KEYWORDS),
 	METHOD("websocket_broadcast", python_websocket_broadcast, METH_VARARGS),
 #if defined(KORE_USE_PGSQL)
@@ -186,9 +189,38 @@ static PyTypeObject pyseccomp_type = {
 };
 #endif
 
+struct pyroute {
+	PyObject_HEAD
+	char			*path;
+	PyObject		*func;
+	PyObject		*kwargs;
+	struct kore_domain	*domain;
+	TAILQ_ENTRY(pyroute)	list;
+};
+
+static PyObject	*pyroute_inner(struct pyroute *, PyObject *);
+static void	pyroute_dealloc(struct pyroute *);
+
+static PyMethodDef pyroute_methods[] = {
+	METHOD("inner", pyroute_inner, METH_VARARGS),
+	METHOD(NULL, NULL, -1)
+};
+
+static PyTypeObject pyroute_type = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "kore.route",
+	.tp_doc = "kore route function",
+	.tp_methods = pyroute_methods,
+	.tp_basicsize = sizeof(struct pyroute),
+	.tp_dealloc = (destructor)pyroute_dealloc,
+	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+};
+
 struct pydomain {
 	PyObject_HEAD
-	struct kore_domain	*config;
+	struct kore_domain		*config;
+	struct kore_module_handle	*next;
+	PyObject			*kwargs;
 };
 
 static PyObject	*pydomain_filemaps(struct pydomain *, PyObject *);

@@ -34,6 +34,7 @@ void		kore_python_proc_reap(void);
 int		kore_python_coro_pending(void);
 void		kore_python_path(const char *);
 void		kore_python_coro_delete(void *);
+void		kore_python_routes_resolve(void);
 void		kore_python_log_error(const char *);
 
 PyObject	*kore_python_callable(PyObject *, const char *);

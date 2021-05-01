@@ -77,6 +77,15 @@ static PyObject		*pyhttp_request_alloc(const struct http_request *);
 
 static struct python_coro	*python_coro_create(PyObject *,
 				    struct http_request *);
+static struct kore_domain	*python_route_domain_resolve(struct pyroute *);
+
+static int		python_route_install(struct pyroute *);
+static int		python_route_params(PyObject *,
+			    struct kore_module_handle *, const char *, int);
+static int		python_route_methods(PyObject *, PyObject *,
+			    struct kore_module_handle *);
+static int		python_route_auth(PyObject *,
+			    struct kore_module_handle *);
 
 static int		python_coro_run(struct python_coro *);
 static void		python_coro_wakeup(struct python_coro *);
@@ -107,10 +116,6 @@ static int		pyhttp_preprocess(struct http_request *);
 static int		pyhttp_iterobj_chunk_sent(struct netbuf *);
 static int		pyhttp_iterobj_next(struct pyhttp_iterobj *);
 static void		pyhttp_iterobj_disconnect(struct connection *);
-
-static int		pydomain_params(PyObject *,
-			    struct kore_module_handle *, const char *, int);
-static int		pydomain_auth(PyObject *, struct kore_module_handle *);
 
 #if defined(KORE_USE_PGSQL)
 static int		pykore_pgsql_result(struct pykore_pgsql *);
@@ -259,6 +264,7 @@ static struct pyseccomp			*py_seccomp = NULL;
 #endif
 
 static TAILQ_HEAD(, pyproc)		procs;
+static TAILQ_HEAD(, pyroute)		routes;
 static struct reqcall_list		prereq;
 
 static struct kore_pool			coro_pool;
@@ -301,6 +307,7 @@ kore_python_init(void)
 	TAILQ_INIT(&prereq);
 
 	TAILQ_INIT(&procs);
+	TAILQ_INIT(&routes);
 	TAILQ_INIT(&coro_runnable);
 	TAILQ_INIT(&coro_suspended);
 
@@ -351,6 +358,9 @@ kore_python_init(void)
 	kore_seccomp_filter("python", filter_python,
 	    KORE_FILTER_LEN(filter_python));
 #endif
+
+	if (!kore_configure_setting("deployment", "dev"))
+		fatal("failed to set initial deployment");
 }
 
 void
@@ -447,6 +457,19 @@ int
 kore_python_coro_pending(void)
 {
 	return (!TAILQ_EMPTY(&coro_runnable));
+}
+
+void
+kore_python_routes_resolve(void)
+{
+	struct pyroute		*route;
+
+	while ((route = TAILQ_FIRST(&routes)) != NULL) {
+		TAILQ_REMOVE(&routes, route, list);
+		if (!python_route_install(route))
+			fatalx("failed to install route for %s", route->path);
+		Py_DECREF((PyObject *)route);
+	}
 }
 
 void
@@ -1570,6 +1593,7 @@ python_module_init(void)
 	python_push_type("pylock", pykore, &pylock_type);
 	python_push_type("pytimer", pykore, &pytimer_type);
 	python_push_type("pyqueue", pykore, &pyqueue_type);
+	python_push_type("pyroute", pykore, &pyroute_type);
 	python_push_type("pysocket", pykore, &pysocket_type);
 	python_push_type("pydomain", pykore, &pydomain_type);
 	python_push_type("pyconnection", pykore, &pyconnection_type);
@@ -1756,9 +1780,6 @@ python_kore_server(PyObject *self, PyObject *args, PyObject *kwargs)
 	struct kore_server	*srv;
 	const char		*name, *ip, *port, *path;
 
-	if (!PyArg_ParseTuple(args, "s", &name))
-		return (NULL);
-
 	if (kwargs == NULL) {
 		PyErr_SetString(PyExc_RuntimeError, "missing keyword args");
 		return (NULL);
@@ -1775,6 +1796,16 @@ python_kore_server(PyObject *self, PyObject *args, PyObject *kwargs)
 
 	if (ip != NULL && path != NULL) {
 		PyErr_SetString(PyExc_RuntimeError, "ip/path are exclusive");
+		return (NULL);
+	}
+
+	name = python_string_from_dict(kwargs, "name");
+	if (name == NULL)
+		name = "default";
+
+	if ((srv = kore_server_lookup(name)) != NULL) {
+		PyErr_Format(PyExc_RuntimeError,
+		    "server '%s' already exist", name);
 		return (NULL);
 	}
 
@@ -2011,16 +2042,11 @@ python_kore_domain(PyObject *self, PyObject *args, PyObject *kwargs)
 	if (!PyArg_ParseTuple(args, "s", &name))
 		return (NULL);
 
-	if (kwargs == NULL) {
-		PyErr_SetString(PyExc_RuntimeError, "missing keyword args");
-		return (NULL);
-	}
+	if (kwargs != NULL)
+		attach = python_string_from_dict(kwargs, "attach");
 
-	if ((attach = python_string_from_dict(kwargs, "attach")) == NULL) {
-		PyErr_SetString(PyExc_RuntimeError,
-		    "missing or invalid 'attach' keyword");
-		return (NULL);
-	}
+	if (attach == NULL)
+		attach = "default";
 
 	if ((srv = kore_server_lookup(attach)) == NULL) {
 		PyErr_Format(PyExc_RuntimeError,
@@ -2029,6 +2055,11 @@ python_kore_domain(PyObject *self, PyObject *args, PyObject *kwargs)
 	}
 
 	if (srv->tls) {
+		if (kwargs == NULL) {
+			PyErr_Format(PyExc_RuntimeError,
+			    "no keywords for TLS enabled domain %s", name);
+			return (NULL);
+		}
 		key = python_string_from_dict(kwargs, "key");
 		cert = python_string_from_dict(kwargs, "cert");
 
@@ -2069,6 +2100,9 @@ python_kore_domain(PyObject *self, PyObject *args, PyObject *kwargs)
 	if ((domain = PyObject_New(struct pydomain, &pydomain_type)) == NULL)
 		return (NULL);
 
+	domain->next = NULL;
+	domain->kwargs = NULL;
+
 	if ((domain->config = kore_domain_new(name)) == NULL)
 		fatal("failed to create new domain configuration");
 
@@ -2094,6 +2128,35 @@ python_kore_domain(PyObject *self, PyObject *args, PyObject *kwargs)
 	}
 
 	return ((PyObject *)domain);
+}
+
+static PyObject *
+python_kore_route(PyObject *self, PyObject *args, PyObject *kwargs)
+{
+	const char		*path;
+	PyObject		*inner;
+	struct pyroute		*route;
+
+	if ((route = PyObject_New(struct pyroute, &pyroute_type)) == NULL)
+		return (NULL);
+
+	if (!PyArg_ParseTuple(args, "s", &path))
+		return (NULL);
+
+	route->domain = NULL;
+	route->kwargs = kwargs;
+	route->path = kore_strdup(path);
+
+	Py_XINCREF(route->kwargs);
+
+	inner = PyObject_GetAttrString((PyObject *)route, "inner");
+	if (inner == NULL) {
+		Py_DECREF((PyObject *)route);
+		PyErr_SetString(PyExc_RuntimeError, "failed to find inner");
+		return (NULL);
+	}
+
+	return (inner);
 }
 
 static PyObject *
@@ -4932,6 +4995,36 @@ pyhttp_file_get_filename(struct pyhttp_file *pyfile, void *closure)
 }
 
 void
+pyroute_dealloc(struct pyroute *route)
+{
+	kore_free(route->path);
+
+	Py_XDECREF(route->func);
+	Py_XDECREF(route->kwargs);
+
+	PyObject_Del((PyObject *)route);
+}
+
+static PyObject *
+pyroute_inner(struct pyroute *route, PyObject *args)
+{
+	PyObject	*obj;
+
+	if (!PyArg_ParseTuple(args, "O", &obj))
+		return (NULL);
+
+	if (!PyCallable_Check(obj))
+		return (NULL);
+
+	route->func = obj;
+	Py_INCREF(route->func);
+
+	TAILQ_INSERT_TAIL(&routes, route, list);
+
+	return (route->func);
+}
+
+void
 pydomain_dealloc(struct pydomain *domain)
 {
 	PyObject_Del((PyObject *)domain);
@@ -5004,114 +5097,179 @@ pydomain_filemaps(struct pydomain *domain, PyObject *args)
 static PyObject *
 pydomain_route(struct pydomain *domain, PyObject *args, PyObject *kwargs)
 {
-	struct kore_module_handle	*hdlr;
-	int				method;
-	const char			*path, *val;
-	Py_ssize_t			list_len, idx;
-	PyObject			*callable, *repr, *obj, *item;
+	PyObject		*obj;
+	const char		*path;
+	struct pyroute		*route;
 
-	if (!PyArg_ParseTuple(args, "sO", &path, &callable))
+	if (!PyArg_ParseTuple(args, "sO", &path, &obj))
 		return (NULL);
 
-	if (!PyCallable_Check(callable))
+	if (!PyCallable_Check(obj))
 		return (NULL);
 
-	TAILQ_FOREACH(hdlr, &domain->config->handlers, list) {
-		if (!strcmp(hdlr->path, path)) {
-			PyErr_Format(PyExc_RuntimeError,
-			    "route '%s' exists", path);
-			return (NULL);
-		}
-	}
-
-	if ((repr = PyObject_Repr(callable)) == NULL)
+	if ((route = PyObject_New(struct pyroute, &pyroute_type)) == NULL)
 		return (NULL);
 
-	val = PyUnicode_AsUTF8(repr);
+	route->kwargs = kwargs;
+	route->domain = domain->config;
+	route->path = kore_strdup(path);
 
-	hdlr = kore_calloc(1, sizeof(*hdlr));
-	hdlr->dom = domain->config;
-	hdlr->func = kore_strdup(val);
-	hdlr->path = kore_strdup(path);
-	hdlr->methods = HTTP_METHOD_ALL;
-	TAILQ_INIT(&hdlr->params);
+	Py_XINCREF(route->kwargs);
 
-	Py_DECREF(repr);
+	route->func = obj;
+	Py_INCREF(route->func);
 
-	hdlr->rcall = kore_calloc(1, sizeof(struct kore_runtime_call));
-	hdlr->rcall->addr = callable;
-	hdlr->rcall->runtime = &kore_python_runtime;
-
-	if (kwargs != NULL) {
-		if ((obj = PyDict_GetItemString(kwargs, "methods")) != NULL) {
-			if (!PyList_CheckExact(obj)) {
-				kore_module_handler_free(hdlr);
-				return (NULL);
-			}
-
-			hdlr->methods = 0;
-			list_len = PyList_Size(obj);
-
-			for (idx = 0; idx < list_len; idx++) {
-				if ((item = PyList_GetItem(obj, idx)) == NULL) {
-					kore_module_handler_free(hdlr);
-					return (NULL);
-				}
-
-				if ((val = PyUnicode_AsUTF8(item)) == NULL) {
-					kore_module_handler_free(hdlr);
-					return (NULL);
-				}
-
-				method = http_method_value(val);
-				if (method == 0) {
-					PyErr_Format(PyExc_RuntimeError,
-					    "unknown method '%s'", val);
-					kore_module_handler_free(hdlr);
-					return (NULL);
-				}
-
-				hdlr->methods |= method;
-				if (method == HTTP_METHOD_GET)
-					hdlr->methods |= HTTP_METHOD_HEAD;
-
-				if (!pydomain_params(kwargs,
-				    hdlr, val, method)) {
-					kore_module_handler_free(hdlr);
-					return (NULL);
-				}
-			}
-		}
-
-		if ((obj = PyDict_GetItemString(kwargs, "auth")) != NULL) {
-			if (!pydomain_auth(obj, hdlr)) {
-				kore_module_handler_free(hdlr);
-				return (NULL);
-			}
-		}
-	}
-
-	if (path[0] == '/') {
-		hdlr->type = HANDLER_TYPE_STATIC;
-	} else {
-		hdlr->type = HANDLER_TYPE_DYNAMIC;
-
-		if (regcomp(&hdlr->rctx, hdlr->path, REG_EXTENDED)) {
-			PyErr_SetString(PyExc_RuntimeError,
-			    "failed to compile regex for path");
-			kore_module_handler_free(hdlr);
-			return (NULL);
-		}
-	}
-
-	Py_INCREF(callable);
-	TAILQ_INSERT_TAIL(&domain->config->handlers, hdlr, list);
+	TAILQ_INSERT_TAIL(&routes, route, list);
 
 	Py_RETURN_NONE;
 }
 
 static int
-pydomain_params(PyObject *kwargs, struct kore_module_handle *hdlr,
+python_route_install(struct pyroute *route)
+{
+	const char			*val;
+	struct kore_domain		*domain;
+	struct kore_module_handle	*hdlr, *entry;
+	PyObject			*kwargs, *repr, *obj;
+
+	if ((repr = PyObject_Repr(route->func)) == NULL) {
+		kore_python_log_error("python_route_install");
+		return (KORE_RESULT_ERROR);
+	}
+
+	domain = python_route_domain_resolve(route);
+
+	hdlr = kore_calloc(1, sizeof(*hdlr));
+	hdlr->dom = domain;
+	hdlr->methods = HTTP_METHOD_ALL;
+	hdlr->path = kore_strdup(route->path);
+
+	TAILQ_INIT(&hdlr->params);
+
+	val = PyUnicode_AsUTF8(repr);
+	hdlr->func = kore_strdup(val);
+
+	kwargs = route->kwargs;
+
+	hdlr->rcall = kore_calloc(1, sizeof(struct kore_runtime_call));
+	hdlr->rcall->addr = route->func;
+	hdlr->rcall->runtime = &kore_python_runtime;
+	Py_INCREF(hdlr->rcall->addr);
+
+	if (kwargs != NULL) {
+		if ((obj = PyDict_GetItemString(kwargs, "methods")) != NULL) {
+			if (!python_route_methods(obj, kwargs, hdlr)) {
+				kore_python_log_error("python_route_install");
+				kore_module_handler_free(hdlr);
+				return (KORE_RESULT_ERROR);
+			}
+		}
+
+		if ((obj = PyDict_GetItemString(kwargs, "auth")) != NULL) {
+			if (!python_route_auth(obj, hdlr)) {
+				kore_python_log_error("python_route_install");
+				kore_module_handler_free(hdlr);
+				return (KORE_RESULT_ERROR);
+			}
+		}
+	}
+
+	if (hdlr->path[0] == '/') {
+		hdlr->type = HANDLER_TYPE_STATIC;
+	} else {
+		hdlr->type = HANDLER_TYPE_DYNAMIC;
+		if (regcomp(&hdlr->rctx, hdlr->path, REG_EXTENDED))
+			fatal("failed to compile regex for '%s'", hdlr->path);
+	}
+
+	TAILQ_FOREACH(entry, &domain->handlers, list) {
+		if (!strcmp(entry->path, hdlr->path) &&
+		    (entry->methods & hdlr->methods))
+			fatal("duplicate route for '%s'", route->path);
+	}
+
+	TAILQ_INSERT_TAIL(&domain->handlers, hdlr, list);
+
+	return (KORE_RESULT_OK);
+}
+
+static struct kore_domain *
+python_route_domain_resolve(struct pyroute *route)
+{
+	struct kore_server	*srv;
+	const char		*name;
+	struct kore_domain	*domain;
+
+	if (route->domain != NULL)
+		return (route->domain);
+
+	if (route->kwargs != NULL)
+		name = python_string_from_dict(route->kwargs, "domain");
+	else
+		name = NULL;
+
+	if (name != NULL) {
+		domain = NULL;
+		LIST_FOREACH(srv, &kore_servers, list) {
+			TAILQ_FOREACH(domain, &srv->domains, list) {
+				if (!strcmp(domain->domain, name))
+					break;
+			}
+		}
+
+		if (domain == NULL)
+			fatal("domain '%s' does not exist", name);
+	} else {
+		if ((domain = kore_domain_byid(1)) != NULL)
+			fatal("ambiguous domain on route, please specify one");
+		if ((domain = kore_domain_byid(0)) == NULL)
+			fatal("no domains configured, please configure one");
+	}
+
+	return (domain);
+}
+
+static int
+python_route_methods(PyObject *obj, PyObject *kwargs,
+    struct kore_module_handle *hdlr)
+{
+	const char		*val;
+	PyObject		*item;
+	int			method;
+	Py_ssize_t		list_len, idx;
+
+	if (!PyList_CheckExact(obj))
+		return (KORE_RESULT_ERROR);
+
+	hdlr->methods = 0;
+	list_len = PyList_Size(obj);
+
+	for (idx = 0; idx < list_len; idx++) {
+		if ((item = PyList_GetItem(obj, idx)) == NULL)
+			return (KORE_RESULT_ERROR);
+
+		if ((val = PyUnicode_AsUTF8(item)) == NULL)
+			return (KORE_RESULT_ERROR);
+
+		if ((method = http_method_value(val)) == 0) {
+			PyErr_Format(PyExc_RuntimeError,
+			    "unknown HTTP method: %s", val);
+			return (KORE_RESULT_ERROR);
+		}
+
+		hdlr->methods |= method;
+		if (method == HTTP_METHOD_GET)
+			hdlr->methods |= HTTP_METHOD_HEAD;
+
+		if (!python_route_params(kwargs, hdlr, val, method))
+			return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+python_route_params(PyObject *kwargs, struct kore_module_handle *hdlr,
     const char *method, int type)
 {
 	Py_ssize_t			idx;
@@ -5182,7 +5340,7 @@ pydomain_params(PyObject *kwargs, struct kore_module_handle *hdlr,
 }
 
 static int
-pydomain_auth(PyObject *dict, struct kore_module_handle *hdlr)
+python_route_auth(PyObject *dict, struct kore_module_handle *hdlr)
 {
 	int			type;
 	struct kore_auth	*auth;

@@ -952,8 +952,8 @@ void		kore_domain_crl_add(struct kore_domain *, const void *, size_t);
 int		kore_module_handler_new(struct kore_domain *, const char *,
 		    const char *, const char *, int);
 void		kore_module_handler_free(struct kore_module_handle *);
-struct kore_module_handle	*kore_module_handler_find(struct http_request *,
-				    struct kore_domain *);
+int		kore_module_handler_find(struct http_request *,
+		    struct kore_domain *, int, struct kore_module_handle **);
 #endif
 
 struct kore_runtime_call	*kore_runtime_getcall(const char *);
