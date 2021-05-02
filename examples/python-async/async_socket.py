@@ -23,6 +23,7 @@
 import kore
 import socket
 
+@kore.route("/socket", methods=["get"])
 async def async_socket(req):
     # Create the socket using Pythons built-in socket class.
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -51,6 +52,7 @@ async def async_socket(req):
 
     conn.close()
 
+@kore.route("/socket-test", methods=["get"])
 async def socket_test(req):
     # Delay response a bit, just cause we can.
     await kore.suspend(5000)
