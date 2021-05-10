@@ -1868,6 +1868,8 @@ configure_deployment(char *value)
 {
 	if (!strcmp(value, "docker")) {
 		kore_foreground = 1;
+		skip_runas = 0;
+		skip_chroot = 0;
 	} else if (!strcmp(value, "dev") || !strcmp(value, "development")) {
 		kore_foreground = 1;
 		skip_runas = 1;
