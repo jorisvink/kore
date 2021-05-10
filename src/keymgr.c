@@ -138,6 +138,9 @@ static struct sock_filter filter_keymgr[] = {
 #if defined(SYS_mmap2)
 	KORE_SYSCALL_ALLOW(mmap2),
 #endif
+#if defined(SYS_madvise)
+	KORE_SYSCALL_ALLOW(madvise),
+#endif
 	KORE_SYSCALL_ALLOW(munmap),
 	KORE_SYSCALL_ALLOW(clock_gettime),
 #if defined(__NR_getrandom)
