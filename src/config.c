@@ -1866,7 +1866,9 @@ configure_task_threads(char *option)
 static int
 configure_deployment(char *value)
 {
-	if (!strcmp(value, "dev") || !strcmp(value, "development")) {
+	if (!strcmp(value, "docker")) {
+		kore_foreground = 1;
+	} else if (!strcmp(value, "dev") || !strcmp(value, "development")) {
 		kore_foreground = 1;
 		skip_runas = 1;
 		skip_chroot = 1;
