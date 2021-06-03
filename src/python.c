@@ -2441,6 +2441,12 @@ python_kore_timer(PyObject *self, PyObject *args, PyObject *kwargs)
 	int			flags;
 	struct pytimer		*timer;
 
+	if (worker == NULL) {
+		PyErr_SetString(PyExc_RuntimeError,
+		    "kore.timer not supported on parent process");
+		return (NULL);
+	}
+
 	if (!PyArg_ParseTuple(args, "OKi", &obj, &ms, &flags))
 		return (NULL);
 
