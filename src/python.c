@@ -81,7 +81,8 @@ static struct kore_domain	*python_route_domain_resolve(struct pyroute *);
 
 static int		python_route_install(struct pyroute *);
 static int		python_route_params(PyObject *,
-			    struct kore_module_handle *, const char *, int);
+			    struct kore_module_handle *, const char *,
+			    int, int);
 static int		python_route_methods(PyObject *, PyObject *,
 			    struct kore_module_handle *);
 static int		python_route_auth(PyObject *,
@@ -5267,7 +5268,10 @@ python_route_methods(PyObject *obj, PyObject *kwargs,
 		if (method == HTTP_METHOD_GET)
 			hdlr->methods |= HTTP_METHOD_HEAD;
 
-		if (!python_route_params(kwargs, hdlr, val, method))
+		if (!python_route_params(kwargs, hdlr, val, method, 0))
+			return (KORE_RESULT_ERROR);
+
+		if (!python_route_params(kwargs, hdlr, "qs", method, 1))
 			return (KORE_RESULT_ERROR);
 	}
 
@@ -5276,7 +5280,7 @@ python_route_methods(PyObject *obj, PyObject *kwargs,
 
 static int
 python_route_params(PyObject *kwargs, struct kore_module_handle *hdlr,
-    const char *method, int type)
+    const char *method, int type, int qs)
 {
 	Py_ssize_t			idx;
 	const char			*val;
@@ -5336,7 +5340,7 @@ python_route_params(PyObject *kwargs, struct kore_module_handle *hdlr,
 		param->validator = vldr;
 		param->name = kore_strdup(val);
 
-		if (type == HTTP_METHOD_GET)
+		if (type == HTTP_METHOD_GET || qs == 1)
 			param->flags = KORE_PARAMS_QUERY_STRING;
 
 		TAILQ_INSERT_TAIL(&hdlr->params, param, list);
