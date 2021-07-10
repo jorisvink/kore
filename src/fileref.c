@@ -79,7 +79,7 @@ kore_fileref_create(struct kore_server *srv, const char *path, int fd,
 	if (srv->tls == 0) {
 		ref->fd = fd;
 	} else {
-		if ((uintmax_t)size> SIZE_MAX) {
+		if ((uintmax_t)size > SIZE_MAX) {
 			kore_pool_put(&ref_pool, ref);
 			return (NULL);
 		}
