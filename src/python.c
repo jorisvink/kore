@@ -59,7 +59,8 @@ struct reqcall {
 
 TAILQ_HEAD(reqcall_list, reqcall);
 
-static PyMODINIT_FUNC	python_module_init(void);
+PyMODINIT_FUNC		python_module_init(void);
+
 static PyObject		*python_import(const char *);
 static PyObject		*pyconnection_alloc(struct connection *);
 static PyObject		*python_callable(PyObject *, const char *);
@@ -1580,7 +1581,7 @@ python_runtime_connect(void *addr, struct connection *c)
 	Py_DECREF(pyret);
 }
 
-static PyMODINIT_FUNC
+PyMODINIT_FUNC
 python_module_init(void)
 {
 	int			i;
