@@ -693,12 +693,8 @@ keymgr_rsa_encrypt(struct kore_msg *msg, const void *data, struct key *key)
 	u_int8_t			buf[1024];
 
 	req = (const struct kore_keyreq *)data;
-
-#if defined(KORE_OPENSSL_NEWER_API)
 	rsa = EVP_PKEY_get0_RSA(key->pkey);
-#else
-	rsa = key->pkey->pkey.rsa;
-#endif
+
 	keylen = RSA_size(rsa);
 	if (req->data_len > keylen || keylen > sizeof(buf))
 		return;
@@ -721,11 +717,8 @@ keymgr_ecdsa_sign(struct kore_msg *msg, const void *data, struct key *key)
 	u_int8_t			sig[1024];
 
 	req = (const struct kore_keyreq *)data;
-#if defined(KORE_OPENSSL_NEWER_API)
 	ec = EVP_PKEY_get0_EC_KEY(key->pkey);
-#else
-	ec = key->pkey->pkey.ec;
-#endif
+
 	len = ECDSA_size(ec);
 	if (req->data_len > len || len > sizeof(sig))
 		return;
@@ -801,14 +794,8 @@ keymgr_acme_init(void)
 		kore_log(LOG_INFO, "loaded existing ACME account key");
 	}
 
-#if defined(KORE_OPENSSL_NEWER_API)
 	rsa = EVP_PKEY_get0_RSA(key->pkey);
 	RSA_get0_key(rsa, &bn, &be, NULL);
-#else
-	rsa = key->pkey->pkey.rsa;
-	be = rsa->e;
-	bn = rsa->n;
-#endif
 
 	e = keymgr_bignum_base64(be);
 	n = keymgr_bignum_base64(bn);
