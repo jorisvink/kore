@@ -27,6 +27,7 @@
 #include <signal.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <stdarg.h>
 
 #include "kore.h"
 #include "http.h"
@@ -131,6 +132,8 @@ static void		python_curl_http_callback(struct kore_curl *, void *);
 static void		python_curl_handle_callback(struct kore_curl *, void *);
 static PyObject		*pyhttp_client_request(struct pyhttp_client *, int,
 			    PyObject *);
+static PyObject		*python_kore_curl_setopt(struct pycurl_data *,
+			    long, PyObject *);
 #endif
 
 static void	python_append_path(const char *);
@@ -5731,6 +5734,30 @@ pykore_pgsql_result(struct pykore_pgsql *pysql)
 
 #if defined(KORE_USE_CURL)
 static PyObject *
+python_kore_curl_setopt(struct pycurl_data *data, long opt, PyObject *value)
+{
+	int		i;
+
+	for (i = 0; py_curlopt[i].name != NULL; i++) {
+		if (py_curlopt[i].value == opt)
+			break;
+	}
+
+	if (py_curlopt[i].name == NULL) {
+		PyErr_Format(PyExc_RuntimeError, "invalid option '%d'", opt);
+		return (NULL);
+	}
+
+	if (py_curlopt[i].cb == NULL) {
+		PyErr_Format(PyExc_RuntimeError, "option '%s' not implemented",
+		    py_curlopt[i].name);
+		return (NULL);
+	}
+
+	return (py_curlopt[i].cb(data, i, value));
+}
+
+static PyObject *
 python_kore_curl_handle(PyObject *self, PyObject *args)
 {
 	const char		*url;
@@ -5744,12 +5771,12 @@ python_kore_curl_handle(PyObject *self, PyObject *args)
 		return (NULL);
 
 	handle->url = kore_strdup(url);
-	memset(&handle->curl, 0, sizeof(handle->curl));
+	memset(&handle->data.curl, 0, sizeof(handle->data.curl));
 
 	handle->body = NULL;
-	LIST_INIT(&handle->slists);
+	LIST_INIT(&handle->data.slists);
 
-	if (!kore_curl_init(&handle->curl, handle->url, KORE_CURL_ASYNC)) {
+	if (!kore_curl_init(&handle->data.curl, handle->url, KORE_CURL_ASYNC)) {
 		Py_DECREF((PyObject *)handle);
 		PyErr_SetString(PyExc_RuntimeError, "failed to setup call");
 		return (NULL);
@@ -5763,7 +5790,7 @@ pycurl_handle_dealloc(struct pycurl_handle *handle)
 {
 	struct pycurl_slist	*psl;
 
-	while ((psl = LIST_FIRST(&handle->slists))) {
+	while ((psl = LIST_FIRST(&handle->data.slists))) {
 		LIST_REMOVE(psl, list);
 		curl_slist_free_all(psl->slist);
 		kore_free(psl);
@@ -5773,7 +5800,7 @@ pycurl_handle_dealloc(struct pycurl_handle *handle)
 		kore_buf_free(handle->body);
 
 	kore_free(handle->url);
-	kore_curl_cleanup(&handle->curl);
+	kore_curl_cleanup(&handle->data.curl);
 
 	PyObject_Del((PyObject *)handle);
 }
@@ -5812,10 +5839,12 @@ pycurl_handle_setbody(struct pycurl_handle *handle, PyObject *args)
 	kore_buf_append(handle->body, ptr, length);
 	kore_buf_reset(handle->body);
 
-	curl_easy_setopt(handle->curl.handle,
+	curl_easy_setopt(handle->data.curl.handle,
 	    CURLOPT_READFUNCTION, kore_curl_frombuf);
-	curl_easy_setopt(handle->curl.handle, CURLOPT_READDATA, handle->body);
-	curl_easy_setopt(handle->curl.handle, CURLOPT_UPLOAD, 1);
+	curl_easy_setopt(handle->data.curl.handle,
+	    CURLOPT_READDATA, handle->body);
+
+	curl_easy_setopt(handle->data.curl.handle, CURLOPT_UPLOAD, 1);
 
 	Py_RETURN_TRUE;
 }
@@ -5823,34 +5852,17 @@ pycurl_handle_setbody(struct pycurl_handle *handle, PyObject *args)
 static PyObject *
 pycurl_handle_setopt(struct pycurl_handle *handle, PyObject *args)
 {
-	int		i, opt;
+	int		opt;
 	PyObject	*value;
 
 	if (!PyArg_ParseTuple(args, "iO", &opt, &value))
 		return (NULL);
 
-	for (i = 0; py_curlopt[i].name != NULL; i++) {
-		if (py_curlopt[i].value == opt)
-			break;
-	}
-
-	if (py_curlopt[i].name == NULL) {
-		PyErr_Format(PyExc_RuntimeError, "invalid option '%d'", opt);
-		return (NULL);
-	}
-
-	if (py_curlopt[i].cb == NULL) {
-		PyErr_Format(PyExc_RuntimeError, "option '%s' not implemented",
-		    py_curlopt[i].name);
-		return (NULL);
-	}
-
-	return (py_curlopt[i].cb(handle, i, value));
+	return (python_kore_curl_setopt(&handle->data, opt, value));
 }
 
 static PyObject *
-pycurl_handle_setopt_string(struct pycurl_handle *handle, int idx,
-    PyObject *obj)
+pycurl_handle_setopt_string(struct pycurl_data *data, int idx, PyObject *obj)
 {
 	const char		*str;
 
@@ -5864,14 +5876,14 @@ pycurl_handle_setopt_string(struct pycurl_handle *handle, int idx,
 	if ((str = PyUnicode_AsUTF8(obj)) == NULL)
 		return (NULL);
 
-	curl_easy_setopt(handle->curl.handle,
+	curl_easy_setopt(data->curl.handle,
 	    CURLOPTTYPE_OBJECTPOINT + py_curlopt[idx].value, str);
 
 	Py_RETURN_TRUE;
 }
 
 static PyObject *
-pycurl_handle_setopt_long(struct pycurl_handle *handle, int idx, PyObject *obj)
+pycurl_handle_setopt_long(struct pycurl_data *data, int idx, PyObject *obj)
 {
 	long		val;
 
@@ -5887,14 +5899,14 @@ pycurl_handle_setopt_long(struct pycurl_handle *handle, int idx, PyObject *obj)
 	if (val == -1 && PyErr_Occurred())
 		return (NULL);
 
-	curl_easy_setopt(handle->curl.handle,
+	curl_easy_setopt(data->curl.handle,
 	    CURLOPTTYPE_LONG + py_curlopt[idx].value, val);
 
 	Py_RETURN_TRUE;
 }
 
 static PyObject *
-pycurl_handle_setopt_slist(struct pycurl_handle *handle, int idx, PyObject *obj)
+pycurl_handle_setopt_slist(struct pycurl_data *data, int idx, PyObject *obj)
 {
 	struct pycurl_slist	*psl;
 	PyObject		*item;
@@ -5928,9 +5940,9 @@ pycurl_handle_setopt_slist(struct pycurl_handle *handle, int idx, PyObject *obj)
 
 	psl = kore_calloc(1, sizeof(*psl));
 	psl->slist = slist;
-	LIST_INSERT_HEAD(&handle->slists, psl, list);
+	LIST_INSERT_HEAD(&data->slists, psl, list);
 
-	curl_easy_setopt(handle->curl.handle,
+	curl_easy_setopt(data->curl.handle,
 	    CURLOPTTYPE_OBJECTPOINT + py_curlopt[idx].value, slist);
 
 	Py_RETURN_TRUE;
@@ -5951,7 +5963,8 @@ pycurl_handle_run(struct pycurl_handle *handle, PyObject *args)
 	op->coro = coro_running;
 	op->state = CURL_CLIENT_OP_RUN;
 
-	kore_curl_bind_callback(&handle->curl, python_curl_handle_callback, op);
+	kore_curl_bind_callback(&handle->data.curl,
+	    python_curl_handle_callback, op);
 
 	return ((PyObject *)op);
 }
@@ -5978,7 +5991,7 @@ pycurl_handle_op_iternext(struct pycurl_handle_op *op)
 	const u_int8_t		*response;
 
 	if (op->state == CURL_CLIENT_OP_RUN) {
-		kore_curl_run(&op->handle->curl);
+		kore_curl_run(&op->handle->data.curl);
 		op->state = CURL_CLIENT_OP_RESULT;
 		Py_RETURN_NONE;
 	}
@@ -5988,14 +6001,14 @@ pycurl_handle_op_iternext(struct pycurl_handle_op *op)
 		op->handle->body = NULL;
 	}
 
-	if (!kore_curl_success(&op->handle->curl)) {
+	if (!kore_curl_success(&op->handle->data.curl)) {
 		/* Do not log the url here, may contain some sensitive data. */
 		PyErr_Format(PyExc_RuntimeError, "request failed: %s",
-		    kore_curl_strerror(&op->handle->curl));
+		    kore_curl_strerror(&op->handle->data.curl));
 		return (NULL);
 	}
 
-	kore_curl_response_as_bytes(&op->handle->curl, &response, &len);
+	kore_curl_response_as_bytes(&op->handle->data.curl, &response, &len);
 
 	if ((result = PyBytes_FromStringAndSize((const char *)response,
 	    len)) == NULL)
@@ -6010,6 +6023,7 @@ pycurl_handle_op_iternext(struct pycurl_handle_op *op)
 static PyObject *
 python_kore_httpclient(PyObject *self, PyObject *args, PyObject *kwargs)
 {
+	PyObject		*vdict;
 	struct pyhttp_client	*client;
 	const char		*url, *v;
 
@@ -6022,6 +6036,7 @@ python_kore_httpclient(PyObject *self, PyObject *args, PyObject *kwargs)
 
 	client->unix = NULL;
 	client->tlskey = NULL;
+	client->curlopt = NULL;
 	client->tlscert = NULL;
 	client->cabundle = NULL;
 
@@ -6040,6 +6055,18 @@ python_kore_httpclient(PyObject *self, PyObject *args, PyObject *kwargs)
 
 		if ((v = python_string_from_dict(kwargs, "unix")) != NULL)
 			client->unix = kore_strdup(v);
+
+		if ((vdict = PyDict_GetItemString(kwargs, "curlopt")) != NULL) {
+			if (!PyDict_CheckExact(vdict)) {
+				Py_DECREF((PyObject *)client);
+				PyErr_SetString(PyExc_RuntimeError,
+				    "curlopt must be a dict");
+				return (NULL);
+			}
+
+			client->curlopt = vdict;
+			Py_INCREF(client->curlopt);
+		}
 
 		python_bool_from_dict(kwargs, "tlsverify", &client->tlsverify);
 	}
@@ -6063,6 +6090,8 @@ pyhttp_client_dealloc(struct pyhttp_client *client)
 	kore_free(client->tlskey);
 	kore_free(client->tlscert);
 	kore_free(client->cabundle);
+
+	Py_XDECREF(client->curlopt);
 
 	PyObject_Del((PyObject *)client);
 }
@@ -6119,11 +6148,12 @@ pyhttp_client_options(struct pyhttp_client *client, PyObject *args,
 static PyObject *
 pyhttp_client_request(struct pyhttp_client *client, int m, PyObject *kwargs)
 {
+	long				opt;
 	struct pyhttp_client_op		*op;
 	char				*ptr;
 	const char			*k, *v;
 	Py_ssize_t			length, idx;
-	PyObject			*data, *headers, *key, *item;
+	PyObject			*data, *headers, *key, *item, *value;
 
 	ptr = NULL;
 	length = 0;
@@ -6170,12 +6200,12 @@ pyhttp_client_request(struct pyhttp_client *client, int m, PyObject *kwargs)
 	default:
 		fatal("%s: unknown method %d", __func__, m);
 	}
-
+	
 	op = PyObject_New(struct pyhttp_client_op, &pyhttp_client_op_type);
 	if (op == NULL)
 		return (NULL);
 
-	if (!kore_curl_init(&op->curl, client->url, KORE_CURL_ASYNC)) {
+	if (!kore_curl_init(&op->data.curl, client->url, KORE_CURL_ASYNC)) {
 		Py_DECREF((PyObject *)op);
 		PyErr_SetString(PyExc_RuntimeError, "failed to setup call");
 		return (NULL);
@@ -6184,43 +6214,68 @@ pyhttp_client_request(struct pyhttp_client *client, int m, PyObject *kwargs)
 	op->headers = 0;
 	op->coro = coro_running;
 	op->state = CURL_CLIENT_OP_RUN;
+	LIST_INIT(&op->data.slists);
 
 	Py_INCREF(client);
 	op->client = client;
 
-	kore_curl_http_setup(&op->curl, m, ptr, length);
-	kore_curl_bind_callback(&op->curl, python_curl_http_callback, op);
+	kore_curl_http_setup(&op->data.curl, m, ptr, length);
+	kore_curl_bind_callback(&op->data.curl, python_curl_http_callback, op);
 
 	/* Go in with our own bare hands. */
 	if (client->unix != NULL) {
 #if defined(__linux__)
 		if (client->unix[0] == '@') {
-			curl_easy_setopt(op->curl.handle,
+			curl_easy_setopt(op->data.curl.handle,
 			    CURLOPT_ABSTRACT_UNIX_SOCKET, client->unix + 1);
 		} else {
-			curl_easy_setopt(op->curl.handle,
+			curl_easy_setopt(op->data.curl.handle,
 			    CURLOPT_UNIX_SOCKET_PATH, client->unix);
 		}
 #else
-		curl_easy_setopt(op->curl.handle, CURLOPT_UNIX_SOCKET_PATH,
+		curl_easy_setopt(op->data.curl.handle, CURLOPT_UNIX_SOCKET_PATH,
 		    client->unix);
 #endif
 	}
 
 	if (client->tlskey != NULL && client->tlscert != NULL) {
-		 curl_easy_setopt(op->curl.handle, CURLOPT_SSLCERT,
+		 curl_easy_setopt(op->data.curl.handle, CURLOPT_SSLCERT,
 		    client->tlscert);
-		 curl_easy_setopt(op->curl.handle, CURLOPT_SSLKEY,
+		 curl_easy_setopt(op->data.curl.handle, CURLOPT_SSLKEY,
 		    client->tlskey);
 	}
 
 	if (client->tlsverify == 0) {
-		curl_easy_setopt(op->curl.handle, CURLOPT_SSL_VERIFYHOST, 0);
-		curl_easy_setopt(op->curl.handle, CURLOPT_SSL_VERIFYPEER, 0);
+		curl_easy_setopt(op->data.curl.handle,
+		    CURLOPT_SSL_VERIFYHOST, 0);
+		curl_easy_setopt(op->data.curl.handle,
+		    CURLOPT_SSL_VERIFYPEER, 0);
+	}
+
+	if (client->curlopt != NULL) {
+		idx = 0;
+		while (PyDict_Next(client->curlopt, &idx, &key, &value)) {
+			if (!PyLong_CheckExact(key)) {
+				Py_DECREF((PyObject *)op);
+				PyErr_Format(PyExc_RuntimeError,
+				    "invalid key in curlopt keyword");
+				return (NULL);
+			}
+
+			opt = PyLong_AsLong(key);
+
+			item = python_kore_curl_setopt(&op->data, opt, value);
+			if (item == NULL) {
+				Py_DECREF((PyObject *)op);
+				return (NULL);
+			}
+
+			Py_DECREF(item);
+		}
 	}
 
 	if (client->cabundle != NULL) {
-		curl_easy_setopt(op->curl.handle, CURLOPT_CAINFO,
+		curl_easy_setopt(op->data.curl.handle, CURLOPT_CAINFO,
 		    client->cabundle);
 	}
 
@@ -6237,7 +6292,7 @@ pyhttp_client_request(struct pyhttp_client *client, int m, PyObject *kwargs)
 				return (NULL);
 			}
 
-			kore_curl_http_set_header(&op->curl, k, v);
+			kore_curl_http_set_header(&op->data.curl, k, v);
 		}
 	}
 
@@ -6250,8 +6305,16 @@ pyhttp_client_request(struct pyhttp_client *client, int m, PyObject *kwargs)
 static void
 pyhttp_client_op_dealloc(struct pyhttp_client_op *op)
 {
+	struct pycurl_slist	*psl;
+
+	while ((psl = LIST_FIRST(&op->data.slists))) {
+		LIST_REMOVE(psl, list);
+		curl_slist_free_all(psl->slist);
+		kore_free(psl);
+	}
+
 	Py_DECREF(op->client);
-	kore_curl_cleanup(&op->curl);
+	kore_curl_cleanup(&op->data.curl);
 	PyObject_Del((PyObject *)op);
 }
 
@@ -6271,26 +6334,26 @@ pyhttp_client_op_iternext(struct pyhttp_client_op *op)
 	PyObject		*result, *tuple, *dict, *value;
 
 	if (op->state == CURL_CLIENT_OP_RUN) {
-		kore_curl_run(&op->curl);
+		kore_curl_run(&op->data.curl);
 		op->state = CURL_CLIENT_OP_RESULT;
 		Py_RETURN_NONE;
 	}
 
-	if (!kore_curl_success(&op->curl)) {
+	if (!kore_curl_success(&op->data.curl)) {
 		PyErr_Format(PyExc_RuntimeError, "request to '%s' failed: %s",
-		    op->curl.url, kore_curl_strerror(&op->curl));
+		    op->data.curl.url, kore_curl_strerror(&op->data.curl));
 		return (NULL);
 	}
 
-	kore_curl_response_as_bytes(&op->curl, &response, &len);
+	kore_curl_response_as_bytes(&op->data.curl, &response, &len);
 
 	if (op->headers) {
-		kore_curl_http_parse_headers(&op->curl);
+		kore_curl_http_parse_headers(&op->data.curl);
 
 		if ((dict = PyDict_New()) == NULL)
 			return (NULL);
 
-		TAILQ_FOREACH(hdr, &op->curl.http.resp_hdrs, list) {
+		TAILQ_FOREACH(hdr, &op->data.curl.http.resp_hdrs, list) {
 			value = PyUnicode_FromString(hdr->value);
 			if (value == NULL) {
 				Py_DECREF(dict);
@@ -6307,13 +6370,13 @@ pyhttp_client_op_iternext(struct pyhttp_client_op *op)
 			Py_DECREF(value);
 		}
 
-		if ((tuple = Py_BuildValue("(iOy#)", op->curl.http.status,
+		if ((tuple = Py_BuildValue("(iOy#)", op->data.curl.http.status,
 		    dict, (const char *)response, len)) == NULL)
 			return (NULL);
 
 		Py_DECREF(dict);
 	} else {
-		if ((tuple = Py_BuildValue("(iy#)", op->curl.http.status,
+		if ((tuple = Py_BuildValue("(iy#)", op->data.curl.http.status,
 		    (const char *)response, len)) == NULL)
 			return (NULL);
 	}

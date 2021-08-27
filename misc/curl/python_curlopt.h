@@ -3,7 +3,7 @@
 struct {
 	const char	*name;
 	int		value;
-	PyObject	*(*cb)(struct pycurl_handle *, int, PyObject *);
+	PyObject	*(*cb)(struct pycurl_data *, int, PyObject *);
 } py_curlopt[] = {
 	{ "CURLOPT_WRITEDATA", 1, NULL },
 	{ "CURLOPT_URL", 2, pycurl_handle_setopt_string },

@@ -838,12 +838,16 @@ struct pycurl_slist {
 	LIST_ENTRY(pycurl_slist)	list;
 };
 
+struct pycurl_data {
+	struct kore_curl		curl;
+	LIST_HEAD(, pycurl_slist)	slists;
+};
+
 struct pycurl_handle {
 	PyObject_HEAD
-	struct kore_curl		curl;
-	char				*url;
-	struct kore_buf			*body;
-	LIST_HEAD(, pycurl_slist)	slists;
+	char			*url;
+	struct kore_buf		*body;
+	struct pycurl_data	data;
 };
 
 struct pycurl_handle_op {
@@ -863,11 +867,11 @@ static PyObject *pycurl_handle_run(struct pycurl_handle *, PyObject *);
 static PyObject *pycurl_handle_setopt(struct pycurl_handle *, PyObject *);
 static PyObject *pycurl_handle_setbody(struct pycurl_handle *, PyObject *);
 
-static PyObject *pycurl_handle_setopt_string(struct pycurl_handle *,
+static PyObject *pycurl_handle_setopt_string(struct pycurl_data *,
 		    int, PyObject *);
-static PyObject *pycurl_handle_setopt_long(struct pycurl_handle *,
+static PyObject *pycurl_handle_setopt_long(struct pycurl_data *,
 		    int, PyObject *);
-static PyObject *pycurl_handle_setopt_slist(struct pycurl_handle *,
+static PyObject *pycurl_handle_setopt_slist(struct pycurl_data *,
 		    int, PyObject *);
 
 static PyMethodDef pycurl_handle_methods[] = {
@@ -911,6 +915,7 @@ struct pyhttp_client {
 	char			*tlskey;
 	char			*tlscert;
 	char			*cabundle;
+	PyObject		*curlopt;
 	int			tlsverify;
 };
 
@@ -918,10 +923,11 @@ struct pyhttp_client_op {
 	PyObject_HEAD
 	int			state;
 	int			headers;
-	struct kore_curl	curl;
 	struct python_coro	*coro;
 	struct pyhttp_client	*client;
+	struct pycurl_data	data;
 };
+
 
 static PyObject	*pyhttp_client_op_await(PyObject *);
 static PyObject	*pyhttp_client_op_iternext(struct pyhttp_client_op *);
