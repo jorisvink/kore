@@ -132,8 +132,10 @@ static void		python_curl_http_callback(struct kore_curl *, void *);
 static void		python_curl_handle_callback(struct kore_curl *, void *);
 static PyObject		*pyhttp_client_request(struct pyhttp_client *, int,
 			    PyObject *);
-static PyObject		*python_kore_curl_setopt(struct pycurl_data *,
+static PyObject		*python_curlopt_set(struct pycurl_data *,
 			    long, PyObject *);
+static int		python_curlopt_from_dict(struct pycurl_data *,
+			    PyObject *);
 #endif
 
 static void	python_append_path(const char *);
@@ -5734,7 +5736,7 @@ pykore_pgsql_result(struct pykore_pgsql *pysql)
 
 #if defined(KORE_USE_CURL)
 static PyObject *
-python_kore_curl_setopt(struct pycurl_data *data, long opt, PyObject *value)
+python_curlopt_set(struct pycurl_data *data, long opt, PyObject *value)
 {
 	int		i;
 
@@ -5755,6 +5757,39 @@ python_kore_curl_setopt(struct pycurl_data *data, long opt, PyObject *value)
 	}
 
 	return (py_curlopt[i].cb(data, i, value));
+}
+
+static int
+python_curlopt_from_dict(struct pycurl_data *data, PyObject *dict)
+{
+	long		opt;
+	Py_ssize_t	idx;
+	PyObject	*key, *value, *obj;
+
+	idx = 0;
+
+	if (!PyDict_CheckExact(dict)) {
+		PyErr_SetString(PyExc_RuntimeError,
+		    "curlopt must be a dictionary");
+		return (KORE_RESULT_ERROR);
+	}
+
+	while (PyDict_Next(dict, &idx, &key, &value)) {
+		if (!PyLong_CheckExact(key)) {
+			PyErr_Format(PyExc_RuntimeError,
+			    "invalid key in curlopt keyword");
+			return (KORE_RESULT_ERROR);
+		}
+
+		opt = PyLong_AsLong(key);
+
+		if ((obj = python_curlopt_set(data, opt, value)) == NULL)
+			return (KORE_RESULT_ERROR);
+
+		Py_DECREF(obj);
+	}
+
+	return (KORE_RESULT_OK);
 }
 
 static PyObject *
@@ -5858,7 +5893,7 @@ pycurl_handle_setopt(struct pycurl_handle *handle, PyObject *args)
 	if (!PyArg_ParseTuple(args, "iO", &opt, &value))
 		return (NULL);
 
-	return (python_kore_curl_setopt(&handle->data, opt, value));
+	return (python_curlopt_set(&handle->data, opt, value));
 }
 
 static PyObject *
@@ -6023,7 +6058,6 @@ pycurl_handle_op_iternext(struct pycurl_handle_op *op)
 static PyObject *
 python_kore_httpclient(PyObject *self, PyObject *args, PyObject *kwargs)
 {
-	PyObject		*vdict;
 	struct pyhttp_client	*client;
 	const char		*url, *v;
 
@@ -6056,17 +6090,8 @@ python_kore_httpclient(PyObject *self, PyObject *args, PyObject *kwargs)
 		if ((v = python_string_from_dict(kwargs, "unix")) != NULL)
 			client->unix = kore_strdup(v);
 
-		if ((vdict = PyDict_GetItemString(kwargs, "curlopt")) != NULL) {
-			if (!PyDict_CheckExact(vdict)) {
-				Py_DECREF((PyObject *)client);
-				PyErr_SetString(PyExc_RuntimeError,
-				    "curlopt must be a dict");
-				return (NULL);
-			}
-
-			client->curlopt = vdict;
-			Py_INCREF(client->curlopt);
-		}
+		client->curlopt = PyDict_GetItemString(kwargs, "curlopt");
+		Py_XINCREF(client->curlopt);
 
 		python_bool_from_dict(kwargs, "tlsverify", &client->tlsverify);
 	}
@@ -6148,12 +6173,11 @@ pyhttp_client_options(struct pyhttp_client *client, PyObject *args,
 static PyObject *
 pyhttp_client_request(struct pyhttp_client *client, int m, PyObject *kwargs)
 {
-	long				opt;
 	struct pyhttp_client_op		*op;
 	char				*ptr;
 	const char			*k, *v;
 	Py_ssize_t			length, idx;
-	PyObject			*data, *headers, *key, *item, *value;
+	PyObject			*data, *headers, *key, *obj;
 
 	ptr = NULL;
 	length = 0;
@@ -6253,24 +6277,9 @@ pyhttp_client_request(struct pyhttp_client *client, int m, PyObject *kwargs)
 	}
 
 	if (client->curlopt != NULL) {
-		idx = 0;
-		while (PyDict_Next(client->curlopt, &idx, &key, &value)) {
-			if (!PyLong_CheckExact(key)) {
-				Py_DECREF((PyObject *)op);
-				PyErr_Format(PyExc_RuntimeError,
-				    "invalid key in curlopt keyword");
-				return (NULL);
-			}
-
-			opt = PyLong_AsLong(key);
-
-			item = python_kore_curl_setopt(&op->data, opt, value);
-			if (item == NULL) {
-				Py_DECREF((PyObject *)op);
-				return (NULL);
-			}
-
-			Py_DECREF(item);
+		if (!python_curlopt_from_dict(&op->data, client->curlopt)) {
+			Py_DECREF((PyObject *)op);
+			return (NULL);
 		}
 	}
 
@@ -6281,13 +6290,13 @@ pyhttp_client_request(struct pyhttp_client *client, int m, PyObject *kwargs)
 
 	if (headers != NULL) {
 		idx = 0;
-		while (PyDict_Next(headers, &idx, &key, &item)) {
+		while (PyDict_Next(headers, &idx, &key, &obj)) {
 			if ((k = PyUnicode_AsUTF8(key)) == NULL) {
 				Py_DECREF((PyObject *)op);
 				return (NULL);
 			}
 
-			if ((v = PyUnicode_AsUTF8(item)) == NULL) {
+			if ((v = PyUnicode_AsUTF8(obj)) == NULL) {
 				Py_DECREF((PyObject *)op);
 				return (NULL);
 			}
@@ -6296,8 +6305,16 @@ pyhttp_client_request(struct pyhttp_client *client, int m, PyObject *kwargs)
 		}
 	}
 
-	if (kwargs != NULL)
+	if (kwargs != NULL) {
+		if ((obj = PyDict_GetItemString(kwargs, "curlopt")) != NULL) {
+			if (!python_curlopt_from_dict(&op->data, obj)) {
+				Py_DECREF((PyObject *)op);
+				return (NULL);
+			}
+		}
+
 		python_bool_from_dict(kwargs, "return_headers", &op->headers);
+	}
 
 	return ((PyObject *)op);
 }
