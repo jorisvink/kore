@@ -6200,7 +6200,7 @@ pyhttp_client_request(struct pyhttp_client *client, int m, PyObject *kwargs)
 	default:
 		fatal("%s: unknown method %d", __func__, m);
 	}
-	
+
 	op = PyObject_New(struct pyhttp_client_op, &pyhttp_client_op_type);
 	if (op == NULL)
 		return (NULL);
