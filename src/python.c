@@ -5744,7 +5744,7 @@ python_kore_curl_setopt(struct pycurl_data *data, long opt, PyObject *value)
 	}
 
 	if (py_curlopt[i].name == NULL) {
-		PyErr_Format(PyExc_RuntimeError, "invalid option '%d'", opt);
+		PyErr_Format(PyExc_RuntimeError, "invalid option '%ld'", opt);
 		return (NULL);
 	}
 
