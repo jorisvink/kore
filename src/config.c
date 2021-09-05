@@ -56,6 +56,7 @@
 /* XXX - This is becoming a clusterfuck. Fix it. */
 
 static int	configure_load(char *);
+static char	*configure_resolve_var(char *);
 static void	configure_check_var(char **, const char *, const char *);
 
 #if defined(KORE_SINGLE_BINARY)
@@ -392,7 +393,7 @@ void
 kore_parse_config_file(FILE *fp)
 {
 	int		i, lineno;
-	char		buf[BUFSIZ], *p, *t;
+	char		buf[BUFSIZ], *p, *t, *v;
 
 	lineno = 1;
 	while ((p = kore_read_line(fp, buf, sizeof(buf))) != NULL) {
@@ -475,7 +476,9 @@ kore_parse_config_file(FILE *fp)
 
 		for (i = 0; config_directives[i].name != NULL; i++) {
 			if (!strcmp(config_directives[i].name, p)) {
-				if (config_directives[i].configure(t))
+				if ((v  = configure_resolve_var(t)) == NULL)
+					fatal("variable %s does not exist", t);
+				if (config_directives[i].configure(v))
 					break;
 				fatal("configuration error on line %d", lineno);
 				/* NOTREACHED */
@@ -489,7 +492,9 @@ kore_parse_config_file(FILE *fp)
 
 		for (i = 0; config_settings[i].name != NULL; i++) {
 			if (!strcmp(config_settings[i].name, p)) {
-				if (config_settings[i].configure(t))
+				if ((v  = configure_resolve_var(t)) == NULL)
+					fatal("variable %s does not exist", t);
+				if (config_settings[i].configure(v))
 					break;
 				fatal("configuration error on line %d", lineno);
 				/* NOTREACHED */
@@ -533,6 +538,21 @@ configure_check_var(char **var, const char *other, const char *logmsg)
 			kore_log(LOG_NOTICE, "%s", logmsg);
 		*var = kore_strdup(other);
 	}
+}
+
+static char *
+configure_resolve_var(char *var)
+{
+	char	*v;
+
+	if (var[0] == '$') {
+		if ((v = getenv(&var[1])) == NULL)
+			return (NULL);
+	} else {
+		v = var;
+	}
+
+	return (v);
 }
 
 static int
