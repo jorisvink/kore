@@ -106,6 +106,7 @@ log_from_worker(struct kore_msg *msg, const void *data)
 	if (kore_foreground) {
 		printf("%s: %.*s\n",
 		    name, (int)wlog->loglen, wlog->logmsg);
+		fflush(stdout);
 	} else {
 		syslog(wlog->prio, "%s: %.*s",
 		    name, (int)wlog->loglen, wlog->logmsg);
