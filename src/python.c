@@ -5595,13 +5595,21 @@ pykore_pgsql_iternext(struct pykore_pgsql *pysql)
 		}
 		/* fallthrough */
 	case PYKORE_PGSQL_QUERY:
-		if (!kore_pgsql_query_param_fields(&pysql->sql,
-		    pysql->query, pysql->binary,
-		    pysql->param.count, pysql->param.values,
-		    pysql->param.lengths, pysql->param.formats)) {
-			PyErr_Format(PyExc_RuntimeError,
-			    "pgsql error: %s", pysql->sql.error);
-			return (NULL);
+		if (pysql->param.count > 0) {
+			if (!kore_pgsql_query_param_fields(&pysql->sql,
+			    pysql->query, pysql->binary,
+			    pysql->param.count, pysql->param.values,
+			    pysql->param.lengths, pysql->param.formats)) {
+				PyErr_Format(PyExc_RuntimeError,
+				    "pgsql error: %s", pysql->sql.error);
+				return (NULL);
+			}
+		} else {
+			if (!kore_pgsql_query(&pysql->sql, pysql->query)) {
+				PyErr_Format(PyExc_RuntimeError,
+				    "pgsql error: %s", pysql->sql.error);
+				return (NULL);
+			}
 		}
 		pysql->state = PYKORE_PGSQL_WAIT;
 		break;
