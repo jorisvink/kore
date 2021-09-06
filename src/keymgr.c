@@ -577,7 +577,8 @@ keymgr_load_domain_privatekey(struct kore_domain *dom)
 
 	key->dom = dom;
 
-	kore_log(LOG_INFO, "loaded private key for '%s'", dom->domain);
+	if (!kore_quiet)
+		kore_log(LOG_INFO, "loaded private key for '%s'", dom->domain);
 }
 
 static struct key *
