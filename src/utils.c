@@ -79,46 +79,6 @@ kore_debug_internal(char *file, int line, const char *fmt, ...)
 }
 #endif
 
-void
-kore_log_init(void)
-{
-#if defined(KORE_SINGLE_BINARY)
-	extern const char	*__progname;
-	const char		*name = kore_strdup(__progname);
-#else
-	const char		*name = "kore";
-#endif
-
-	if (!kore_foreground)
-		openlog(name, LOG_NDELAY | LOG_PID, LOG_DAEMON);
-}
-
-void
-kore_log(int prio, const char *fmt, ...)
-{
-	va_list		args;
-	const char	*name;
-	char		buf[2048];
-
-	va_start(args, fmt);
-	(void)vsnprintf(buf, sizeof(buf), fmt, args);
-	va_end(args);
-
-	if (worker != NULL) {
-		name = kore_worker_name(worker->id);
-
-		if (kore_foreground)
-			printf("%s: %s\n", name, buf);
-		else
-			syslog(prio, "%s: %s", name, buf);
-	} else {
-		if (kore_foreground)
-			printf("[parent]: %s\n", buf);
-		else
-			syslog(prio, "[parent]: %s", buf);
-	}
-}
-
 size_t
 kore_strlcpy(char *dst, const char *src, const size_t len)
 {

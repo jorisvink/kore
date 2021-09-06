@@ -659,6 +659,7 @@ struct kore_timer {
 #define KORE_MSG_CRL			9
 #define KORE_MSG_ACCEPT_AVAILABLE	10
 #define KORE_PYTHON_SEND_OBJ		11
+#define KORE_MSG_WORKER_LOG		12
 #define KORE_MSG_ACME_BASE		100
 
 /* messages for applications should start at 201. */

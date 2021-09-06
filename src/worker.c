@@ -357,6 +357,9 @@ kore_worker_entry(struct kore_worker *kw)
 
 	worker = kw;
 
+	if (!kore_foreground)
+		closelog();
+
 #if defined(__linux__)
 	kore_seccomp_traceme();
 #endif

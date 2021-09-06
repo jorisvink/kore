@@ -205,8 +205,8 @@ main(int argc, char *argv[])
 	LIST_INIT(&kore_servers);
 
 	kore_platform_init();
-	kore_log_init();
 	kore_msg_init();
+	kore_log_init();
 #if !defined(KORE_NO_HTTP)
 	http_parent_init();
 #if defined(KORE_USE_CURL)
@@ -866,6 +866,7 @@ kore_server_start(int argc, char *argv[])
 	struct kore_runtime_call	*rcall;
 #endif
 
+	printf("kore_foreground = %d\n", kore_foreground);
 	if (kore_foreground == 0) {
 		if (daemon(1, 0) == -1)
 			fatal("cannot daemon(): %s", errno_s);
