@@ -155,6 +155,7 @@ static int		configure_task_threads(char *);
 
 #if defined(KORE_USE_PYTHON)
 static int		configure_deployment(char *);
+static int		configure_skip_chroot(char *);
 static int		configure_python_path(char *);
 static int		configure_python_import(char *);
 #endif
@@ -266,6 +267,7 @@ static struct {
 #endif
 #if defined(KORE_USE_PYTHON)
 	{ "deployment",			configure_deployment },
+	{ "skipchroot",			configure_skip_chroot },
 #endif
 #if defined(KORE_USE_PGSQL)
 	{ "pgsql_conn_max",		configure_pgsql_conn_max },
@@ -1883,6 +1885,22 @@ configure_task_threads(char *option)
 #endif
 
 #if defined(KORE_USE_PYTHON)
+static int
+configure_skip_chroot(char *value)
+{
+	if (!strcmp(value, "True")) {
+		skip_chroot = 1;
+	} else if (!strcmp(value, "False")) {
+		skip_chroot = 0;
+	} else {
+		kore_log(LOG_NOTICE,
+		    "kore.config.skipchroot: bad value '%s'", value);
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
 static int
 configure_deployment(char *value)
 {
