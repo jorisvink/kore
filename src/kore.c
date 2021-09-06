@@ -866,7 +866,6 @@ kore_server_start(int argc, char *argv[])
 	struct kore_runtime_call	*rcall;
 #endif
 
-	printf("kore_foreground = %d\n", kore_foreground);
 	if (kore_foreground == 0) {
 		if (daemon(1, 0) == -1)
 			fatal("cannot daemon(): %s", errno_s);
