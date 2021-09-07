@@ -226,34 +226,6 @@ main(int argc, char *argv[])
 	kore_module_init();
 	kore_server_sslstart();
 
-	if (!kore_quiet) {
-		kore_log(LOG_INFO, "%s %s starting, built=%s",
-		    __progname, kore_version, kore_build_date);
-		kore_log(LOG_INFO, "built-ins: "
-#if defined(__linux__)
-		    "seccomp "
-#endif
-#if defined(KORE_USE_PGSQL)
-		    "pgsql "
-#endif
-#if defined(KORE_USE_TASKS)
-		    "tasks "
-#endif
-#if defined(KORE_USE_JSONRPC)
-		    "jsonrpc "
-#endif
-#if defined(KORE_USE_PYTHON)
-		    "python "
-#endif
-#if defined(KORE_USE_ACME)
-		    "acme "
-#endif
-#if defined(KORE_USE_CURL)
-		    "curl "
-#endif
-		);
-	}
-
 #if !defined(KORE_SINGLE_BINARY) && !defined(KORE_USE_PYTHON)
 	if (config_file == NULL)
 		usage();
@@ -893,6 +865,34 @@ kore_server_start(int argc, char *argv[])
 #if defined(KORE_SINGLE_BINARY)
 	struct kore_runtime_call	*rcall;
 #endif
+
+	if (!kore_quiet) {
+		kore_log(LOG_INFO, "%s %s starting, built=%s",
+		    __progname, kore_version, kore_build_date);
+		kore_log(LOG_INFO, "built-ins: "
+#if defined(__linux__)
+		    "seccomp "
+#endif
+#if defined(KORE_USE_PGSQL)
+		    "pgsql "
+#endif
+#if defined(KORE_USE_TASKS)
+		    "tasks "
+#endif
+#if defined(KORE_USE_JSONRPC)
+		    "jsonrpc "
+#endif
+#if defined(KORE_USE_PYTHON)
+		    "python "
+#endif
+#if defined(KORE_USE_ACME)
+		    "acme "
+#endif
+#if defined(KORE_USE_CURL)
+		    "curl "
+#endif
+		);
+	}
 
 	if (kore_foreground == 0) {
 		if (daemon(1, 0) == -1)
