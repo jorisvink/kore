@@ -366,8 +366,10 @@ kore_python_init(void)
 	    KORE_FILTER_LEN(filter_python));
 #endif
 
-	if (!kore_configure_setting("deployment", "dev"))
-		fatal("failed to set initial deployment");
+	if (kore_pymodule) {
+		if (!kore_configure_setting("deployment", "dev"))
+			fatal("failed to set initial deployment");
+	}
 }
 
 void
