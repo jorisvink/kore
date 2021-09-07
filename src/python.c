@@ -1863,7 +1863,7 @@ python_kore_privsep(PyObject *self, PyObject *args, PyObject *kwargs)
 	} else if (!strcmp(val, "keymgr")) {
 		ps = &keymgr_privsep;
 #if defined(KORE_USE_ACME)
-	} else if (!strcmp(val, "keymgr")) {
+	} else if (!strcmp(val, "acme")) {
 		ps = &acme_privsep;
 #endif
 	} else {
