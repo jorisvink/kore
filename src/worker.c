@@ -184,6 +184,9 @@ kore_worker_spawn(u_int16_t idx, u_int16_t id, u_int16_t cpu)
 {
 	int			cnt;
 	struct kore_worker	*kw;
+#if defined(__linux__)
+	int			status;
+#endif
 
 	kw = WORKER(idx);
 	kw->id = id;
@@ -227,6 +230,16 @@ kore_worker_spawn(u_int16_t idx, u_int16_t id, u_int16_t cpu)
 			if (kw->ready == 1)
 				break;
 			usleep(100000);
+#if defined(__linux__)
+			/*
+			 * If seccomp_tracing is enabled, make sure we
+			 * handle the SIGSTOP from the child processes.
+			 */
+			if (kore_seccomp_tracing) {
+				if (waitpid(kw->pid, &status, WNOHANG) > 0)
+					kore_seccomp_trace(kw->pid, status);
+			}
+#endif
 		}
 
 		if (kw->ready == 0) {
