@@ -146,6 +146,8 @@ kore_worker_init(void)
 		kw->lb.offset = 0;
 	}
 
+	kore_log(LOG_INFO, "starting worker processes");
+
 	/* Now start all the workers. */
 	id = 1;
 	cpu = 1;
@@ -171,6 +173,8 @@ kore_worker_init(void)
 		    KORE_WORKER_KEYMGR, 0))
 			return (KORE_RESULT_ERROR);
 	}
+
+	kore_log(LOG_INFO, "all worker processes started");
 
 	return (KORE_RESULT_OK);
 }
@@ -219,10 +223,10 @@ kore_worker_spawn(u_int16_t idx, u_int16_t id, u_int16_t cpu)
 		kore_worker_entry(kw);
 		exit(1);
 	} else {
-		for (cnt = 0; cnt < 25; cnt++) {
+		for (cnt = 0; cnt < 50; cnt++) {
 			if (kw->ready == 1)
 				break;
-			usleep(10000);
+			usleep(100000);
 		}
 
 		if (kw->ready == 0) {
