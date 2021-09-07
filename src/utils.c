@@ -649,7 +649,6 @@ static void
 fatal_log(const char *fmt, va_list args)
 {
 	char			buf[2048];
-	extern const char	*kore_progname;
 
 	(void)vsnprintf(buf, sizeof(buf), fmt, args);
 	kore_log(LOG_ERR, "%s", buf);
