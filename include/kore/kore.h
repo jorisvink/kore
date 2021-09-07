@@ -450,9 +450,17 @@ struct kore_alog_header {
 	u_int16_t		loglen;
 } __attribute__((packed));
 
+struct kore_privsep {
+	char		*root;
+	char		*runas;
+	int		skip_runas;
+	int		skip_chroot;
+};
+
 struct kore_worker {
 	u_int16_t			id;
 	u_int16_t			cpu;
+	int				ready;
 	int				running;
 #if defined(__linux__)
 	int				tracing;
@@ -464,6 +472,7 @@ struct kore_worker {
 	int				restarted;
 	u_int64_t			time_locked;
 	struct kore_module_handle	*active_hdlr;
+	struct kore_privsep		*ps;
 
 	/* Used by the workers to store accesslogs. */
 	struct {
@@ -701,8 +710,6 @@ extern int	skip_runas;
 extern int	kore_foreground;
 
 extern char	*kore_pidfile;
-extern char	*kore_root_path;
-extern char	*kore_runas_user;
 extern char	*kore_tls_cipher_list;
 
 extern volatile sig_atomic_t	sig_recv;
@@ -711,15 +718,16 @@ extern int	tls_version;
 extern DH	*tls_dhparam;
 extern char	*rand_file;
 extern int	keymgr_active;
-extern char	*keymgr_runas_user;
-extern char	*keymgr_root_path;
-extern char	*acme_runas_user;
-extern char	*acme_root_path;
+
+extern struct kore_privsep	worker_privsep;
+extern struct kore_privsep	keymgr_privsep;
+extern struct kore_privsep	acme_privsep;
 
 extern u_int8_t			nlisteners;
 extern u_int16_t		cpu_count;
 extern u_int8_t			worker_count;
 extern const char		*kore_version;
+extern const char		*kore_build_date;
 extern int			worker_policy;
 extern u_int8_t			worker_set_affinity;
 extern u_int32_t		worker_rlimit_nofiles;
@@ -742,12 +750,13 @@ void		kore_proctitle(const char *);
 void		kore_default_getopt(int, char **);
 
 void		kore_worker_reap(void);
-void		kore_worker_init(void);
+int		kore_worker_init(void);
+void		kore_worker_privsep(void);
+void		kore_worker_started(void);
 void		kore_worker_make_busy(void);
 void		kore_worker_shutdown(void);
 void		kore_worker_dispatch_signal(int);
-void		kore_worker_privdrop(const char *, const char *);
-void		kore_worker_spawn(u_int16_t, u_int16_t, u_int16_t);
+int		kore_worker_spawn(u_int16_t, u_int16_t, u_int16_t);
 int		kore_worker_keymgr_response_verify(struct kore_msg *,
 		    const void *, struct kore_domain **);
 

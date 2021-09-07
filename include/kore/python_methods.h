@@ -62,6 +62,8 @@ static PyObject		*python_kore_sendobj(PyObject *, PyObject *,
 			    PyObject *);
 static PyObject		*python_kore_server(PyObject *, PyObject *,
 			    PyObject *);
+static PyObject		*python_kore_privsep(PyObject *, PyObject *,
+			    PyObject *);
 
 
 #if defined(KORE_USE_PGSQL)
@@ -108,6 +110,7 @@ static struct PyMethodDef pykore_methods[] = {
 	METHOD("domain", python_kore_domain, METH_VARARGS | METH_KEYWORDS),
 	METHOD("server", python_kore_server, METH_VARARGS | METH_KEYWORDS),
 	METHOD("gather", python_kore_gather, METH_VARARGS | METH_KEYWORDS),
+	METHOD("privsep", python_kore_privsep, METH_VARARGS | METH_KEYWORDS),
 	METHOD("sendobj", python_kore_sendobj, METH_VARARGS | METH_KEYWORDS),
 	METHOD("websocket_broadcast", python_websocket_broadcast, METH_VARARGS),
 #if defined(KORE_USE_PGSQL)

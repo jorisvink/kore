@@ -64,11 +64,11 @@ u_int8_t		worker_count = 0;
 char			**kore_argv = NULL;
 int			kore_foreground = 0;
 char			*kore_progname = NULL;
-char			*kore_root_path = NULL;
-char			*kore_runas_user = NULL;
 u_int32_t		kore_socket_backlog = 5000;
 char			*kore_pidfile = KORE_PIDFILE_DEFAULT;
 char			*kore_tls_cipher_list = KORE_DEFAULT_CIPHER_LIST;
+
+struct kore_privsep	worker_privsep;
 
 extern char		**environ;
 extern char		*__progname;
@@ -113,9 +113,9 @@ usage(void)
 #endif
 	printf("\t-f\tstart in foreground\n");
 	printf("\t-h\tthis help text\n");
-	printf("\t-n\tdo not chroot\n");
+	printf("\t-n\tdo not chroot on any worker\n");
 	printf("\t-q\tonly log errors\n");
-	printf("\t-r\tdo not drop privileges\n");
+	printf("\t-r\tdo not change user on any worker\n");
 	printf("\t-v\tdisplay %s build information\n", __progname);
 
 	printf("\nFind more information on https://kore.io\n");
@@ -226,6 +226,34 @@ main(int argc, char *argv[])
 	kore_module_init();
 	kore_server_sslstart();
 
+	if (!kore_quiet) {
+		kore_log(LOG_INFO, "%s %s starting, built=%s",
+		    __progname, kore_version, kore_build_date);
+		kore_log(LOG_INFO, "built-ins: "
+#if defined(__linux__)
+		    "seccomp "
+#endif
+#if defined(KORE_USE_PGSQL)
+		    "pgsql "
+#endif
+#if defined(KORE_USE_TASKS)
+		    "tasks "
+#endif
+#if defined(KORE_USE_JSONRPC)
+		    "jsonrpc "
+#endif
+#if defined(KORE_USE_PYTHON)
+		    "python "
+#endif
+#if defined(KORE_USE_ACME)
+		    "acme "
+#endif
+#if defined(KORE_USE_CURL)
+		    "curl "
+#endif
+		);
+	}
+
 #if !defined(KORE_SINGLE_BINARY) && !defined(KORE_USE_PYTHON)
 	if (config_file == NULL)
 		usage();
@@ -276,7 +304,7 @@ main(int argc, char *argv[])
 	kore_server_start(argc, argv);
 
 	if (!kore_quiet)
-		kore_log(LOG_NOTICE, "server shutting down");
+		kore_log(LOG_INFO, "server shutting down");
 
 	kore_worker_shutdown();
 
@@ -292,7 +320,7 @@ main(int argc, char *argv[])
 	kore_server_cleanup();
 
 	if (!kore_quiet)
-		kore_log(LOG_NOTICE, "goodbye");
+		kore_log(LOG_INFO, "goodbye");
 
 #if defined(KORE_USE_PYTHON)
 	kore_python_cleanup();
@@ -554,10 +582,10 @@ kore_server_finalize(struct kore_server *srv)
 			proto = "http";
 
 		if (l->family == AF_UNIX) {
-			kore_log(LOG_NOTICE, "%s serving %s on %s",
+			kore_log(LOG_INFO, "%s serving %s on %s",
 			    srv->name, proto, l->host);
 		} else {
-			kore_log(LOG_NOTICE, "%s serving %s on %s:%s",
+			kore_log(LOG_INFO, "%s serving %s on %s:%s",
 			    srv->name, proto, l->host, l->port);
 		}
 	}
@@ -881,25 +909,6 @@ kore_server_start(int argc, char *argv[])
 	kore_pid = getpid();
 	kore_write_kore_pid();
 
-	if (!kore_quiet) {
-		kore_log(LOG_NOTICE, "%s is starting up", __progname);
-#if defined(__linux__)
-		kore_log(LOG_NOTICE, "seccomp sandbox enabled");
-#endif
-#if defined(KORE_USE_PGSQL)
-		kore_log(LOG_NOTICE, "pgsql built-in enabled");
-#endif
-#if defined(KORE_USE_TASKS)
-		kore_log(LOG_NOTICE, "tasks built-in enabled");
-#endif
-#if defined(KORE_USE_JSONRPC)
-		kore_log(LOG_NOTICE, "jsonrpc built-in enabled");
-#endif
-#if defined(KORE_USE_PYTHON)
-		kore_log(LOG_NOTICE, "python built-in enabled");
-#endif
-	}
-
 #if !defined(KORE_SINGLE_BINARY) && !defined(KORE_USE_PYTHON)
 	kore_call_parent_configure(argc, argv);
 #endif
@@ -922,7 +931,19 @@ kore_server_start(int argc, char *argv[])
 	}
 
 	kore_platform_proctitle("[parent]");
-	kore_worker_init();
+
+	if (!kore_worker_init()) {
+		kore_log(LOG_ERR, "last worker log lines:");
+		kore_log(LOG_ERR, "=====================================");
+		net_init();
+		kore_connection_init();
+		kore_platform_event_init();
+		kore_msg_parent_init();
+		kore_platform_event_wait(10);
+		kore_worker_dispatch_signal(SIGQUIT);
+		kore_log(LOG_ERR, "=====================================");
+		return;
+	}
 
 	/* Set worker_max_connections for kore_connection_init(). */
 	tmp = worker_max_connections;

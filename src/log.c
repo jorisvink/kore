@@ -27,6 +27,7 @@ struct kore_wlog {
 	char		logmsg[];
 };
 
+static void	log_print(int, const char *, ...);
 static void	log_from_worker(struct kore_msg *, const void *);
 
 void
@@ -79,7 +80,7 @@ kore_log(int prio, const char *fmt, ...)
 		str = kore_buf_stringify(&buf, NULL);
 
 		if (kore_foreground)
-			printf("[parent]: %s\n", str);
+			log_print(prio, "[parent]: %s\n", str);
 		else
 			syslog(prio, "[parent]: %s", str);
 	}
@@ -104,11 +105,32 @@ log_from_worker(struct kore_msg *msg, const void *data)
 	name = kore_worker_name(wlog->wid);
 
 	if (kore_foreground) {
-		printf("%s: %.*s\n",
+		log_print(wlog->prio, "%s: %.*s\n",
 		    name, (int)wlog->loglen, wlog->logmsg);
-		fflush(stdout);
 	} else {
 		syslog(wlog->prio, "%s: %.*s",
 		    name, (int)wlog->loglen, wlog->logmsg);
 	}
+}
+
+static void
+log_print(int prio, const char *fmt, ...)
+{
+	va_list		args;
+
+	va_start(args, fmt);
+
+	switch (prio) {
+	case LOG_ERR:
+	case LOG_WARNING:
+	case LOG_NOTICE:
+	case LOG_INFO:
+	case LOG_DEBUG:
+		break;
+	}
+
+	vprintf(fmt, args);
+	fflush(stdout);
+
+	va_end(args);
 }

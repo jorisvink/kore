@@ -69,8 +69,6 @@ static int		configure_file(char *);
 
 #if defined(KORE_USE_ACME)
 static int		configure_acme(char *);
-static int		configure_acme_root(char *);
-static int		configure_acme_runas(char *);
 static int		configure_acme_email(char *);
 static int		configure_acme_provider(char *);
 #endif
@@ -82,8 +80,7 @@ static int		configure_bind(char *);
 static int		configure_bind_unix(char *);
 static int		configure_attach(char *);
 static int		configure_domain(char *);
-static int		configure_root(char *);
-static int		configure_runas(char *);
+static int		configure_privsep(char *);
 static int		configure_workers(char *);
 static int		configure_pidfile(char *);
 static int		configure_rlimit_nofiles(char *);
@@ -92,6 +89,9 @@ static int		configure_accept_threshold(char *);
 static int		configure_death_policy(char *);
 static int		configure_set_affinity(char *);
 static int		configure_socket_backlog(char *);
+static int		configure_privsep_skip(char *);
+static int		configure_privsep_root(char *);
+static int		configure_privsep_runas(char *);
 
 #if defined(KORE_USE_PLATFORM_PLEDGE)
 static int		configure_add_pledge(char *);
@@ -103,8 +103,6 @@ static int		configure_certkey(char *);
 static int		configure_tls_version(char *);
 static int		configure_tls_cipher(char *);
 static int		configure_tls_dhparam(char *);
-static int		configure_keymgr_root(char *);
-static int		configure_keymgr_runas(char *);
 static int		configure_client_verify(char *);
 static int		configure_client_verify_depth(char *);
 
@@ -155,9 +153,6 @@ static int		configure_task_threads(char *);
 
 #if defined(KORE_USE_PYTHON)
 static int		configure_deployment(char *);
-static int		configure_skip_chroot(char *);
-static int		configure_python_path(char *);
-static int		configure_python_import(char *);
 #endif
 
 #if defined(KORE_USE_CURL)
@@ -180,18 +175,18 @@ static struct {
 	{ "bind",			configure_bind },
 	{ "load",			configure_load },
 	{ "domain",			configure_domain },
+	{ "privsep",			configure_privsep },
 	{ "server",			configure_server },
 	{ "attach",			configure_attach },
 	{ "certkey",			configure_certkey },
 	{ "certfile",			configure_certfile },
 	{ "include",			configure_include },
 	{ "unix",			configure_bind_unix },
+	{ "skip",			configure_privsep_skip },
+	{ "root",			configure_privsep_root },
+	{ "runas",			configure_privsep_runas },
 	{ "client_verify",		configure_client_verify },
 	{ "client_verify_depth",	configure_client_verify_depth },
-#if defined(KORE_USE_PYTHON)
-	{ "python_path",		configure_python_path },
-	{ "python_import",		configure_python_import },
-#endif
 #if !defined(KORE_NO_HTTP)
 	{ "route",			configure_route},
 	{ "filemap",			configure_filemap },
@@ -217,9 +212,6 @@ static struct {
 	const char		*name;
 	int			(*configure)(char *);
 } config_settings[] = {
-	{ "root",			configure_root },
-	{ "chroot",			configure_root },
-	{ "runas",			configure_runas },
 	{ "workers",			configure_workers },
 	{ "worker_max_connections",	configure_max_connections },
 	{ "worker_rlimit_nofiles",	configure_rlimit_nofiles },
@@ -232,11 +224,7 @@ static struct {
 	{ "tls_cipher",			configure_tls_cipher },
 	{ "tls_dhparam",		configure_tls_dhparam },
 	{ "rand_file",			configure_rand_file },
-	{ "keymgr_runas",		configure_keymgr_runas },
-	{ "keymgr_root",		configure_keymgr_root },
 #if defined(KORE_USE_ACME)
-	{ "acme_runas",			configure_acme_runas },
-	{ "acme_root",			configure_acme_root },
 	{ "acme_email",			configure_acme_email },
 	{ "acme_provider",		configure_acme_provider },
 #endif
@@ -267,7 +255,6 @@ static struct {
 #endif
 #if defined(KORE_USE_PYTHON)
 	{ "deployment",			configure_deployment },
-	{ "skipchroot",			configure_skip_chroot },
 #endif
 #if defined(KORE_USE_PGSQL)
 	{ "pgsql_conn_max",		configure_pgsql_conn_max },
@@ -302,12 +289,14 @@ static struct kore_module_handle	*current_handler = NULL;
 extern const char			*__progname;
 static struct kore_domain		*current_domain = NULL;
 static struct kore_server		*current_server = NULL;
+static struct kore_privsep		*current_privsep = NULL;
 
 void
 kore_parse_config(void)
 {
 	FILE		*fp;
 	BIO		*bio;
+	struct passwd	*pwd;
 	char		path[PATH_MAX];
 
 	if (finalized)
@@ -345,10 +334,10 @@ kore_parse_config(void)
 	if (!kore_module_loaded())
 		fatal("no application module was loaded");
 
-	if (kore_root_path == NULL) {
+	if (worker_privsep.root == NULL) {
 		if (getcwd(path, sizeof(path)) == NULL)
 			fatal("getcwd: %s", errno_s);
-		kore_root_path = kore_strdup(path);
+		worker_privsep.root = kore_strdup(path);
 
 		if (!kore_quiet) {
 			kore_log(LOG_NOTICE, "privsep: no root path set, "
@@ -356,37 +345,54 @@ kore_parse_config(void)
 		}
 	}
 
-	if (getuid() != 0 && skip_chroot == 0)
-		fatal("cannot chroot, use -n to skip it");
+	if (worker_privsep.runas == NULL) {
+		if ((pwd = getpwuid(getuid())) == NULL)
+			fatal("getpwuid: %s", errno_s);
 
-	if (skip_runas != 1 && kore_runas_user == NULL)
-		fatal("missing runas user, use -r to skip it");
+		worker_privsep.runas = kore_strdup(pwd->pw_name);
+		if (!kore_quiet) {
+			kore_log(LOG_NOTICE, "privsep: no runas user set, "
+			    "using current user %s", worker_privsep.runas);
+		}
 
-	if (getuid() != 0 && skip_runas == 0)
-		fatal("cannot drop privileges, use -r to skip it");
+		endpwent();
+	}
 
-	if (skip_runas) {
-		if (!kore_quiet)
-			kore_log(LOG_WARNING, "privsep: will not change user");
-	} else {
-		configure_check_var(&keymgr_runas_user, kore_runas_user,
-			"privsep: no keymgr_runas set, using 'runas` user");
+	configure_check_var(&keymgr_privsep.runas, worker_privsep.runas,
+		"privsep: no keymgr runas set, using 'privsep.worker.runas`");
 #if defined(KORE_USE_ACME)
-		configure_check_var(&acme_runas_user, kore_runas_user,
-			"privsep: no acme_runas set, using 'runas` user");
+	configure_check_var(&acme_privsep.runas, worker_privsep.runas,
+		"privsep: no acme runas set, using 'privsep.worker.runas`");
+#endif
+
+	configure_check_var(&keymgr_privsep.root, worker_privsep.root,
+		"privsep: no keymgr root set, using 'privsep.worker.root`");
+#if defined(KORE_USE_ACME)
+	configure_check_var(&acme_privsep.root, worker_privsep.root,
+		"privsep: no acme root set, using 'privsep.worker.root`");
+#endif
+
+	if (skip_chroot) {
+		worker_privsep.skip_chroot = 1;
+		keymgr_privsep.skip_chroot = 1;
+#if defined(KORE_USE_ACME)
+		acme_privsep.skip_chroot = 1;
 #endif
 	}
 
-	configure_check_var(&keymgr_root_path, kore_root_path,
-		"privsep: no keymgr_root set, using 'root` directory");
-
+	if (skip_runas) {
+		worker_privsep.skip_runas = 1;
+		keymgr_privsep.skip_runas = 1;
 #if defined(KORE_USE_ACME)
-	configure_check_var(&acme_root_path, kore_root_path,
-		"privsep: no acme_root set, using 'root` directory");
+		acme_privsep.skip_runas = 1;
 #endif
+	}
+
+	if (skip_runas && !kore_quiet)
+		kore_log(LOG_NOTICE, "privsep: skipping all runas options");
 
 	if (skip_chroot && !kore_quiet)
-		kore_log(LOG_WARNING, "privsep: will not chroot");
+		kore_log(LOG_NOTICE, "privsep: skipping all chroot options");
 
 	finalized = 1;
 }
@@ -401,6 +407,12 @@ kore_parse_config_file(FILE *fp)
 	while ((p = kore_read_line(fp, buf, sizeof(buf))) != NULL) {
 		if (strlen(p) == 0) {
 			lineno++;
+			continue;
+		}
+
+		if (!strcmp(p, "}") && current_privsep != NULL) {
+			lineno++;
+			current_privsep = NULL;
 			continue;
 		}
 
@@ -649,29 +661,11 @@ configure_acme(char *yesno)
 
 		kore_acme_get_paths(current_domain->domain,
 		    &current_domain->certkey, &current_domain->certfile);
-
+		acme_domains++;
 	} else {
 		printf("invalid '%s' for yes|no acme option\n", yesno);
 		return (KORE_RESULT_ERROR);
 	}
-
-	return (KORE_RESULT_OK);
-}
-
-static int
-configure_acme_runas(char *user)
-{
-	kore_free(acme_runas_user);
-	acme_runas_user = kore_strdup(user);
-
-	return (KORE_RESULT_OK);
-}
-
-static int
-configure_acme_root(char *root)
-{
-	kore_free(acme_root_path);
-	acme_root_path = kore_strdup(root);
 
 	return (KORE_RESULT_OK);
 }
@@ -937,21 +931,89 @@ configure_certkey(char *path)
 }
 
 static int
-configure_keymgr_runas(char *user)
+configure_privsep(char *options)
 {
-	if (keymgr_runas_user != NULL)
-		kore_free(keymgr_runas_user);
-	keymgr_runas_user = kore_strdup(user);
+	char		*argv[3];
+
+	if (current_privsep != NULL) {
+		printf("nested privsep contexts are not allowed\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	kore_split_string(options, " ", argv, 3);
+
+	if (argv[0] == NULL || argv[1] == NULL) {
+		printf("invalid privsep context\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (strcmp(argv[1], "{")) {
+		printf("privsep context not opened correctly\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (!strcmp(argv[0], "worker")) {
+		current_privsep = &worker_privsep;
+	} else if (!strcmp(argv[0], "keymgr")) {
+		current_privsep = &keymgr_privsep;
+#if defined(KORE_USE_ACME)
+	} else if (!strcmp(argv[0], "keymgr")) {
+		current_privsep = &acme_privsep;
+#endif
+	} else {
+		printf("unknown privsep context: %s\n", argv[0]);
+		return (KORE_RESULT_ERROR);
+	}
 
 	return (KORE_RESULT_OK);
 }
 
 static int
-configure_keymgr_root(char *root)
+configure_privsep_runas(char *user)
 {
-	if (keymgr_root_path != NULL)
-		kore_free(keymgr_root_path);
-	keymgr_root_path = kore_strdup(root);
+	if (current_privsep == NULL) {
+		printf("runas not specified in privsep context\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (current_privsep->runas != NULL)
+		kore_free(current_privsep->runas);
+
+	current_privsep->runas = kore_strdup(user);
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_privsep_root(char *root)
+{
+	if (current_privsep == NULL) {
+		printf("root not specified in privsep context\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (current_privsep->root != NULL)
+		kore_free(current_privsep->root);
+
+	current_privsep->root = kore_strdup(root);
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_privsep_skip(char *option)
+{
+	if (current_privsep == NULL) {
+		printf("skip not specified in privsep context\n");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (!strcmp(option, "chroot")) {
+		current_privsep->skip_chroot = 1;
+	} else {
+		printf("unknown skip option '%s'\n", option);
+		return (KORE_RESULT_ERROR);
+	}
 
 	return (KORE_RESULT_OK);
 }
@@ -1710,26 +1772,6 @@ configure_websocket_timeout(char *option)
 #endif /* !KORE_NO_HTTP */
 
 static int
-configure_root(char *path)
-{
-	if (kore_root_path != NULL)
-		kore_free(kore_root_path);
-	kore_root_path = kore_strdup(path);
-
-	return (KORE_RESULT_OK);
-}
-
-static int
-configure_runas(char *user)
-{
-	if (kore_runas_user != NULL)
-		kore_free(kore_runas_user);
-	kore_runas_user = kore_strdup(user);
-
-	return (KORE_RESULT_OK);
-}
-
-static int
 configure_workers(char *option)
 {
 	int		err;
@@ -1886,22 +1928,6 @@ configure_task_threads(char *option)
 
 #if defined(KORE_USE_PYTHON)
 static int
-configure_skip_chroot(char *value)
-{
-	if (!strcmp(value, "True")) {
-		skip_chroot = 1;
-	} else if (!strcmp(value, "False")) {
-		skip_chroot = 0;
-	} else {
-		kore_log(LOG_NOTICE,
-		    "kore.config.skipchroot: bad value '%s'", value);
-		return (KORE_RESULT_ERROR);
-	}
-
-	return (KORE_RESULT_OK);
-}
-
-static int
 configure_deployment(char *value)
 {
 	if (!strcmp(value, "docker")) {
@@ -1925,26 +1951,6 @@ configure_deployment(char *value)
 	return (KORE_RESULT_OK);
 }
 
-static int
-configure_python_path(char *path)
-{
-	kore_python_path(path);
-
-	return (KORE_RESULT_OK);
-}
-
-static int
-configure_python_import(char *module)
-{
-	char		*argv[3];
-
-	kore_split_string(module, " ", argv, 3);
-	if (argv[0] == NULL)
-		return (KORE_RESULT_ERROR);
-
-	kore_module_load(argv[0], argv[1], KORE_MODULE_PYTHON);
-	return (KORE_RESULT_OK);
-}
 #endif
 
 #if defined(KORE_USE_PLATFORM_PLEDGE)

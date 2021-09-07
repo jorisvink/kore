@@ -20,16 +20,57 @@ server tls {
 #	tls		no
 #}
 
-# The worker process root directory. If chrooting was not disabled
-# at startup the worker processes will chroot into this directory.
+# Kore can have multiple settings for each processes that run under it.
+# There are 3 different type of processes:
 #
-# If this configuration option is not set, Kore will take the current
-# working directory as the root.
-root		/home/joris/src/kore
+#	1) Worker processes, these handle the HTTP requests and your code
+#	   runs inside of these.
+#	2) The keymgr process, this handles your domain private keys
+#	   and signing during the TLS handshakes. It also holds your
+#	   ACME account-key and will sign ACME requests.
+#	3) The acme process, this talks to the ACME servers.
+#
+# You can individually turn on/off chrooting and dropping user
+# privileges per process. The -n and -r command-line options
+# are a global override for skipping chroot or dropping user
+# permissions on all processes.
+#
+# If no root/runas options are set in a process, it will inherit the
+# default values from the worker processes.
+#
+# The worker processes will get the current working directory or
+# current user if no options where specified for it.
+#
+# Configures the worker processes.
+privsep worker {
+	# The user the workers will run as.
+	runas		kore
 
-# Worker processes will run as the specified user. If this option is
-# missing Kore will run as the current user.
-runas		joris
+	# The root directory for the worker processes, if chroot isn't
+	# skipped, this is the directory it will chroot into.
+	#
+	# If not set, Kore will take the current working directory.
+	root		/var/chroot/kore
+
+	# We could configure this process to not chroot and only
+	# chdir into its root directory.
+	#skip		chroot
+}
+
+# Configures the keymgr process.
+#	If TLS is enabled you will need to specify paths to the domain
+#	certificate and key that Kore will load. This loading is done
+#	from the keymgr (separate process) and all paths must be relative
+#	to the keymgr process its root configuration option.
+privsep keymgr {
+	# The user the keymgr will run as.
+	runas		keymgr
+
+	# The root directory for the keymgr process. In this example
+	# we do not turn off chroot for this process so the keymgr
+	# will chroot into this directory.
+	root		/etc/keymgr
+}
 
 # How many worker processes Kore will spawn. If the directive
 # worker_set_affinity is set to 1 (the default) Kore will automatically
@@ -87,25 +128,6 @@ workers		4
 #
 # NOTE: This file location must be inside your chrooted environment.
 #rand_file	random.data
-
-# Key manager specific options.
-#	If TLS is enabled you will need to specify paths to the domain
-#	certificate and key that Kore will load. This loading is done
-#	from the keymgr (separate process) and all paths must be relative
-#	to the keymgr_root configuration option.
-#
-#	keymgr_root	The root path the keymgr will chdir into.
-#				If chroot was not disable at startup time
-#				the keymgr process will chroot into here.
-#
-#	keymgr_runas	The user to run the keymgr as.
-#
-#	If privsep and chrooting is enabled at startup time but these
-#	configuration options were not set, they will take over the
-#	values from the 'root' and 'runas' configuration options.
-#
-#keymgr_root
-#keymgr_runas
 
 # Filemap settings
 #	filemap_index	Name of the file to be used as the directory

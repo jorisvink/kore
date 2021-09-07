@@ -1848,6 +1848,73 @@ python_kore_server(PyObject *self, PyObject *args, PyObject *kwargs)
 }
 
 static PyObject *
+python_kore_privsep(PyObject *self, PyObject *args, PyObject *kwargs)
+{
+	struct kore_privsep	*ps;
+	const char		*val;
+	PyObject		*skip, *obj;
+	Py_ssize_t		list_len, idx;
+
+	if (!PyArg_ParseTuple(args, "s", &val))
+		return (NULL);
+
+	if (!strcmp(val, "worker")) {
+		ps = &worker_privsep;
+	} else if (!strcmp(val, "keymgr")) {
+		ps = &keymgr_privsep;
+#if defined(KORE_USE_ACME)
+	} else if (!strcmp(val, "keymgr")) {
+		ps = &acme_privsep;
+#endif
+	} else {
+		PyErr_Format(PyExc_RuntimeError,
+		    "unknown privsep process '%s'", val);
+		return (NULL);
+	}
+
+	if ((val = python_string_from_dict(kwargs, "root")) != NULL) {
+		kore_free(ps->root);
+		ps->root = kore_strdup(val);
+	}
+
+	if ((val = python_string_from_dict(kwargs, "runas")) != NULL) {
+		kore_free(ps->runas);
+		ps->runas = kore_strdup(val);
+	}
+
+	if ((skip = PyDict_GetItemString(kwargs, "skip")) != NULL) {
+		if (!PyList_CheckExact(skip)) {
+			PyErr_Format(PyExc_RuntimeError,
+			    "privsep skip keyword needs to be a list");
+			return (NULL);
+		}
+
+		list_len = PyList_Size(skip);
+
+		for (idx = 0; idx < list_len; idx++) {
+			if ((obj = PyList_GetItem(skip, idx)) == NULL)
+				return (NULL);
+
+			if (!PyUnicode_Check(obj))
+				return (NULL);
+
+			if ((val = PyUnicode_AsUTF8AndSize(obj, NULL)) == NULL)
+				return (NULL);
+
+			if (!strcmp(val, "chroot")) {
+				ps->skip_chroot = 1;
+			} else {
+				PyErr_Format(PyExc_RuntimeError,
+				    "unknown skip keyword '%s'", val);
+				return (NULL);
+			}
+		}
+	}
+
+	Py_RETURN_NONE;
+}
+
+static PyObject *
 python_kore_prerequest(PyObject *self, PyObject *args)
 {
 	PyObject		*f;

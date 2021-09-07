@@ -652,14 +652,10 @@ fatal_log(const char *fmt, va_list args)
 	extern const char	*kore_progname;
 
 	(void)vsnprintf(buf, sizeof(buf), fmt, args);
-
-	if (!kore_foreground)
-		kore_log(LOG_ERR, "%s", buf);
+	kore_log(LOG_ERR, "%s", buf);
 
 	if (worker != NULL && worker->id == KORE_WORKER_KEYMGR)
 		kore_keymgr_cleanup(1);
-
-	printf("%s: %s\n", kore_progname, buf);
 }
 
 static int

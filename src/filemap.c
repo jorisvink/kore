@@ -69,9 +69,9 @@ kore_filemap_create(struct kore_domain *dom, const char *path, const char *root)
 	if (root[0] != '/' || root[sz - 1] != '/')
 		return (KORE_RESULT_ERROR);
 
-	if (kore_root_path != NULL) {
+	if (worker_privsep.root != NULL) {
 		len = snprintf(fpath, sizeof(fpath), "%s/%s",
-		    kore_root_path, path);
+		    worker_privsep.root, path);
 		if (len == -1 || (size_t)len >= sizeof(fpath))
 			fatal("kore_filemap_create: failed to concat paths");
 	} else {

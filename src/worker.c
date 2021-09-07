@@ -16,6 +16,7 @@
 
 #include <sys/param.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/shm.h>
 #include <sys/wait.h>
 #include <sys/time.h>
@@ -28,6 +29,7 @@
 #include <grp.h>
 #include <pwd.h>
 #include <signal.h>
+#include <unistd.h>
 
 #include "kore.h"
 
@@ -77,6 +79,7 @@ struct wlock {
 static int	worker_trylock(void);
 static void	worker_unlock(void);
 static void	worker_reaper(pid_t, int);
+static void	worker_domain_check(struct kore_domain *);
 
 static inline int	worker_acceptlock_obtain(void);
 static inline void	worker_acceptlock_release(void);
@@ -99,7 +102,7 @@ u_int32_t			worker_max_connections = 512;
 u_int32_t			worker_active_connections = 0;
 int				worker_policy = KORE_WORKER_POLICY_RESTART;
 
-void
+int
 kore_worker_init(void)
 {
 	size_t			len;
@@ -149,27 +152,33 @@ kore_worker_init(void)
 	for (idx = KORE_WORKER_BASE; idx < worker_count; idx++) {
 		if (cpu >= cpu_count)
 			cpu = 0;
-		kore_worker_spawn(idx, id++, cpu++);
+		if (!kore_worker_spawn(idx, id++, cpu++))
+			return (KORE_RESULT_ERROR);
 	}
 
 	if (keymgr_active) {
 #if defined(KORE_USE_ACME)
 		/* The ACME process is only started if we need it. */
-		if (acme_provider) {
-			kore_worker_spawn(KORE_WORKER_ACME_IDX,
-			    KORE_WORKER_ACME, 0);
+		if (acme_domains) {
+			if (!kore_worker_spawn(KORE_WORKER_ACME_IDX,
+			    KORE_WORKER_ACME, 0))
+				return (KORE_RESULT_ERROR);
 		}
 #endif
 
 		/* Now we can start the keymgr. */
-		kore_worker_spawn(KORE_WORKER_KEYMGR_IDX,
-		    KORE_WORKER_KEYMGR, 0);
+		if (!kore_worker_spawn(KORE_WORKER_KEYMGR_IDX,
+		    KORE_WORKER_KEYMGR, 0))
+			return (KORE_RESULT_ERROR);
 	}
+
+	return (KORE_RESULT_OK);
 }
 
-void
+int
 kore_worker_spawn(u_int16_t idx, u_int16_t id, u_int16_t cpu)
 {
+	int			cnt;
 	struct kore_worker	*kw;
 
 	kw = WORKER(idx);
@@ -178,6 +187,7 @@ kore_worker_spawn(u_int16_t idx, u_int16_t id, u_int16_t cpu)
 	kw->has_lock = 0;
 	kw->active_hdlr = NULL;
 	kw->running = 1;
+	kw->ready = 0;
 
 	if (socketpair(AF_UNIX, SOCK_STREAM, 0, kw->pipe) == -1)
 		fatal("socketpair(): %s", errno_s);
@@ -186,6 +196,20 @@ kore_worker_spawn(u_int16_t idx, u_int16_t id, u_int16_t cpu)
 	    !kore_connection_nonblock(kw->pipe[1], 0))
 		fatal("could not set pipe fds to nonblocking: %s", errno_s);
 
+	switch (id) {
+	case KORE_WORKER_KEYMGR:
+		kw->ps = &keymgr_privsep;
+		break;
+#if defined(KORE_USE_ACME)
+	case KORE_WORKER_ACME:
+		kw->ps = &acme_privsep;
+		break;
+#endif
+	default:
+		kw->ps = &worker_privsep;
+		break;
+	}
+
 	kw->pid = fork();
 	if (kw->pid == -1)
 		fatal("could not spawn worker child: %s", errno_s);
@@ -193,8 +217,24 @@ kore_worker_spawn(u_int16_t idx, u_int16_t id, u_int16_t cpu)
 	if (kw->pid == 0) {
 		kw->pid = getpid();
 		kore_worker_entry(kw);
-		/* NOTREACHED */
+		exit(1);
+	} else {
+		for (cnt = 0; cnt < 25; cnt++) {
+			if (kw->ready == 1)
+				break;
+			usleep(10000);
+		}
+
+		if (kw->ready == 0) {
+			kore_log(LOG_NOTICE,
+			    "worker %d failed to start, shutting down",
+			    kw->id);
+
+			return (KORE_RESULT_ERROR);
+		}
 	}
+
+	return (KORE_RESULT_OK);
 }
 
 struct kore_worker *
@@ -282,37 +322,43 @@ kore_worker_dispatch_signal(int sig)
 }
 
 void
-kore_worker_privdrop(const char *runas, const char *root)
+kore_worker_privsep(void)
 {
 	rlim_t			fd;
 	struct rlimit		rl;
-	struct passwd		*pw = NULL;
+	struct passwd		*pw;
 
-	if (root == NULL)
-		fatalx("no root directory for kore_worker_privdrop");
+	if (worker == NULL)
+		fatalx("%s called with no worker", __func__);
+
+	pw = NULL;
 
 	/* Must happen before chroot. */
-	if (skip_runas == 0) {
-		if (runas == NULL)
-			fatalx("no runas user given and -r not specified");
-		pw = getpwnam(runas);
-		if (pw == NULL) {
+	if (worker->ps->skip_runas == 0) {
+		if (worker->ps->runas == NULL) {
+			fatalx("no runas user given for %s",
+			    kore_worker_name(worker->id));
+		}
+
+		if ((pw = getpwnam(worker->ps->runas)) == NULL) {
 			fatalx("cannot getpwnam(\"%s\") for user: %s",
-			    runas, errno_s);
+			    worker->ps->runas, errno_s);
 		}
 	}
 
-	if (skip_chroot == 0) {
-		if (chroot(root) == -1) {
+	if (worker->ps->skip_chroot == 0) {
+		if (chroot(worker->ps->root) == -1) {
 			fatalx("cannot chroot(\"%s\"): %s",
-			    root, errno_s);
+			    worker->ps->root, errno_s);
 		}
 
 		if (chdir("/") == -1)
 			fatalx("cannot chdir(\"/\"): %s", errno_s);
 	} else {
-		if (chdir(root) == -1)
-			fatalx("cannot chdir(\"%s\"): %s", root, errno_s);
+		if (chdir(worker->ps->root) == -1) {
+			fatalx("cannot chdir(\"%s\"): %s",
+			    worker->ps->root, errno_s);
+		}
 	}
 
 	if (getrlimit(RLIMIT_NOFILE, &rl) == -1) {
@@ -332,7 +378,7 @@ kore_worker_privdrop(const char *runas, const char *root)
 		    worker_rlimit_nofiles, errno_s);
 	}
 
-	if (skip_runas == 0) {
+	if (worker->ps->skip_runas == 0) {
 		if (setgroups(1, &pw->pw_gid) ||
 #if defined(__MACH__) || defined(NetBSD)
 		    setgid(pw->pw_gid) || setegid(pw->pw_gid) ||
@@ -341,7 +387,7 @@ kore_worker_privdrop(const char *runas, const char *root)
 		    setresgid(pw->pw_gid, pw->pw_gid, pw->pw_gid) ||
 		    setresuid(pw->pw_uid, pw->pw_uid, pw->pw_uid))
 #endif
-			fatalx("cannot drop privileges");
+			fatalx("cannot drop privileges (%s)", errno_s);
 	}
 
 	kore_platform_sandbox();
@@ -370,7 +416,6 @@ kore_worker_entry(struct kore_worker *kw)
 		kore_platform_worker_setcpu(kw);
 
 	kore_pid = kw->pid;
-
 	kore_signal_setup();
 
 	if (kw->id == KORE_WORKER_KEYMGR) {
@@ -394,7 +439,7 @@ kore_worker_entry(struct kore_worker *kw)
 	kore_task_init();
 #endif
 
-	kore_worker_privdrop(kore_runas_user, kore_root_path);
+	kore_worker_privsep();
 
 #if !defined(KORE_NO_HTTP)
 	http_init();
@@ -435,12 +480,6 @@ kore_worker_entry(struct kore_worker *kw)
 	if (nlisteners == 0)
 		worker_no_lock = 1;
 
-	if (!kore_quiet) {
-		kore_log(LOG_NOTICE,
-		    "worker %d started (cpu#%d, pid#%d)",
-		    kw->id, kw->cpu, kw->pid);
-	}
-
 	rcall = kore_runtime_getcall("kore_worker_configure");
 	if (rcall != NULL) {
 		kore_runtime_execute(rcall);
@@ -448,6 +487,9 @@ kore_worker_entry(struct kore_worker *kw)
 	}
 
 	kore_module_onload();
+	kore_domain_callback(worker_domain_check);
+
+	kore_worker_started();
 	worker->restarted = 0;
 
 	for (;;) {
@@ -672,6 +714,40 @@ kore_worker_keymgr_response_verify(struct kore_msg *msg, const void *data,
 	return (KORE_RESULT_OK);
 }
 
+void
+kore_worker_started(void)
+{
+	const char	*chroot;
+
+	if (worker->ps->skip_chroot)
+		chroot = "root";
+	else
+		chroot = "chroot";
+
+	if (!kore_quiet) {
+		kore_log(LOG_NOTICE,
+		    "process started (#%d %s=%s%s%s)",
+		    getpid(), chroot, worker->ps->root,
+		    worker->ps->skip_runas ? "" : " user=",
+		    worker->ps->skip_runas ? "" : worker->ps->runas);
+	}
+
+	worker->ready = 1;
+}
+
+static void
+worker_domain_check(struct kore_domain *dom)
+{
+	struct stat	st;
+
+	if (dom->cafile != NULL) {
+		if (stat(dom->cafile, &st) == -1)
+			fatalx("'%s': %s", dom->cafile, errno_s);
+		if (access(dom->cafile, R_OK) == -1)
+			fatalx("'%s': not readable", dom->cafile, errno_s);
+	}
+}
+
 static void
 worker_reaper(pid_t pid, int status)
 {
@@ -758,9 +834,11 @@ worker_reaper(pid_t pid, int status)
 		kore_log(LOG_NOTICE, "restarting worker %d", kw->id);
 		kw->restarted = 1;
 		kore_msg_parent_remove(kw);
-		kore_worker_spawn(idx, kw->id, kw->cpu);
-		kore_msg_parent_add(kw);
 
+		if (!kore_worker_spawn(idx, kw->id, kw->cpu))
+			(void)raise(SIGQUIT);
+
+		kore_msg_parent_add(kw);
 		break;
 	}
 }
