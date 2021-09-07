@@ -22,6 +22,10 @@
 #include "kore.h"
 #include "http.h"
 
+#if defined(KORE_USE_ACME)
+#include "acme.h"
+#endif
+
 struct msg_type {
 	u_int8_t		id;
 	void			(*cb)(struct kore_msg *, const void *);
@@ -62,10 +66,14 @@ kore_msg_parent_init(void)
 				continue;
 		}
 
-#if !defined(KORE_USE_ACME)
-		if (idx == KORE_WORKER_ACME_IDX)
+		if (idx == KORE_WORKER_ACME_IDX) {
+#if defined(KORE_USE_ACME)
+			if (acme_domains == 0)
+				continue;
+#else
 			continue;
 #endif
+		}
 
 		kw = kore_worker_data(idx);
 		kore_msg_parent_add(kw);
