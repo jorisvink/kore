@@ -176,6 +176,8 @@ $(VERSION): $(OBJDIR) force
 		echo "No version information found (no .git or RELEASE)"; \
 		exit 1; \
 	fi
+	@printf "const char *kore_build_date = \"%s\";\n" \
+	    `date +"%Y-%m-%d"` >> $(VERSION);
 
 $(KODEV): src/cli.c
 	$(MAKE) -C kodev
@@ -255,6 +257,8 @@ tools-install:
 
 $(OBJDIR)/%.o: src/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
+
+src/kore.c: $(VERSION)
 
 src/python.c: $(PYTHON_CURLOPT)
 
