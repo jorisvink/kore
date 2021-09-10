@@ -855,6 +855,7 @@ int			kore_connection_accept(struct listener *,
 
 u_int64_t	kore_time_ms(void);
 void		kore_log_init(void);
+void		kore_log_file(const char *);
 
 #if defined(KORE_USE_PYTHON)
 int		kore_configure_setting(const char *, char *);

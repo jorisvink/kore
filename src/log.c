@@ -30,6 +30,8 @@ struct kore_wlog {
 static void	log_print(int, const char *, ...);
 static void	log_from_worker(struct kore_msg *, const void *);
 
+static FILE	*fp = NULL;
+
 void
 kore_log_init(void)
 {
@@ -40,10 +42,21 @@ kore_log_init(void)
 	const char		*name = "kore";
 #endif
 
+	fp = stdout;
+
 	if (!kore_foreground)
 		openlog(name, LOG_NDELAY | LOG_PID, LOG_DAEMON);
 
 	kore_msg_register(KORE_MSG_WORKER_LOG, log_from_worker);
+}
+
+void
+kore_log_file(const char *path)
+{
+	if ((fp = fopen(path, "a")) == NULL) {
+		fp = stdout;
+		fatal("fopen(%s): %s", path, errno_s);
+	}
 }
 
 void
@@ -129,8 +142,8 @@ log_print(int prio, const char *fmt, ...)
 		break;
 	}
 
-	vprintf(fmt, args);
-	fflush(stdout);
+	vfprintf(fp, fmt, args);
+	fflush(fp);
 
 	va_end(args);
 }

@@ -81,6 +81,7 @@ static int		configure_bind_unix(char *);
 static int		configure_attach(char *);
 static int		configure_domain(char *);
 static int		configure_privsep(char *);
+static int		configure_logfile(char *);
 static int		configure_workers(char *);
 static int		configure_pidfile(char *);
 static int		configure_rlimit_nofiles(char *);
@@ -212,6 +213,7 @@ static struct {
 	const char		*name;
 	int			(*configure)(char *);
 } config_settings[] = {
+	{ "logfile",			configure_logfile },
 	{ "workers",			configure_workers },
 	{ "worker_max_connections",	configure_max_connections },
 	{ "worker_rlimit_nofiles",	configure_rlimit_nofiles },
@@ -1770,6 +1772,13 @@ configure_websocket_timeout(char *option)
 }
 
 #endif /* !KORE_NO_HTTP */
+
+static int
+configure_logfile(char *path)
+{
+	kore_log_file(path);
+	return (KORE_RESULT_OK);
+}
 
 static int
 configure_workers(char *option)
