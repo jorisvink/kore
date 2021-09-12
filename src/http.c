@@ -128,6 +128,7 @@ static const char *pretty_error_fmt =
 	"</body>\n</html>\n";
 
 static int	http_body_recv(struct netbuf *);
+static int	http_release_buffer(struct netbuf *);
 static void	http_error_response(struct connection *, int);
 static void	http_write_response_cookie(struct http_cookie *);
 static void	http_argument_add(struct http_request *, char *, char *,
@@ -636,6 +637,35 @@ http_response_close(struct http_request *req, int code, const void *d, size_t l)
 }
 
 void
+http_response_json(struct http_request *req, int status,
+    struct kore_json_item *json)
+{
+	struct kore_buf		*buf;
+
+	if (req->owner == NULL)
+		return;
+
+	kore_debug("%s(%p, %d)", __func__, req, code);
+
+	buf = kore_buf_alloc(1024);
+	kore_json_item_tobuf(json, buf);
+	kore_json_item_free(json);
+
+	req->status = status;
+	http_response_header(req, "content-type", "application/json");
+
+	switch (req->owner->proto) {
+	case CONN_PROTO_HTTP:
+		http_response_stream(req, status, buf->data, buf->offset,
+		    http_release_buffer, buf);
+		break;
+	default:
+		fatal("%s: bad proto %d", __func__, req->owner->proto);
+		/* NOTREACHED. */
+	}
+}
+
+void
 http_response_stream(struct http_request *req, int status, void *base,
     size_t len, int (*cb)(struct netbuf *), void *arg)
 {
@@ -651,13 +681,16 @@ http_response_stream(struct http_request *req, int status, void *base,
 		http_response_normal(req, req->owner, status, NULL, len);
 		break;
 	default:
-		fatal("http_response_stream() bad proto %d", req->owner->proto);
+		fatal("%s: bad proto %d", __func__, req->owner->proto);
 		/* NOTREACHED. */
 	}
 
-	if (req->method != HTTP_METHOD_HEAD) {
-		net_send_stream(req->owner, base, len, cb, &nb);
-		nb->extra = arg;
+	net_send_stream(req->owner, base, len, cb, &nb);
+	nb->extra = arg;
+
+	if (req->method == HTTP_METHOD_HEAD) {
+		nb->s_off = nb->b_len;
+		net_remove_netbuf(req->owner, nb);
 	}
 }
 
@@ -1566,6 +1599,292 @@ http_redirect_add(struct kore_domain *dom, const char *path, int status,
 	return (KORE_RESULT_OK);
 }
 
+const char *
+http_status_text(int status)
+{
+	const char	*r;
+
+	switch (status) {
+	case HTTP_STATUS_CONTINUE:
+		r = "Continue";
+		break;
+	case HTTP_STATUS_SWITCHING_PROTOCOLS:
+		r = "Switching Protocols";
+		break;
+	case HTTP_STATUS_OK:
+		r = "OK";
+		break;
+	case HTTP_STATUS_CREATED:
+		r = "Created";
+		break;
+	case HTTP_STATUS_ACCEPTED:
+		r = "Accepted";
+		break;
+	case HTTP_STATUS_NON_AUTHORITATIVE:
+		r = "Non-Authoritative Information";
+		break;
+	case HTTP_STATUS_NO_CONTENT:
+		r = "No Content";
+		break;
+	case HTTP_STATUS_RESET_CONTENT:
+		r = "Reset Content";
+		break;
+	case HTTP_STATUS_PARTIAL_CONTENT:
+		r = "Partial Content";
+		break;
+	case HTTP_STATUS_MULTIPLE_CHOICES:
+		r = "Multiple Choices";
+		break;
+	case HTTP_STATUS_MOVED_PERMANENTLY:
+		r = "Moved Permanently";
+		break;
+	case HTTP_STATUS_FOUND:
+		r = "Found";
+		break;
+	case HTTP_STATUS_SEE_OTHER:
+		r = "See Other";
+		break;
+	case HTTP_STATUS_NOT_MODIFIED:
+		r = "Not Modified";
+		break;
+	case HTTP_STATUS_USE_PROXY:
+		r = "Use Proxy";
+		break;
+	case HTTP_STATUS_TEMPORARY_REDIRECT:
+		r = "Temporary Redirect";
+		break;
+	case HTTP_STATUS_BAD_REQUEST:
+		r = "Bad Request";
+		break;
+	case HTTP_STATUS_UNAUTHORIZED:
+		r = "Unauthorized";
+		break;
+	case HTTP_STATUS_PAYMENT_REQUIRED:
+		r = "Payment Required";
+		break;
+	case HTTP_STATUS_FORBIDDEN:
+		r = "Forbidden";
+		break;
+	case HTTP_STATUS_NOT_FOUND:
+		r = "Not Found";
+		break;
+	case HTTP_STATUS_METHOD_NOT_ALLOWED:
+		r = "Method Not Allowed";
+		break;
+	case HTTP_STATUS_NOT_ACCEPTABLE:
+		r = "Not Acceptable";
+		break;
+	case HTTP_STATUS_PROXY_AUTH_REQUIRED:
+		r = "Proxy Authentication Required";
+		break;
+	case HTTP_STATUS_REQUEST_TIMEOUT:
+		r = "Request Time-out";
+		break;
+	case HTTP_STATUS_CONFLICT:
+		r = "Conflict";
+		break;
+	case HTTP_STATUS_GONE:
+		r = "Gone";
+		break;
+	case HTTP_STATUS_LENGTH_REQUIRED:
+		r = "Length Required";
+		break;
+	case HTTP_STATUS_PRECONDITION_FAILED:
+		r = "Precondition Failed";
+		break;
+	case HTTP_STATUS_REQUEST_ENTITY_TOO_LARGE:
+		r = "Request Entity Too Large";
+		break;
+	case HTTP_STATUS_REQUEST_URI_TOO_LARGE:
+		r = "Request-URI Too Large";
+		break;
+	case HTTP_STATUS_UNSUPPORTED_MEDIA_TYPE:
+		r = "Unsupported Media Type";
+		break;
+	case HTTP_STATUS_REQUEST_RANGE_INVALID:
+		r = "Requested range not satisfiable";
+		break;
+	case HTTP_STATUS_EXPECTATION_FAILED:
+		r = "Expectation Failed";
+		break;
+	case HTTP_STATUS_MISDIRECTED_REQUEST:
+		r = "Misdirected Request";
+		break;
+	case HTTP_STATUS_INTERNAL_ERROR:
+		r = "Internal Server Error";
+		break;
+	case HTTP_STATUS_NOT_IMPLEMENTED:
+		r = "Not Implemented";
+		break;
+	case HTTP_STATUS_BAD_GATEWAY:
+		r = "Bad Gateway";
+		break;
+	case HTTP_STATUS_SERVICE_UNAVAILABLE:
+		r = "Service Unavailable";
+		break;
+	case HTTP_STATUS_GATEWAY_TIMEOUT:
+		r = "Gateway Time-out";
+		break;
+	case HTTP_STATUS_BAD_VERSION:
+		r = "HTTP Version not supported";
+		break;
+	default:
+		r = "";
+		break;
+	}
+
+	return (r);
+}
+
+const char *
+http_method_text(int method)
+{
+	char		*r;
+
+	switch(method) {
+	case HTTP_METHOD_GET:
+		r = "GET";
+		break;
+	case HTTP_METHOD_POST:
+		r = "POST";
+		break;
+	case HTTP_METHOD_PUT:
+		r = "PUT";
+		break;
+	case HTTP_METHOD_DELETE:
+		r = "DELETE";
+		break;
+	case HTTP_METHOD_HEAD:
+		r = "HEAD";
+		break;
+	case HTTP_METHOD_OPTIONS:
+		r = "OPTIONS";
+		break;
+	case HTTP_METHOD_PATCH:
+		r = "PATCH";
+		break;
+	default:
+		r = "";
+		break;
+	}
+
+	return (r);
+}
+
+int
+http_method_value(const char *method)
+{
+	if (!strcasecmp(method, "GET"))
+		return (HTTP_METHOD_GET);
+
+	if (!strcasecmp(method, "POST"))
+		return (HTTP_METHOD_POST);
+
+	if (!strcasecmp(method, "PUT"))
+		return (HTTP_METHOD_PUT);
+
+	if (!strcasecmp(method, "DELETE"))
+		return (HTTP_METHOD_DELETE);
+
+	if (!strcasecmp(method, "HEAD"))
+		return (HTTP_METHOD_HEAD);
+
+	if (!strcasecmp(method, "OPTIONS"))
+		return (HTTP_METHOD_OPTIONS);
+
+	if (!strcasecmp(method, "PATCH"))
+		return (HTTP_METHOD_PATCH);
+
+	return (0);
+}
+
+int
+http_media_register(const char *ext, const char *type)
+{
+	struct http_media_type	*media;
+
+	LIST_FOREACH(media, &http_media_types, list) {
+		if (!strcasecmp(media->ext, ext))
+			return (KORE_RESULT_ERROR);
+	}
+
+	media = kore_calloc(1, sizeof(*media));
+	media->ext = kore_strdup(ext);
+	media->type = kore_strdup(type);
+
+	LIST_INSERT_HEAD(&http_media_types, media, list);
+
+	return (KORE_RESULT_OK);
+}
+
+const char *
+http_media_type(const char *path)
+{
+	const char		*p;
+	struct http_media_type	*media;
+
+	if ((p = strrchr(path, '.')) == NULL)
+		return (NULL);
+
+	p++;
+	if (*p == '\0')
+		return (NULL);
+
+	LIST_FOREACH(media, &http_media_types, list) {
+		if (!strcasecmp(media->ext, p))
+			return (media->type);
+	}
+
+	return (NULL);
+}
+
+char *
+http_validate_header(char *header)
+{
+	u_int8_t	idx;
+	char		*p, *value;
+
+	for (p = header; *p != '\0'; p++) {
+		idx = *p;
+		if (idx > HTTP_MAP_LIMIT)
+			return (NULL);
+
+		if (*p == ':') {
+			*(p)++ = '\0';
+			break;
+		}
+
+		if (http_token[idx] == 0x00)
+			return (NULL);
+	}
+
+	while (isspace(*(unsigned char *)p))
+		p++;
+
+	if (*p == '\0')
+		return (NULL);
+
+	value = p;
+	while (*p != '\0') {
+		idx = *p;
+		if (idx > HTTP_MAP_LIMIT)
+			return (NULL);
+		if (http_field_content[idx] == 0x00)
+			return (NULL);
+		p++;
+	}
+
+	return (value);
+}
+
+static int
+http_release_buffer(struct netbuf *nb)
+{
+	kore_buf_free(nb->extra);
+
+	return (KORE_RESULT_OK);
+}
+
 static int
 http_check_redirect(struct http_request *req, struct kore_domain *dom)
 {
@@ -2278,282 +2597,4 @@ http_write_response_cookie(struct http_cookie *ck)
 
 	kore_buf_appendf(header_buf, "set-cookie: %s\r\n",
 	    kore_buf_stringify(ckhdr_buf, NULL));
-}
-
-const char *
-http_status_text(int status)
-{
-	const char	*r;
-
-	switch (status) {
-	case HTTP_STATUS_CONTINUE:
-		r = "Continue";
-		break;
-	case HTTP_STATUS_SWITCHING_PROTOCOLS:
-		r = "Switching Protocols";
-		break;
-	case HTTP_STATUS_OK:
-		r = "OK";
-		break;
-	case HTTP_STATUS_CREATED:
-		r = "Created";
-		break;
-	case HTTP_STATUS_ACCEPTED:
-		r = "Accepted";
-		break;
-	case HTTP_STATUS_NON_AUTHORITATIVE:
-		r = "Non-Authoritative Information";
-		break;
-	case HTTP_STATUS_NO_CONTENT:
-		r = "No Content";
-		break;
-	case HTTP_STATUS_RESET_CONTENT:
-		r = "Reset Content";
-		break;
-	case HTTP_STATUS_PARTIAL_CONTENT:
-		r = "Partial Content";
-		break;
-	case HTTP_STATUS_MULTIPLE_CHOICES:
-		r = "Multiple Choices";
-		break;
-	case HTTP_STATUS_MOVED_PERMANENTLY:
-		r = "Moved Permanently";
-		break;
-	case HTTP_STATUS_FOUND:
-		r = "Found";
-		break;
-	case HTTP_STATUS_SEE_OTHER:
-		r = "See Other";
-		break;
-	case HTTP_STATUS_NOT_MODIFIED:
-		r = "Not Modified";
-		break;
-	case HTTP_STATUS_USE_PROXY:
-		r = "Use Proxy";
-		break;
-	case HTTP_STATUS_TEMPORARY_REDIRECT:
-		r = "Temporary Redirect";
-		break;
-	case HTTP_STATUS_BAD_REQUEST:
-		r = "Bad Request";
-		break;
-	case HTTP_STATUS_UNAUTHORIZED:
-		r = "Unauthorized";
-		break;
-	case HTTP_STATUS_PAYMENT_REQUIRED:
-		r = "Payment Required";
-		break;
-	case HTTP_STATUS_FORBIDDEN:
-		r = "Forbidden";
-		break;
-	case HTTP_STATUS_NOT_FOUND:
-		r = "Not Found";
-		break;
-	case HTTP_STATUS_METHOD_NOT_ALLOWED:
-		r = "Method Not Allowed";
-		break;
-	case HTTP_STATUS_NOT_ACCEPTABLE:
-		r = "Not Acceptable";
-		break;
-	case HTTP_STATUS_PROXY_AUTH_REQUIRED:
-		r = "Proxy Authentication Required";
-		break;
-	case HTTP_STATUS_REQUEST_TIMEOUT:
-		r = "Request Time-out";
-		break;
-	case HTTP_STATUS_CONFLICT:
-		r = "Conflict";
-		break;
-	case HTTP_STATUS_GONE:
-		r = "Gone";
-		break;
-	case HTTP_STATUS_LENGTH_REQUIRED:
-		r = "Length Required";
-		break;
-	case HTTP_STATUS_PRECONDITION_FAILED:
-		r = "Precondition Failed";
-		break;
-	case HTTP_STATUS_REQUEST_ENTITY_TOO_LARGE:
-		r = "Request Entity Too Large";
-		break;
-	case HTTP_STATUS_REQUEST_URI_TOO_LARGE:
-		r = "Request-URI Too Large";
-		break;
-	case HTTP_STATUS_UNSUPPORTED_MEDIA_TYPE:
-		r = "Unsupported Media Type";
-		break;
-	case HTTP_STATUS_REQUEST_RANGE_INVALID:
-		r = "Requested range not satisfiable";
-		break;
-	case HTTP_STATUS_EXPECTATION_FAILED:
-		r = "Expectation Failed";
-		break;
-	case HTTP_STATUS_MISDIRECTED_REQUEST:
-		r = "Misdirected Request";
-		break;
-	case HTTP_STATUS_INTERNAL_ERROR:
-		r = "Internal Server Error";
-		break;
-	case HTTP_STATUS_NOT_IMPLEMENTED:
-		r = "Not Implemented";
-		break;
-	case HTTP_STATUS_BAD_GATEWAY:
-		r = "Bad Gateway";
-		break;
-	case HTTP_STATUS_SERVICE_UNAVAILABLE:
-		r = "Service Unavailable";
-		break;
-	case HTTP_STATUS_GATEWAY_TIMEOUT:
-		r = "Gateway Time-out";
-		break;
-	case HTTP_STATUS_BAD_VERSION:
-		r = "HTTP Version not supported";
-		break;
-	default:
-		r = "";
-		break;
-	}
-
-	return (r);
-}
-
-const char *
-http_method_text(int method)
-{
-	char		*r;
-
-	switch(method) {
-	case HTTP_METHOD_GET:
-		r = "GET";
-		break;
-	case HTTP_METHOD_POST:
-		r = "POST";
-		break;
-	case HTTP_METHOD_PUT:
-		r = "PUT";
-		break;
-	case HTTP_METHOD_DELETE:
-		r = "DELETE";
-		break;
-	case HTTP_METHOD_HEAD:
-		r = "HEAD";
-		break;
-	case HTTP_METHOD_OPTIONS:
-		r = "OPTIONS";
-		break;
-	case HTTP_METHOD_PATCH:
-		r = "PATCH";
-		break;
-	default:
-		r = "";
-		break;
-	}
-
-	return (r);
-}
-
-int
-http_method_value(const char *method)
-{
-	if (!strcasecmp(method, "GET"))
-		return (HTTP_METHOD_GET);
-
-	if (!strcasecmp(method, "POST"))
-		return (HTTP_METHOD_POST);
-
-	if (!strcasecmp(method, "PUT"))
-		return (HTTP_METHOD_PUT);
-
-	if (!strcasecmp(method, "DELETE"))
-		return (HTTP_METHOD_DELETE);
-
-	if (!strcasecmp(method, "HEAD"))
-		return (HTTP_METHOD_HEAD);
-
-	if (!strcasecmp(method, "OPTIONS"))
-		return (HTTP_METHOD_OPTIONS);
-
-	if (!strcasecmp(method, "PATCH"))
-		return (HTTP_METHOD_PATCH);
-
-	return (0);
-}
-
-int
-http_media_register(const char *ext, const char *type)
-{
-	struct http_media_type	*media;
-
-	LIST_FOREACH(media, &http_media_types, list) {
-		if (!strcasecmp(media->ext, ext))
-			return (KORE_RESULT_ERROR);
-	}
-
-	media = kore_calloc(1, sizeof(*media));
-	media->ext = kore_strdup(ext);
-	media->type = kore_strdup(type);
-
-	LIST_INSERT_HEAD(&http_media_types, media, list);
-
-	return (KORE_RESULT_OK);
-}
-
-const char *
-http_media_type(const char *path)
-{
-	const char		*p;
-	struct http_media_type	*media;
-
-	if ((p = strrchr(path, '.')) == NULL)
-		return (NULL);
-
-	p++;
-	if (*p == '\0')
-		return (NULL);
-
-	LIST_FOREACH(media, &http_media_types, list) {
-		if (!strcasecmp(media->ext, p))
-			return (media->type);
-	}
-
-	return (NULL);
-}
-
-char *
-http_validate_header(char *header)
-{
-	u_int8_t	idx;
-	char		*p, *value;
-
-	for (p = header; *p != '\0'; p++) {
-		idx = *p;
-		if (idx > HTTP_MAP_LIMIT)
-			return (NULL);
-
-		if (*p == ':') {
-			*(p)++ = '\0';
-			break;
-		}
-
-		if (http_token[idx] == 0x00)
-			return (NULL);
-	}
-
-	while (isspace(*(unsigned char *)p))
-		p++;
-
-	if (*p == '\0')
-		return (NULL);
-
-	value = p;
-	while (*p != '\0') {
-		idx = *p;
-		if (idx > HTTP_MAP_LIMIT)
-			return (NULL);
-		if (http_field_content[idx] == 0x00)
-			return (NULL);
-		p++;
-	}
-
-	return (value);
 }
