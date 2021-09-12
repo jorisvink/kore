@@ -580,21 +580,44 @@ http_serveable(struct http_request *req, const void *data, size_t len,
 }
 
 void
-http_response(struct http_request *req, int status, const void *d, size_t l)
+http_response(struct http_request *req, int code, const void *d, size_t l)
 {
 	if (req->owner == NULL)
 		return;
 
-	kore_debug("http_response(%p, %d, %p, %zu)", req, status, d, l);
+	kore_debug("%s(%p, %d, %p, %zu)", __func__, req, code, d, l);
 
-	req->status = status;
+	req->status = code;
+
 	switch (req->owner->proto) {
 	case CONN_PROTO_HTTP:
 	case CONN_PROTO_WEBSOCKET:
-		http_response_normal(req, req->owner, status, d, l);
+		http_response_normal(req, req->owner, code, d, l);
 		break;
 	default:
-		fatal("http_response() bad proto %d", req->owner->proto);
+		fatal("%s: bad proto %d", __func__, req->owner->proto);
+		/* NOTREACHED. */
+	}
+}
+
+void
+http_response_close(struct http_request *req, int code, const void *d, size_t l)
+{
+	if (req->owner == NULL)
+		return;
+
+	kore_debug("%s(%p, %d, %p, %zu)", __func__, req, code, d, l);
+
+	req->status = code;
+	req->owner->flags |= CONN_CLOSE_EMPTY;
+
+	switch (req->owner->proto) {
+	case CONN_PROTO_HTTP:
+	case CONN_PROTO_WEBSOCKET:
+		http_response_normal(req, req->owner, code, d, l);
+		break;
+	default:
+		fatal("%s: bad proto %d", __func__, req->owner->proto);
 		/* NOTREACHED. */
 	}
 }

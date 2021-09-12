@@ -357,6 +357,8 @@ int		http_body_digest(struct http_request *, char *, size_t);
 int		http_redirect_add(struct kore_domain *,
 		    const char *, int, const char *);
 void		http_response(struct http_request *, int, const void *, size_t);
+void		http_response_close(struct http_request *, int,
+		    const void *, size_t);
 void		http_response_fileref(struct http_request *, int,
 		    struct kore_fileref *);
 void		http_serveable(struct http_request *, const void *,
