@@ -400,11 +400,24 @@ http_response_header(struct http_request *req,
 {
 	struct http_header	*hdr;
 
+	hdr = NULL;
 	kore_debug("http_response_header(%p, %s, %s)", req, header, value);
 
-	hdr = kore_pool_get(&http_header_pool);
+	TAILQ_FOREACH(hdr, &req->resp_headers, list) {
+		if (!strcasecmp(hdr->header, header)) {
+			TAILQ_REMOVE(&req->resp_headers, hdr, list);
+			kore_free(hdr->header);
+			kore_free(hdr->value);
+			break;
+		}
+	}
+
+	if (hdr == NULL)
+		hdr = kore_pool_get(&http_header_pool);
+
 	hdr->header = kore_strdup(header);
 	hdr->value = kore_strdup(value);
+
 	TAILQ_INSERT_TAIL(&(req->resp_headers), hdr, list);
 }
 
