@@ -92,7 +92,7 @@ kore_log(int prio, const char *fmt, ...)
 	} else {
 		str = kore_buf_stringify(&buf, NULL);
 
-		if (kore_foreground)
+		if (kore_foreground || fp != stdout)
 			log_print(prio, "[parent]: %s\n", str);
 		else
 			syslog(prio, "[parent]: %s", str);
@@ -117,7 +117,7 @@ log_from_worker(struct kore_msg *msg, const void *data)
 	wlog = data;
 	name = kore_worker_name(wlog->wid);
 
-	if (kore_foreground) {
+	if (kore_foreground || fp != stdout) {
 		log_print(wlog->prio, "%s: %.*s\n",
 		    name, (int)wlog->loglen, wlog->logmsg);
 	} else {
