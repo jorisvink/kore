@@ -149,8 +149,8 @@ log_print(int prio, const char *fmt, ...)
 	time(&now);
 	t = localtime(&now);
 
-	if (strftime(tbuf, sizeof(tbuf), "%y-%m-%d %H:%S:%M", t) > 0)
-		fprintf(fp, "%s ", tbuf);
+	if (strftime(tbuf, sizeof(tbuf), "%y-%m-%d %H:%M:%S", t) > 0)
+		fprintf(fp, "[%ld] %s ", now, tbuf);
 
 	vfprintf(fp, fmt, args);
 	fflush(fp);
