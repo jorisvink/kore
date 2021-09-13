@@ -16,6 +16,7 @@
 
 #include <sys/types.h>
 
+#include <time.h>
 #include <syslog.h>
 
 #include "kore.h"
@@ -129,7 +130,10 @@ log_from_worker(struct kore_msg *msg, const void *data)
 static void
 log_print(int prio, const char *fmt, ...)
 {
+	struct tm	*t;
+	time_t		now;
 	va_list		args;
+	char		tbuf[32];
 
 	va_start(args, fmt);
 
@@ -141,6 +145,12 @@ log_print(int prio, const char *fmt, ...)
 	case LOG_DEBUG:
 		break;
 	}
+
+	time(&now);
+	t = localtime(&now);
+
+	if (strftime(tbuf, sizeof(tbuf), "%y-%m-%d %H:%S:%M", t) > 0)
+		fprintf(fp, "%s ", tbuf);
 
 	vfprintf(fp, fmt, args);
 	fflush(fp);
