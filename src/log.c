@@ -150,7 +150,7 @@ log_print(int prio, const char *fmt, ...)
 	t = localtime(&now);
 
 	if (strftime(tbuf, sizeof(tbuf), "%y-%m-%d %H:%M:%S", t) > 0)
-		fprintf(fp, "[%ld] %s ", now, tbuf);
+		fprintf(fp, "%s ", tbuf);
 
 	vfprintf(fp, fmt, args);
 	fflush(fp);
