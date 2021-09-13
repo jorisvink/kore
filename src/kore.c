@@ -168,6 +168,9 @@ main(int argc, char *argv[])
 #endif
 
 	kore_mem_init();
+	kore_msg_init();
+	kore_log_init();
+
 	kore_progname = kore_strdup(argv[0]);
 	kore_proctitle_setup();
 
@@ -194,10 +197,6 @@ main(int argc, char *argv[])
 		if (!S_ISDIR(st.st_mode) && !S_ISREG(st.st_mode))
 			fatal("%s: not a directory or file", kore_pymodule);
 	}
-
-#elif !defined(KORE_SINGLE_BINARY)
-	if (argc > 0)
-		fatal("did you mean to run `kodev' instead?");
 #endif
 
 	kore_pid = getpid();
@@ -205,8 +204,6 @@ main(int argc, char *argv[])
 	LIST_INIT(&kore_servers);
 
 	kore_platform_init();
-	kore_msg_init();
-	kore_log_init();
 #if !defined(KORE_NO_HTTP)
 	http_parent_init();
 #if defined(KORE_USE_CURL)
