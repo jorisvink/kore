@@ -60,23 +60,9 @@ kore_msg_parent_init(void)
 	struct kore_worker	*kw;
 
 	for (idx = 0; idx < worker_count; idx++) {
-		if (keymgr_active == 0) {
-			if (idx == KORE_WORKER_KEYMGR_IDX ||
-			    idx == KORE_WORKER_ACME_IDX)
-				continue;
-		}
-
-		if (idx == KORE_WORKER_ACME_IDX) {
-#if defined(KORE_USE_ACME)
-			if (acme_domains == 0)
-				continue;
-#else
-			continue;
-#endif
-		}
-
 		kw = kore_worker_data(idx);
-		kore_msg_parent_add(kw);
+		if (kw->ps != NULL)
+			kore_msg_parent_add(kw);
 	}
 
 	kore_msg_register(KORE_MSG_SHUTDOWN, msg_type_shutdown);
