@@ -150,7 +150,7 @@ log_print(int prio, const char *fmt, ...)
 	t = gmtime(&ts.tv_sec);
 
 	if (strftime(tbuf, sizeof(tbuf), "%Y-%m-%d %H:%M:%S", t) > 0)
-		fprintf(fp, "%s.%ld UTC ", tbuf, ts.tv_nsec / 1000000);
+		fprintf(fp, "%s.%03ld UTC ", tbuf, ts.tv_nsec / 1000000);
 
 	vfprintf(fp, fmt, args);
 	fflush(fp);
