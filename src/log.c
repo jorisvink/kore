@@ -130,10 +130,10 @@ log_from_worker(struct kore_msg *msg, const void *data)
 static void
 log_print(int prio, const char *fmt, ...)
 {
-	struct tm	*t;
-	time_t		now;
-	va_list		args;
-	char		tbuf[32];
+	struct tm		*t;
+	struct timespec		ts;
+	va_list			args;
+	char			tbuf[32];
 
 	va_start(args, fmt);
 
@@ -146,11 +146,11 @@ log_print(int prio, const char *fmt, ...)
 		break;
 	}
 
-	time(&now);
-	t = localtime(&now);
+	(void)clock_gettime(CLOCK_REALTIME, &ts);
+	t = gmtime(&ts.tv_sec);
 
-	if (strftime(tbuf, sizeof(tbuf), "%y-%m-%d %H:%M:%S", t) > 0)
-		fprintf(fp, "%s ", tbuf);
+	if (strftime(tbuf, sizeof(tbuf), "%Y-%m-%d %H:%M:%S", t) > 0)
+		fprintf(fp, "%s.%ld UTC ", tbuf, ts.tv_nsec / 1000000);
 
 	vfprintf(fp, fmt, args);
 	fflush(fp);
