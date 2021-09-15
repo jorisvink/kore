@@ -320,11 +320,14 @@ struct kore_route {
 	char					*func;
 	int					type;
 	int					errors;
+	int					methods;
 	regex_t					rctx;
 	struct kore_domain			*dom;
-	struct kore_runtime_call		*rcall;
 	struct kore_auth			*auth;
-	int					methods;
+	struct kore_runtime_call		*rcall;
+	struct kore_runtime_call		*on_headers;
+	struct kore_runtime_call		*on_body_chunk;
+
 	TAILQ_HEAD(, kore_route_params)		params;
 	TAILQ_ENTRY(kore_route)			list;
 };

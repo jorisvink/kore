@@ -109,8 +109,10 @@ static int		configure_client_verify_depth(char *);
 
 #if !defined(KORE_NO_HTTP)
 static int		configure_route(char *);
-static int		configure_route_handler(char *);
 static int		configure_route_methods(char *);
+static int		configure_route_handler(char *);
+static int		configure_route_on_headers(char *);
+static int		configure_route_on_body_chunk(char *);
 static int		configure_filemap(char *);
 static int		configure_return(char *);
 static int		configure_redirect(char *);
@@ -191,6 +193,8 @@ static struct {
 #if !defined(KORE_NO_HTTP)
 	{ "route",			configure_route },
 	{ "handler",			configure_route_handler },
+	{ "on_headers",			configure_route_on_headers },
+	{ "on_body_chunk",		configure_route_on_body_chunk },
 	{ "methods",			configure_route_methods },
 	{ "filemap",			configure_filemap },
 	{ "redirect",			configure_redirect },
@@ -1151,6 +1155,44 @@ configure_route_handler(char *name)
 	}
 
 	kore_route_callback(current_route, name);
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_route_on_headers(char *name)
+{
+	if (current_route == NULL) {
+		kore_log(LOG_ERR,
+		    "on_header keyword not inside of route context");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if ((current_route->on_headers = kore_runtime_getcall(name)) == NULL) {
+		kore_log(LOG_ERR, "on_headers callback '%s' for '%s' not found",
+		    name, current_route->path);
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_route_on_body_chunk(char *name)
+{
+	if (current_route == NULL) {
+		kore_log(LOG_ERR,
+		    "on_body_chunk keyword not inside of route context");
+		return (KORE_RESULT_ERROR);
+	}
+
+	current_route->on_body_chunk = kore_runtime_getcall(name);
+	if (current_route->on_body_chunk == NULL) {
+		kore_log(LOG_ERR,
+		    "on_body_chunk callback '%s' for '%s' not found",
+		    name, current_route->path);
+		return (KORE_RESULT_ERROR);
+	}
 
 	return (KORE_RESULT_OK);
 }

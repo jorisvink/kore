@@ -18,6 +18,7 @@
 #include <sys/socket.h>
 
 #include <time.h>
+#include <inttypes.h>
 #include <signal.h>
 
 #include "kore.h"
@@ -174,7 +175,7 @@ kore_accesslog(struct http_request *req)
 		worker->lb.offset += sizeof(*hdr);
 
 		len = snprintf(worker->lb.buf + worker->lb.offset, avail,
-		    "%s - %s [%s] \"%s %s %s\" %d %zu \"%s\" \"%s\"\n",
+		    "%s - %s [%s] \"%s %s %s\" %d %" PRIu64" \"%s\" \"%s\"\n",
 		    addr, cn, tbuf, method, req->path, http_version,
 		    req->status, req->content_length, referer, req->agent);
 		if (len == -1)

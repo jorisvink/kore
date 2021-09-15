@@ -130,6 +130,7 @@ static const char *pretty_error_fmt =
 static int	http_body_recv(struct netbuf *);
 static int	http_release_buffer(struct netbuf *);
 static void	http_error_response(struct connection *, int);
+static int	http_data_convert(void *, void **, void *, int);
 static void	http_write_response_cookie(struct http_cookie *);
 static void	http_argument_add(struct http_request *, char *, char *,
 		    int, int);
@@ -764,6 +765,28 @@ http_request_header(struct http_request *req, const char *header,
 }
 
 int
+http_request_header_get(struct http_request *req, const char *header,
+    void **out, void *nout, int type)
+{
+	struct http_header	*hdr;
+
+	if (type == HTTP_ARG_TYPE_STRING)
+		fatal("%s: cannot be called with type string", __func__);
+
+	TAILQ_FOREACH(hdr, &req->req_headers, list) {
+		if (strcasecmp(hdr->header, header))
+			continue;
+
+		if (http_data_convert(hdr->value, out, nout, type))
+			return (KORE_RESULT_OK);
+
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_ERROR);
+}
+
+int
 http_request_cookie(struct http_request *req, const char *cookie, char **out)
 {
 	struct http_cookie	*ck;
@@ -786,7 +809,6 @@ http_header_recv(struct netbuf *nb)
 	ssize_t			ret;
 	struct http_header	*hdr;
 	struct http_request	*req;
-	const char		*clp;
 	u_int64_t		bytes_left;
 	u_int8_t		*end_headers;
 	int			h, i, v, skip, l;
@@ -897,17 +919,8 @@ http_header_recv(struct netbuf *nb)
 			return (KORE_RESULT_OK);
 		}
 
-		if (!http_request_header(req, "content-length", &clp)) {
-			kore_debug("expected body but no content-length");
-			req->flags |= HTTP_REQUEST_DELETE;
-			http_error_response(req->owner,
-			    HTTP_STATUS_LENGTH_REQUIRED);
-			return (KORE_RESULT_OK);
-		}
-
-		req->content_length = kore_strtonum(clp, 10, 0, LONG_MAX, &v);
-		if (v == KORE_RESULT_ERROR) {
-			kore_debug("content-length invalid: %s", clp);
+		if (!http_request_header_uint64(req, "content-length",
+		    &req->content_length)) {
 			req->flags |= HTTP_REQUEST_DELETE;
 			http_error_response(req->owner,
 			    HTTP_STATUS_LENGTH_REQUIRED);
@@ -921,8 +934,6 @@ http_header_recv(struct netbuf *nb)
 		}
 
 		if (req->content_length > http_body_max) {
-			kore_log(LOG_NOTICE, "body too large (%zu > %zu)",
-			    req->content_length, http_body_max);
 			req->flags |= HTTP_REQUEST_DELETE;
 			http_error_response(req->owner,
 			    HTTP_STATUS_REQUEST_ENTITY_TOO_LARGE);
@@ -997,6 +1008,13 @@ http_header_recv(struct netbuf *nb)
 		c->http_timeout = 0;
 	}
 
+	if (req->rt->on_headers != NULL) {
+		if (!kore_runtime_http_request(req->rt->on_headers, req)) {
+			req->flags |= HTTP_REQUEST_DELETE;
+			return (KORE_RESULT_OK);
+		}
+	}
+
 	return (KORE_RESULT_OK);
 }
 
@@ -1010,45 +1028,10 @@ http_argument_get(struct http_request *req, const char *name,
 		if (strcmp(q->name, name))
 			continue;
 
-		switch (type) {
-		case HTTP_ARG_TYPE_RAW:
-			*out = q->s_value;
+		if (http_data_convert(q->s_value, out, nout, type))
 			return (KORE_RESULT_OK);
-		case HTTP_ARG_TYPE_BYTE:
-			COPY_ARG_TYPE(*(u_int8_t *)q->s_value, u_int8_t);
-			return (KORE_RESULT_OK);
-		case HTTP_ARG_TYPE_INT16:
-			COPY_AS_INTTYPE(SHRT_MIN, SHRT_MAX, int16_t);
-			return (KORE_RESULT_OK);
-		case HTTP_ARG_TYPE_UINT16:
-			COPY_AS_INTTYPE(0, USHRT_MAX, u_int16_t);
-			return (KORE_RESULT_OK);
-		case HTTP_ARG_TYPE_INT32:
-			COPY_AS_INTTYPE(INT_MIN, INT_MAX, int32_t);
-			return (KORE_RESULT_OK);
-		case HTTP_ARG_TYPE_UINT32:
-			COPY_AS_INTTYPE(0, UINT_MAX, u_int32_t);
-			return (KORE_RESULT_OK);
-		case HTTP_ARG_TYPE_INT64:
-			COPY_AS_INTTYPE_64(int64_t, 1);
-			return (KORE_RESULT_OK);
-		case HTTP_ARG_TYPE_UINT64:
-			COPY_AS_INTTYPE_64(u_int64_t, 0);
-			return (KORE_RESULT_OK);
-		case HTTP_ARG_TYPE_FLOAT:
-			COPY_ARG_DOUBLE(-FLT_MAX, FLT_MAX, float);
-			return (KORE_RESULT_OK);
-		case HTTP_ARG_TYPE_DOUBLE:
-			COPY_ARG_DOUBLE(-DBL_MAX, DBL_MAX, double);
-			return (KORE_RESULT_OK);
-		case HTTP_ARG_TYPE_STRING:
-			*out = q->s_value;
-			return (KORE_RESULT_OK);
-		default:
-			break;
-		}
 
-		return (KORE_RESULT_ERROR);
+		break;
 	}
 
 	return (KORE_RESULT_ERROR);
@@ -2597,4 +2580,46 @@ http_write_response_cookie(struct http_cookie *ck)
 
 	kore_buf_appendf(header_buf, "set-cookie: %s\r\n",
 	    kore_buf_stringify(ckhdr_buf, NULL));
+}
+
+static int
+http_data_convert(void *data, void **out, void *nout, int type)
+{
+	switch (type) {
+	case HTTP_ARG_TYPE_RAW:
+	case HTTP_ARG_TYPE_STRING:
+		*out = data;
+		return (KORE_RESULT_OK);
+	case HTTP_ARG_TYPE_BYTE:
+		COPY_ARG_TYPE(*(u_int8_t *)data, u_int8_t);
+		return (KORE_RESULT_OK);
+	case HTTP_ARG_TYPE_INT16:
+		COPY_AS_INTTYPE(SHRT_MIN, SHRT_MAX, int16_t);
+		return (KORE_RESULT_OK);
+	case HTTP_ARG_TYPE_UINT16:
+		COPY_AS_INTTYPE(0, USHRT_MAX, u_int16_t);
+		return (KORE_RESULT_OK);
+	case HTTP_ARG_TYPE_INT32:
+		COPY_AS_INTTYPE(INT_MIN, INT_MAX, int32_t);
+		return (KORE_RESULT_OK);
+	case HTTP_ARG_TYPE_UINT32:
+		COPY_AS_INTTYPE(0, UINT_MAX, u_int32_t);
+		return (KORE_RESULT_OK);
+	case HTTP_ARG_TYPE_INT64:
+		COPY_AS_INTTYPE_64(int64_t, 1);
+		return (KORE_RESULT_OK);
+	case HTTP_ARG_TYPE_UINT64:
+		COPY_AS_INTTYPE_64(u_int64_t, 0);
+		return (KORE_RESULT_OK);
+	case HTTP_ARG_TYPE_FLOAT:
+		COPY_ARG_DOUBLE(-FLT_MAX, FLT_MAX, float);
+		return (KORE_RESULT_OK);
+	case HTTP_ARG_TYPE_DOUBLE:
+		COPY_ARG_DOUBLE(-DBL_MAX, DBL_MAX, double);
+		return (KORE_RESULT_OK);
+	default:
+		break;
+	}
+
+	return (KORE_RESULT_ERROR);
 }
