@@ -293,7 +293,10 @@ static const char *config_data =
 	"\tcertfile\tcert/server.pem\n"
 	"\tcertkey\t\tcert/key.pem\n"
 	"\n"
-	"\troute\t/\tpage\n"
+	"\troute / {\n"
+	"\t\thandler page\n"
+	"\t}\n"
+	"\n"
 	"}\n";
 
 static const char *build_data =

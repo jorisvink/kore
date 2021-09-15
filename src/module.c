@@ -135,11 +135,6 @@ kore_module_reload(int cbs)
 {
 	struct stat			st;
 	int				ret;
-#if !defined(KORE_NO_HTTP)
-	struct kore_server		*srv;
-	struct kore_domain		*dom;
-	struct kore_module_handle	*hdlr;
-#endif
 	struct kore_module		*module;
 
 	TAILQ_FOREACH(module, &modules, list) {
@@ -183,22 +178,7 @@ kore_module_reload(int cbs)
 	}
 
 #if !defined(KORE_NO_HTTP)
-	LIST_FOREACH(srv, &kore_servers, list) {
-		TAILQ_FOREACH(dom, &srv->domains, list) {
-			TAILQ_FOREACH(hdlr, &(dom->handlers), list) {
-				kore_free(hdlr->rcall);
-				hdlr->rcall = kore_runtime_getcall(hdlr->func);
-				if (hdlr->rcall == NULL) {
-					fatal("no function '%s' found",
-					    hdlr->func);
-				}
-				hdlr->errors = 0;
-			}
-		}
-	}
-#endif
-
-#if !defined(KORE_NO_HTTP)
+	kore_route_reload();
 	kore_validator_reload();
 #endif
 }
@@ -211,112 +191,6 @@ kore_module_loaded(void)
 
 	return (1);
 }
-
-#if !defined(KORE_NO_HTTP)
-int
-kore_module_handler_new(struct kore_domain *dom, const char *path,
-    const char *func, const char *auth, int type)
-{
-	struct kore_auth		*ap;
-	struct kore_module_handle	*hdlr;
-
-	if (auth != NULL) {
-		if ((ap = kore_auth_lookup(auth)) == NULL)
-			fatal("no authentication block '%s' found", auth);
-	} else {
-		ap = NULL;
-	}
-
-	hdlr = kore_malloc(sizeof(*hdlr));
-	hdlr->auth = ap;
-	hdlr->dom = dom;
-	hdlr->errors = 0;
-	hdlr->type = type;
-	hdlr->path = kore_strdup(path);
-	hdlr->func = kore_strdup(func);
-	hdlr->methods = HTTP_METHOD_ALL;
-
-	TAILQ_INIT(&(hdlr->params));
-
-	if ((hdlr->rcall = kore_runtime_getcall(func)) == NULL) {
-		kore_module_handler_free(hdlr);
-		kore_log(LOG_ERR, "function '%s' not found", func);
-		return (KORE_RESULT_ERROR);
-	}
-
-	if (hdlr->type == HANDLER_TYPE_DYNAMIC) {
-		if (regcomp(&(hdlr->rctx), hdlr->path,
-		    REG_EXTENDED | REG_NOSUB)) {
-			kore_module_handler_free(hdlr);
-			kore_debug("regcomp() on %s failed", path);
-			return (KORE_RESULT_ERROR);
-		}
-	}
-
-	TAILQ_INSERT_TAIL(&(dom->handlers), hdlr, list);
-	return (KORE_RESULT_OK);
-}
-
-void
-kore_module_handler_free(struct kore_module_handle *hdlr)
-{
-	struct kore_handler_params *param;
-
-	if (hdlr == NULL)
-		return;
-
-	if (hdlr->func != NULL)
-		kore_free(hdlr->func);
-	if (hdlr->path != NULL)
-		kore_free(hdlr->path);
-	if (hdlr->type == HANDLER_TYPE_DYNAMIC)
-		regfree(&(hdlr->rctx));
-
-	/* Drop all validators associated with this handler */
-	while ((param = TAILQ_FIRST(&(hdlr->params))) != NULL) {
-		TAILQ_REMOVE(&(hdlr->params), param, list);
-		if (param->name != NULL)
-			kore_free(param->name);
-		kore_free(param);
-	}
-
-	kore_free(hdlr);
-}
-
-int
-kore_module_handler_find(struct http_request *req, struct kore_domain *dom,
-    int method, struct kore_module_handle **out)
-{
-	struct kore_module_handle	*hdlr;
-	int				exists;
-
-	exists = 0;
-	*out = NULL;
-
-	TAILQ_FOREACH(hdlr, &(dom->handlers), list) {
-		if (hdlr->type == HANDLER_TYPE_STATIC) {
-			if (!strcmp(hdlr->path, req->path)) {
-				if (hdlr->methods & method) {
-					*out = hdlr;
-					return (1);
-				}
-				exists++;
-			}
-		} else {
-			if (!regexec(&(hdlr->rctx), req->path,
-			    HTTP_CAPTURE_GROUPS, req->cgroups, 0)) {
-				if (hdlr->methods & method) {
-					*out = hdlr;
-					return (1);
-				}
-				exists++;
-			}
-		}
-	}
-
-	return (exists);
-}
-#endif /* !KORE_NO_HTTP */
 
 void *
 kore_module_getsym(const char *symbol, struct kore_runtime **runtime)

@@ -131,8 +131,8 @@ kore_domain_new(const char *domain)
 	dom->domain = kore_strdup(domain);
 
 #if !defined(KORE_NO_HTTP)
-	TAILQ_INIT(&(dom->handlers));
-	TAILQ_INIT(&(dom->redirects));
+	TAILQ_INIT(&dom->routes);
+	TAILQ_INIT(&dom->redirects);
 #endif
 
 	if (dom->id < KORE_DOMAIN_CACHE) {
@@ -174,8 +174,8 @@ void
 kore_domain_free(struct kore_domain *dom)
 {
 #if !defined(KORE_NO_HTTP)
+	struct kore_route		*rt;
 	struct http_redirect		*rdr;
-	struct kore_module_handle	*hdlr;
 #endif
 	if (dom == NULL)
 		return;
@@ -190,20 +190,17 @@ kore_domain_free(struct kore_domain *dom)
 
 	if (dom->ssl_ctx != NULL)
 		SSL_CTX_free(dom->ssl_ctx);
-	if (dom->cafile != NULL)
-		kore_free(dom->cafile);
-	if (dom->certkey != NULL)
-		kore_free(dom->certkey);
-	if (dom->certfile != NULL)
-		kore_free(dom->certfile);
-	if (dom->crlfile != NULL)
-		kore_free(dom->crlfile);
+
+	kore_free(dom->cafile);
+	kore_free(dom->certkey);
+	kore_free(dom->certfile);
+	kore_free(dom->crlfile);
 
 #if !defined(KORE_NO_HTTP)
 	/* Drop all handlers associated with this domain */
-	while ((hdlr = TAILQ_FIRST(&(dom->handlers))) != NULL) {
-		TAILQ_REMOVE(&(dom->handlers), hdlr, list);
-		kore_module_handler_free(hdlr);
+	while ((rt = TAILQ_FIRST(&dom->routes)) != NULL) {
+		TAILQ_REMOVE(&dom->routes, rt, list);
+		kore_route_free(rt);
 	}
 
 	while ((rdr = TAILQ_FIRST(&(dom->redirects))) != NULL) {

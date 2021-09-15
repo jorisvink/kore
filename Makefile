@@ -66,7 +66,7 @@ ifneq ("$(NOHTTP)", "")
 	FEATURES+=-DKORE_NO_HTTP
 else
 	S_SRC+= src/auth.c src/accesslog.c src/http.c \
-		src/validator.c src/websocket.c
+		src/route.c src/validator.c src/websocket.c
 endif
 
 ifneq ("$(PGSQL)", "")

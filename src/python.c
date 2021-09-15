@@ -82,13 +82,11 @@ static struct python_coro	*python_coro_create(PyObject *,
 static struct kore_domain	*python_route_domain_resolve(struct pyroute *);
 
 static int		python_route_install(struct pyroute *);
-static int		python_route_params(PyObject *,
-			    struct kore_module_handle *, const char *,
-			    int, int);
+static int		python_route_params(PyObject *, struct kore_route *,
+			    const char *, int, int);
 static int		python_route_methods(PyObject *, PyObject *,
-			    struct kore_module_handle *);
-static int		python_route_auth(PyObject *,
-			    struct kore_module_handle *);
+			    struct kore_route *);
+static int		python_route_auth(PyObject *, struct kore_route *);
 
 static int		python_coro_run(struct python_coro *);
 static void		python_coro_wakeup(struct python_coro *);
@@ -1250,7 +1248,7 @@ python_runtime_http_request(void *addr, struct http_request *req)
 	callable = (PyObject *)addr;
 
 	/* starts at 1 to skip the full path. */
-	if (req->hdlr->type == HANDLER_TYPE_DYNAMIC) {
+	if (req->rt->type == HANDLER_TYPE_DYNAMIC) {
 		for (idx = 1; idx < HTTP_CAPTURE_GROUPS - 1; idx++) {
 			if (req->cgroups[idx].rm_so == -1 ||
 			    req->cgroups[idx].rm_eo == -1)
@@ -5211,7 +5209,7 @@ python_route_install(struct pyroute *route)
 {
 	const char			*val;
 	struct kore_domain		*domain;
-	struct kore_module_handle	*hdlr, *entry;
+	struct kore_route		*rt, *entry;
 	PyObject			*kwargs, *repr, *obj;
 
 	if ((repr = PyObject_Repr(route->func)) == NULL) {
@@ -5221,56 +5219,56 @@ python_route_install(struct pyroute *route)
 
 	domain = python_route_domain_resolve(route);
 
-	hdlr = kore_calloc(1, sizeof(*hdlr));
-	hdlr->dom = domain;
-	hdlr->methods = HTTP_METHOD_ALL;
-	hdlr->path = kore_strdup(route->path);
+	rt = kore_calloc(1, sizeof(*rt));
+	rt->dom = domain;
+	rt->methods = HTTP_METHOD_ALL;
+	rt->path = kore_strdup(route->path);
 
-	TAILQ_INIT(&hdlr->params);
+	TAILQ_INIT(&rt->params);
 
 	val = PyUnicode_AsUTF8(repr);
-	hdlr->func = kore_strdup(val);
+	rt->func = kore_strdup(val);
 
 	kwargs = route->kwargs;
 
-	hdlr->rcall = kore_calloc(1, sizeof(struct kore_runtime_call));
-	hdlr->rcall->addr = route->func;
-	hdlr->rcall->runtime = &kore_python_runtime;
-	Py_INCREF(hdlr->rcall->addr);
+	rt->rcall = kore_calloc(1, sizeof(struct kore_runtime_call));
+	rt->rcall->addr = route->func;
+	rt->rcall->runtime = &kore_python_runtime;
+	Py_INCREF(rt->rcall->addr);
 
 	if (kwargs != NULL) {
 		if ((obj = PyDict_GetItemString(kwargs, "methods")) != NULL) {
-			if (!python_route_methods(obj, kwargs, hdlr)) {
+			if (!python_route_methods(obj, kwargs, rt)) {
 				kore_python_log_error("python_route_install");
-				kore_module_handler_free(hdlr);
+				kore_route_free(rt);
 				return (KORE_RESULT_ERROR);
 			}
 		}
 
 		if ((obj = PyDict_GetItemString(kwargs, "auth")) != NULL) {
-			if (!python_route_auth(obj, hdlr)) {
+			if (!python_route_auth(obj, rt)) {
 				kore_python_log_error("python_route_install");
-				kore_module_handler_free(hdlr);
+				kore_route_free(rt);
 				return (KORE_RESULT_ERROR);
 			}
 		}
 	}
 
-	if (hdlr->path[0] == '/') {
-		hdlr->type = HANDLER_TYPE_STATIC;
+	if (rt->path[0] == '/') {
+		rt->type = HANDLER_TYPE_STATIC;
 	} else {
-		hdlr->type = HANDLER_TYPE_DYNAMIC;
-		if (regcomp(&hdlr->rctx, hdlr->path, REG_EXTENDED))
-			fatal("failed to compile regex for '%s'", hdlr->path);
+		rt->type = HANDLER_TYPE_DYNAMIC;
+		if (regcomp(&rt->rctx, rt->path, REG_EXTENDED))
+			fatal("failed to compile regex for '%s'", rt->path);
 	}
 
-	TAILQ_FOREACH(entry, &domain->handlers, list) {
-		if (!strcmp(entry->path, hdlr->path) &&
-		    (entry->methods & hdlr->methods))
+	TAILQ_FOREACH(entry, &domain->routes, list) {
+		if (!strcmp(entry->path, rt->path) &&
+		    (entry->methods & rt->methods))
 			fatal("duplicate route for '%s'", route->path);
 	}
 
-	TAILQ_INSERT_TAIL(&domain->handlers, hdlr, list);
+	TAILQ_INSERT_TAIL(&domain->routes, rt, list);
 
 	return (KORE_RESULT_OK);
 }
@@ -5312,8 +5310,7 @@ python_route_domain_resolve(struct pyroute *route)
 }
 
 static int
-python_route_methods(PyObject *obj, PyObject *kwargs,
-    struct kore_module_handle *hdlr)
+python_route_methods(PyObject *obj, PyObject *kwargs, struct kore_route *rt)
 {
 	const char		*val;
 	PyObject		*item;
@@ -5323,7 +5320,7 @@ python_route_methods(PyObject *obj, PyObject *kwargs,
 	if (!PyList_CheckExact(obj))
 		return (KORE_RESULT_ERROR);
 
-	hdlr->methods = 0;
+	rt->methods = 0;
 	list_len = PyList_Size(obj);
 
 	for (idx = 0; idx < list_len; idx++) {
@@ -5339,14 +5336,14 @@ python_route_methods(PyObject *obj, PyObject *kwargs,
 			return (KORE_RESULT_ERROR);
 		}
 
-		hdlr->methods |= method;
+		rt->methods |= method;
 		if (method == HTTP_METHOD_GET)
-			hdlr->methods |= HTTP_METHOD_HEAD;
+			rt->methods |= HTTP_METHOD_HEAD;
 
-		if (!python_route_params(kwargs, hdlr, val, method, 0))
+		if (!python_route_params(kwargs, rt, val, method, 0))
 			return (KORE_RESULT_ERROR);
 
-		if (!python_route_params(kwargs, hdlr, "qs", method, 1))
+		if (!python_route_params(kwargs, rt, "qs", method, 1))
 			return (KORE_RESULT_ERROR);
 	}
 
@@ -5354,14 +5351,14 @@ python_route_methods(PyObject *obj, PyObject *kwargs,
 }
 
 static int
-python_route_params(PyObject *kwargs, struct kore_module_handle *hdlr,
+python_route_params(PyObject *kwargs, struct kore_route *rt,
     const char *method, int type, int qs)
 {
 	Py_ssize_t			idx;
 	const char			*val;
 	int				vtype;
 	struct kore_validator		*vldr;
-	struct kore_handler_params	*param;
+	struct kore_route_params	*param;
 	PyObject			*obj, *key, *item;
 
 	if ((obj = PyDict_GetItemString(kwargs, method)) == NULL)
@@ -5418,14 +5415,14 @@ python_route_params(PyObject *kwargs, struct kore_module_handle *hdlr,
 		if (type == HTTP_METHOD_GET || qs == 1)
 			param->flags = KORE_PARAMS_QUERY_STRING;
 
-		TAILQ_INSERT_TAIL(&hdlr->params, param, list);
+		TAILQ_INSERT_TAIL(&rt->params, param, list);
 	}
 
 	return (KORE_RESULT_OK);
 }
 
 static int
-python_route_auth(PyObject *dict, struct kore_module_handle *hdlr)
+python_route_auth(PyObject *dict, struct kore_route *rt)
 {
 	int			type;
 	struct kore_auth	*auth;
@@ -5449,7 +5446,7 @@ python_route_auth(PyObject *dict, struct kore_module_handle *hdlr)
 	} else {
 		PyErr_Format(PyExc_RuntimeError,
 		    "invalid 'type' (%s) in auth dictionary for '%s'",
-		    value, hdlr->path);
+		    value, rt->path);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -5464,7 +5461,7 @@ python_route_auth(PyObject *dict, struct kore_module_handle *hdlr)
 	if ((obj = PyDict_GetItemString(dict, "verify")) == NULL ||
 	    !PyCallable_Check(obj)) {
 		PyErr_Format(PyExc_RuntimeError,
-		    "missing 'verify' in auth dictionary for '%s'", hdlr->path);
+		    "missing 'verify' in auth dictionary for '%s'", rt->path);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -5495,7 +5492,7 @@ python_route_auth(PyObject *dict, struct kore_module_handle *hdlr)
 	Py_DECREF(repr);
 
 	auth->validator = vldr;
-	hdlr->auth = auth;
+	rt->auth = auth;
 
 	return (KORE_RESULT_OK);
 }

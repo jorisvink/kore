@@ -304,6 +304,33 @@ struct kore_runtime_call {
 	struct kore_runtime	*runtime;
 };
 
+#if !defined(KORE_NO_HTTP)
+
+struct kore_route_params {
+	char			*name;
+	int			flags;
+	u_int8_t		method;
+	struct kore_validator	*validator;
+
+	TAILQ_ENTRY(kore_route_params)	list;
+};
+
+struct kore_route {
+	char					*path;
+	char					*func;
+	int					type;
+	int					errors;
+	regex_t					rctx;
+	struct kore_domain			*dom;
+	struct kore_runtime_call		*rcall;
+	struct kore_auth			*auth;
+	int					methods;
+	TAILQ_HEAD(, kore_route_params)		params;
+	TAILQ_ENTRY(kore_route)			list;
+};
+
+#endif
+
 struct kore_domain {
 	u_int16_t				id;
 	int					logerr;
@@ -327,7 +354,7 @@ struct kore_domain {
 	SSL_CTX					*ssl_ctx;
 	int					x509_verify_depth;
 #if !defined(KORE_NO_HTTP)
-	TAILQ_HEAD(, kore_module_handle)	handlers;
+	TAILQ_HEAD(, kore_route)		routes;
 	TAILQ_HEAD(, http_redirect)		redirects;
 #endif
 	TAILQ_ENTRY(kore_domain)		list;
@@ -362,15 +389,6 @@ LIST_HEAD(kore_server_list, kore_server);
 #if !defined(KORE_NO_HTTP)
 
 #define KORE_PARAMS_QUERY_STRING	0x0001
-
-struct kore_handler_params {
-	char			*name;
-	int			flags;
-	u_int8_t		method;
-	struct kore_validator	*validator;
-
-	TAILQ_ENTRY(kore_handler_params)	list;
-};
 
 #define KORE_AUTH_TYPE_COOKIE		1
 #define KORE_AUTH_TYPE_HEADER		2
@@ -420,23 +438,6 @@ struct kore_module {
 	TAILQ_ENTRY(kore_module)	list;
 };
 
-#if !defined(KORE_NO_HTTP)
-
-struct kore_module_handle {
-	char					*path;
-	char					*func;
-	int					type;
-	int					errors;
-	regex_t					rctx;
-	struct kore_domain			*dom;
-	struct kore_runtime_call		*rcall;
-	struct kore_auth			*auth;
-	int					methods;
-	TAILQ_HEAD(, kore_handler_params)	params;
-	TAILQ_ENTRY(kore_module_handle)		list;
-};
-#endif
-
 /*
  * The workers get a 128KB log buffer per worker, and parent will fetch their
  * logs when it reached at least 75% of that or if its been > 1 second since
@@ -471,7 +472,7 @@ struct kore_worker {
 	u_int8_t			has_lock;
 	int				restarted;
 	u_int64_t			time_locked;
-	struct kore_module_handle	*active_hdlr;
+	struct kore_route		*active_route;
 	struct kore_privsep		*ps;
 
 	/* Used by the workers to store accesslogs. */
@@ -959,12 +960,16 @@ int		kore_domain_attach(struct kore_domain *, struct kore_server *);
 void		kore_domain_tlsinit(struct kore_domain *, int,
 		    const void *, size_t);
 void		kore_domain_crl_add(struct kore_domain *, const void *, size_t);
+
 #if !defined(KORE_NO_HTTP)
-int		kore_module_handler_new(struct kore_domain *, const char *,
-		    const char *, const char *, int);
-void		kore_module_handler_free(struct kore_module_handle *);
-int		kore_module_handler_find(struct http_request *,
-		    struct kore_domain *, int, struct kore_module_handle **);
+void		kore_route_reload(void);
+void		kore_route_free(struct kore_route *);
+void		kore_route_callback(struct kore_route *, const char *);
+
+struct kore_route	*kore_route_create(struct kore_domain *,
+			    const char *, int);
+int			kore_route_lookup(struct http_request *,
+			    struct kore_domain *, int, struct kore_route **);
 #endif
 
 struct kore_runtime_call	*kore_runtime_getcall(const char *);

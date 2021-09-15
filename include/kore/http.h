@@ -268,7 +268,7 @@ struct http_request {
 	void				*hdlr_extra;
 	size_t				state_len;
 	char				*query_string;
-	struct kore_module_handle	*hdlr;
+	struct kore_route		*rt;
 	struct http_runlock_queue	*runlock;
 	void				(*onfree)(struct http_request *);
 

@@ -28,6 +28,7 @@
 #include <kore/kore.h>
 #include <kore/http.h>
 #include <kore/tasks.h>
+#include <kore/hooks.h>
 
 #include <fcntl.h>
 #include <unistd.h>
@@ -49,17 +50,12 @@ void		pipe_data_available(struct kore_task *);
 /* Our pipe reader. */
 struct kore_task	pipe_task;
 
-/* Module init function (see config). */
-int
-init(int state)
+void
+kore_worker_configure(void)
 {
-	/* Do not allow reload. */
-	if (state == KORE_MODULE_UNLOAD)
-		return (KORE_RESULT_ERROR);
-
 	/* Only do this on a dedicated worker. */
 	if (worker->id != 1)
-		return (KORE_RESULT_OK);
+		return;
 
 	/* Create our task. */
 	kore_task_create(&pipe_task, pipe_reader);
@@ -69,8 +65,6 @@ init(int state)
 
 	/* Start the task. */
 	kore_task_run(&pipe_task);
-
-	return (KORE_RESULT_OK);
 }
 
 /* Called whenever we get a new websocket connection. */

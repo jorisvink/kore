@@ -1,5 +1,0 @@
-*.o
-.objs
-json_yajl.so
-assets.h
-cert

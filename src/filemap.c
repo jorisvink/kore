@@ -58,7 +58,7 @@ kore_filemap_create(struct kore_domain *dom, const char *path, const char *root)
 	size_t				sz;
 	struct stat			st;
 	int				len;
-	struct kore_module_handle	*hdlr;
+	struct kore_route		*rt;
 	struct filemap_entry		*entry;
 	char				regex[1024], fpath[PATH_MAX];
 
@@ -86,20 +86,11 @@ kore_filemap_create(struct kore_domain *dom, const char *path, const char *root)
 	if (len == -1 || (size_t)len >= sizeof(regex))
 		fatal("kore_filemap_create: buffer too small");
 
-	if (!kore_module_handler_new(dom, regex, "filemap_resolve",
-	    NULL, HANDLER_TYPE_DYNAMIC))
+	if ((rt = kore_route_create(dom, regex, HANDLER_TYPE_DYNAMIC)) == NULL)
 		return (KORE_RESULT_ERROR);
 
-	hdlr = NULL;
-	TAILQ_FOREACH(hdlr, &dom->handlers, list) {
-		if (!strcmp(hdlr->path, regex))
-			break;
-	}
-
-	if (hdlr == NULL)
-		fatal("couldn't find newly created handler for filemap");
-
-	hdlr->methods = HTTP_METHOD_GET | HTTP_METHOD_HEAD;
+	kore_route_callback(rt, "filemap_resolve");
+	rt->methods = HTTP_METHOD_GET | HTTP_METHOD_HEAD;
 
 	entry = kore_calloc(1, sizeof(*entry));
 	entry->domain = dom;
@@ -151,7 +142,7 @@ filemap_resolve(struct http_request *req)
 	best_len = 0;
 
 	TAILQ_FOREACH(entry, &maps, list) {
-		if (entry->domain != req->hdlr->dom)
+		if (entry->domain != req->rt->dom)
 			continue;
 
 		if (!strncmp(entry->root, req->path, entry->root_len)) {

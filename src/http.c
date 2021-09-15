@@ -345,18 +345,18 @@ http_process_request(struct http_request *req)
 	kore_debug("http_process_request: %p->%p (%s)",
 	    req->owner, req, req->path);
 
-	if (req->flags & HTTP_REQUEST_DELETE || req->hdlr == NULL)
+	if (req->flags & HTTP_REQUEST_DELETE || req->rt == NULL)
 		return;
 
 	req->start = kore_time_ms();
-	if (req->hdlr->auth != NULL && !(req->flags & HTTP_REQUEST_AUTHED))
-		r = kore_auth_run(req, req->hdlr->auth);
+	if (req->rt->auth != NULL && !(req->flags & HTTP_REQUEST_AUTHED))
+		r = kore_auth_run(req, req->rt->auth);
 	else
 		r = KORE_RESULT_OK;
 
 	switch (r) {
 	case KORE_RESULT_OK:
-		r = kore_runtime_http_request(req->hdlr->rcall, req);
+		r = kore_runtime_http_request(req->rt->rcall, req);
 		break;
 	case KORE_RESULT_RETRY:
 		break;
@@ -389,7 +389,7 @@ http_process_request(struct http_request *req)
 		fatal("A page handler returned an unknown result: %d", r);
 	}
 
-	if (req->hdlr->dom->accesslog)
+	if (req->rt->dom->accesslog)
 		kore_accesslog(req);
 
 	req->flags |= HTTP_REQUEST_DELETE;
@@ -2103,7 +2103,7 @@ http_request_new(struct connection *c, const char *host,
 	}
 
 	/* Checked further down below if we need to 404. */
-	exists = kore_module_handler_find(req, dom, m, &req->hdlr);
+	exists = kore_route_lookup(req, dom, m, &req->rt);
 
 	TAILQ_INIT(&(req->resp_headers));
 	TAILQ_INIT(&(req->req_headers));
@@ -2135,7 +2135,7 @@ http_request_new(struct connection *c, const char *host,
 		return (NULL);
 	}
 
-	if (req->hdlr == NULL) {
+	if (req->rt == NULL) {
 		http_request_free(req);
 		http_error_response(c, HTTP_STATUS_METHOD_NOT_ALLOWED);
 		return (NULL);
@@ -2339,14 +2339,14 @@ http_argument_add(struct http_request *req, char *name, char *value, int qs,
     int decode)
 {
 	struct http_arg			*q;
-	struct kore_handler_params	*p;
+	struct kore_route_params	*p;
 
 	if (decode) {
 		if (!http_argument_urldecode(name))
 			return;
 	}
 
-	TAILQ_FOREACH(p, &(req->hdlr->params), list) {
+	TAILQ_FOREACH(p, &req->rt->params, list) {
 		if (qs == 1 && !(p->flags & KORE_PARAMS_QUERY_STRING))
 			continue;
 		if (qs == 0 && (p->flags & KORE_PARAMS_QUERY_STRING))

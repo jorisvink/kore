@@ -195,7 +195,7 @@ kore_accesslog(struct http_request *req)
 		}
 
 		hdr->loglen = len;
-		hdr->domain = req->hdlr->dom->id;
+		hdr->domain = req->rt->dom->id;
 
 		worker->lb.offset += (size_t)len;
 		break;

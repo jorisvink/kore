@@ -191,10 +191,11 @@ kore_worker_spawn(u_int16_t idx, u_int16_t id, u_int16_t cpu)
 	kw = WORKER(idx);
 	kw->id = id;
 	kw->cpu = cpu;
-	kw->has_lock = 0;
-	kw->active_hdlr = NULL;
 	kw->running = 1;
+
 	kw->ready = 0;
+	kw->has_lock = 0;
+	kw->active_route = NULL;
 
 	if (socketpair(AF_UNIX, SOCK_STREAM, 0, kw->pipe) == -1)
 		fatal("socketpair(): %s", errno_s);
@@ -743,7 +744,7 @@ kore_worker_started(void)
 
 	if (!kore_quiet) {
 		kore_log(LOG_NOTICE,
-		    "process started (#%d %s=%s%s%s)",
+		    "started (#%d %s=%s%s%s)",
 		    getpid(), chroot, worker->ps->root,
 		    worker->ps->skip_runas ? "" : " user=",
 		    worker->ps->skip_runas ? "" : worker->ps->runas);
@@ -797,8 +798,8 @@ worker_reaper(pid_t pid, int status)
 
 		func = "none";
 #if !defined(KORE_NO_HTTP)
-		if (kw->active_hdlr != NULL)
-			func = kw->active_hdlr->func;
+		if (kw->active_route != NULL)
+			func = kw->active_route->func;
 #endif
 		kore_log(LOG_NOTICE,
 		    "worker %d (pid: %d) (hdlr: %s) gone",
@@ -828,12 +829,12 @@ worker_reaper(pid_t pid, int status)
 			worker_unlock();
 
 #if !defined(KORE_NO_HTTP)
-		if (kw->active_hdlr != NULL) {
-			kw->active_hdlr->errors++;
+		if (kw->active_route != NULL) {
+			kw->active_route->errors++;
 			kore_log(LOG_NOTICE,
 			    "hdlr %s has caused %d error(s)",
-			    kw->active_hdlr->func,
-			    kw->active_hdlr->errors);
+			    kw->active_route->func,
+			    kw->active_route->errors);
 		}
 #endif
 
