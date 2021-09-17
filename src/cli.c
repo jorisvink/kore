@@ -718,9 +718,9 @@ cli_build(int argc, char **argv)
 
 	if (bopt->single_binary) {
 		requires_relink++;
-		(void)cli_vasprintf(&sofile, "%s", appl);
+		(void)cli_vasprintf(&sofile, "%s/%s", out_dir, appl);
 	} else {
-		(void)cli_vasprintf(&sofile, "%s.so", appl);
+		(void)cli_vasprintf(&sofile, "%s/%s.so", out_dir, appl);
 	}
 
 	if (!cli_file_exists(sofile) && source_files_count > 0)
