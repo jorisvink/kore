@@ -2038,6 +2038,7 @@ http_request_new(struct connection *c, const char *host,
 	req->http_body = NULL;
 	req->http_body_fd = -1;
 	req->hdlr_extra = NULL;
+	req->content_length = 0;
 	req->query_string = NULL;
 	req->http_body_length = 0;
 	req->http_body_offset = 0;
