@@ -1906,9 +1906,9 @@ http_request_new(struct connection *c, const char *host,
 {
 	struct kore_domain		*dom;
 	struct http_request		*req;
+	size_t				qsoff;
 	char				*p, *hp;
 	int				m, flags, exists;
-	size_t				hostlen, pathlen, qsoff;
 
 	if (http_request_count >= http_request_limit) {
 		http_error_response(c, HTTP_STATUS_SERVICE_UNAVAILABLE);
@@ -1918,12 +1918,12 @@ http_request_new(struct connection *c, const char *host,
 	kore_debug("http_request_new(%p, %s, %s, %s, %s)", c, host,
 	    method, path, version);
 
-	if ((hostlen = strlen(host)) >= KORE_DOMAINNAME_LEN - 1) {
+	if (strlen(host) >= KORE_DOMAINNAME_LEN - 1) {
 		http_error_response(c, HTTP_STATUS_BAD_REQUEST);
 		return (NULL);
 	}
 
-	if ((pathlen = strlen(path)) >= HTTP_URI_LEN - 1) {
+	if (strlen(path) >= HTTP_URI_LEN - 1) {
 		http_error_response(c, HTTP_STATUS_REQUEST_URI_TOO_LARGE);
 		return (NULL);
 	}
