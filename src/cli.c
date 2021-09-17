@@ -748,7 +748,8 @@ cli_source(int argc, char **argv)
 static void
 cli_clean(int argc, char **argv)
 {
-	char		pwd[PATH_MAX], *sofile;
+	struct buildopt		*bopt;
+	char			pwd[PATH_MAX], *bin;
 
 	if (cli_dir_exists(object_dir))
 		cli_cleanup_files(object_dir);
@@ -757,11 +758,23 @@ cli_clean(int argc, char **argv)
 		fatal("could not get cwd: %s", errno_s);
 
 	appl = basename(pwd);
-	(void)cli_vasprintf(&sofile, "%s.so", appl);
-	if (unlink(sofile) == -1 && errno != ENOENT)
-		printf("couldn't unlink %s: %s", sofile, errno_s);
 
-	free(sofile);
+	TAILQ_INIT(&mime_types);
+	TAILQ_INIT(&build_options);
+
+	cli_flavor_load();
+	bopt = cli_buildopt_new("_default");
+	cli_buildopt_parse("conf/build.conf");
+
+	if (bopt->single_binary)
+		(void)cli_vasprintf(&bin, "%s/%s", out_dir, appl);
+	else
+		(void)cli_vasprintf(&bin, "%s/%s.so", out_dir, appl);
+
+	if (unlink(bin) == -1 && errno != ENOENT)
+		printf("couldn't unlink %s: %s", bin, errno_s);
+
+	free(bin);
 }
 
 static void
