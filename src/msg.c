@@ -141,7 +141,7 @@ kore_msg_register(u_int8_t id, void (*cb)(struct kore_msg *, const void *))
 {
 	struct msg_type		*type;
 
-	if ((type = msg_type_lookup(id)) != NULL)
+	if (msg_type_lookup(id) != NULL)
 		return (KORE_RESULT_ERROR);
 
 	type = kore_malloc(sizeof(*type));
