@@ -35,7 +35,7 @@ kore_auth_new(const char *name)
 {
 	struct kore_auth	*auth;
 
-	if ((auth = kore_auth_lookup(name)) != NULL)
+	if (kore_auth_lookup(name) != NULL)
 		return (KORE_RESULT_ERROR);
 
 	auth = kore_malloc(sizeof(*auth));
