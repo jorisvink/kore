@@ -287,6 +287,8 @@ struct kore_runtime {
 	int	type;
 #if !defined(KORE_NO_HTTP)
 	int	(*http_request)(void *, struct http_request *);
+	void	(*http_body_chunk)(void *,
+		    struct http_request *, const void *, size_t);
 	int	(*validator)(void *, struct http_request *, const void *);
 	void	(*wsconnect)(void *, struct connection *);
 	void	(*wsdisconnect)(void *, struct connection *);
@@ -986,6 +988,8 @@ void	kore_runtime_connect(struct kore_runtime_call *, struct connection *);
 #if !defined(KORE_NO_HTTP)
 int	kore_runtime_http_request(struct kore_runtime_call *,
 	    struct http_request *);
+void	kore_runtime_http_body_chunk(struct kore_runtime_call *,
+	    struct http_request *, const void *, size_t);
 int	kore_runtime_validator(struct kore_runtime_call *,
 	    struct http_request *, const void *);
 void	kore_runtime_wsconnect(struct kore_runtime_call *, struct connection *);

@@ -292,6 +292,9 @@ net_recv_flush(struct connection *c)
 		if (c->rnb->buf == NULL)
 			return (KORE_RESULT_OK);
 
+		if ((c->rnb->b_len - c->rnb->s_off) == 0)
+			return (KORE_RESULT_OK);
+
 		if (!c->read(c, &r))
 			return (KORE_RESULT_ERROR);
 		if (!(c->evt.flags & KORE_EVENT_READ))
