@@ -2142,6 +2142,7 @@ python_kore_domain(PyObject *self, PyObject *args, PyObject *kwargs)
 
 		if (acme) {
 			kore_acme_get_paths(name, &akey, &acert);
+			acme_domains++;
 			key = akey;
 			cert = acert;
 		}
