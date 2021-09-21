@@ -79,8 +79,11 @@ kore_filemap_create(struct kore_domain *dom, const char *path, const char *root)
 			fatal("kore_filemap_create: failed to copy path");
 	}
 
-	if (stat(fpath, &st) == -1)
+	if (stat(fpath, &st) == -1) {
+		kore_log(LOG_ERR, "%s: failed to stat '%s': %s", __func__,
+		    fpath, errno_s);
 		return (KORE_RESULT_ERROR);
+	}
 
 	len = snprintf(regex, sizeof(regex), "^%s.*$", root);
 	if (len == -1 || (size_t)len >= sizeof(regex))
