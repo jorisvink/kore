@@ -647,7 +647,7 @@ http_response_json(struct http_request *req, int status,
 	if (req->owner == NULL)
 		return;
 
-	kore_debug("%s(%p, %d)", __func__, req, code);
+	kore_debug("%s(%p, %d)", __func__, req, status);
 
 	buf = kore_buf_alloc(1024);
 	kore_json_item_tobuf(json, buf);
