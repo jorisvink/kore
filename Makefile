@@ -184,6 +184,7 @@ $(KODEV): src/cli.c
 
 $(KORE): $(OBJDIR) $(S_OBJS)
 	$(CC) $(S_OBJS) $(LDFLAGS) -o $(KORE)
+	@echo $(LDFLAGS) > kore.linker
 	@echo $(FEATURES) $(FEATURES_INC) > kore.features
 
 objects: $(OBJDIR) $(PLATFORM) $(GENERATED) $(S_OBJS)
@@ -201,6 +202,7 @@ install:
 	install -m 644 share/man/kodev.1 $(DESTDIR)$(MAN_DIR)/man1/kodev.1
 	install -m 555 $(KORE) $(DESTDIR)$(INSTALL_DIR)/$(KORE)
 	install -m 644 kore.features $(DESTDIR)$(SHARE_DIR)/features
+	install -m 644 kore.linker $(DESTDIR)$(SHARE_DIR)/linker
 	install -m 644 include/kore/*.h $(DESTDIR)$(INCLUDE_DIR)
 	install -m 644 misc/ffdhe4096.pem $(DESTDIR)$(SHARE_DIR)/ffdhe4096.pem
 	$(MAKE) -C kodev install
@@ -267,7 +269,7 @@ src/seccomp.c: $(PLATFORM)
 clean:
 	rm -f $(VERSION)
 	find . -type f -name \*.o -exec rm {} \;
-	rm -rf $(KORE) $(OBJDIR) kore.features
+	rm -rf $(KORE) $(OBJDIR) kore.features kore.linker
 	$(MAKE) -C kodev clean
 
 releng-build-examples:

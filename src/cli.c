@@ -187,9 +187,12 @@ static void		cli_buildopt_kore_flavor(struct buildopt *,
 			    const char *);
 static void		cli_buildopt_mime(struct buildopt *, const char *);
 
+static void		cli_build_flags_common(struct buildopt *,
+			    struct cli_buf *);
+
 static void		cli_flavor_load(void);
 static void		cli_flavor_change(const char *);
-static void		cli_kore_features(struct buildopt *,
+static void		cli_kore_load_file(const char *, struct buildopt *,
 			    char **, size_t *);
 
 static void		cli_run(int, char **);
@@ -200,6 +203,8 @@ static void		cli_clean(int, char **);
 static void		cli_source(int, char **);
 static void		cli_reload(int, char **);
 static void		cli_flavor(int, char **);
+static void		cli_cflags(int, char **);
+static void		cli_ldflags(int, char **);
 
 #if !defined(KODEV_MINIMAL)
 static void		cli_create(int, char **);
@@ -226,6 +231,8 @@ static struct cmd cmds[] = {
 	{ "create",	"create a new application skeleton",	cli_create },
 #endif
 	{ "flavor",	"switch between build flavors",		cli_flavor },
+	{ "cflags",	"show kore CFLAGS",			cli_cflags },
+	{ "ldflags",	"show kore LDFLAGS",			cli_ldflags },
 	{ NULL,		NULL,					NULL }
 };
 
@@ -668,14 +675,12 @@ cli_build(int argc, char **argv)
 	if (cli_dir_exists(assets_path))
 		cli_find_files(assets_path, cli_build_asset);
 
-	if (bopt->single_binary) {
-		memset(&dp, 0, sizeof(dp));
-		dp.d_type = DT_REG;
-		printf("adding config %s\n", config);
-		(void)snprintf(dp.d_name,
-		    sizeof(dp.d_name), "builtin_kore.conf");
-		cli_build_asset(config, &dp);
-	}
+	memset(&dp, 0, sizeof(dp));
+	dp.d_type = DT_REG;
+	printf("adding config %s\n", config);
+	(void)snprintf(dp.d_name,
+	    sizeof(dp.d_name), "builtin_kore.conf");
+	cli_build_asset(config, &dp);
 
 	cli_file_writef(s_fd, "\n#endif\n");
 	cli_file_close(s_fd);
@@ -842,11 +847,41 @@ cli_info(int argc, char **argv)
 		printf("kore features\t %s\n", bopt->kore_flavor);
 		printf("kore source  \t %s\n", bopt->kore_source);
 	} else {
-		cli_kore_features(bopt, &features, &len);
+		cli_kore_load_file("features", bopt, &features, &len);
 		printf("kore binary  \t %s/bin/kore\n", prefix);
 		printf("kore features\t %.*s\n", (int)len, features);
 		free(features);
 	}
+}
+
+static void
+cli_cflags(int argc, char **argv)
+{
+	struct cli_buf	*buf;
+
+	buf = cli_buf_alloc(128);
+	cli_build_flags_common(NULL, buf);
+	printf("%.*s\n", (int)buf->offset, buf->data);
+	cli_buf_free(buf);
+}
+
+static void
+cli_ldflags(int argc, char **argv)
+{
+	char		*p;
+	size_t		len;
+
+	cli_kore_load_file("linker", NULL, &p, &len);
+	printf("%.*s ", (int)len, p);
+
+#if defined(__MACH__)
+	printf("-dynamiclib -undefined suppress -flat_namespace ");
+#else
+	printf("-shared ");
+#endif
+	printf("\n");
+
+	free(p);
 }
 
 #if !defined(KODEV_MINIMAL)
@@ -1906,9 +1941,12 @@ cli_build_flags_common(struct buildopt *bopt, struct cli_buf *buf)
 	size_t		len;
 	char		*data;
 
-	cli_buf_appendf(buf, "-fPIC -Isrc -Isrc/includes ");
+	cli_buf_appendf(buf, "-fPIC ");
 
-	if (bopt->single_binary == 0)
+	if (bopt != NULL)
+		cli_buf_appendf(buf, "-Isrc -Isrc/includes ");
+
+	if (bopt == NULL || bopt->single_binary == 0)
 		cli_buf_appendf(buf, "-I%s/include ", prefix);
 	else
 		cli_buf_appendf(buf, "-I%s/include ", bopt->kore_source);
@@ -1919,8 +1957,8 @@ cli_build_flags_common(struct buildopt *bopt, struct cli_buf *buf)
 	cli_buf_appendf(buf, "-I/usr/local/opt/openssl/include ");
 	cli_buf_appendf(buf, "-I/opt/homebrew/opt/openssl/include ");
 #endif
-	if (bopt->single_binary == 0) {
-		cli_kore_features(bopt, &data, &len);
+	if (bopt == NULL || bopt->single_binary == 0) {
+		cli_kore_load_file("features", bopt, &data, &len);
 		cli_buf_append(buf, data, len);
 		cli_buf_appendf(buf, " ");
 		free(data);
@@ -1948,7 +1986,7 @@ cli_build_cflags(struct buildopt *bopt)
 	}
 
 	if (bopt->single_binary) {
-		cli_kore_features(bopt, &buf, &len);
+		cli_kore_load_file("features", bopt, &buf, &len);
 		cli_buf_append(bopt->cflags, buf, len);
 		cli_buf_appendf(bopt->cflags, " ");
 		free(buf);
@@ -2078,16 +2116,17 @@ cli_flavor_load(void)
 }
 
 static void
-cli_kore_features(struct buildopt *bopt, char **out, size_t *outlen)
+cli_kore_load_file(const char *name, struct buildopt *bopt,
+    char **out, size_t *outlen)
 {
 	int		fd;
 	size_t		len;
 	char		*path, *data;
 
-	if (bopt->single_binary) {
-		(void)cli_vasprintf(&path, "%s/features", object_dir);
+	if (bopt != NULL && bopt->single_binary) {
+		(void)cli_vasprintf(&path, "%s/%s", object_dir, name);
 	} else {
-		(void)cli_vasprintf(&path, "%s/share/kore/features", prefix);
+		(void)cli_vasprintf(&path, "%s/share/kore/%s", prefix, name);
 	}
 
 	cli_file_open(path, O_RDONLY, &fd);
@@ -2096,7 +2135,7 @@ cli_kore_features(struct buildopt *bopt, char **out, size_t *outlen)
 	free(path);
 
 	if (len == 0)
-		fatal("features is empty");
+		fatal("%s is empty", name);
 
 	len--;
 
