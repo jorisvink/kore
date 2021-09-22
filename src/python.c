@@ -5151,13 +5151,17 @@ pydomain_filemaps(struct pydomain *domain, PyObject *args)
 	if (!PyArg_ParseTuple(args, "O", &dict))
 		return (NULL);
 
-	if (!PyDict_CheckExact(dict))
+	if (!PyDict_CheckExact(dict)) {
+		PyErr_SetString(PyExc_RuntimeError, "filemaps not a dict");
 		return (NULL);
+	}
 
 	idx = 0;
 	while (PyDict_Next(dict, &idx, &key, &value)) {
 		if (!PyUnicode_CheckExact(key) ||
 		    !PyUnicode_CheckExact(value)) {
+			PyErr_SetString(PyExc_RuntimeError,
+			    "filemap entries not strings");
 			return (NULL);
 		}
 
@@ -5318,8 +5322,10 @@ python_route_methods(PyObject *obj, PyObject *kwargs, struct kore_route *rt)
 	int			method;
 	Py_ssize_t		list_len, idx;
 
-	if (!PyList_CheckExact(obj))
+	if (!PyList_CheckExact(obj)) {
+		PyErr_SetString(PyExc_RuntimeError, "methods not a list");
 		return (KORE_RESULT_ERROR);
+	}
 
 	rt->methods = 0;
 	list_len = PyList_Size(obj);
