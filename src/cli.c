@@ -205,6 +205,8 @@ static void		cli_reload(int, char **);
 static void		cli_flavor(int, char **);
 static void		cli_cflags(int, char **);
 static void		cli_ldflags(int, char **);
+static void		cli_genasset(int, char **);
+static void		cli_genasset_help(void);
 
 #if !defined(KODEV_MINIMAL)
 static void		cli_create(int, char **);
@@ -222,6 +224,7 @@ static void		cli_file_create(const char *, const char *, size_t);
 static struct cmd cmds[] = {
 	{ "help",	"this help text",			cli_help },
 	{ "run",	"run an application (-fnr implied)",	cli_run },
+	{ "gen",	"generate asset file for compilation",	cli_genasset },
 	{ "reload",	"reload the application (SIGHUP)",	cli_reload },
 	{ "info",	"show info on kore on this system",	cli_info },
 	{ "build",	"build an application",			cli_build },
@@ -384,6 +387,7 @@ static int			source_files_count;
 static int			cxx_files_count;
 static struct cmd		*command = NULL;
 static int			cflags_count = 0;
+static int			genasset_cmd = 0;
 static int			cxxflags_count = 0;
 static int			ldflags_count = 0;
 static char			*flavor = NULL;
@@ -884,6 +888,64 @@ cli_ldflags(int argc, char **argv)
 	free(p);
 }
 
+static void
+cli_genasset(int argc, char **argv)
+{
+	struct stat		st;
+	struct dirent		dp;
+	char			*hdr;
+
+	genasset_cmd = 1;
+	TAILQ_INIT(&build_options);
+	(void)cli_buildopt_new("_default");
+
+	if (getenv("KORE_OBJDIR") == NULL)
+		object_dir = out_dir;
+
+	if (argv[0] == NULL)
+		cli_genasset_help();
+
+	(void)cli_vasprintf(&hdr, "%s/assets.h", out_dir);
+	(void)unlink(hdr);
+
+	cli_file_open(hdr, O_CREAT | O_TRUNC | O_WRONLY, &s_fd);
+	cli_file_writef(s_fd, "#ifndef __H_KORE_ASSETS_H\n");
+	cli_file_writef(s_fd, "#define __H_KORE_ASSETS_H\n");
+
+	if (stat(argv[0], &st) == -1)
+		fatal("%s: %s", argv[0], errno_s);
+
+	if (S_ISDIR(st.st_mode)) {
+		if (cli_dir_exists(argv[0]))
+			cli_find_files(argv[0], cli_build_asset);
+	} else if (S_ISREG(st.st_mode)) {
+		memset(&dp, 0, sizeof(dp));
+		dp.d_type = DT_REG;
+		(void)snprintf(dp.d_name, sizeof(dp.d_name), "%s",
+		    basename(argv[0]));
+		cli_build_asset(argv[0], &dp);
+	} else {
+		fatal("%s is not a directory or regular file", argv[0]);
+	}
+
+	cli_file_writef(s_fd, "\n#endif\n");
+	cli_file_close(s_fd);
+}
+
+static void
+cli_genasset_help(void)
+{
+	printf("Usage: kodev genasset [source]\n");
+	printf("Synopsis:\n");
+	printf("  Generates asset file(s) to be used for compilation.\n");
+	printf("  The source can be a single file or directory.\n");
+	printf("\n");
+	printf("This command honors the KODEV_OUTPUT environment variable.\n");
+	printf("This command honors the KORE_OBJDIR environment variable.\n");
+
+	exit(1);
+}
+
 #if !defined(KODEV_MINIMAL)
 static void
 file_create_python_src(void)
@@ -1268,7 +1330,9 @@ cli_build_asset(char *fpath, struct dirent *dp)
 	*--ext = '.';
 
 	/* Register the .c file now (cpath is free'd later). */
-	cli_add_source_file(name, cpath, opath, &st, BUILD_C);
+	if (genasset_cmd == 0)
+		cli_add_source_file(name, cpath, opath, &st, BUILD_C);
+
 	free(name);
 }
 
