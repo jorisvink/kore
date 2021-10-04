@@ -679,12 +679,14 @@ cli_build(int argc, char **argv)
 	if (cli_dir_exists(assets_path))
 		cli_find_files(assets_path, cli_build_asset);
 
-	memset(&dp, 0, sizeof(dp));
-	dp.d_type = DT_REG;
-	printf("adding config %s\n", config);
-	(void)snprintf(dp.d_name,
-	    sizeof(dp.d_name), "builtin_kore.conf");
-	cli_build_asset(config, &dp);
+	if (bopt->single_binary) {
+		memset(&dp, 0, sizeof(dp));
+		dp.d_type = DT_REG;
+		printf("adding config %s\n", config);
+		(void)snprintf(dp.d_name,
+		    sizeof(dp.d_name), "builtin_kore.conf");
+		cli_build_asset(config, &dp);
+	}
 
 	cli_file_writef(s_fd, "\n#endif\n");
 	cli_file_close(s_fd);
