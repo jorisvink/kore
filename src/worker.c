@@ -146,7 +146,8 @@ kore_worker_init(void)
 		kw->lb.offset = 0;
 	}
 
-	kore_log(LOG_INFO, "starting worker processes");
+	if (!kore_quiet)
+		kore_log(LOG_INFO, "starting worker processes");
 
 	/* Now start all the workers. */
 	id = 1;
@@ -174,7 +175,8 @@ kore_worker_init(void)
 			return (KORE_RESULT_ERROR);
 	}
 
-	kore_log(LOG_INFO, "all worker processes started");
+	if (!kore_quiet)
+		kore_log(LOG_INFO, "all worker processes started");
 
 	return (KORE_RESULT_OK);
 }
