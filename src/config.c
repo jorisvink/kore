@@ -156,6 +156,8 @@ static int		configure_task_threads(char *);
 
 #if defined(KORE_USE_PYTHON)
 static int		configure_deployment(char *);
+static int		configure_python_path(char *);
+static int		configure_python_import(char *);
 #endif
 
 #if defined(KORE_USE_CURL)
@@ -190,6 +192,10 @@ static struct {
 	{ "runas",			configure_privsep_runas },
 	{ "client_verify",		configure_client_verify },
 	{ "client_verify_depth",	configure_client_verify_depth },
+#if defined(KORE_USE_PYTHON)
+	{ "python_path",		configure_python_path },
+	{ "python_import",		configure_python_import },
+#endif
 #if !defined(KORE_NO_HTTP)
 	{ "route",			configure_route },
 	{ "handler",			configure_route_handler },
@@ -2011,6 +2017,26 @@ configure_deployment(char *value)
 	return (KORE_RESULT_OK);
 }
 
+static int
+configure_python_path(char *path)
+{
+	kore_python_path(path);
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_python_import(char *module)
+{
+	char		*argv[3];
+
+	kore_split_string(module, " ", argv, 3);
+	if (argv[0] == NULL)
+		return (KORE_RESULT_ERROR);
+
+	kore_module_load(argv[0], argv[1], KORE_MODULE_PYTHON);
+	return (KORE_RESULT_OK);
+}
 #endif
 
 #if defined(KORE_USE_PLATFORM_PLEDGE)
