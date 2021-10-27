@@ -29,7 +29,7 @@ endif
 OSNAME=$(shell uname -s | sed -e 's/[-_].*//g' | tr A-Z a-z)
 ifeq ("$(OSNAME)", "darwin")
 	CFLAGS+=$(shell pkg-config openssl --cflags)
-	LDFLAGS=$(shell pkg-config openssl --libs)
+	LDFLAGS+=$(shell pkg-config openssl --libs)
 else ifeq ("$(OSNAME)", "linux")
 	CFLAGS+=-D_GNU_SOURCE=1
 endif

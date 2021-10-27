@@ -133,7 +133,7 @@ endif
 
 ifeq ("$(OSNAME)", "darwin")
 	CFLAGS+=$(shell pkg-config openssl --cflags)
-	LDFLAGS=$(shell pkg-config openssl --libs)
+	LDFLAGS+=$(shell pkg-config openssl --libs)
 	S_SRC+=src/bsd.c
 else ifeq ("$(OSNAME)", "linux")
 	CFLAGS+=-D_GNU_SOURCE=1 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2
