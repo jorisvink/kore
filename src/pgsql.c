@@ -772,8 +772,10 @@ pgsql_read_result(struct kore_pgsql *pgsql)
 	}
 
 	switch (PQresultStatus(pgsql->result)) {
+#if PG_VERSION_NUM >= 140000
 	case PGRES_PIPELINE_SYNC:
 	case PGRES_PIPELINE_ABORTED:
+#endif
 	case PGRES_COPY_OUT:
 	case PGRES_COPY_IN:
 	case PGRES_NONFATAL_ERROR:
