@@ -132,8 +132,10 @@ ifneq ("$(SANITIZE)", "")
 endif
 
 ifeq ("$(OSNAME)", "darwin")
-	CFLAGS+=$(shell pkg-config openssl --cflags)
+	OSSL_INCL=$(shell pkg-config openssl --cflags)
+	CFLAGS+=$(OSSL_INCL)
 	LDFLAGS+=$(shell pkg-config openssl --libs)
+	FEATURES_INC+=$(OSSL_INCL)
 	S_SRC+=src/bsd.c
 else ifeq ("$(OSNAME)", "linux")
 	CFLAGS+=-D_GNU_SOURCE=1 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2

@@ -2017,12 +2017,6 @@ cli_build_flags_common(struct buildopt *bopt, struct cli_buf *buf)
 	else
 		cli_buf_appendf(buf, "-I%s/include ", bopt->kore_source);
 
-#if defined(__MACH__)
-	/* Add default openssl include path from homebrew / ports under OSX. */
-	cli_buf_appendf(buf, "-I/opt/local/include ");
-	cli_buf_appendf(buf, "-I/usr/local/opt/openssl/include ");
-	cli_buf_appendf(buf, "-I/opt/homebrew/opt/openssl/include ");
-#endif
 	if (bopt == NULL || bopt->single_binary == 0) {
 		cli_kore_load_file("features", bopt, &data, &len);
 		cli_buf_append(buf, data, len);
