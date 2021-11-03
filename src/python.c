@@ -3545,8 +3545,10 @@ pysocket_async_recv(struct pysocket_op *op)
 		return (NULL);
 	case PYSOCKET_TYPE_RECVMSG:
 		socklen = msg.msg_namelen;
-		if ((list = python_cmsg_to_list(&msg)) == NULL)
+		if ((list = python_cmsg_to_list(&msg)) == NULL) {
+			Py_DECREF(bytes);
 			return (NULL);
+		}
 		break;
 	case PYSOCKET_TYPE_RECVFROM:
 		break;
@@ -3559,7 +3561,7 @@ pysocket_async_recv(struct pysocket_op *op)
 		port = ntohs(op->sendaddr.ipv4.sin_port);
 		ip = inet_ntoa(op->sendaddr.ipv4.sin_addr);
 
-		if (op->type == PYSOCKET_TYPE_RECV)
+		if (op->type == PYSOCKET_TYPE_RECVFROM)
 			tuple = Py_BuildValue("(sHN)", ip, port, bytes);
 		else
 			tuple = Py_BuildValue("(sHNN)", ip, port, bytes, list);
