@@ -651,7 +651,7 @@ fatal_log(const char *fmt, va_list args)
 	char			buf[2048];
 
 	(void)vsnprintf(buf, sizeof(buf), fmt, args);
-	kore_log(LOG_ERR, "%s", buf);
+	kore_log(LOG_ERR, "FATAL: %s", buf);
 
 	if (worker != NULL && worker->id == KORE_WORKER_KEYMGR)
 		kore_keymgr_cleanup(1);
