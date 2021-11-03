@@ -54,6 +54,7 @@ volatile sig_atomic_t	sig_recv;
 struct kore_server_list	kore_servers;
 u_int8_t		nlisteners;
 int			kore_argc = 0;
+int			kore_quit = 0;
 pid_t			kore_pid = -1;
 u_int16_t		cpu_count = 1;
 int			kore_debug = 0;
@@ -80,6 +81,7 @@ static void	version(void);
 static void	kore_write_kore_pid(void);
 static void	kore_proctitle_setup(void);
 static void	kore_server_sslstart(void);
+static void	kore_server_shutdown(void);
 static void	kore_server_start(int, char *[]);
 static void	kore_call_parent_configure(int, char **);
 
@@ -271,11 +273,7 @@ main(int argc, char *argv[])
 
 	kore_signal_setup();
 	kore_server_start(argc, argv);
-
-	if (!kore_quiet)
-		kore_log(LOG_INFO, "server shutting down");
-
-	kore_worker_shutdown();
+	kore_server_shutdown();
 
 	rcall = kore_runtime_getcall(parent_teardown_hook);
 	if (rcall != NULL) {
@@ -858,7 +856,7 @@ kore_server_start(int argc, char *argv[])
 	u_int32_t			tmp;
 	struct kore_server		*srv;
 	u_int64_t			netwait;
-	int				quit, last_sig;
+	int				last_sig;
 #if defined(KORE_SINGLE_BINARY)
 	struct kore_runtime_call	*rcall;
 #endif
@@ -951,7 +949,6 @@ kore_server_start(int argc, char *argv[])
 	kore_platform_event_init();
 	kore_msg_parent_init();
 
-	quit = 0;
 	worker_max_connections = tmp;
 
 	kore_timer_init();
@@ -963,7 +960,7 @@ kore_server_start(int argc, char *argv[])
 	kore_msg_unregister(KORE_PYTHON_SEND_OBJ);
 #endif
 
-	while (quit != 1) {
+	while (kore_quit != 1) {
 		if (sig_recv != 0) {
 			last_sig = sig_recv;
 
@@ -975,7 +972,7 @@ kore_server_start(int argc, char *argv[])
 			case SIGINT:
 			case SIGQUIT:
 			case SIGTERM:
-				quit = 1;
+				kore_quit = 1;
 				kore_worker_dispatch_signal(sig_recv);
 				continue;
 			case SIGUSR1:
@@ -998,7 +995,19 @@ kore_server_start(int argc, char *argv[])
 		kore_platform_event_wait(netwait);
 		kore_connection_prune(KORE_CONNECTION_PRUNE_DISCONNECT);
 		kore_timer_run(kore_time_ms());
+		kore_worker_reap();
 	}
+
+	kore_worker_dispatch_signal(SIGQUIT);
+}
+
+static void
+kore_server_shutdown(void)
+{
+	if (!kore_quiet)
+		kore_log(LOG_INFO, "server shutting down");
+
+	kore_worker_shutdown();
 
 #if !defined(KORE_NO_HTTP)
 	kore_accesslog_gather(NULL, kore_time_ms(), 1);

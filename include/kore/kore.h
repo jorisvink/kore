@@ -709,6 +709,7 @@ extern char	*config_file;
 #endif
 
 extern pid_t	kore_pid;
+extern int	kore_quit;
 extern int	kore_quiet;
 extern int	kore_debug;
 extern int	skip_chroot;

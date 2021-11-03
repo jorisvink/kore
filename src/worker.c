@@ -297,9 +297,13 @@ kore_worker_shutdown(void)
 				kw->pid = 0;
 				kw->running = 0;
 
+				kw->msg[0]->evt.flags |= KORE_EVENT_READ;
+				net_recv_flush(kw->msg[0]);
+
 				if (!kore_quiet) {
-					kore_log(LOG_NOTICE, "worker %s exited",
-					    kore_worker_name(kw->id));
+					kore_log(LOG_NOTICE,
+					    "worker %s exited (%d)",
+					    kore_worker_name(kw->id), status);
 				}
 			}
 		}
@@ -610,7 +614,6 @@ kore_worker_entry(struct kore_worker *kw)
 		kore_free(rcall);
 	}
 
-	kore_msg_send(KORE_MSG_PARENT, KORE_MSG_SHUTDOWN, NULL, 0);
 	kore_server_cleanup();
 
 	kore_platform_event_cleanup();
@@ -642,24 +645,19 @@ kore_worker_reap(void)
 	pid_t			pid;
 	int			status;
 
-	for (;;) {
-		pid = waitpid(WAIT_ANY, &status, WNOHANG);
+	pid = waitpid(WAIT_ANY, &status, WNOHANG);
 
-		if (pid == -1) {
-			if (errno == ECHILD)
-				return;
-			if (errno == EINTR)
-				continue;
-			kore_log(LOG_ERR,
-			    "failed to wait for children: %s", errno_s);
+	if (pid == -1) {
+		if (errno == ECHILD || errno == EINTR)
 			return;
-		}
-
-		if (pid == 0)
-			return;
-
-		worker_reaper(pid, status);
+		kore_log(LOG_ERR, "%s: waitpid(): %s", __func__, errno_s);
+		return;
 	}
+
+	if (pid == 0)
+		return;
+
+	worker_reaper(pid, status);
 }
 
 void
@@ -785,6 +783,9 @@ worker_reaper(pid_t pid, int status)
 		if (kw->pid != pid)
 			continue;
 
+		kw->msg[0]->evt.flags |= KORE_EVENT_READ;
+		net_recv_flush(kw->msg[0]);
+
 		if (!kore_quiet) {
 			kore_log(LOG_NOTICE,
 			    "worker %s (%d) exited with status %d",
@@ -819,10 +820,7 @@ worker_reaper(pid_t pid, int status)
 			kore_log(LOG_CRIT,
 			    "keymgr or acme process gone, stopping");
 			kw->pid = 0;
-			if (raise(SIGTERM) != 0) {
-				kore_log(LOG_WARNING,
-				    "failed to raise SIGTERM signal");
-			}
+			kore_quit = 1;
 			break;
 		}
 
@@ -844,22 +842,24 @@ worker_reaper(pid_t pid, int status)
 			kw->pid = 0;
 			kore_log(LOG_NOTICE,
 			    "worker policy is 'terminate', stopping");
-			if (raise(SIGTERM) != 0) {
-				kore_log(LOG_WARNING,
-				    "failed to raise SIGTERM signal");
-			}
+			kore_quit = 1;
 			break;
 		}
 
-		kore_log(LOG_NOTICE, "restarting worker %d", kw->id);
-		kw->restarted = 1;
-		kore_msg_parent_remove(kw);
+		if (kore_quit == 0) {
+			kore_log(LOG_NOTICE, "restarting worker %d", kw->id);
+			kw->restarted = 1;
+			kore_msg_parent_remove(kw);
 
-		if (!kore_worker_spawn(idx, kw->id, kw->cpu))
-			(void)raise(SIGQUIT);
+			if (!kore_worker_spawn(idx, kw->id, kw->cpu)) {
+				kore_quit = 1;
+				kore_log(LOG_ERR, "failed to restart worker");
+			} else {
+				kore_msg_parent_add(kw);
+			}
 
-		kore_msg_parent_add(kw);
-		break;
+			break;
+		}
 	}
 }
 
