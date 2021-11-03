@@ -364,9 +364,6 @@ kore_keymgr_cleanup(int final)
 {
 	struct key		*key, *next;
 
-	if (final && !kore_quiet)
-		kore_log(LOG_INFO, "cleaning up keys");
-
 	if (initialized == 0)
 		return;
 
