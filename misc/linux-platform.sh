@@ -2,7 +2,12 @@
 #
 # Linux specific defines and system call maps.
 
-PLATFORM=$(uname -m)
+if [ -z "$TARGET_PLATFORM" ]; then
+	PLATFORM=$(uname -m)
+else
+	PLATFORM=$TARGET_PLATFORM
+fi
+
 BASE=$(dirname $0)
 
 case "$PLATFORM" in
