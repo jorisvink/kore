@@ -18,7 +18,7 @@
 #define CORO_STATE_SUSPENDED		2
 
 struct python_coro {
-	u_int32_t			id;
+	u_int64_t			id;
 	int				state;
 	int				killed;
 	PyObject			*obj;
@@ -45,6 +45,7 @@ static PyObject		*python_kore_queue(PyObject *, PyObject *);
 static PyObject		*python_kore_worker(PyObject *, PyObject *);
 static PyObject		*python_kore_tracer(PyObject *, PyObject *);
 static PyObject		*python_kore_fatalx(PyObject *, PyObject *);
+static PyObject		*python_kore_task_id(PyObject *, PyObject *);
 static PyObject		*python_kore_setname(PyObject *, PyObject *);
 static PyObject		*python_kore_suspend(PyObject *, PyObject *);
 static PyObject		*python_kore_shutdown(PyObject *, PyObject *);
@@ -96,6 +97,7 @@ static struct PyMethodDef pykore_methods[] = {
 	METHOD("tracer", python_kore_tracer, METH_VARARGS),
 	METHOD("fatal", python_kore_fatal, METH_VARARGS),
 	METHOD("fatalx", python_kore_fatalx, METH_VARARGS),
+	METHOD("task_id", python_kore_task_id, METH_NOARGS),
 	METHOD("setname", python_kore_setname, METH_VARARGS),
 	METHOD("suspend", python_kore_suspend, METH_VARARGS),
 	METHOD("shutdown", python_kore_shutdown, METH_NOARGS),

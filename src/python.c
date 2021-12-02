@@ -24,6 +24,7 @@
 
 #include <ctype.h>
 #include <libgen.h>
+#include <inttypes.h>
 #include <signal.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -1173,7 +1174,7 @@ python_coro_trace(const char *label, struct python_coro *coro)
 		kore_log(LOG_NOTICE, "coro '%s' %s <%s> @ [%s:%d]",
 		    coro->name, label, func, fname, line);
 	} else {
-		kore_log(LOG_NOTICE, "coro %u %s <%s> @ [%s:%d]",
+		kore_log(LOG_NOTICE, "coro %" PRIu64 " %s <%s> @ [%s:%d]",
 		    coro->id, label, func, fname, line);
 	}
 }
@@ -1945,16 +1946,28 @@ python_kore_task_create(PyObject *self, PyObject *args)
 	coro = python_coro_create(obj, NULL);
 	Py_INCREF(obj);
 
-	return (PyLong_FromUnsignedLong(coro->id));
+	return (PyLong_FromUnsignedLongLong(coro->id));
+}
+
+static PyObject *
+python_kore_task_id(PyObject *self, PyObject *args)
+{
+	if (coro_running == NULL) {
+		PyErr_SetString(PyExc_RuntimeError,
+		    "no coroutine active");
+		return (NULL);
+	}
+
+	return (PyLong_FromUnsignedLongLong(coro_running->id));
 }
 
 static PyObject *
 python_kore_task_kill(PyObject *self, PyObject *args)
 {
-	u_int32_t		id;
+	u_int64_t		id;
 	struct python_coro	*coro, *active;
 
-	if (!PyArg_ParseTuple(args, "I", &id))
+	if (!PyArg_ParseTuple(args, "K", &id))
 		return (NULL);
 
 	if (coro_running != NULL && coro_running->id == id) {
