@@ -973,7 +973,7 @@ configure_privsep(char *options)
 	} else if (!strcmp(argv[0], "keymgr")) {
 		current_privsep = &keymgr_privsep;
 #if defined(KORE_USE_ACME)
-	} else if (!strcmp(argv[0], "keymgr")) {
+	} else if (!strcmp(argv[0], "acme")) {
 		current_privsep = &acme_privsep;
 #endif
 	} else {
