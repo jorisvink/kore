@@ -3197,6 +3197,7 @@ pysocket_close(struct pysocket *sock, PyObject *args)
 	}
 
 	sock->fd = -1;
+	sock->event.evt.handle(&sock->event, 1);
 
 	Py_RETURN_TRUE;
 }
