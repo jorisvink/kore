@@ -925,6 +925,11 @@ http_header_recv(struct netbuf *nb)
 
 		if (!http_request_header_uint64(req, "content-length",
 		    &req->content_length)) {
+			if (req->method == HTTP_METHOD_DELETE) {
+				req->flags |= HTTP_REQUEST_COMPLETE;
+				return (KORE_RESULT_OK);
+			}
+
 			req->flags |= HTTP_REQUEST_DELETE;
 			http_error_response(req->owner,
 			    HTTP_STATUS_LENGTH_REQUIRED);
@@ -1992,7 +1997,7 @@ http_request_new(struct connection *c, const char *host,
 		flags |= HTTP_REQUEST_COMPLETE;
 	} else if (!strcasecmp(method, "delete")) {
 		m = HTTP_METHOD_DELETE;
-		flags |= HTTP_REQUEST_COMPLETE;
+		flags |= HTTP_REQUEST_EXPECT_BODY;
 	} else if (!strcasecmp(method, "post")) {
 		m = HTTP_METHOD_POST;
 		flags |= HTTP_REQUEST_EXPECT_BODY;
