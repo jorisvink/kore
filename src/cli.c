@@ -26,6 +26,12 @@
 #include <openssl/err.h>
 #include <openssl/pem.h>
 #include <openssl/x509v3.h>
+
+/* Ignore deprecation warnings for OpenSSL 3 for now. */
+#if defined(OPENSSL_VERSION_MAJOR)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+
 #endif
 
 #include <ctype.h>

@@ -689,7 +689,12 @@ keymgr_rsa_encrypt(struct kore_msg *msg, const void *data, struct key *key)
 	u_int8_t			buf[1024];
 
 	req = (const struct kore_keyreq *)data;
+
+#if defined(OPENSSL_VERSION_MAJOR)
+	rsa = EVP_PKEY_get0(key->pkey);
+#else
 	rsa = EVP_PKEY_get0_RSA(key->pkey);
+#endif
 
 	keylen = RSA_size(rsa);
 	if (req->data_len > keylen || keylen > sizeof(buf))
@@ -713,7 +718,12 @@ keymgr_ecdsa_sign(struct kore_msg *msg, const void *data, struct key *key)
 	u_int8_t			sig[1024];
 
 	req = (const struct kore_keyreq *)data;
+
+#if defined(OPENSSL_VERSION_MAJOR)
+	ec = EVP_PKEY_get0(key->pkey);
+#else
 	ec = EVP_PKEY_get0_EC_KEY(key->pkey);
+#endif
 
 	len = ECDSA_size(ec);
 	if (req->data_len > len || len > sizeof(sig))
