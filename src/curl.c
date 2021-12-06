@@ -407,18 +407,17 @@ kore_curl_http_setup(struct kore_curl *client, int method, const void *data,
 
 	switch (method) {
 	case HTTP_METHOD_GET:
+	case HTTP_METHOD_OPTIONS:
 		break;
 	case HTTP_METHOD_HEAD:
 		curl_easy_setopt(client->handle, CURLOPT_NOBODY, 1);
-		break;
-	case HTTP_METHOD_DELETE:
-	case HTTP_METHOD_OPTIONS:
 		break;
 	case HTTP_METHOD_PUT:
 		has_body = 1;
 		curl_easy_setopt(client->handle, CURLOPT_UPLOAD, 1);
 		break;
 	case HTTP_METHOD_PATCH:
+	case HTTP_METHOD_DELETE:
 		mname = http_method_text(method);
 		/* fallthrough */
 	case HTTP_METHOD_POST:
