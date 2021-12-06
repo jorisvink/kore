@@ -79,11 +79,6 @@ extern int daemon(int, int);
 #endif
 #endif
 
-/* Ignore deprecation warnings for OpenSSL 3 for now. */
-#if defined(OPENSSL_VERSION_MAJOR)
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-
 #if defined(__OpenBSD__)
 #define KORE_USE_PLATFORM_PLEDGE	1
 #endif
