@@ -6292,15 +6292,20 @@ pyhttp_client_request(struct pyhttp_client *client, int m, PyObject *kwargs)
 	switch (m) {
 	case HTTP_METHOD_GET:
 	case HTTP_METHOD_HEAD:
-	case HTTP_METHOD_DELETE:
 	case HTTP_METHOD_OPTIONS:
 		break;
 	case HTTP_METHOD_PUT:
 	case HTTP_METHOD_POST:
 	case HTTP_METHOD_PATCH:
+	case HTTP_METHOD_DELETE:
 		length = -1;
 
 		if (kwargs == NULL) {
+			if (m == HTTP_METHOD_DELETE) {
+				length = 0;
+				break;
+			}
+
 			PyErr_Format(PyExc_RuntimeError,
 			    "no keyword arguments given, but body expected ",
 			    http_method_text(m));
