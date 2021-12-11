@@ -54,6 +54,9 @@ static int	utils_base64_encode(const void *, size_t, char **,
 		    const char *, int);
 static int	utils_base64_decode(const char *, u_int8_t **,
 		    size_t *, const char *, int);
+static int	utils_x509name_tobuf(void *, int, int, const char *,
+		    const void *, size_t, int);
+
 
 static char b64_table[] = 	\
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -546,34 +549,71 @@ kore_worker_name(int id)
 }
 
 int
+kore_x509_issuer_name(struct connection *c, char **out, int flags)
+{
+	struct kore_buf		buf;
+	X509_NAME		*name;
+
+	if ((name = X509_get_issuer_name(c->cert)) == NULL)
+		return (KORE_RESULT_ERROR);
+
+	kore_buf_init(&buf, 1024);
+
+	if (!kore_x509name_foreach(name, flags, &buf, utils_x509name_tobuf)) {
+		kore_buf_cleanup(&buf);
+		return (KORE_RESULT_ERROR);
+	}
+
+	*out = kore_buf_stringify(&buf, NULL);
+
+	buf.offset = 0;
+	buf.data = NULL;
+
+	return (KORE_RESULT_OK);
+}
+
+int
 kore_x509_subject_name(struct connection *c, char **out, int flags)
 {
 	struct kore_buf		buf;
+	X509_NAME		*name;
+
+	if ((name = X509_get_subject_name(c->cert)) == NULL)
+		return (KORE_RESULT_ERROR);
+
+	kore_buf_init(&buf, 1024);
+
+	if (!kore_x509name_foreach(name, flags, &buf, utils_x509name_tobuf)) {
+		kore_buf_cleanup(&buf);
+		return (KORE_RESULT_ERROR);
+	}
+
+	*out = kore_buf_stringify(&buf, NULL);
+
+	buf.offset = 0;
+	buf.data = NULL;
+
+	return (KORE_RESULT_OK);
+}
+
+int
+kore_x509name_foreach(X509_NAME *name, int flags, void *udata,
+    int (*cb)(void *, int, int, const char *, const void *, size_t, int))
+{
 	u_int8_t		*data;
 	ASN1_STRING		*astr;
-	X509_NAME		*name;
 	X509_NAME_ENTRY		*entry;
 	const char		*field;
-	int			ret, idx, namelen, nid, len;
+	int			islast, ret, idx, namelen, nid, len;
 
 	data = NULL;
 	ret = KORE_RESULT_ERROR;
 
-	kore_buf_init(&buf, 1024);
-
-	if (c->cert == NULL)
-		goto cleanup;
-
-	if ((name = X509_get_subject_name(c->cert)) == NULL)
-		goto cleanup;
-
-	namelen = X509_NAME_entry_count(name);
-	if (namelen == 0)
+	if ((namelen = X509_NAME_entry_count(name)) == 0)
 		goto cleanup;
 
 	for (idx = 0; idx < namelen; idx++) {
-		entry = X509_NAME_get_entry(name, idx);
-		if (entry == NULL)
+		if ((entry = X509_NAME_get_entry(name, idx)) == NULL)
 			goto cleanup;
 
 		nid = OBJ_obj2nid(X509_NAME_ENTRY_get_object(entry));
@@ -587,33 +627,24 @@ kore_x509_subject_name(struct connection *c, char **out, int flags)
 		if ((len = ASN1_STRING_to_UTF8(&data, astr)) < 0)
 			goto cleanup;
 
-		if (flags & KORE_X509_COMMON_NAME_ONLY) {
-			if (nid == NID_commonName) {
-				kore_buf_append(&buf, data, len);
-				break;
-			}
-		} else {
-			kore_buf_appendf(&buf, "%s=", field);
-			kore_buf_append(&buf, data, len);
-			if (idx != (namelen - 1))
-				kore_buf_appendf(&buf, " ");
-		}
+		if (idx != (namelen - 1))
+			islast = 0;
+		else
+			islast = 1;
+
+		if (!cb(udata, islast, nid, field, data, len, flags))
+			goto cleanup;
 
 		OPENSSL_free(data);
 		data = NULL;
 	}
 
 	ret = KORE_RESULT_OK;
-	*out = kore_buf_stringify(&buf, NULL);
-
-	buf.offset = 0;
-	buf.data = NULL;
 
 cleanup:
 	if (data != NULL)
 		OPENSSL_free(data);
 
-	kore_buf_cleanup(&buf);
 	return (ret);
 }
 
@@ -655,6 +686,25 @@ fatal_log(const char *fmt, va_list args)
 
 	if (worker != NULL && worker->id == KORE_WORKER_KEYMGR)
 		kore_keymgr_cleanup(1);
+}
+
+static int
+utils_x509name_tobuf(void *udata, int islast, int nid, const char *field,
+    const void *data, size_t len, int flags)
+{
+	struct kore_buf		*buf = udata;
+
+	if (flags & KORE_X509_COMMON_NAME_ONLY) {
+		if (nid == NID_commonName)
+			kore_buf_append(buf, data, len);
+	} else {
+		kore_buf_appendf(buf, "%s=", field);
+		kore_buf_append(buf, data, len);
+		if (!islast)
+			kore_buf_appendf(buf, " ");
+	}
+
+	return (KORE_RESULT_OK);
 }
 
 static int

@@ -910,7 +910,11 @@ char		*kore_read_line(FILE *, char *, size_t);
 
 EVP_PKEY	*kore_rsakey_load(const char *);
 EVP_PKEY	*kore_rsakey_generate(const char *);
+int		kore_x509_issuer_name(struct connection *, char **, int);
 int		kore_x509_subject_name(struct connection *, char **, int);
+int		kore_x509name_foreach(X509_NAME *, int, void *,
+		    int (*)(void *, int, int, const char *,
+		    const void *, size_t, int));
 
 #if !defined(KORE_NO_HTTP)
 void		kore_websocket_handshake(struct http_request *,
