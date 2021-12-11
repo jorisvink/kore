@@ -258,6 +258,12 @@ kore_connection_handle(struct connection *c)
 
 	switch (c->state) {
 	case CONN_STATE_TLS_SHAKE:
+		if (primary_dom == NULL) {
+			kore_log(LOG_NOTICE,
+			    "TLS handshake but no TLS configured on server");
+			return (KORE_RESULT_ERROR);
+		}
+
 		if (primary_dom->ssl_ctx == NULL) {
 			kore_log(LOG_NOTICE,
 			    "TLS configuration for %s not yet complete",
