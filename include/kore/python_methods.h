@@ -696,11 +696,13 @@ static PyObject	*pyconnection_get_fd(struct pyconnection *, void *);
 static PyObject	*pyconnection_get_addr(struct pyconnection *, void *);
 
 static PyObject	*pyconnection_get_peer_x509(struct pyconnection *, void *);
+static PyObject	*pyconnection_get_peer_x509dict(struct pyconnection *, void *);
 
 static PyGetSetDef pyconnection_getset[] = {
 	GETTER("fd", pyconnection_get_fd),
 	GETTER("addr", pyconnection_get_addr),
 	GETTER("x509", pyconnection_get_peer_x509),
+	GETTER("x509dict", pyconnection_get_peer_x509dict),
 	GETTER(NULL, NULL),
 };
 

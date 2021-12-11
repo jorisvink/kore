@@ -119,6 +119,9 @@ static int		pyhttp_iterobj_chunk_sent(struct netbuf *);
 static int		pyhttp_iterobj_next(struct pyhttp_iterobj *);
 static void		pyhttp_iterobj_disconnect(struct connection *);
 
+static int		pyconnection_x509_cb(void *, int, int, const char *,
+			    const void *, size_t, int);
+
 #if defined(KORE_USE_PGSQL)
 static int		pykore_pgsql_result(struct pykore_pgsql *);
 static void		pykore_pgsql_callback(struct kore_pgsql *, void *);
@@ -2843,6 +2846,96 @@ pyconnection_get_peer_x509(struct pyconnection *pyc, void *closure)
 	kore_free(der);
 
 	return (bytes);
+}
+
+static PyObject *
+pyconnection_get_peer_x509dict(struct pyconnection *pyc, void *closure)
+{
+	X509_NAME	*name;
+	PyObject	*dict, *issuer, *subject, *ret;
+
+	ret = NULL;
+	issuer = NULL;
+	subject = NULL;
+
+	if (pyc->c->cert == NULL) {
+		Py_RETURN_NONE;
+	}
+
+	if ((dict = PyDict_New()) == NULL)
+		goto out;
+
+	if ((issuer = PyDict_New()) == NULL)
+		goto out;
+
+	if (PyDict_SetItemString(dict, "issuer", issuer) == -1)
+		goto out;
+
+	if ((subject = PyDict_New()) == NULL)
+		goto out;
+
+	if (PyDict_SetItemString(dict, "subject", subject) == -1)
+		goto out;
+
+	PyErr_Clear();
+
+	if ((name = X509_get_issuer_name(pyc->c->cert)) == NULL) {
+		PyErr_Format(PyExc_RuntimeError,
+		    "X509_get_issuer_name: %s", ssl_errno_s);
+		goto out;
+	}
+
+	if (!kore_x509name_foreach(name, 0, issuer, pyconnection_x509_cb)) {
+		if (PyErr_Occurred() == NULL) {
+			PyErr_Format(PyExc_RuntimeError,
+			    "failed to add issuer name to dictionary");
+		}
+		goto out;
+	}
+
+	if ((name = X509_get_subject_name(pyc->c->cert)) == NULL) {
+		PyErr_Format(PyExc_RuntimeError,
+		    "X509_get_subject_name: %s", ssl_errno_s);
+		goto out;
+	}
+
+	if (!kore_x509name_foreach(name, 0, subject, pyconnection_x509_cb)) {
+		if (PyErr_Occurred() == NULL) {
+			PyErr_Format(PyExc_RuntimeError,
+			    "failed to add subject name to dictionary");
+		}
+		goto out;
+	}
+
+	ret = dict;
+	dict = NULL;
+
+out:
+	Py_XDECREF(dict);
+	Py_XDECREF(issuer);
+	Py_XDECREF(subject);
+
+	return (ret);
+}
+
+static int
+pyconnection_x509_cb(void *udata, int islast, int nid, const char *field,
+    const void *data, size_t len, int flags)
+{
+	PyObject	*dict, *obj;
+
+	dict = udata;
+
+	if ((obj = PyUnicode_FromStringAndSize(data, len)) == NULL)
+		return (KORE_RESULT_ERROR);
+
+	if (PyDict_SetItemString(dict, field, obj) == -1) {
+		Py_DECREF(obj);
+		return (KORE_RESULT_ERROR);
+	}
+
+	Py_DECREF(obj);
+	return (KORE_RESULT_OK);
 }
 
 static void
