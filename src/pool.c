@@ -47,6 +47,8 @@ kore_pool_init(struct kore_pool *pool, const char *name,
 	if ((pool->name = strdup(name)) == NULL)
 		fatal("kore_pool_init: strdup %s", errno_s);
 
+	len = (len + (8 - 1)) & ~(8 - 1);
+
 	pool->lock = 0;
 	pool->elms = 0;
 	pool->inuse = 0;
