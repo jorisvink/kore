@@ -5109,42 +5109,34 @@ pyhttp_get_body(struct pyhttp_request *pyreq, void *closure)
 static PyObject *
 pyhttp_get_agent(struct pyhttp_request *pyreq, void *closure)
 {
-	PyObject	*agent;
-
-	if (pyreq->req->agent == NULL) {
-		Py_RETURN_NONE;
-	}
-
-	if ((agent = PyUnicode_FromString(pyreq->req->path)) == NULL)
-		return (PyErr_NoMemory());
-
-	return (agent);
+	return (PyUnicode_FromString(pyreq->req->path));
 }
 
 static PyObject *
 pyhttp_get_method(struct pyhttp_request *pyreq, void *closure)
 {
-	PyObject	*method;
-
-	if ((method = PyLong_FromUnsignedLong(pyreq->req->method)) == NULL)
-		return (PyErr_NoMemory());
-
-	return (method);
+	return (PyLong_FromUnsignedLong(pyreq->req->method));
 }
 
 static PyObject *
 pyhttp_get_body_path(struct pyhttp_request *pyreq, void *closure)
 {
-	PyObject	*path;
-
 	if (pyreq->req->http_body_path == NULL) {
 		Py_RETURN_NONE;
 	}
 
-	if ((path = PyUnicode_FromString(pyreq->req->http_body_path)) == NULL)
-		return (PyErr_NoMemory());
+	return (PyUnicode_FromString(pyreq->req->http_body_path));
+}
 
-	return (path);
+static PyObject *
+pyhttp_get_body_digest(struct pyhttp_request *pyreq, void *closure)
+{
+	PyObject	*digest;
+
+	digest = PyBytes_FromStringAndSize((char *)pyreq->req->http_body_digest,
+	    sizeof(pyreq->req->http_body_digest));
+
+	return (digest);
 }
 
 static PyObject *
