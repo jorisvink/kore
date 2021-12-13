@@ -46,7 +46,7 @@ struct kore_runtime kore_native_runtime = {
 	KORE_RUNTIME_NATIVE,
 #if !defined(KORE_NO_HTTP)
 	.http_request = native_runtime_http_request,
-	.http_body_chunk= native_runtime_http_body_chunk,
+	.http_body_chunk = native_runtime_http_body_chunk,
 	.validator = native_runtime_validator,
 	.wsconnect = native_runtime_connect,
 	.wsmessage = native_runtime_wsmessage,
