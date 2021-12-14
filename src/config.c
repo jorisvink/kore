@@ -111,6 +111,7 @@ static int		configure_client_verify_depth(char *);
 static int		configure_route(char *);
 static int		configure_route_methods(char *);
 static int		configure_route_handler(char *);
+static int		configure_route_on_free(char *);
 static int		configure_route_on_headers(char *);
 static int		configure_route_on_body_chunk(char *);
 static int		configure_filemap(char *);
@@ -201,6 +202,7 @@ static struct {
 	{ "handler",			configure_route_handler },
 	{ "on_headers",			configure_route_on_headers },
 	{ "on_body_chunk",		configure_route_on_body_chunk },
+	{ "on_free",			configure_route_on_free },
 	{ "methods",			configure_route_methods },
 	{ "filemap",			configure_filemap },
 	{ "redirect",			configure_redirect },
@@ -1196,6 +1198,24 @@ configure_route_on_body_chunk(char *name)
 	if (current_route->on_body_chunk == NULL) {
 		kore_log(LOG_ERR,
 		    "on_body_chunk callback '%s' for '%s' not found",
+		    name, current_route->path);
+		return (KORE_RESULT_ERROR);
+	}
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_route_on_free(char *name)
+{
+	if (current_route == NULL) {
+		kore_log(LOG_ERR,
+		    "on_free keyword not inside of route context");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if ((current_route->on_free = kore_runtime_getcall(name)) == NULL) {
+		kore_log(LOG_ERR, "on_free callback '%s' for '%s' not found",
 		    name, current_route->path);
 		return (KORE_RESULT_ERROR);
 	}

@@ -88,6 +88,9 @@ static int		python_route_params(PyObject *, struct kore_route *,
 static int		python_route_methods(PyObject *, PyObject *,
 			    struct kore_route *);
 static int		python_route_auth(PyObject *, struct kore_route *);
+static int		python_route_hooks(PyObject *, struct kore_route *);
+static int		python_route_hook_set(PyObject *, const char *,
+			    struct kore_runtime_call **);
 
 static int		python_coro_run(struct python_coro *);
 static void		python_coro_wakeup(struct python_coro *);
@@ -146,6 +149,9 @@ static void	python_push_type(const char *, PyObject *, PyTypeObject *);
 
 static int	python_validator_check(PyObject *);
 static int	python_runtime_http_request(void *, struct http_request *);
+static void	python_runtime_http_request_free(void *, struct http_request *);
+static void	python_runtime_http_body_chunk(void *, struct http_request *,
+		    const void *, size_t);
 static int	python_runtime_validator(void *, struct http_request *,
 		    const void *);
 static void	python_runtime_wsmessage(void *, struct connection *,
@@ -175,6 +181,8 @@ struct kore_module_functions kore_python_module = {
 struct kore_runtime kore_python_runtime = {
 	KORE_RUNTIME_PYTHON,
 	.http_request = python_runtime_http_request,
+	.http_body_chunk = python_runtime_http_body_chunk,
+	.http_request_free = python_runtime_http_request_free,
 	.validator = python_runtime_validator,
 	.wsconnect = python_runtime_connect,
 	.wsmessage = python_runtime_wsmessage,
@@ -1316,6 +1324,49 @@ python_runtime_http_request(void *addr, struct http_request *req)
 	Py_DECREF(pyret);
 
 	return (KORE_RESULT_OK);
+}
+
+static void
+python_runtime_http_request_free(void *addr, struct http_request *req)
+{
+	PyObject	*ret;
+
+	if (req->py_req == NULL)
+		fatal("%s: py_req is NULL", __func__);
+
+	PyErr_Clear();
+	ret = PyObject_CallFunctionObjArgs(addr, req->py_req, NULL);
+
+	if (ret == NULL)
+		kore_python_log_error("python_runtime_http_request_free");
+
+	Py_XDECREF(ret);
+}
+
+static void
+python_runtime_http_body_chunk(void *addr, struct http_request *req,
+    const void *data, size_t len)
+{
+	PyObject	*args, *ret;
+
+	if (req->py_req == NULL) {
+		if ((req->py_req = pyhttp_request_alloc(req)) == NULL)
+			fatal("%s: pyreq alloc failed", __func__);
+	}
+
+	if ((args = Py_BuildValue("(Oy#)", req->py_req, data, len)) == NULL) {
+		kore_python_log_error("python_runtime_http_body_chunk");
+		return;
+	}
+
+	PyErr_Clear();
+	ret = PyObject_Call(addr, args, NULL);
+
+	if (ret == NULL)
+		kore_python_log_error("python_runtime_http_body_chunk");
+
+	Py_XDECREF(ret);
+	Py_DECREF(args);
 }
 
 static int
@@ -5358,6 +5409,14 @@ python_route_install(struct pyroute *route)
 				return (KORE_RESULT_ERROR);
 			}
 		}
+
+		if ((obj = PyDict_GetItemString(kwargs, "hooks")) != NULL) {
+			if (!python_route_hooks(obj, rt)) {
+				kore_python_log_error("python_route_install");
+				kore_route_free(rt);
+				return (KORE_RESULT_ERROR);
+			}
+		}
 	}
 
 	if (rt->path[0] == '/') {
@@ -5601,6 +5660,51 @@ python_route_auth(PyObject *dict, struct kore_route *rt)
 
 	auth->validator = vldr;
 	rt->auth = auth;
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+python_route_hooks(PyObject *dict, struct kore_route *rt)
+{
+	if (!PyDict_CheckExact(dict))
+		return (KORE_RESULT_ERROR);
+
+	if (!python_route_hook_set(dict, "on_free", &rt->on_free))
+		return (KORE_RESULT_ERROR);
+
+	if (!python_route_hook_set(dict, "on_headers", &rt->on_headers))
+		return (KORE_RESULT_ERROR);
+
+	if (!python_route_hook_set(dict, "on_body_chunk", &rt->on_body_chunk))
+		return (KORE_RESULT_ERROR);
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+python_route_hook_set(PyObject *dict, const char *name,
+    struct kore_runtime_call **out)
+{
+	PyObject			*obj;
+	struct kore_runtime_call	*rcall;
+
+	if ((obj = PyDict_GetItemString(dict, name)) == NULL)
+		return (KORE_RESULT_OK);
+
+	if (!PyCallable_Check(obj)) {
+		PyErr_Format(PyExc_RuntimeError,
+		    "%s for a route not callable", name);
+		Py_DECREF(obj);
+		return (KORE_RESULT_ERROR);
+	}
+
+	rcall = kore_calloc(1, sizeof(struct kore_runtime_call));
+	rcall->addr = obj;
+	rcall->runtime = &kore_python_runtime;
+
+	Py_INCREF(rcall->addr);
+	*out = rcall;
 
 	return (KORE_RESULT_OK);
 }

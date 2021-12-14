@@ -33,6 +33,7 @@ static void	native_runtime_connect(void *, struct connection *);
 static void	native_runtime_configure(void *, int, char **);
 #if !defined(KORE_NO_HTTP)
 static int	native_runtime_http_request(void *, struct http_request *);
+static void	native_runtime_http_request_free(void *, struct http_request *);
 static void	native_runtime_http_body_chunk(void *, struct http_request *,
 		    const void *, size_t);
 static int	native_runtime_validator(void *, struct http_request *,
@@ -46,6 +47,7 @@ struct kore_runtime kore_native_runtime = {
 	KORE_RUNTIME_NATIVE,
 #if !defined(KORE_NO_HTTP)
 	.http_request = native_runtime_http_request,
+	.http_request_free = native_runtime_http_request_free,
 	.http_body_chunk = native_runtime_http_body_chunk,
 	.validator = native_runtime_validator,
 	.wsconnect = native_runtime_connect,
@@ -106,6 +108,13 @@ kore_runtime_http_request(struct kore_runtime_call *rcall,
     struct http_request *req)
 {
 	return (rcall->runtime->http_request(rcall->addr, req));
+}
+
+void
+kore_runtime_http_request_free(struct kore_runtime_call *rcall,
+    struct http_request *req)
+{
+	rcall->runtime->http_request_free(rcall->addr, req);
 }
 
 void
@@ -186,6 +195,15 @@ native_runtime_http_request(void *addr, struct http_request *req)
 
 	*(void **)&(cb) = addr;
 	return (cb(req));
+}
+
+static void
+native_runtime_http_request_free(void *addr, struct http_request *req)
+{
+	int		(*cb)(struct http_request *);
+
+	*(void **)&(cb) = addr;
+	cb(req);
 }
 
 static void

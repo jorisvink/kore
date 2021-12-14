@@ -413,8 +413,7 @@ const char	*http_media_type(const char *);
 void		*http_state_get(struct http_request *);
 int		http_state_exists(struct http_request *);
 void		http_state_cleanup(struct http_request *);
-void		*http_state_create(struct http_request *, size_t,
-		    void (*onfree)(struct http_request *));
+void		*http_state_create(struct http_request *, size_t);
 
 int		http_argument_urldecode(char *);
 int		http_header_recv(struct netbuf *);

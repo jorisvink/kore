@@ -442,8 +442,8 @@ http_request_free(struct http_request *req)
 	struct http_header	*hdr, *next;
 	struct http_cookie	*ck, *cknext;
 
-	if (req->onfree != NULL)
-		req->onfree(req);
+	if (req->rt->on_free != NULL)
+		kore_runtime_http_request_free(req->rt->on_free, req);
 
 	if (req->runlock != NULL) {
 		LIST_REMOVE(req->runlock, list);
@@ -1454,14 +1454,12 @@ http_state_exists(struct http_request *req)
 }
 
 void *
-http_state_create(struct http_request *req, size_t len,
-    void (*onfree)(struct http_request *))
+http_state_create(struct http_request *req, size_t len)
 {
 	if (req->hdlr_extra != NULL)
 		fatal("http_state_create: state already exists");
 
 	req->state_len = len;
-	req->onfree = onfree;
 	req->hdlr_extra = kore_calloc(1, len);
 
 	return (req->hdlr_extra);
@@ -2035,7 +2033,6 @@ http_request_new(struct connection *c, const char *host,
 	req->status = 0;
 	req->method = m;
 	req->agent = NULL;
-	req->onfree = NULL;
 	req->referer = NULL;
 	req->runlock = NULL;
 	req->flags = flags;

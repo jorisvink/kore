@@ -287,6 +287,7 @@ struct kore_runtime {
 	int	type;
 #if !defined(KORE_NO_HTTP)
 	int	(*http_request)(void *, struct http_request *);
+	void	(*http_request_free)(void *, struct http_request *);
 	void	(*http_body_chunk)(void *,
 		    struct http_request *, const void *, size_t);
 	int	(*validator)(void *, struct http_request *, const void *);
@@ -327,6 +328,7 @@ struct kore_route {
 	struct kore_domain			*dom;
 	struct kore_auth			*auth;
 	struct kore_runtime_call		*rcall;
+	struct kore_runtime_call		*on_free;
 	struct kore_runtime_call		*on_headers;
 	struct kore_runtime_call		*on_body_chunk;
 
@@ -992,6 +994,8 @@ void	kore_runtime_configure(struct kore_runtime_call *, int, char **);
 void	kore_runtime_connect(struct kore_runtime_call *, struct connection *);
 #if !defined(KORE_NO_HTTP)
 int	kore_runtime_http_request(struct kore_runtime_call *,
+	    struct http_request *);
+void	kore_runtime_http_request_free(struct kore_runtime_call *,
 	    struct http_request *);
 void	kore_runtime_http_body_chunk(struct kore_runtime_call *,
 	    struct http_request *, const void *, size_t);
