@@ -1331,8 +1331,10 @@ python_runtime_http_request_free(void *addr, struct http_request *req)
 {
 	PyObject	*ret;
 
-	if (req->py_req == NULL)
-		fatal("%s: py_req is NULL", __func__);
+	if (req->py_req == NULL) {
+		if ((req->py_req = pyhttp_request_alloc(req)) == NULL)
+			fatal("%s: pyreq alloc failed", __func__);
+	}
 
 	PyErr_Clear();
 	ret = PyObject_CallFunctionObjArgs(addr, req->py_req, NULL);
