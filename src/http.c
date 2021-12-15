@@ -442,7 +442,7 @@ http_request_free(struct http_request *req)
 	struct http_header	*hdr, *next;
 	struct http_cookie	*ck, *cknext;
 
-	if (req->rt->on_free != NULL)
+	if (req->rt != NULL && req->rt->on_free != NULL)
 		kore_runtime_http_request_free(req->rt->on_free, req);
 
 	if (req->runlock != NULL) {
