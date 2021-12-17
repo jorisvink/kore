@@ -780,6 +780,7 @@ static PyObject	*pyhttp_get_path(struct pyhttp_request *, void *);
 static PyObject	*pyhttp_get_body(struct pyhttp_request *, void *);
 static PyObject	*pyhttp_get_agent(struct pyhttp_request *, void *);
 static PyObject	*pyhttp_get_method(struct pyhttp_request *, void *);
+static PyObject	*pyhttp_get_protocol(struct pyhttp_request *, void *);
 static PyObject	*pyhttp_get_body_path(struct pyhttp_request *, void *);
 static PyObject	*pyhttp_get_connection(struct pyhttp_request *, void *);
 static PyObject	*pyhttp_get_body_digest(struct pyhttp_request *, void *);
@@ -790,6 +791,7 @@ static PyGetSetDef pyhttp_request_getset[] = {
 	GETTER("body", pyhttp_get_body),
 	GETTER("agent", pyhttp_get_agent),
 	GETTER("method", pyhttp_get_method),
+	GETTER("protocol", pyhttp_get_protocol),
 	GETTER("body_path", pyhttp_get_body_path),
 	GETTER("body_digest", pyhttp_get_body_digest),
 	GETTER("connection", pyhttp_get_connection),

@@ -5172,6 +5172,22 @@ pyhttp_get_method(struct pyhttp_request *pyreq, void *closure)
 }
 
 static PyObject *
+pyhttp_get_protocol(struct pyhttp_request *pyreq, void *closure)
+{
+	struct connection	*c;
+	const char		*proto;
+
+	c = pyreq->req->owner;
+
+	if (c->owner->server->tls)
+		proto = "https";
+	else
+		proto = "http";
+
+	return (PyUnicode_FromString(proto));
+}
+
+static PyObject *
 pyhttp_get_body_path(struct pyhttp_request *pyreq, void *closure)
 {
 	if (pyreq->req->http_body_path == NULL) {
