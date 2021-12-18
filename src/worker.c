@@ -1000,7 +1000,10 @@ worker_keymgr_response(struct kore_msg *msg, const void *data)
 	case KORE_ACME_CHALLENGE_CLEAR_CERT:
 		dom->acme_cert_len = 0;
 		dom->acme_challenge = 0;
+
 		kore_free(dom->acme_cert);
+		dom->acme_cert = NULL;
+
 		kore_log(LOG_NOTICE, "[%s] tls-alpn-01 challenge disabled",
 		    dom->domain);
 		break;
