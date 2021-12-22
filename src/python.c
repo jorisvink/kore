@@ -158,6 +158,7 @@ static void	python_runtime_wsmessage(void *, struct connection *,
 		    u_int8_t, const void *, size_t);
 static void	python_runtime_execute(void *);
 static int	python_runtime_onload(void *, int);
+static void	python_runtime_signal(void *, int);
 static void	python_runtime_configure(void *, int, char **);
 static void	python_runtime_connect(void *, struct connection *);
 
@@ -188,6 +189,7 @@ struct kore_runtime kore_python_runtime = {
 	.wsmessage = python_runtime_wsmessage,
 	.wsdisconnect = python_runtime_connect,
 	.onload = python_runtime_onload,
+	.signal = python_runtime_signal,
 	.connect = python_runtime_connect,
 	.execute = python_runtime_execute,
 	.configure = python_runtime_configure,
@@ -1643,6 +1645,22 @@ python_runtime_connect(void *addr, struct connection *c)
 	Py_DECREF(pyret);
 }
 
+static void
+python_runtime_signal(void *addr, int sig)
+{
+	PyObject	*obj, *ret;
+
+	if ((obj = Py_BuildValue("i", sig)) == NULL) {
+		kore_python_log_error("python_runtime_signal");
+		return;
+	}
+
+	ret = PyObject_CallFunctionObjArgs(addr, obj, NULL);
+
+	Py_DECREF(obj);
+	Py_XDECREF(ret);
+}
+
 PyMODINIT_FUNC
 python_module_init(void)
 {
@@ -2437,6 +2455,19 @@ python_kore_setname(PyObject *self, PyObject *args)
 
 	kore_free(kore_progname);
 	kore_progname = kore_strdup(name);
+
+	Py_RETURN_NONE;
+}
+
+static PyObject *
+python_kore_sigtrap(PyObject *self, PyObject *args)
+{
+	int		sig;
+
+	if (!PyArg_ParseTuple(args, "i", &sig))
+		return (NULL);
+
+	kore_signal_trap(sig);
 
 	Py_RETURN_NONE;
 }

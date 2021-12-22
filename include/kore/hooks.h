@@ -22,6 +22,7 @@
 #define KORE_DAEMONIZED_HOOK	"kore_parent_daemonized"
 
 void	kore_seccomp_hook(void);
+void	kore_worker_signal(int);
 void	kore_worker_teardown(void);
 void	kore_parent_teardown(void);
 void	kore_worker_configure(void);

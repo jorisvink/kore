@@ -298,6 +298,7 @@ struct kore_runtime {
 #endif
 	void	(*execute)(void *);
 	int	(*onload)(void *, int);
+	void	(*signal)(void *, int);
 	void	(*connect)(void *, struct connection *);
 	void	(*configure)(void *, int, char **);
 };
@@ -754,6 +755,7 @@ extern struct kore_server_list	kore_servers;
 
 void		kore_signal(int);
 void		kore_shutdown(void);
+void		kore_signal_trap(int);
 void		kore_signal_setup(void);
 void		kore_proctitle(const char *);
 void		kore_default_getopt(int, char **);
@@ -990,6 +992,7 @@ struct kore_module		*kore_module_load(const char *,
 
 void	kore_runtime_execute(struct kore_runtime_call *);
 int	kore_runtime_onload(struct kore_runtime_call *, int);
+void	kore_runtime_signal(struct kore_runtime_call *, int);
 void	kore_runtime_configure(struct kore_runtime_call *, int, char **);
 void	kore_runtime_connect(struct kore_runtime_call *, struct connection *);
 #if !defined(KORE_NO_HTTP)

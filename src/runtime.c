@@ -29,6 +29,7 @@
 
 static void	native_runtime_execute(void *);
 static int	native_runtime_onload(void *, int);
+static void	native_runtime_signal(void *, int);
 static void	native_runtime_connect(void *, struct connection *);
 static void	native_runtime_configure(void *, int, char **);
 #if !defined(KORE_NO_HTTP)
@@ -55,6 +56,7 @@ struct kore_runtime kore_native_runtime = {
 	.wsdisconnect = native_runtime_connect,
 #endif
 	.onload = native_runtime_onload,
+	.signal = native_runtime_signal,
 	.connect = native_runtime_connect,
 	.execute = native_runtime_execute,
 	.configure = native_runtime_configure
@@ -100,6 +102,12 @@ void
 kore_runtime_connect(struct kore_runtime_call *rcall, struct connection *c)
 {
 	rcall->runtime->connect(rcall->addr, c);
+}
+
+void
+kore_runtime_signal(struct kore_runtime_call *rcall, int sig)
+{
+	rcall->runtime->signal(rcall->addr, sig);
 }
 
 #if !defined(KORE_NO_HTTP)
@@ -185,6 +193,15 @@ native_runtime_onload(void *addr, int action)
 
 	*(void **)&(cb) = addr;
 	return (cb(action));
+}
+
+static void
+native_runtime_signal(void *addr, int sig)
+{
+	void	(*cb)(int);
+
+	*(void **)&(cb) = addr;
+	cb(sig);
 }
 
 #if !defined(KORE_NO_HTTP)

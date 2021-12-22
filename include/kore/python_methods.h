@@ -46,6 +46,7 @@ static PyObject		*python_kore_worker(PyObject *, PyObject *);
 static PyObject		*python_kore_tracer(PyObject *, PyObject *);
 static PyObject		*python_kore_fatalx(PyObject *, PyObject *);
 static PyObject		*python_kore_task_id(PyObject *, PyObject *);
+static PyObject		*python_kore_sigtrap(PyObject *, PyObject *);
 static PyObject		*python_kore_setname(PyObject *, PyObject *);
 static PyObject		*python_kore_suspend(PyObject *, PyObject *);
 static PyObject		*python_kore_shutdown(PyObject *, PyObject *);
@@ -98,6 +99,7 @@ static struct PyMethodDef pykore_methods[] = {
 	METHOD("fatal", python_kore_fatal, METH_VARARGS),
 	METHOD("fatalx", python_kore_fatalx, METH_VARARGS),
 	METHOD("task_id", python_kore_task_id, METH_NOARGS),
+	METHOD("sigtrap", python_kore_sigtrap, METH_VARARGS),
 	METHOD("setname", python_kore_setname, METH_VARARGS),
 	METHOD("suspend", python_kore_suspend, METH_VARARGS),
 	METHOD("shutdown", python_kore_shutdown, METH_NOARGS),

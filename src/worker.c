@@ -79,7 +79,11 @@ struct wlock {
 static int	worker_trylock(void);
 static void	worker_unlock(void);
 static void	worker_reaper(pid_t, int);
+static void	worker_runtime_teardown(void);
+static void	worker_runtime_configure(void);
 static void	worker_domain_check(struct kore_domain *);
+
+static struct kore_runtime_call	*worker_runtime_signal(void);
 
 static inline int	worker_acceptlock_obtain(void);
 static inline void	worker_acceptlock_release(void);
@@ -420,9 +424,9 @@ kore_worker_privsep(void)
 void
 kore_worker_entry(struct kore_worker *kw)
 {
-	struct kore_runtime_call	*rcall;
+	struct kore_runtime_call	*sigcall;
 	u_int64_t			last_seed;
-	int				quit, had_lock;
+	int				quit, had_lock, sig;
 	u_int64_t			netwait, now, next_timeo;
 
 	worker = kw;
@@ -504,17 +508,15 @@ kore_worker_entry(struct kore_worker *kw)
 	if (nlisteners == 0)
 		worker_no_lock = 1;
 
-	rcall = kore_runtime_getcall("kore_worker_configure");
-	if (rcall != NULL) {
-		kore_runtime_execute(rcall);
-		kore_free(rcall);
-	}
+	worker_runtime_configure();
 
 	kore_module_onload();
 	kore_domain_callback(worker_domain_check);
 
 	kore_worker_started();
 	worker->restarted = 0;
+
+	sigcall = worker_runtime_signal();
 
 	for (;;) {
 		now = kore_time_ms();
@@ -564,8 +566,9 @@ kore_worker_entry(struct kore_worker *kw)
 			}
 		}
 
-		if (sig_recv != 0) {
-			switch (sig_recv) {
+		sig = sig_recv;
+		if (sig != 0) {
+			switch (sig) {
 			case SIGHUP:
 				kore_module_reload(1);
 				break;
@@ -583,7 +586,11 @@ kore_worker_entry(struct kore_worker *kw)
 				break;
 			}
 
-			sig_recv = 0;
+			if (sigcall != NULL)
+				kore_runtime_signal(sigcall, sig);
+
+			if (sig == sig_recv)
+				sig_recv = 0;
 		}
 
 		if (quit)
@@ -608,12 +615,7 @@ kore_worker_entry(struct kore_worker *kw)
 		kore_connection_prune(KORE_CONNECTION_PRUNE_DISCONNECT);
 	}
 
-	rcall = kore_runtime_getcall("kore_worker_teardown");
-	if (rcall != NULL) {
-		kore_runtime_execute(rcall);
-		kore_free(rcall);
-	}
-
+	worker_runtime_teardown();
 	kore_server_cleanup();
 
 	kore_platform_event_cleanup();
@@ -751,6 +753,63 @@ kore_worker_started(void)
 	}
 
 	worker->ready = 1;
+}
+
+static void
+worker_runtime_configure(void)
+{
+	struct kore_runtime_call	*rcall;
+
+	rcall = NULL;
+
+#if defined(KORE_USE_PYTHON)
+	rcall = kore_runtime_getcall(KORE_PYTHON_WORKER_START_HOOK);
+#endif
+
+	if (rcall == NULL)
+		rcall = kore_runtime_getcall("kore_worker_configure");
+
+	if (rcall != NULL) {
+		kore_runtime_execute(rcall);
+		kore_free(rcall);
+	}
+}
+
+static struct kore_runtime_call *
+worker_runtime_signal(void)
+{
+	struct kore_runtime_call	*rcall;
+
+	rcall = NULL;
+
+#if defined(KORE_USE_PYTHON)
+	rcall = kore_runtime_getcall(KORE_PYTHON_SIGNAL_HOOK);
+#endif
+
+	if (rcall == NULL)
+		rcall = kore_runtime_getcall("kore_worker_signal");
+
+	return (rcall);
+}
+
+static void
+worker_runtime_teardown(void)
+{
+	struct kore_runtime_call	*rcall;
+
+	rcall = NULL;
+
+#if defined(KORE_USE_PYTHON)
+	rcall = kore_runtime_getcall(KORE_PYTHON_WORKER_STOP_HOOK);
+#endif
+
+	if (rcall == NULL)
+		rcall = kore_runtime_getcall("kore_worker_teardown");
+
+	if (rcall != NULL) {
+		kore_runtime_execute(rcall);
+		kore_free(rcall);
+	}
 }
 
 static void

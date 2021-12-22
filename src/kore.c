@@ -741,6 +741,23 @@ kore_sockopt(int fd, int what, int opt)
 void
 kore_signal_setup(void)
 {
+	kore_signal_trap(SIGHUP);
+	kore_signal_trap(SIGQUIT);
+	kore_signal_trap(SIGTERM);
+	kore_signal_trap(SIGUSR1);
+	kore_signal_trap(SIGCHLD);
+
+	if (kore_foreground)
+		kore_signal_trap(SIGINT);
+	else
+		(void)signal(SIGINT, SIG_IGN);
+
+	(void)signal(SIGPIPE, SIG_IGN);
+}
+
+void
+kore_signal_trap(int sig)
+{
 	struct sigaction	sa;
 
 	sig_recv = 0;
@@ -750,25 +767,8 @@ kore_signal_setup(void)
 	if (sigfillset(&sa.sa_mask) == -1)
 		fatal("sigfillset: %s", errno_s);
 
-	if (sigaction(SIGHUP, &sa, NULL) == -1)
+	if (sigaction(sig, &sa, NULL) == -1)
 		fatal("sigaction: %s", errno_s);
-	if (sigaction(SIGQUIT, &sa, NULL) == -1)
-		fatal("sigaction: %s", errno_s);
-	if (sigaction(SIGTERM, &sa, NULL) == -1)
-		fatal("sigaction: %s", errno_s);
-	if (sigaction(SIGUSR1, &sa, NULL) == -1)
-		fatal("sigaction: %s", errno_s);
-	if (sigaction(SIGCHLD, &sa, NULL) == -1)
-		fatal("sigaction: %s", errno_s);
-
-	if (kore_foreground) {
-		if (sigaction(SIGINT, &sa, NULL) == -1)
-			fatal("sigaction: %s", errno_s);
-	} else {
-		(void)signal(SIGINT, SIG_IGN);
-	}
-
-	(void)signal(SIGPIPE, SIG_IGN);
 }
 
 void
@@ -961,22 +961,22 @@ kore_server_start(int argc, char *argv[])
 #endif
 
 	while (kore_quit != 1) {
-		if (sig_recv != 0) {
-			last_sig = sig_recv;
+		last_sig = sig_recv;
 
-			switch (sig_recv) {
+		if (last_sig != 0) {
+			switch (last_sig) {
 			case SIGHUP:
-				kore_worker_dispatch_signal(sig_recv);
+				kore_worker_dispatch_signal(last_sig);
 				kore_module_reload(0);
 				break;
 			case SIGINT:
 			case SIGQUIT:
 			case SIGTERM:
 				kore_quit = 1;
-				kore_worker_dispatch_signal(sig_recv);
+				kore_worker_dispatch_signal(last_sig);
 				continue;
 			case SIGUSR1:
-				kore_worker_dispatch_signal(sig_recv);
+				kore_worker_dispatch_signal(last_sig);
 				break;
 			case SIGCHLD:
 				kore_worker_reap();
