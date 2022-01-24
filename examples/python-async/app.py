@@ -14,25 +14,15 @@
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 #
 
-#
-# Locking example.
-#
-# The handler for /lock will grab the shared lock, suspend itself for
-# 5 seconds before releasing the lock and responding.
-#
-# While the lock is held, other requests to /lock will block until it
-# is released.
-
 import kore
 
-# The shared lock
-lock = kore.lock()
+import async_http
+import async_queue
+import async_socket
+import async_process
+import async_process
 
-async def async_lock(req):
-    # A kore.lock should be used with the "async with" syntax.
-    async with lock:
-        # Suspend for 5 seconds.
-        await kore.suspend(5000)
+kore.server(ip="127.0.0.1", port="8888", tls=False)
+kore.domain("*")
 
-        # Now respond.
-        req.response(200, b'')
+kore.task_create(async_queue.queue_helper())

@@ -21,6 +21,8 @@
 #undef _POSIX_C_SOURCE
 #undef _XOPEN_SOURCE
 
+#define PY_SSIZE_T_CLEAN	1
+
 #include <Python.h>
 #include <frameobject.h>
 
@@ -32,6 +34,7 @@ void		kore_python_proc_reap(void);
 int		kore_python_coro_pending(void);
 void		kore_python_path(const char *);
 void		kore_python_coro_delete(void *);
+void		kore_python_routes_resolve(void);
 void		kore_python_log_error(const char *);
 
 PyObject	*kore_python_callable(PyObject *, const char *);
@@ -48,8 +51,11 @@ extern const char			*kore_pymodule;
 extern struct kore_module_functions	kore_python_module;
 extern struct kore_runtime		kore_python_runtime;
 
+#define KORE_PYTHON_SIGNAL_HOOK		"koreapp.signal"
 #define KORE_PYTHON_TEARDOWN_HOOK	"koreapp.cleanup"
 #define KORE_PYTHON_CONFIG_HOOK		"koreapp.configure"
 #define KORE_PYTHON_DAEMONIZED_HOOK	"koreapp.daemonized"
+#define KORE_PYTHON_WORKER_STOP_HOOK	"koreapp.workerstop"
+#define KORE_PYTHON_WORKER_START_HOOK	"koreapp.workerstart"
 
 #endif

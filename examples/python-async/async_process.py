@@ -25,6 +25,7 @@
 import kore
 import json
 
+@kore.route("/proc", methods=["get"])
 async def async_proc(req):
     #
     # You may specify a timeout when creating the kore.proc object.

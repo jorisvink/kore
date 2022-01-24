@@ -187,9 +187,12 @@ static void		cli_buildopt_kore_flavor(struct buildopt *,
 			    const char *);
 static void		cli_buildopt_mime(struct buildopt *, const char *);
 
+static void		cli_build_flags_common(struct buildopt *,
+			    struct cli_buf *);
+
 static void		cli_flavor_load(void);
 static void		cli_flavor_change(const char *);
-static void		cli_kore_features(struct buildopt *,
+static void		cli_kore_load_file(const char *, struct buildopt *,
 			    char **, size_t *);
 
 static void		cli_run(int, char **);
@@ -200,6 +203,10 @@ static void		cli_clean(int, char **);
 static void		cli_source(int, char **);
 static void		cli_reload(int, char **);
 static void		cli_flavor(int, char **);
+static void		cli_cflags(int, char **);
+static void		cli_ldflags(int, char **);
+static void		cli_genasset(int, char **);
+static void		cli_genasset_help(void);
 
 #if !defined(KODEV_MINIMAL)
 static void		cli_create(int, char **);
@@ -209,7 +216,6 @@ static void		file_create_src(void);
 static void		file_create_config(void);
 static void		file_create_gitignore(void);
 static void		file_create_python_src(void);
-static void		file_create_python_config(void);
 
 static void		cli_generate_certs(void);
 static void		cli_file_create(const char *, const char *, size_t);
@@ -218,6 +224,7 @@ static void		cli_file_create(const char *, const char *, size_t);
 static struct cmd cmds[] = {
 	{ "help",	"this help text",			cli_help },
 	{ "run",	"run an application (-fnr implied)",	cli_run },
+	{ "gen",	"generate asset file for compilation",	cli_genasset },
 	{ "reload",	"reload the application (SIGHUP)",	cli_reload },
 	{ "info",	"show info on kore on this system",	cli_info },
 	{ "build",	"build an application",			cli_build },
@@ -227,6 +234,8 @@ static struct cmd cmds[] = {
 	{ "create",	"create a new application skeleton",	cli_create },
 #endif
 	{ "flavor",	"switch between build flavors",		cli_flavor },
+	{ "cflags",	"show kore CFLAGS",			cli_cflags },
+	{ "ldflags",	"show kore LDFLAGS",			cli_ldflags },
 	{ NULL,		NULL,					NULL }
 };
 
@@ -253,7 +262,6 @@ static const char *python_gen_dirs[] = {
 
 static struct filegen python_gen_files[] = {
 	{ file_create_python_src },
-	{ file_create_python_config },
 	{ file_create_gitignore },
 	{ NULL }
 };
@@ -289,15 +297,16 @@ static const char *config_data =
 	"\n"
 	"load\t\t./%s.so\n"
 	"\n"
-	"tls_dhparam\tdh2048.pem\n"
-	"\n"
 	"domain * {\n"
 	"\tattach\t\ttls\n"
 	"\n"
 	"\tcertfile\tcert/server.pem\n"
 	"\tcertkey\t\tcert/key.pem\n"
 	"\n"
-	"\troute\t/\tpage\n"
+	"\troute / {\n"
+	"\t\thandler page\n"
+	"\t}\n"
+	"\n"
 	"}\n";
 
 static const char *build_data =
@@ -336,51 +345,29 @@ static const char *build_data =
 	"#	included if you build with the \"prod\" flavor.\n"
 	"#}\n";
 
-static const char *python_config_data =
-	"# %s configuration\n"
-	"\n"
-	"server tls {\n"
-	"\tbind 127.0.0.1 8888\n"
-	"}\n"
-	"tls_dhparam\tdh2048.pem\n"
-	"\n"
-	"domain * {\n"
-	"\tattach\t\ttls\n"
-	"\n"
-	"\tcertfile\tcert/server.pem\n"
-	"\tcertkey\t\tcert/key.pem\n"
-	"\n"
-	"\troute\t/\tkoreapp.index\n"
-	"}\n";
-
 static const char *python_init_data =
 	"from .app import koreapp\n";
 
 static const char *python_app_data =
 	"import kore\n"
 	"\n"
-	"class App:\n"
-	"    def __init__(self):\n"
-	"        pass\n"
-	"\n"
+	"class KoreApp:\n"
 	"    def configure(self, args):\n"
-	"        kore.config.file = \"kore.conf\"\n"
 	"        kore.config.deployment = \"development\"\n"
+	"        kore.server(\"default\", ip=\"127.0.0.1\", port=\"8888\")\n"
+	"\n"
+	"        d = kore.domain(\"*\",\n"
+	"            attach=\"default\",\n"
+	"            key=\"cert/key.pem\",\n"
+	"            cert=\"cert/server.pem\",\n"
+	"        )\n"
+	"\n"
+	"        d.route(\"/\", self.index, methods=[\"get\"])\n"
 	"\n"
 	"    async def index(self, req):\n"
 	"        req.response(200, b'')\n"
 	"\n"
-	"koreapp = App()";
-
-static const char *dh2048_data =
-	"-----BEGIN DH PARAMETERS-----\n"
-	"MIIBCAKCAQEAn4f4Qn5SudFjEYPWTbUaOTLUH85YWmmPFW1+b5bRa9ygr+1wfamv\n"
-	"VKVT7jO8c4msSNikUf6eEfoH0H4VTCaj+Habwu+Sj+I416r3mliMD4SjNsUJrBrY\n"
-	"Y0QV3ZUgZz4A8ARk/WwQcRl8+ZXJz34IaLwAcpyNhoV46iHVxW0ty8ND0U4DIku/\n"
-	"PNayKimu4BXWXk4RfwNVP59t8DQKqjshZ4fDnbotskmSZ+e+FHrd+Kvrq/WButvV\n"
-	"Bzy9fYgnUlJ82g/bziCI83R2xAdtH014fR63MpElkqdNeChb94pPbEdFlNUvYIBN\n"
-	"xx2vTUQMqRbB4UdG2zuzzr5j98HDdblQ+wIBAg==\n"
-	"-----END DH PARAMETERS-----";
+	"koreapp = KoreApp()";
 
 static const char *gitignore = "*.o\n.flavor\n.objs\n%s.so\nassets.h\ncert\n";
 
@@ -400,6 +387,7 @@ static int			source_files_count;
 static int			cxx_files_count;
 static struct cmd		*command = NULL;
 static int			cflags_count = 0;
+static int			genasset_cmd = 0;
 static int			cxxflags_count = 0;
 static int			ldflags_count = 0;
 static char			*flavor = NULL;
@@ -546,8 +534,7 @@ cli_create(int argc, char **argv)
 	cli_generate_certs();
 
 	printf("%s created successfully!\n", appl);
-	printf("WARNING: DO NOT USE THE GENERATED DH PARAMETERS "
-	    "AND CERTIFICATES IN PRODUCTION\n");
+	printf("WARNING: DO NOT USE THE GENERATED CERTIFICATE IN PRODUCTION\n");
 }
 #endif
 
@@ -742,9 +729,9 @@ cli_build(int argc, char **argv)
 
 	if (bopt->single_binary) {
 		requires_relink++;
-		(void)cli_vasprintf(&sofile, "%s", appl);
+		(void)cli_vasprintf(&sofile, "%s/%s", out_dir, appl);
 	} else {
-		(void)cli_vasprintf(&sofile, "%s.so", appl);
+		(void)cli_vasprintf(&sofile, "%s/%s.so", out_dir, appl);
 	}
 
 	if (!cli_file_exists(sofile) && source_files_count > 0)
@@ -772,7 +759,8 @@ cli_source(int argc, char **argv)
 static void
 cli_clean(int argc, char **argv)
 {
-	char		pwd[PATH_MAX], *sofile;
+	struct buildopt		*bopt;
+	char			pwd[PATH_MAX], *bin;
 
 	if (cli_dir_exists(object_dir))
 		cli_cleanup_files(object_dir);
@@ -781,11 +769,23 @@ cli_clean(int argc, char **argv)
 		fatal("could not get cwd: %s", errno_s);
 
 	appl = basename(pwd);
-	(void)cli_vasprintf(&sofile, "%s.so", appl);
-	if (unlink(sofile) == -1 && errno != ENOENT)
-		printf("couldn't unlink %s: %s", sofile, errno_s);
 
-	free(sofile);
+	TAILQ_INIT(&mime_types);
+	TAILQ_INIT(&build_options);
+
+	cli_flavor_load();
+	bopt = cli_buildopt_new("_default");
+	cli_buildopt_parse("conf/build.conf");
+
+	if (bopt->single_binary)
+		(void)cli_vasprintf(&bin, "%s/%s", out_dir, appl);
+	else
+		(void)cli_vasprintf(&bin, "%s/%s.so", out_dir, appl);
+
+	if (unlink(bin) == -1 && errno != ENOENT)
+		printf("couldn't unlink %s: %s", bin, errno_s);
+
+	free(bin);
 }
 
 static void
@@ -853,11 +853,99 @@ cli_info(int argc, char **argv)
 		printf("kore features\t %s\n", bopt->kore_flavor);
 		printf("kore source  \t %s\n", bopt->kore_source);
 	} else {
-		cli_kore_features(bopt, &features, &len);
+		cli_kore_load_file("features", bopt, &features, &len);
 		printf("kore binary  \t %s/bin/kore\n", prefix);
 		printf("kore features\t %.*s\n", (int)len, features);
 		free(features);
 	}
+}
+
+static void
+cli_cflags(int argc, char **argv)
+{
+	struct cli_buf	*buf;
+
+	buf = cli_buf_alloc(128);
+	cli_build_flags_common(NULL, buf);
+	printf("%.*s\n", (int)buf->offset, buf->data);
+	cli_buf_free(buf);
+}
+
+static void
+cli_ldflags(int argc, char **argv)
+{
+	char		*p;
+	size_t		len;
+
+	cli_kore_load_file("linker", NULL, &p, &len);
+	printf("%.*s ", (int)len, p);
+
+#if defined(__MACH__)
+	printf("-dynamiclib -undefined suppress -flat_namespace ");
+#else
+	printf("-shared ");
+#endif
+	printf("\n");
+
+	free(p);
+}
+
+static void
+cli_genasset(int argc, char **argv)
+{
+	struct stat		st;
+	struct dirent		dp;
+	char			*hdr;
+
+	genasset_cmd = 1;
+	TAILQ_INIT(&build_options);
+	(void)cli_buildopt_new("_default");
+
+	if (getenv("KORE_OBJDIR") == NULL)
+		object_dir = out_dir;
+
+	if (argv[0] == NULL)
+		cli_genasset_help();
+
+	(void)cli_vasprintf(&hdr, "%s/assets.h", out_dir);
+	(void)unlink(hdr);
+
+	cli_file_open(hdr, O_CREAT | O_TRUNC | O_WRONLY, &s_fd);
+	cli_file_writef(s_fd, "#ifndef __H_KORE_ASSETS_H\n");
+	cli_file_writef(s_fd, "#define __H_KORE_ASSETS_H\n");
+
+	if (stat(argv[0], &st) == -1)
+		fatal("%s: %s", argv[0], errno_s);
+
+	if (S_ISDIR(st.st_mode)) {
+		if (cli_dir_exists(argv[0]))
+			cli_find_files(argv[0], cli_build_asset);
+	} else if (S_ISREG(st.st_mode)) {
+		memset(&dp, 0, sizeof(dp));
+		dp.d_type = DT_REG;
+		(void)snprintf(dp.d_name, sizeof(dp.d_name), "%s",
+		    basename(argv[0]));
+		cli_build_asset(argv[0], &dp);
+	} else {
+		fatal("%s is not a directory or regular file", argv[0]);
+	}
+
+	cli_file_writef(s_fd, "\n#endif\n");
+	cli_file_close(s_fd);
+}
+
+static void
+cli_genasset_help(void)
+{
+	printf("Usage: kodev genasset [source]\n");
+	printf("Synopsis:\n");
+	printf("  Generates asset file(s) to be used for compilation.\n");
+	printf("  The source can be a single file or directory.\n");
+	printf("\n");
+	printf("This command honors the KODEV_OUTPUT environment variable.\n");
+	printf("This command honors the KORE_OBJDIR environment variable.\n");
+
+	exit(1);
 }
 
 #if !defined(KODEV_MINIMAL)
@@ -873,19 +961,6 @@ file_create_python_src(void)
 	(void)cli_vasprintf(&name, "%s/app.py", appl);
 	cli_file_create(name, python_app_data, strlen(python_app_data));
 	free(name);
-}
-
-static void
-file_create_python_config(void)
-{
-	int		l;
-	char		*name, *data;
-
-	(void)cli_vasprintf(&name, "%s/kore.conf", appl);
-	l = cli_vasprintf(&data, python_config_data, appl);
-	cli_file_create(name, data, l);
-	free(name);
-	free(data);
 }
 
 static void
@@ -1257,7 +1332,9 @@ cli_build_asset(char *fpath, struct dirent *dp)
 	*--ext = '.';
 
 	/* Register the .c file now (cpath is free'd later). */
-	cli_add_source_file(name, cpath, opath, &st, BUILD_C);
+	if (genasset_cmd == 0)
+		cli_add_source_file(name, cpath, opath, &st, BUILD_C);
+
 	free(name);
 }
 
@@ -1395,9 +1472,6 @@ cli_generate_certs(void)
 	X509			*x509;
 	RSA			*kpair;
 	char			issuer[64];
-
-	/* Write out DH parameters. */
-	cli_file_create("dh2048.pem", dh2048_data, strlen(dh2048_data));
 
 	/* Create new certificate. */
 	if ((x509 = X509_new()) == NULL)
@@ -1616,10 +1690,8 @@ cli_run_kore_python(void)
 		fatal("could not get cwd: %s", errno_s);
 
 	args[0] = cmd;
-	args[1] = "-frnc";
-	args[2] = "kore.conf";
-	args[3] = pwd;
-	args[4] = NULL;
+	args[1] = pwd;
+	args[2] = NULL;
 
 	execvp(args[0], args);
 	fatal("failed to start '%s': %s", args[0], errno_s);
@@ -1935,20 +2007,18 @@ cli_build_flags_common(struct buildopt *bopt, struct cli_buf *buf)
 	size_t		len;
 	char		*data;
 
-	cli_buf_appendf(buf, "-fPIC -Isrc -Isrc/includes ");
+	cli_buf_appendf(buf, "-fPIC ");
 
-	if (bopt->single_binary == 0)
+	if (bopt != NULL)
+		cli_buf_appendf(buf, "-Isrc -Isrc/includes ");
+
+	if (bopt == NULL || bopt->single_binary == 0)
 		cli_buf_appendf(buf, "-I%s/include ", prefix);
 	else
 		cli_buf_appendf(buf, "-I%s/include ", bopt->kore_source);
 
-#if defined(__MACH__)
-	/* Add default openssl include path from homebrew / ports under OSX. */
-	cli_buf_appendf(buf, "-I/opt/local/include ");
-	cli_buf_appendf(buf, "-I/usr/local/opt/openssl/include ");
-#endif
-	if (bopt->single_binary == 0) {
-		cli_kore_features(bopt, &data, &len);
+	if (bopt == NULL || bopt->single_binary == 0) {
+		cli_kore_load_file("features", bopt, &data, &len);
 		cli_buf_append(buf, data, len);
 		cli_buf_appendf(buf, " ");
 		free(data);
@@ -1976,7 +2046,7 @@ cli_build_cflags(struct buildopt *bopt)
 	}
 
 	if (bopt->single_binary) {
-		cli_kore_features(bopt, &buf, &len);
+		cli_kore_load_file("features", bopt, &buf, &len);
 		cli_buf_append(bopt->cflags, buf, len);
 		cli_buf_appendf(bopt->cflags, " ");
 		free(buf);
@@ -2106,16 +2176,17 @@ cli_flavor_load(void)
 }
 
 static void
-cli_kore_features(struct buildopt *bopt, char **out, size_t *outlen)
+cli_kore_load_file(const char *name, struct buildopt *bopt,
+    char **out, size_t *outlen)
 {
 	int		fd;
 	size_t		len;
 	char		*path, *data;
 
-	if (bopt->single_binary) {
-		(void)cli_vasprintf(&path, "%s/features", object_dir);
+	if (bopt != NULL && bopt->single_binary) {
+		(void)cli_vasprintf(&path, "%s/%s", object_dir, name);
 	} else {
-		(void)cli_vasprintf(&path, "%s/share/kore/features", prefix);
+		(void)cli_vasprintf(&path, "%s/share/kore/%s", prefix, name);
 	}
 
 	cli_file_open(path, O_RDONLY, &fd);
@@ -2124,7 +2195,7 @@ cli_kore_features(struct buildopt *bopt, char **out, size_t *outlen)
 	free(path);
 
 	if (len == 0)
-		fatal("features is empty");
+		fatal("%s is empty", name);
 
 	len--;
 

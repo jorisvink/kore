@@ -21,6 +21,7 @@
 import kore
 
 # Handler called for /httpclient
+@kore.route("/httpclient", methods=["get"])
 async def httpclient(req):
     # Create an httpclient.
     client = kore.httpclient("https://kore.io")

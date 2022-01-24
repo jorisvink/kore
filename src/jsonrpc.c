@@ -423,13 +423,13 @@ jsonrpc_error(struct jsonrpc_request *req, int code, const char *msg)
 	http_response_header(req->http, "content-type", "application/json");
 	yajl_gen_get_buf(req->gen, &body, &body_len);
 succeeded:
-	http_response(req->http, 200, body, body_len);
+	http_response(req->http, HTTP_STATUS_OK, body, body_len);
 	if (req->gen != NULL)
 		yajl_gen_clear(req->gen);
 	jsonrpc_destroy_request(req);
 	return (KORE_RESULT_OK);
 failed:
-	http_response(req->http, 500, NULL, 0);
+	http_response(req->http, HTTP_STATUS_INTERNAL_ERROR, NULL, 0);
 	jsonrpc_destroy_request(req);
 	return (KORE_RESULT_OK);
 }
@@ -466,13 +466,13 @@ jsonrpc_result(struct jsonrpc_request *req,
 	http_response_header(req->http, "content-type", "application/json");
 	yajl_gen_get_buf(req->gen, &body, &body_len);
 succeeded:
-	http_response(req->http, 200, body, body_len);
+	http_response(req->http, HTTP_STATUS_OK, body, body_len);
 	if (req->gen != NULL)
 		yajl_gen_clear(req->gen);
 	jsonrpc_destroy_request(req);
 	return (KORE_RESULT_OK);
 failed:
-	http_response(req->http, 500, NULL, 0);
+	http_response(req->http, HTTP_STATUS_INTERNAL_ERROR, NULL, 0);
 	jsonrpc_destroy_request(req);
 	return (KORE_RESULT_OK);
 }

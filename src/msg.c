@@ -22,6 +22,10 @@
 #include "kore.h"
 #include "http.h"
 
+#if defined(KORE_USE_ACME)
+#include "acme.h"
+#endif
+
 struct msg_type {
 	u_int8_t		id;
 	void			(*cb)(struct kore_msg *, const void *);
@@ -29,9 +33,8 @@ struct msg_type {
 };
 
 static struct msg_type	*msg_type_lookup(u_int8_t);
-static int		msg_recv_packet(struct netbuf *);
 static int		msg_recv_data(struct netbuf *);
-static void		msg_disconnected_parent(struct connection *);
+static int		msg_recv_packet(struct netbuf *);
 static void		msg_disconnected_worker(struct connection *);
 static void		msg_type_shutdown(struct kore_msg *, const void *);
 
@@ -56,19 +59,9 @@ kore_msg_parent_init(void)
 	struct kore_worker	*kw;
 
 	for (idx = 0; idx < worker_count; idx++) {
-		if (keymgr_active == 0) {
-			if (idx == KORE_WORKER_KEYMGR_IDX ||
-			    idx == KORE_WORKER_ACME_IDX)
-				continue;
-		}
-
-#if !defined(KORE_USE_ACME)
-		if (idx == KORE_WORKER_ACME_IDX)
-			continue;
-#endif
-
 		kw = kore_worker_data(idx);
-		kore_msg_parent_add(kw);
+		if (kw->ps != NULL)
+			kore_msg_parent_add(kw);
 	}
 
 	kore_msg_register(KORE_MSG_SHUTDOWN, msg_type_shutdown);
@@ -119,7 +112,6 @@ kore_msg_worker_init(void)
 	worker->msg[1]->write = net_write;
 	worker->msg[1]->proto = CONN_PROTO_MSG;
 	worker->msg[1]->state = CONN_STATE_ESTABLISHED;
-	worker->msg[1]->disconnect = msg_disconnected_parent;
 	worker->msg[1]->handle = kore_connection_handle;
 	worker->msg[1]->evt.flags = KORE_EVENT_WRITE;
 
@@ -147,7 +139,7 @@ kore_msg_register(u_int8_t id, void (*cb)(struct kore_msg *, const void *))
 {
 	struct msg_type		*type;
 
-	if ((type = msg_type_lookup(id)) != NULL)
+	if (msg_type_lookup(id) != NULL)
 		return (KORE_RESULT_ERROR);
 
 	type = kore_malloc(sizeof(*type));
@@ -252,16 +244,6 @@ msg_recv_data(struct netbuf *nb)
 }
 
 static void
-msg_disconnected_parent(struct connection *c)
-{
-	if (!kore_quiet)
-		kore_log(LOG_ERR, "parent gone, shutting down");
-
-	if (kill(worker->pid, SIGQUIT) == -1)
-		kore_log(LOG_ERR, "failed to send SIGQUIT: %s", errno_s);
-}
-
-static void
 msg_disconnected_worker(struct connection *c)
 {
 	c->hdlr_extra = NULL;
@@ -275,7 +257,7 @@ msg_type_shutdown(struct kore_msg *msg, const void *data)
 		    "shutdown requested by worker %u, going down", msg->src);
 	}
 
-	(void)raise(SIGQUIT);
+	kore_quit = 1;
 }
 
 #if !defined(KORE_NO_HTTP)

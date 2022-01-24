@@ -54,6 +54,7 @@ volatile sig_atomic_t	sig_recv;
 struct kore_server_list	kore_servers;
 u_int8_t		nlisteners;
 int			kore_argc = 0;
+int			kore_quit = 0;
 pid_t			kore_pid = -1;
 u_int16_t		cpu_count = 1;
 int			kore_debug = 0;
@@ -64,11 +65,11 @@ u_int8_t		worker_count = 0;
 char			**kore_argv = NULL;
 int			kore_foreground = 0;
 char			*kore_progname = NULL;
-char			*kore_root_path = NULL;
-char			*kore_runas_user = NULL;
 u_int32_t		kore_socket_backlog = 5000;
 char			*kore_pidfile = KORE_PIDFILE_DEFAULT;
 char			*kore_tls_cipher_list = KORE_DEFAULT_CIPHER_LIST;
+
+struct kore_privsep	worker_privsep;
 
 extern char		**environ;
 extern char		*__progname;
@@ -80,6 +81,7 @@ static void	version(void);
 static void	kore_write_kore_pid(void);
 static void	kore_proctitle_setup(void);
 static void	kore_server_sslstart(void);
+static void	kore_server_shutdown(void);
 static void	kore_server_start(int, char *[]);
 static void	kore_call_parent_configure(int, char **);
 
@@ -113,9 +115,9 @@ usage(void)
 #endif
 	printf("\t-f\tstart in foreground\n");
 	printf("\t-h\tthis help text\n");
-	printf("\t-n\tdo not chroot\n");
+	printf("\t-n\tdo not chroot on any worker\n");
 	printf("\t-q\tonly log errors\n");
-	printf("\t-r\tdo not drop privileges\n");
+	printf("\t-r\tdo not change user on any worker\n");
 	printf("\t-v\tdisplay %s build information\n", __progname);
 
 	printf("\nFind more information on https://kore.io\n");
@@ -168,6 +170,9 @@ main(int argc, char *argv[])
 #endif
 
 	kore_mem_init();
+	kore_msg_init();
+	kore_log_init();
+
 	kore_progname = kore_strdup(argv[0]);
 	kore_proctitle_setup();
 
@@ -194,10 +199,6 @@ main(int argc, char *argv[])
 		if (!S_ISDIR(st.st_mode) && !S_ISREG(st.st_mode))
 			fatal("%s: not a directory or file", kore_pymodule);
 	}
-
-#elif !defined(KORE_SINGLE_BINARY)
-	if (argc > 0)
-		fatal("did you mean to run `kodev' instead?");
 #endif
 
 	kore_pid = getpid();
@@ -205,8 +206,6 @@ main(int argc, char *argv[])
 	LIST_INIT(&kore_servers);
 
 	kore_platform_init();
-	kore_log_init();
-	kore_msg_init();
 #if !defined(KORE_NO_HTTP)
 	http_parent_init();
 #if defined(KORE_USE_CURL)
@@ -274,11 +273,7 @@ main(int argc, char *argv[])
 
 	kore_signal_setup();
 	kore_server_start(argc, argv);
-
-	if (!kore_quiet)
-		kore_log(LOG_NOTICE, "server shutting down");
-
-	kore_worker_shutdown();
+	kore_server_shutdown();
 
 	rcall = kore_runtime_getcall(parent_teardown_hook);
 	if (rcall != NULL) {
@@ -292,7 +287,7 @@ main(int argc, char *argv[])
 	kore_server_cleanup();
 
 	if (!kore_quiet)
-		kore_log(LOG_NOTICE, "goodbye");
+		kore_log(LOG_INFO, "goodbye");
 
 #if defined(KORE_USE_PYTHON)
 	kore_python_cleanup();
@@ -497,6 +492,15 @@ kore_server_bind_unix(struct kore_server *srv, const char *path,
 	if (!kore_listener_init(l, AF_UNIX, ccb))
 		return (KORE_RESULT_ERROR);
 
+	if (sun.sun_path[0] != '\0') {
+		if (unlink(sun.sun_path) == -1 && errno != ENOENT) {
+			kore_log(LOG_ERR, "unlink: %s: %s",
+			    sun.sun_path, errno_s);
+			kore_listener_free(l);
+			return (KORE_RESULT_ERROR);
+		}
+	}
+
 	if (bind(l->fd, (struct sockaddr *)&sun, socklen) == -1) {
 		kore_log(LOG_ERR, "bind: %s", errno_s);
 		kore_listener_free(l);
@@ -545,10 +549,10 @@ kore_server_finalize(struct kore_server *srv)
 			proto = "http";
 
 		if (l->family == AF_UNIX) {
-			kore_log(LOG_NOTICE, "%s serving %s on %s",
+			kore_log(LOG_INFO, "%s serving %s on %s",
 			    srv->name, proto, l->host);
 		} else {
-			kore_log(LOG_NOTICE, "%s serving %s on %s:%s",
+			kore_log(LOG_INFO, "%s serving %s on %s:%s",
 			    srv->name, proto, l->host, l->port);
 		}
 	}
@@ -657,10 +661,29 @@ kore_server_free(struct kore_server *srv)
 void
 kore_listener_free(struct listener *l)
 {
+	int	rm;
+
 	LIST_REMOVE(l, list);
 
 	if (l->fd != -1)
 		close(l->fd);
+
+	rm = 0;
+
+#if defined(__linux__)
+	if (worker == NULL && l->family == AF_UNIX && l->host[0] != '@')
+		rm++;
+#else
+	if (worker == NULL && l->family == AF_UNIX)
+		rm++;
+#endif
+	if (rm) {
+		if (unlink(l->host) == -1) {
+			kore_log(LOG_NOTICE,
+			    "failed to remove unix socket %s (%s)", l->host,
+			    errno_s);
+		}
+	}
 
 	kore_free(l->host);
 	kore_free(l->port);
@@ -718,6 +741,23 @@ kore_sockopt(int fd, int what, int opt)
 void
 kore_signal_setup(void)
 {
+	kore_signal_trap(SIGHUP);
+	kore_signal_trap(SIGQUIT);
+	kore_signal_trap(SIGTERM);
+	kore_signal_trap(SIGUSR1);
+	kore_signal_trap(SIGCHLD);
+
+	if (kore_foreground)
+		kore_signal_trap(SIGINT);
+	else
+		(void)signal(SIGINT, SIG_IGN);
+
+	(void)signal(SIGPIPE, SIG_IGN);
+}
+
+void
+kore_signal_trap(int sig)
+{
 	struct sigaction	sa;
 
 	sig_recv = 0;
@@ -727,25 +767,8 @@ kore_signal_setup(void)
 	if (sigfillset(&sa.sa_mask) == -1)
 		fatal("sigfillset: %s", errno_s);
 
-	if (sigaction(SIGHUP, &sa, NULL) == -1)
+	if (sigaction(sig, &sa, NULL) == -1)
 		fatal("sigaction: %s", errno_s);
-	if (sigaction(SIGQUIT, &sa, NULL) == -1)
-		fatal("sigaction: %s", errno_s);
-	if (sigaction(SIGTERM, &sa, NULL) == -1)
-		fatal("sigaction: %s", errno_s);
-	if (sigaction(SIGUSR1, &sa, NULL) == -1)
-		fatal("sigaction: %s", errno_s);
-	if (sigaction(SIGCHLD, &sa, NULL) == -1)
-		fatal("sigaction: %s", errno_s);
-
-	if (kore_foreground) {
-		if (sigaction(SIGINT, &sa, NULL) == -1)
-			fatal("sigaction: %s", errno_s);
-	} else {
-		(void)signal(SIGINT, SIG_IGN);
-	}
-
-	(void)signal(SIGPIPE, SIG_IGN);
 }
 
 void
@@ -833,10 +856,38 @@ kore_server_start(int argc, char *argv[])
 	u_int32_t			tmp;
 	struct kore_server		*srv;
 	u_int64_t			netwait;
-	int				quit, last_sig;
+	int				last_sig;
 #if defined(KORE_SINGLE_BINARY)
 	struct kore_runtime_call	*rcall;
 #endif
+
+	if (!kore_quiet) {
+		kore_log(LOG_INFO, "%s %s starting, built=%s",
+		    __progname, kore_version, kore_build_date);
+		kore_log(LOG_INFO, "built-ins: "
+#if defined(__linux__)
+		    "seccomp "
+#endif
+#if defined(KORE_USE_PGSQL)
+		    "pgsql "
+#endif
+#if defined(KORE_USE_TASKS)
+		    "tasks "
+#endif
+#if defined(KORE_USE_JSONRPC)
+		    "jsonrpc "
+#endif
+#if defined(KORE_USE_PYTHON)
+		    "python "
+#endif
+#if defined(KORE_USE_ACME)
+		    "acme "
+#endif
+#if defined(KORE_USE_CURL)
+		    "curl "
+#endif
+		);
+	}
 
 	if (kore_foreground == 0) {
 		if (daemon(1, 0) == -1)
@@ -853,25 +904,6 @@ kore_server_start(int argc, char *argv[])
 	kore_pid = getpid();
 	kore_write_kore_pid();
 
-	if (!kore_quiet) {
-		kore_log(LOG_NOTICE, "%s is starting up", __progname);
-#if defined(__linux__)
-		kore_log(LOG_NOTICE, "seccomp sandbox enabled");
-#endif
-#if defined(KORE_USE_PGSQL)
-		kore_log(LOG_NOTICE, "pgsql built-in enabled");
-#endif
-#if defined(KORE_USE_TASKS)
-		kore_log(LOG_NOTICE, "tasks built-in enabled");
-#endif
-#if defined(KORE_USE_JSONRPC)
-		kore_log(LOG_NOTICE, "jsonrpc built-in enabled");
-#endif
-#if defined(KORE_USE_PYTHON)
-		kore_log(LOG_NOTICE, "python built-in enabled");
-#endif
-	}
-
 #if !defined(KORE_SINGLE_BINARY) && !defined(KORE_USE_PYTHON)
 	kore_call_parent_configure(argc, argv);
 #endif
@@ -879,6 +911,10 @@ kore_server_start(int argc, char *argv[])
 #if defined(KORE_USE_PYTHON) && !defined(KORE_SINGLE_BINARY)
 	if (kore_pymodule == NULL)
 		kore_call_parent_configure(argc, argv);
+#endif
+
+#if defined(KORE_USE_PYTHON)
+	kore_python_routes_resolve();
 #endif
 
 	/* Check if keymgr will be active. */
@@ -890,7 +926,19 @@ kore_server_start(int argc, char *argv[])
 	}
 
 	kore_platform_proctitle("[parent]");
-	kore_worker_init();
+
+	if (!kore_worker_init()) {
+		kore_log(LOG_ERR, "last worker log lines:");
+		kore_log(LOG_ERR, "=====================================");
+		net_init();
+		kore_connection_init();
+		kore_platform_event_init();
+		kore_msg_parent_init();
+		kore_platform_event_wait(10);
+		kore_worker_dispatch_signal(SIGQUIT);
+		kore_log(LOG_ERR, "=====================================");
+		return;
+	}
 
 	/* Set worker_max_connections for kore_connection_init(). */
 	tmp = worker_max_connections;
@@ -901,7 +949,6 @@ kore_server_start(int argc, char *argv[])
 	kore_platform_event_init();
 	kore_msg_parent_init();
 
-	quit = 0;
 	worker_max_connections = tmp;
 
 	kore_timer_init();
@@ -913,23 +960,23 @@ kore_server_start(int argc, char *argv[])
 	kore_msg_unregister(KORE_PYTHON_SEND_OBJ);
 #endif
 
-	while (quit != 1) {
-		if (sig_recv != 0) {
-			last_sig = sig_recv;
+	while (kore_quit != 1) {
+		last_sig = sig_recv;
 
-			switch (sig_recv) {
+		if (last_sig != 0) {
+			switch (last_sig) {
 			case SIGHUP:
-				kore_worker_dispatch_signal(sig_recv);
+				kore_worker_dispatch_signal(last_sig);
 				kore_module_reload(0);
 				break;
 			case SIGINT:
 			case SIGQUIT:
 			case SIGTERM:
-				quit = 1;
-				kore_worker_dispatch_signal(sig_recv);
+				kore_quit = 1;
+				kore_worker_dispatch_signal(last_sig);
 				continue;
 			case SIGUSR1:
-				kore_worker_dispatch_signal(sig_recv);
+				kore_worker_dispatch_signal(last_sig);
 				break;
 			case SIGCHLD:
 				kore_worker_reap();
@@ -948,7 +995,19 @@ kore_server_start(int argc, char *argv[])
 		kore_platform_event_wait(netwait);
 		kore_connection_prune(KORE_CONNECTION_PRUNE_DISCONNECT);
 		kore_timer_run(kore_time_ms());
+		kore_worker_reap();
 	}
+
+	kore_worker_dispatch_signal(SIGQUIT);
+}
+
+static void
+kore_server_shutdown(void)
+{
+	if (!kore_quiet)
+		kore_log(LOG_INFO, "server shutting down");
+
+	kore_worker_shutdown();
 
 #if !defined(KORE_NO_HTTP)
 	kore_accesslog_gather(NULL, kore_time_ms(), 1);

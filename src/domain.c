@@ -14,12 +14,6 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-/*
- * XXX - Lots of OPENSSL ifdefs here for 1.0.2 and 1.1.0 release lines.
- * The idea is to only support 1.1.1 down the line and remove the rest.
- * (although we have to remain compat with 1.0.2 due to LibreSSL).
- */
-
 #include <sys/param.h>
 #include <sys/types.h>
 
@@ -68,54 +62,8 @@ static int	keymgr_rsa_privenc(int, const unsigned char *,
 static ECDSA_SIG	*keymgr_ecdsa_sign(const unsigned char *, int,
 			    const BIGNUM *, const BIGNUM *, EC_KEY *);
 
-#if defined(KORE_OPENSSL_NEWER_API)
 static RSA_METHOD	*keymgr_rsa_meth = NULL;
 static EC_KEY_METHOD	*keymgr_ec_meth = NULL;
-#else
-/*
- * Run own ecdsa_method data structure as OpenSSL has this in ecs_locl.h
- * and does not export this on systems.
- */
-struct ecdsa_method {
-	const char	*name;
-	ECDSA_SIG	*(*ecdsa_do_sign)(const unsigned char *,
-			    int, const BIGNUM *, const BIGNUM *, EC_KEY *);
-	int		(*ecdsa_sign_setup)(EC_KEY *, BN_CTX *, BIGNUM **,
-			    BIGNUM **);
-	int		(*ecdsa_do_verify)(const unsigned char *, int,
-			    const ECDSA_SIG *, EC_KEY *);
-	int		flags;
-	char		*app_data;
-};
-#endif
-
-#if !defined(KORE_OPENSSL_NEWER_API)
-static ECDSA_METHOD	keymgr_ecdsa = {
-	"kore ECDSA keymgr method",
-	keymgr_ecdsa_sign,
-	NULL,
-	NULL,
-	0,
-	NULL
-};
-
-static RSA_METHOD	keymgr_rsa = {
-	"kore RSA keymgr method",
-	NULL,
-	NULL,
-	keymgr_rsa_privenc,
-	NULL,
-	NULL,
-	NULL,
-	keymgr_rsa_init,
-	keymgr_rsa_finish,
-	RSA_METHOD_FLAG_NO_CHECK,
-	NULL,
-	NULL,
-	NULL,
-	NULL
-};
-#endif
 
 static u_int16_t		domain_id = 0;
 static struct kore_domain	*cached[KORE_DOMAIN_CACHE];
@@ -128,7 +76,6 @@ kore_domain_init(void)
 	for (i = 0; i < KORE_DOMAIN_CACHE; i++)
 		cached[i] = NULL;
 
-#if defined(KORE_OPENSSL_NEWER_API)
 	if (keymgr_rsa_meth == NULL) {
 		if ((keymgr_rsa_meth = RSA_meth_new("kore RSA keymgr method",
 		    RSA_METHOD_FLAG_NO_CHECK)) == NULL)
@@ -145,7 +92,6 @@ kore_domain_init(void)
 	}
 
 	EC_KEY_METHOD_set_sign(keymgr_ec_meth, NULL, NULL, keymgr_ecdsa_sign);
-#endif
 
 #if !defined(TLS1_3_VERSION)
 	if (!kore_quiet) {
@@ -159,7 +105,6 @@ kore_domain_init(void)
 void
 kore_domain_cleanup(void)
 {
-#if defined(KORE_OPENSSL_NEWER_API)
 	if (keymgr_rsa_meth != NULL) {
 		RSA_meth_free(keymgr_rsa_meth);
 		keymgr_rsa_meth = NULL;
@@ -169,7 +114,6 @@ kore_domain_cleanup(void)
 		EC_KEY_METHOD_free(keymgr_ec_meth);
 		keymgr_ec_meth = NULL;
 	}
-#endif
 }
 
 struct kore_domain *
@@ -187,8 +131,8 @@ kore_domain_new(const char *domain)
 	dom->domain = kore_strdup(domain);
 
 #if !defined(KORE_NO_HTTP)
-	TAILQ_INIT(&(dom->handlers));
-	TAILQ_INIT(&(dom->redirects));
+	TAILQ_INIT(&dom->routes);
+	TAILQ_INIT(&dom->redirects);
 #endif
 
 	if (dom->id < KORE_DOMAIN_CACHE) {
@@ -230,8 +174,8 @@ void
 kore_domain_free(struct kore_domain *dom)
 {
 #if !defined(KORE_NO_HTTP)
+	struct kore_route		*rt;
 	struct http_redirect		*rdr;
-	struct kore_module_handle	*hdlr;
 #endif
 	if (dom == NULL)
 		return;
@@ -246,20 +190,17 @@ kore_domain_free(struct kore_domain *dom)
 
 	if (dom->ssl_ctx != NULL)
 		SSL_CTX_free(dom->ssl_ctx);
-	if (dom->cafile != NULL)
-		kore_free(dom->cafile);
-	if (dom->certkey != NULL)
-		kore_free(dom->certkey);
-	if (dom->certfile != NULL)
-		kore_free(dom->certfile);
-	if (dom->crlfile != NULL)
-		kore_free(dom->crlfile);
+
+	kore_free(dom->cafile);
+	kore_free(dom->certkey);
+	kore_free(dom->certfile);
+	kore_free(dom->crlfile);
 
 #if !defined(KORE_NO_HTTP)
 	/* Drop all handlers associated with this domain */
-	while ((hdlr = TAILQ_FIRST(&(dom->handlers))) != NULL) {
-		TAILQ_REMOVE(&(dom->handlers), hdlr, list);
-		kore_module_handler_free(hdlr);
+	while ((rt = TAILQ_FIRST(&dom->routes)) != NULL) {
+		TAILQ_REMOVE(&dom->routes, rt, list);
+		kore_route_free(rt);
 	}
 
 	while ((rdr = TAILQ_FIRST(&(dom->redirects))) != NULL) {
@@ -283,35 +224,18 @@ kore_domain_tlsinit(struct kore_domain *dom, int type,
 	STACK_OF(X509_NAME)	*certs;
 	EC_KEY			*eckey;
 	const SSL_METHOD	*method;
-#if !defined(KORE_OPENSSL_NEWER_API)
-	EC_KEY			*ecdh;
-#endif
 
 	kore_debug("kore_domain_tlsinit(%s)", dom->domain);
 
 	if (dom->ssl_ctx != NULL)
 		SSL_CTX_free(dom->ssl_ctx);
 
-#if defined(KORE_OPENSSL_NEWER_API)
 	if ((method = TLS_method()) == NULL)
 		fatalx("TLS_method(): %s", ssl_errno_s);
-#else
-	switch (tls_version) {
-	case KORE_TLS_VERSION_1_3:
-	case KORE_TLS_VERSION_1_2:
-	case KORE_TLS_VERSION_BOTH:
-		method = TLSv1_2_server_method();
-		break;
-	default:
-		fatalx("unknown tls_version: %d", tls_version);
-		return;
-	}
-#endif
 
 	if ((dom->ssl_ctx = SSL_CTX_new(method)) == NULL)
 		fatalx("SSL_ctx_new(): %s", ssl_errno_s);
 
-#if defined(KORE_OPENSSL_NEWER_API)
 	if (!SSL_CTX_set_min_proto_version(dom->ssl_ctx, TLS1_2_VERSION))
 		fatalx("SSL_CTX_set_min_proto_version: %s", ssl_errno_s);
 
@@ -346,7 +270,6 @@ kore_domain_tlsinit(struct kore_domain *dom, int type,
 		fatalx("unknown tls_version: %d", tls_version);
 		return;
 	}
-#endif
 
 	switch (type) {
 	case KORE_PEM_CERT_CHAIN:
@@ -380,22 +303,13 @@ kore_domain_tlsinit(struct kore_domain *dom, int type,
 		if ((rsa = EVP_PKEY_get1_RSA(pkey)) == NULL)
 			fatalx("no RSA public key present");
 		RSA_set_app_data(rsa, dom);
-#if defined(KORE_OPENSSL_NEWER_API)
 		RSA_set_method(rsa, keymgr_rsa_meth);
-#else
-		RSA_set_method(rsa, &keymgr_rsa);
-#endif
 		break;
 	case EVP_PKEY_EC:
 		if ((eckey = EVP_PKEY_get1_EC_KEY(pkey)) == NULL)
 			fatalx("no EC public key present");
-#if defined(KORE_OPENSSL_NEWER_API)
 		EC_KEY_set_ex_data(eckey, 0, dom);
 		EC_KEY_set_method(eckey, keymgr_ec_meth);
-#else
-		ECDSA_set_ex_data(eckey, 0, dom);
-		ECDSA_set_method(eckey, &keymgr_ecdsa);
-#endif
 		break;
 	default:
 		fatalx("unknown public key in certificate");
@@ -410,21 +324,13 @@ kore_domain_tlsinit(struct kore_domain *dom, int type,
 	}
 
 	if (tls_dhparam == NULL)
-		fatalx("No DH parameters given");
+		fatal("no DH parameters specified");
 
 	SSL_CTX_set_tmp_dh(dom->ssl_ctx, tls_dhparam);
 	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_SINGLE_DH_USE);
 
-#if defined(KORE_OPENSSL_NEWER_API)
 	if (!SSL_CTX_set_ecdh_auto(dom->ssl_ctx, 1))
 		fatalx("SSL_CTX_set_ecdh_auto: %s", ssl_errno_s);
-#else
-	if ((ecdh = EC_KEY_new_by_curve_name(NID_secp384r1)) == NULL)
-		fatalx("EC_KEY_new_by_curve_name: %s", ssl_errno_s);
-
-	SSL_CTX_set_tmp_ecdh(dom->ssl_ctx, ecdh);
-	EC_KEY_free(ecdh);
-#endif
 
 	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_SINGLE_ECDH_USE);
 	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_COMPRESSION);
@@ -605,27 +511,17 @@ keymgr_init(void)
 	if ((meth = RSA_get_default_method()) == NULL)
 		fatal("failed to obtain RSA method");
 
-#if defined(KORE_OPENSSL_NEWER_API)
 	RSA_meth_set_pub_enc(keymgr_rsa_meth, RSA_meth_get_pub_enc(meth));
 	RSA_meth_set_pub_dec(keymgr_rsa_meth, RSA_meth_get_pub_dec(meth));
 	RSA_meth_set_bn_mod_exp(keymgr_rsa_meth, RSA_meth_get_bn_mod_exp(meth));
-#else
-	keymgr_rsa.rsa_pub_enc = meth->rsa_pub_enc;
-	keymgr_rsa.rsa_pub_dec = meth->rsa_pub_dec;
-	keymgr_rsa.bn_mod_exp = meth->bn_mod_exp;
-#endif
 }
 
 static int
 keymgr_rsa_init(RSA *rsa)
 {
 	if (rsa != NULL) {
-#if defined(KORE_OPENSSL_NEWER_API)
 		RSA_set_flags(rsa, RSA_flags(rsa) |
 		    RSA_FLAG_EXT_PKEY | RSA_METHOD_FLAG_NO_CHECK);
-#else
-		rsa->flags |= RSA_FLAG_EXT_PKEY | RSA_METHOD_FLAG_NO_CHECK;
-#endif
 		return (1);
 	}
 
@@ -702,13 +598,8 @@ keymgr_ecdsa_sign(const unsigned char *dgst, int dgst_len,
 	if (len > sizeof(keymgr_buf))
 		fatal("keymgr_buf too small");
 
-#if defined(KORE_OPENSSL_NEWER_API)
 	if ((dom = EC_KEY_get_ex_data(eckey, 0)) == NULL)
 		fatal("EC_KEY has no domain");
-#else
-	if ((dom = ECDSA_get_ex_data(eckey, 0)) == NULL)
-		fatal("EC_KEY has no domain");
-#endif
 
 	memset(keymgr_buf, 0, sizeof(keymgr_buf));
 	req = (struct kore_keyreq *)keymgr_buf;
@@ -890,23 +781,13 @@ domain_load_certificate_chain(SSL_CTX *ctx, const void *data, size_t len)
 	if (SSL_CTX_use_certificate(ctx, x) == 0)
 		return (NULL);
 
-#if defined(KORE_OPENSSL_NEWER_API)
 	SSL_CTX_clear_chain_certs(ctx);
-#else
-	sk_X509_pop_free(ctx->extra_certs, X509_free);
-	ctx->extra_certs = NULL;
-#endif
 
 	ERR_clear_error();
 	while ((ca = PEM_read_bio_X509(in, NULL, NULL, NULL)) != NULL) {
 		/* ca its reference count won't be increased. */
-#if defined(KORE_OPENSSL_NEWER_API)
 		if (SSL_CTX_add0_chain_cert(ctx, ca) == 0)
 			return (NULL);
-#else
-		if (SSL_CTX_add_extra_chain_cert(ctx, ca) == 0)
-			return (NULL);
-#endif
 	}
 
 	err = ERR_peek_last_error();

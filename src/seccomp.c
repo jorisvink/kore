@@ -90,6 +90,9 @@ static struct sock_filter filter_kore[] = {
 #if defined(SYS_readlink)
 	KORE_SYSCALL_ALLOW(readlink),
 #endif
+#if defined(SYS_readlinkat)
+	KORE_SYSCALL_ALLOW(readlinkat),
+#endif
 
 	/* Process related. */
 	KORE_SYSCALL_ALLOW(exit),

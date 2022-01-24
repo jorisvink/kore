@@ -30,14 +30,24 @@ page(struct http_request *req)
 	kore_json_init(&json, req->http_body->data, req->http_body->length);
 
 	if (!kore_json_parse(&json)) {
-		kore_buf_appendf(&buf, "%s\n", kore_json_strerror(&json));
+		kore_buf_appendf(&buf, "%s\n", kore_json_strerror());
 	} else {
 		item = kore_json_find_string(json.root, "foo/bar");
 		if (item != NULL) {
 			kore_buf_appendf(&buf,
 			    "foo.bar = '%s'\n", item->data.string);
 		} else {
-			kore_buf_appendf(&buf, "string foo.bar not found\n");
+			kore_buf_appendf(&buf, "foo.bar %s\n",
+			    kore_json_strerror());
+		}
+
+		item = kore_json_find_integer_u64(json.root, "foo/integer");
+		if (item != NULL) {
+			kore_buf_appendf(&buf,
+			    "foo.integer = '%" PRIu64 "'\n", item->data.u64);
+		} else {
+			kore_buf_appendf(&buf, "foo.integer %s\n",
+			    kore_json_strerror());
 		}
 	}
 

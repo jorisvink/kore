@@ -36,6 +36,7 @@ async def queue_helper():
         # Send it on the received queue.
         obj["rq"].push(msg)
 
+@kore.route("/queue", methods=["get"])
 async def async_queue(req):
     # Create our own queue.
     rq = kore.queue()

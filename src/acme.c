@@ -265,10 +265,10 @@ static char		*account_url = NULL;
 static u_int8_t acme_alpn_name[] =
     { 0xa, 'a', 'c', 'm', 'e', '-', 't', 'l', 's', '/', '1' };
 
+struct kore_privsep	acme_privsep;
+int			acme_domains = 0;
 char			*acme_email = NULL;
 char			*acme_provider = NULL;
-char			*acme_root_path = NULL;
-char			*acme_runas_user = NULL;
 u_int32_t		acme_request_timeout = 8;
 
 void
@@ -310,7 +310,7 @@ kore_acme_run(void)
 #if defined(KORE_USE_PYTHON)
 	kore_msg_unregister(KORE_PYTHON_SEND_OBJ);
 #endif
-	kore_worker_privdrop(acme_runas_user, acme_root_path);
+	kore_worker_privsep();
 
 #if defined(__OpenBSD__)
 	if (unveil("/etc/ssl/", "r") == -1)
@@ -321,14 +321,10 @@ kore_acme_run(void)
 
 	http_init();
 
-	if (!kore_quiet) {
-		kore_log(LOG_NOTICE,
-		    "acme worker started (pid#%d)", worker->pid);
-	}
-
 	LIST_INIT(&orders);
 	LIST_INIT(&signops);
 
+	kore_worker_started();
 	acme_parse_directory();
 
 	while (quit != 1) {
@@ -434,7 +430,7 @@ kore_acme_tls_challenge_use_cert(SSL *ssl, struct kore_domain *dom)
 		return;
 	}
 
-	kore_log(LOG_NOTICE, "[%s] acme-tls/1 challenge requested",
+	kore_log(LOG_INFO, "[%s] acme-tls/1 challenge requested",
 	    dom->domain);
 
 	if ((c = SSL_get_ex_data(ssl, 0)) == NULL)
@@ -483,7 +479,7 @@ acme_parse_directory(void)
 	if (!kore_json_parse(&json)) {
 		kore_log(LOG_NOTICE,
 		    "failed to parse directory payload from ACME server (%s)",
-		    kore_json_strerror(&json));
+		    kore_json_strerror());
 		goto cleanup;
 	}
 
@@ -688,7 +684,7 @@ acme_order_create_submit(struct acme_sign_op *op, struct kore_buf *payload)
 	if (!kore_json_parse(&json)) {
 		kore_log(LOG_NOTICE,
 		    "[%s] failed to parse order payload from ACME server (%s)",
-		    domain, kore_json_strerror(&json));
+		    domain, kore_json_strerror());
 		goto cleanup;
 	}
 
@@ -806,7 +802,7 @@ acme_order_update_submit(struct acme_sign_op *op, struct kore_buf *payload)
 	if (!kore_json_parse(&json)) {
 		kore_log(LOG_NOTICE,
 		    "[%s] failed to parse order payload from ACME server (%s)",
-		    order->domain, kore_json_strerror(&json));
+		    order->domain, kore_json_strerror());
 		goto cleanup;
 	}
 
@@ -989,7 +985,7 @@ acme_order_remove(struct acme_order *order, const char *reason)
 		kore_free(auth);
 	}
 
-	kore_log(LOG_NOTICE, "[%s] order removed (%s)", order->domain, reason);
+	kore_log(LOG_INFO, "[%s] order removed (%s)", order->domain, reason);
 
 	if (strcmp(reason, "completed"))
 		acme_order_retry(order->domain);
@@ -1224,7 +1220,7 @@ acme_order_auth_update_submit(struct acme_sign_op *op, struct kore_buf *payload)
 	if (!kore_json_parse(&json)) {
 		kore_log(LOG_NOTICE,
 		    "[%s:auth] failed to parse payload from ACME server (%s)",
-		    order->domain, kore_json_strerror(&json));
+		    order->domain, kore_json_strerror());
 		goto cleanup;
 	}
 
@@ -1366,7 +1362,7 @@ cleanup:
 	} else {
 		order->auths--;
 		if (order->auths == 0) {
-			kore_log(LOG_NOTICE,
+			kore_log(LOG_INFO,
 			    "[%s:auth] authentications done", order->domain);
 			order->state = ACME_ORDER_STATE_RUNNING;
 		}
@@ -1389,12 +1385,12 @@ acme_challenge_tls_alpn_01(struct acme_order *order,
 		acme_challenge_tls_alpn_01_create(order, challenge);
 		break;
 	case ACME_STATUS_PROCESSING:
-		kore_log(LOG_NOTICE,
+		kore_log(LOG_INFO,
 		    "[%s:auth:challenge:tls-alpn-01] processing",
 		    order->domain);
 		break;
 	case ACME_STATUS_VALID:
-		kore_log(LOG_NOTICE,
+		kore_log(LOG_INFO,
 		    "[%s:auth:challenge:tls-alpn-01] valid",
 		    order->domain);
 		ret = KORE_RESULT_OK;
@@ -1419,7 +1415,7 @@ acme_challenge_tls_alpn_01_create(struct acme_order *order,
 	u_int8_t		digest[SHA256_DIGEST_LENGTH];
 
 	if (challenge->flags & ACME_FLAG_CHALLENGE_CREATED) {
-		kore_log(LOG_NOTICE,
+		kore_log(LOG_INFO,
 		    "[%s:auth:challenge:tls-alpn-01] pending keymgr",
 		    order->domain);
 		return;
@@ -1427,7 +1423,7 @@ acme_challenge_tls_alpn_01_create(struct acme_order *order,
 
 	challenge->flags |= ACME_FLAG_CHALLENGE_CREATED;
 
-	kore_log(LOG_NOTICE,
+	kore_log(LOG_INFO,
 	    "[%s:auth:challenge:tls-alpn-01] requested from keymgr",
 	    order->domain);
 

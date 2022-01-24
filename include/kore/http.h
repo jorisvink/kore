@@ -119,7 +119,7 @@ struct http_arg {
 	do {								\
 		int err;						\
 		type nval;						\
-		nval = (type)kore_strtonum64(q->s_value, sign, &err);	\
+		nval = (type)kore_strtonum64(data, sign, &err);		\
 		if (err != KORE_RESULT_OK)				\
 			return (KORE_RESULT_ERROR);			\
 		COPY_ARG_TYPE(nval, type);				\
@@ -129,7 +129,7 @@ struct http_arg {
 	do {								\
 		int err;						\
 		type nval;						\
-		nval = kore_strtodouble(q->s_value, min, max, &err);	\
+		nval = kore_strtodouble(data, min, max, &err);		\
 		if (err != KORE_RESULT_OK)				\
 			return (KORE_RESULT_ERROR);			\
 		COPY_ARG_TYPE(nval, type);				\
@@ -139,7 +139,7 @@ struct http_arg {
 	do {								\
 		int err;						\
 		int64_t nval;						\
-		nval = kore_strtonum(q->s_value, 10, min, max, &err);	\
+		nval = kore_strtonum(data, 10, min, max, &err);		\
 		if (err != KORE_RESULT_OK)				\
 			return (KORE_RESULT_ERROR);			\
 		COPY_ARG_TYPE(nval, type);				\
@@ -159,38 +159,62 @@ struct http_arg {
 		COPY_ARG_INT(min, max, type);				\
 	} while (0)
 
-#define http_argument_type(r, n, so, no, t)				\
-	http_argument_get(r, n, so, no, t)
-
 #define http_argument_get_string(r, n, o)				\
-	http_argument_type(r, n, (void **)o, NULL, HTTP_ARG_TYPE_STRING)
+	http_argument_get(r, n, (void **)o, NULL, HTTP_ARG_TYPE_STRING)
 
-#define http_argument_get_byte(r, n, o)				\
-	http_argument_type(r, n, NULL, o, HTTP_ARG_TYPE_BYTE)
+#define http_argument_get_byte(r, n, o)					\
+	http_argument_get(r, n, NULL, o, HTTP_ARG_TYPE_BYTE)
 
 #define http_argument_get_uint16(r, n, o)				\
-	http_argument_type(r, n, NULL, o, HTTP_ARG_TYPE_UINT16)
+	http_argument_get(r, n, NULL, o, HTTP_ARG_TYPE_UINT16)
 
 #define http_argument_get_int16(r, n, o)				\
-	http_argument_type(r, n, NULL, o, HTTP_ARG_TYPE_INT16)
+	http_argument_get(r, n, NULL, o, HTTP_ARG_TYPE_INT16)
 
 #define http_argument_get_uint32(r, n, o)				\
-	http_argument_type(r, n, NULL, o, HTTP_ARG_TYPE_UINT32)
+	http_argument_get(r, n, NULL, o, HTTP_ARG_TYPE_UINT32)
 
 #define http_argument_get_int32(r, n, o)				\
-	http_argument_type(r, n, NULL, o, HTTP_ARG_TYPE_INT32)
+	http_argument_get(r, n, NULL, o, HTTP_ARG_TYPE_INT32)
 
 #define http_argument_get_uint64(r, n, o)				\
-	http_argument_type(r, n, NULL, o, HTTP_ARG_TYPE_UINT64)
+	http_argument_get(r, n, NULL, o, HTTP_ARG_TYPE_UINT64)
 
 #define http_argument_get_int64(r, n, o)				\
-	http_argument_type(r, n, NULL, o, HTTP_ARG_TYPE_INT64)
+	http_argument_get(r, n, NULL, o, HTTP_ARG_TYPE_INT64)
 
 #define http_argument_get_float(r, n, o)				\
-	http_argument_type(r, n, NULL, o, HTTP_ARG_TYPE_FLOAT)
+	http_argument_get(r, n, NULL, o, HTTP_ARG_TYPE_FLOAT)
 
 #define http_argument_get_double(r, n, o)				\
-	http_argument_type(r, n, NULL, o, HTTP_ARG_TYPE_DOUBLE)
+	http_argument_get(r, n, NULL, o, HTTP_ARG_TYPE_DOUBLE)
+
+#define http_request_header_byte(r, n, o)				\
+	http_request_header_get(r, n, NULL, o, HTTP_ARG_TYPE_BYTE)
+
+#define http_request_header_uint16(r, n, o)				\
+	http_request_header_get(r, n, NULL, o, HTTP_ARG_TYPE_UINT16)
+
+#define http_request_header_int16(r, n, o)				\
+	http_request_header_get(r, n, NULL, o, HTTP_ARG_TYPE_INT16)
+
+#define http_request_header_uint32(r, n, o)				\
+	http_request_header_get(r, n, NULL, o, HTTP_ARG_TYPE_UINT32)
+
+#define http_request_header_int32(r, n, o)				\
+	http_request_header_get(r, n, NULL, o, HTTP_ARG_TYPE_INT32)
+
+#define http_request_header_uint64(r, n, o)				\
+	http_request_header_get(r, n, NULL, o, HTTP_ARG_TYPE_UINT64)
+
+#define http_request_header_int64(r, n, o)				\
+	http_request_header_get(r, n, NULL, o, HTTP_ARG_TYPE_INT64)
+
+#define http_request_header_float(r, n, o)				\
+	http_request_header_get(r, n, NULL, o, HTTP_ARG_TYPE_FLOAT)
+
+#define http_request_header_double(r, n, o)				\
+	http_request_header_get(r, n, NULL, o, HTTP_ARG_TYPE_DOUBLE)
 
 struct http_file {
 	char			*name;
@@ -262,13 +286,13 @@ struct http_request {
 	struct kore_buf			*http_body;
 	int				http_body_fd;
 	char				*http_body_path;
-	size_t				http_body_length;
-	size_t				http_body_offset;
-	size_t				content_length;
+	u_int64_t			http_body_length;
+	u_int64_t			http_body_offset;
+	u_int64_t			content_length;
 	void				*hdlr_extra;
 	size_t				state_len;
 	char				*query_string;
-	struct kore_module_handle	*hdlr;
+	struct kore_route		*rt;
 	struct http_runlock_queue	*runlock;
 	void				(*onfree)(struct http_request *);
 
@@ -357,6 +381,10 @@ int		http_body_digest(struct http_request *, char *, size_t);
 int		http_redirect_add(struct kore_domain *,
 		    const char *, int, const char *);
 void		http_response(struct http_request *, int, const void *, size_t);
+void		http_response_json(struct http_request *, int,
+		    struct kore_json_item *);
+void		http_response_close(struct http_request *, int,
+		    const void *, size_t);
 void		http_response_fileref(struct http_request *, int,
 		    struct kore_fileref *);
 void		http_serveable(struct http_request *, const void *,
@@ -385,8 +413,7 @@ const char	*http_media_type(const char *);
 void		*http_state_get(struct http_request *);
 int		http_state_exists(struct http_request *);
 void		http_state_cleanup(struct http_request *);
-void		*http_state_create(struct http_request *, size_t,
-		    void (*onfree)(struct http_request *));
+void		*http_state_create(struct http_request *, size_t);
 
 int		http_argument_urldecode(char *);
 int		http_header_recv(struct netbuf *);
@@ -395,6 +422,8 @@ void		http_populate_post(struct http_request *);
 void		http_populate_multipart_form(struct http_request *);
 void		http_populate_cookies(struct http_request *);
 int		http_argument_get(struct http_request *,
+		    const char *, void **, void *, int);
+int		http_request_header_get(struct http_request *,
 		    const char *, void **, void *, int);
 
 void			http_file_rewind(struct http_file *);

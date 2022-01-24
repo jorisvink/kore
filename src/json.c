@@ -49,6 +49,8 @@ static u_int8_t		json_null_literal[] = { 'n', 'u', 'l', 'l' };
 static u_int8_t		json_true_literal[] = { 't', 'r', 'u', 'e' };
 static u_int8_t		json_false_literal[] = { 'f', 'a', 'l', 's', 'e' };
 
+static int		json_errno = 0;
+
 static const char *json_errtab[] = {
 	"no error",
 	"invalid JSON object",
@@ -84,8 +86,10 @@ kore_json_parse(struct kore_json *json)
 	if (json->root)
 		return (KORE_RESULT_OK);
 
+	json_errno = 0;
+
 	if (json_consume_whitespace(json) == -1) {
-		json->error = KORE_JSON_ERR_INVALID_JSON;
+		json_errno = KORE_JSON_ERR_INVALID_JSON;
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -93,22 +97,22 @@ kore_json_parse(struct kore_json *json)
 		return (KORE_RESULT_ERROR);
 
 	if (!json_guess_type(ch, &type)) {
-		json->error = KORE_JSON_ERR_INVALID_JSON;
+		json_errno = KORE_JSON_ERR_INVALID_JSON;
 		return (KORE_RESULT_ERROR);
 	}
 
 	json->root = json_item_alloc(type, NULL, NULL);
 
 	if (!json->root->parse(json, json->root)) {
-		if (json->error == 0)
-			json->error = KORE_JSON_ERR_INVALID_JSON;
+		if (json_errno == 0)
+			json_errno = KORE_JSON_ERR_INVALID_JSON;
 		return (KORE_RESULT_ERROR);
 	}
 
 	/* Don't allow garbage at the end. */
 	(void)json_consume_whitespace(json);
 	if (json->offset != json->length) {
-		json->error = KORE_JSON_ERR_INVALID_JSON;
+		json_errno = KORE_JSON_ERR_INVALID_JSON;
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -122,15 +126,20 @@ kore_json_find(struct kore_json_item *root, const char *path, u_int32_t type)
 	char			*copy;
 	char			*tokens[KORE_JSON_DEPTH_MAX + 1];
 
+	json_errno = 0;
 	copy = kore_strdup(path);
 
 	if (!kore_split_string(copy, "/", tokens, KORE_JSON_DEPTH_MAX)) {
 		kore_free(copy);
+		json_errno = KORE_JSON_ERR_INVALID_SEARCH;
 		return (NULL);
 	}
 
 	item = json_find_item(root, tokens, type, 0);
 	kore_free(copy);
+
+	if (item == NULL && json_errno == 0)
+		json_errno = KORE_JSON_ERR_INVALID_SEARCH;
 
 	return (item);
 }
@@ -145,11 +154,17 @@ kore_json_cleanup(struct kore_json *json)
 	kore_json_item_free(json->root);
 }
 
-const char *
-kore_json_strerror(struct kore_json *json)
+int
+kore_json_errno(void)
 {
-	if (json->error >= 0 && json->error <= KORE_JSON_ERR_LAST)
-		return (json_errtab[json->error]);
+	return (json_errno);
+}
+
+const char *
+kore_json_strerror(void)
+{
+	if (json_errno >= 0 && json_errno <= KORE_JSON_ERR_LAST)
+		return (json_errtab[json_errno]);
 
 	return ("unknown JSON error");
 }
@@ -182,7 +197,7 @@ kore_json_create_item(struct kore_json_item *parent, const char *name,
 		item->data.number = va_arg(args, double);
 		break;
 	case KORE_JSON_TYPE_INTEGER:
-		item->data.s64 = va_arg(args, int64_t);
+		item->data.integer = va_arg(args, int64_t);
 		break;
 	case KORE_JSON_TYPE_INTEGER_U64:
 		item->data.u64 = va_arg(args, u_int64_t);
@@ -248,7 +263,7 @@ kore_json_item_tobuf(struct kore_json_item *item, struct kore_buf *buf)
 		kore_buf_appendf(buf, "%f", item->data.number);
 		break;
 	case KORE_JSON_TYPE_INTEGER:
-		kore_buf_appendf(buf, "%" PRId64, item->data.s64);
+		kore_buf_appendf(buf, "%" PRId64, item->data.integer);
 		break;
 	case KORE_JSON_TYPE_INTEGER_U64:
 		kore_buf_appendf(buf, "%" PRIu64, item->data.u64);
@@ -275,6 +290,24 @@ kore_json_item_tobuf(struct kore_json_item *item, struct kore_buf *buf)
 	default:
 		fatal("%s: unknown type %d", __func__, item->type);
 	}
+}
+
+void
+kore_json_item_attach(struct kore_json_item *parent,
+    struct kore_json_item *item)
+{
+	if (item->parent != NULL)
+		fatal("%s: item already has parent", __func__);
+
+	item->parent = parent;
+
+	if (parent->type != KORE_JSON_TYPE_OBJECT &&
+	    parent->type != KORE_JSON_TYPE_ARRAY) {
+		fatal("%s: invalid parent type (%d)",
+		    __func__, parent->type);
+	}
+
+	TAILQ_INSERT_TAIL(&parent->data.items, item, list);
 }
 
 static struct kore_json_item *
@@ -321,15 +354,33 @@ json_find_item(struct kore_json_item *object, char **tokens,
 					break;
 			}
 
-			if (nitem == NULL)
+			if (nitem == NULL) {
+				json_errno = KORE_JSON_ERR_NOT_FOUND;
 				return (NULL);
+			}
 
 			item = nitem;
 		}
 
 		if (tokens[pos + 1] == NULL) {
+			/*
+			 * If an uint64 was required and we find an item
+			 * with the same name but marked as an integer check
+			 * if it can be represented as a uint64.
+			 *
+			 * If it can, reduce the type to integer so we match
+			 * on it as well.
+			 */
+			if (type == KORE_JSON_TYPE_INTEGER_U64 &&
+			    item->type == KORE_JSON_TYPE_INTEGER) {
+				if (item->data.integer >= 0)
+					type = KORE_JSON_TYPE_INTEGER;
+			}
+
 			if (item->type == type)
 				return (item);
+
+			json_errno = KORE_JSON_ERR_TYPE_MISMATCH;
 			return (NULL);
 		}
 
@@ -342,6 +393,9 @@ json_find_item(struct kore_json_item *object, char **tokens,
 
 		break;
 	}
+
+	if (item == NULL && json_errno == 0)
+		json_errno = KORE_JSON_ERR_NOT_FOUND;
 
 	return (item);
 }
@@ -443,7 +497,7 @@ static int
 json_next_byte(struct kore_json *json, u_int8_t *ch, int peek)
 {
 	if (json->offset >= json->length) {
-		json->error = KORE_JSON_ERR_EOF;
+		json_errno = KORE_JSON_ERR_EOF;
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -513,7 +567,7 @@ json_parse_object(struct kore_json *json, struct kore_json_item *object)
 	int			ret, hasnext;
 
 	if (json->depth++ >= KORE_JSON_DEPTH_MAX) {
-		json->error = KORE_JSON_ERR_DEPTH;
+		json_errno = KORE_JSON_ERR_DEPTH;
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -537,7 +591,7 @@ json_parse_object(struct kore_json *json, struct kore_json_item *object)
 		switch (ch) {
 		case '}':
 			if (hasnext) {
-				json->error = KORE_JSON_ERR_INVALID_JSON;
+				json_errno = KORE_JSON_ERR_INVALID_JSON;
 				goto cleanup;
 			}
 			json->offset++;
@@ -596,8 +650,8 @@ json_parse_object(struct kore_json *json, struct kore_json_item *object)
 	}
 
 cleanup:
-	if (ret == KORE_RESULT_ERROR && json->error == 0)
-		json->error = KORE_JSON_ERR_INVALID_OBJECT;
+	if (ret == KORE_RESULT_ERROR && json_errno == 0)
+		json_errno = KORE_JSON_ERR_INVALID_OBJECT;
 
 	json->depth--;
 
@@ -614,7 +668,7 @@ json_parse_array(struct kore_json *json, struct kore_json_item *array)
 	int			ret, hasnext;
 
 	if (json->depth++ >= KORE_JSON_DEPTH_MAX) {
-		json->error = KORE_JSON_ERR_DEPTH;
+		json_errno = KORE_JSON_ERR_DEPTH;
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -637,7 +691,7 @@ json_parse_array(struct kore_json *json, struct kore_json_item *array)
 
 		if (ch == ']') {
 			if (hasnext) {
-				json->error = KORE_JSON_ERR_INVALID_JSON;
+				json_errno = KORE_JSON_ERR_INVALID_JSON;
 				goto cleanup;
 			}
 			json->offset++;
@@ -675,8 +729,8 @@ json_parse_array(struct kore_json *json, struct kore_json_item *array)
 	}
 
 cleanup:
-	if (ret == KORE_RESULT_ERROR && json->error == 0)
-		json->error = KORE_JSON_ERR_INVALID_ARRAY;
+	if (ret == KORE_RESULT_ERROR && json_errno == 0)
+		json_errno = KORE_JSON_ERR_INVALID_ARRAY;
 
 	json->depth--;
 
@@ -762,10 +816,14 @@ json_parse_number(struct kore_json *json, struct kore_json_item *number)
 		    kore_strtodouble(str, -DBL_MAX, DBL_MAX, &ret);
 		break;
 	case KORE_JSON_TYPE_INTEGER:
-		number->data.s64 = (int64_t)kore_strtonum64(str, 1, &ret);
+		number->data.integer = (int64_t)kore_strtonum64(str, 1, &ret);
 		break;
 	case KORE_JSON_TYPE_INTEGER_U64:
-		number->data.s64 = kore_strtonum64(str, 0, &ret);
+		number->data.u64 = kore_strtonum64(str, 0, &ret);
+		if (number->data.u64 <= INT64_MAX) {
+			type = KORE_JSON_TYPE_INTEGER;
+			number->data.integer = number->data.u64;
+		}
 		break;
 	default:
 		goto cleanup;
@@ -774,8 +832,8 @@ json_parse_number(struct kore_json *json, struct kore_json_item *number)
 	number->type = type;
 
 cleanup:
-	if (ret == KORE_RESULT_ERROR && json->error == 0)
-		json->error = KORE_JSON_ERR_INVALID_NUMBER;
+	if (ret == KORE_RESULT_ERROR && json_errno == 0)
+		json_errno = KORE_JSON_ERR_INVALID_NUMBER;
 
 	return (ret);
 }
@@ -826,8 +884,8 @@ json_parse_literal(struct kore_json *json, struct kore_json_item *literal)
 	ret = KORE_RESULT_OK;
 
 cleanup:
-	if (ret == KORE_RESULT_ERROR && json->error == 0)
-		json->error = KORE_JSON_ERR_INVALID_LITERAL;
+	if (ret == KORE_RESULT_ERROR && json_errno == 0)
+		json_errno = KORE_JSON_ERR_INVALID_LITERAL;
 
 	return (ret);
 }
@@ -895,8 +953,8 @@ json_get_string(struct kore_json *json)
 	res = kore_buf_stringify(&json->tmpbuf, NULL);
 
 cleanup:
-	if (res == NULL && json->error == 0)
-		json->error = KORE_JSON_ERR_INVALID_STRING;
+	if (res == NULL && json_errno == 0)
+		json_errno = KORE_JSON_ERR_INVALID_STRING;
 
 	return (res);
 }

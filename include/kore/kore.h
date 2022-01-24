@@ -103,7 +103,8 @@ extern int daemon(int, int);
 
 #define KORE_DOMAINNAME_LEN		255
 #define KORE_PIDFILE_DEFAULT		"kore.pid"
-#define KORE_DEFAULT_CIPHER_LIST	"ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA256:DHE-DSS-AES256-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:HIGH:!aNULL:!eNULL:!EXPORT:!DES:!3DES:!MD5:!PSK:!kRSA:!kDSA"
+#define KORE_DHPARAM_PATH		PREFIX "/share/kore/ffdhe4096.pem"
+#define KORE_DEFAULT_CIPHER_LIST	"AEAD-AES256-GCM-SHA384:AEAD-CHACHA20-POLY1305-SHA256:AEAD-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256"
 
 #if defined(KORE_DEBUG)
 #define kore_debug(...)		\
@@ -286,6 +287,9 @@ struct kore_runtime {
 	int	type;
 #if !defined(KORE_NO_HTTP)
 	int	(*http_request)(void *, struct http_request *);
+	void	(*http_request_free)(void *, struct http_request *);
+	void	(*http_body_chunk)(void *,
+		    struct http_request *, const void *, size_t);
 	int	(*validator)(void *, struct http_request *, const void *);
 	void	(*wsconnect)(void *, struct connection *);
 	void	(*wsdisconnect)(void *, struct connection *);
@@ -294,6 +298,7 @@ struct kore_runtime {
 #endif
 	void	(*execute)(void *);
 	int	(*onload)(void *, int);
+	void	(*signal)(void *, int);
 	void	(*connect)(void *, struct connection *);
 	void	(*configure)(void *, int, char **);
 };
@@ -302,6 +307,37 @@ struct kore_runtime_call {
 	void			*addr;
 	struct kore_runtime	*runtime;
 };
+
+#if !defined(KORE_NO_HTTP)
+
+struct kore_route_params {
+	char			*name;
+	int			flags;
+	u_int8_t		method;
+	struct kore_validator	*validator;
+
+	TAILQ_ENTRY(kore_route_params)	list;
+};
+
+struct kore_route {
+	char					*path;
+	char					*func;
+	int					type;
+	int					errors;
+	int					methods;
+	regex_t					rctx;
+	struct kore_domain			*dom;
+	struct kore_auth			*auth;
+	struct kore_runtime_call		*rcall;
+	struct kore_runtime_call		*on_free;
+	struct kore_runtime_call		*on_headers;
+	struct kore_runtime_call		*on_body_chunk;
+
+	TAILQ_HEAD(, kore_route_params)		params;
+	TAILQ_ENTRY(kore_route)			list;
+};
+
+#endif
 
 struct kore_domain {
 	u_int16_t				id;
@@ -326,7 +362,7 @@ struct kore_domain {
 	SSL_CTX					*ssl_ctx;
 	int					x509_verify_depth;
 #if !defined(KORE_NO_HTTP)
-	TAILQ_HEAD(, kore_module_handle)	handlers;
+	TAILQ_HEAD(, kore_route)		routes;
 	TAILQ_HEAD(, http_redirect)		redirects;
 #endif
 	TAILQ_ENTRY(kore_domain)		list;
@@ -361,15 +397,6 @@ LIST_HEAD(kore_server_list, kore_server);
 #if !defined(KORE_NO_HTTP)
 
 #define KORE_PARAMS_QUERY_STRING	0x0001
-
-struct kore_handler_params {
-	char			*name;
-	int			flags;
-	u_int8_t		method;
-	struct kore_validator	*validator;
-
-	TAILQ_ENTRY(kore_handler_params)	list;
-};
 
 #define KORE_AUTH_TYPE_COOKIE		1
 #define KORE_AUTH_TYPE_HEADER		2
@@ -419,23 +446,6 @@ struct kore_module {
 	TAILQ_ENTRY(kore_module)	list;
 };
 
-#if !defined(KORE_NO_HTTP)
-
-struct kore_module_handle {
-	char					*path;
-	char					*func;
-	int					type;
-	int					errors;
-	regex_t					rctx;
-	struct kore_domain			*dom;
-	struct kore_runtime_call		*rcall;
-	struct kore_auth			*auth;
-	int					methods;
-	TAILQ_HEAD(, kore_handler_params)	params;
-	TAILQ_ENTRY(kore_module_handle)		list;
-};
-#endif
-
 /*
  * The workers get a 128KB log buffer per worker, and parent will fetch their
  * logs when it reached at least 75% of that or if its been > 1 second since
@@ -449,9 +459,17 @@ struct kore_alog_header {
 	u_int16_t		loglen;
 } __attribute__((packed));
 
+struct kore_privsep {
+	char		*root;
+	char		*runas;
+	int		skip_runas;
+	int		skip_chroot;
+};
+
 struct kore_worker {
 	u_int16_t			id;
 	u_int16_t			cpu;
+	int				ready;
 	int				running;
 #if defined(__linux__)
 	int				tracing;
@@ -462,7 +480,8 @@ struct kore_worker {
 	u_int8_t			has_lock;
 	int				restarted;
 	u_int64_t			time_locked;
-	struct kore_module_handle	*active_hdlr;
+	struct kore_route		*active_route;
+	struct kore_privsep		*ps;
 
 	/* Used by the workers to store accesslogs. */
 	struct {
@@ -570,7 +589,6 @@ struct kore_buf {
 struct kore_json {
 	const u_int8_t			*data;
 	int				depth;
-	int				error;
 	size_t				length;
 	size_t				offset;
 
@@ -588,7 +606,7 @@ struct kore_json_item {
 		char				*string;
 		double				number;
 		int				literal;
-		int64_t				s64;
+		int64_t				integer;
 		u_int64_t			u64;
 	} data;
 
@@ -659,6 +677,7 @@ struct kore_timer {
 #define KORE_MSG_CRL			9
 #define KORE_MSG_ACCEPT_AVAILABLE	10
 #define KORE_PYTHON_SEND_OBJ		11
+#define KORE_MSG_WORKER_LOG		12
 #define KORE_MSG_ACME_BASE		100
 
 /* messages for applications should start at 201. */
@@ -693,6 +712,7 @@ extern char	*config_file;
 #endif
 
 extern pid_t	kore_pid;
+extern int	kore_quit;
 extern int	kore_quiet;
 extern int	kore_debug;
 extern int	skip_chroot;
@@ -700,8 +720,6 @@ extern int	skip_runas;
 extern int	kore_foreground;
 
 extern char	*kore_pidfile;
-extern char	*kore_root_path;
-extern char	*kore_runas_user;
 extern char	*kore_tls_cipher_list;
 
 extern volatile sig_atomic_t	sig_recv;
@@ -710,15 +728,16 @@ extern int	tls_version;
 extern DH	*tls_dhparam;
 extern char	*rand_file;
 extern int	keymgr_active;
-extern char	*keymgr_runas_user;
-extern char	*keymgr_root_path;
-extern char	*acme_runas_user;
-extern char	*acme_root_path;
+
+extern struct kore_privsep	worker_privsep;
+extern struct kore_privsep	keymgr_privsep;
+extern struct kore_privsep	acme_privsep;
 
 extern u_int8_t			nlisteners;
 extern u_int16_t		cpu_count;
 extern u_int8_t			worker_count;
 extern const char		*kore_version;
+extern const char		*kore_build_date;
 extern int			worker_policy;
 extern u_int8_t			worker_set_affinity;
 extern u_int32_t		worker_rlimit_nofiles;
@@ -736,17 +755,19 @@ extern struct kore_server_list	kore_servers;
 
 void		kore_signal(int);
 void		kore_shutdown(void);
+void		kore_signal_trap(int);
 void		kore_signal_setup(void);
 void		kore_proctitle(const char *);
 void		kore_default_getopt(int, char **);
 
 void		kore_worker_reap(void);
-void		kore_worker_init(void);
+int		kore_worker_init(void);
+void		kore_worker_privsep(void);
+void		kore_worker_started(void);
 void		kore_worker_make_busy(void);
 void		kore_worker_shutdown(void);
 void		kore_worker_dispatch_signal(int);
-void		kore_worker_privdrop(const char *, const char *);
-void		kore_worker_spawn(u_int16_t, u_int16_t, u_int16_t);
+int		kore_worker_spawn(u_int16_t, u_int16_t, u_int16_t);
 int		kore_worker_keymgr_response_verify(struct kore_msg *,
 		    const void *, struct kore_domain **);
 
@@ -845,6 +866,7 @@ int			kore_connection_accept(struct listener *,
 
 u_int64_t	kore_time_ms(void);
 void		kore_log_init(void);
+void		kore_log_file(const char *);
 
 #if defined(KORE_USE_PYTHON)
 int		kore_configure_setting(const char *, char *);
@@ -892,7 +914,11 @@ char		*kore_read_line(FILE *, char *, size_t);
 
 EVP_PKEY	*kore_rsakey_load(const char *);
 EVP_PKEY	*kore_rsakey_generate(const char *);
+int		kore_x509_issuer_name(struct connection *, char **, int);
 int		kore_x509_subject_name(struct connection *, char **, int);
+int		kore_x509name_foreach(X509_NAME *, int, void *,
+		    int (*)(void *, int, int, const char *,
+		    const void *, size_t, int));
 
 #if !defined(KORE_NO_HTTP)
 void		kore_websocket_handshake(struct http_request *,
@@ -948,12 +974,16 @@ int		kore_domain_attach(struct kore_domain *, struct kore_server *);
 void		kore_domain_tlsinit(struct kore_domain *, int,
 		    const void *, size_t);
 void		kore_domain_crl_add(struct kore_domain *, const void *, size_t);
+
 #if !defined(KORE_NO_HTTP)
-int		kore_module_handler_new(struct kore_domain *, const char *,
-		    const char *, const char *, int);
-void		kore_module_handler_free(struct kore_module_handle *);
-struct kore_module_handle	*kore_module_handler_find(struct http_request *,
-				    struct kore_domain *);
+void		kore_route_reload(void);
+void		kore_route_free(struct kore_route *);
+void		kore_route_callback(struct kore_route *, const char *);
+
+struct kore_route	*kore_route_create(struct kore_domain *,
+			    const char *, int);
+int			kore_route_lookup(struct http_request *,
+			    struct kore_domain *, int, struct kore_route **);
 #endif
 
 struct kore_runtime_call	*kore_runtime_getcall(const char *);
@@ -962,11 +992,16 @@ struct kore_module		*kore_module_load(const char *,
 
 void	kore_runtime_execute(struct kore_runtime_call *);
 int	kore_runtime_onload(struct kore_runtime_call *, int);
+void	kore_runtime_signal(struct kore_runtime_call *, int);
 void	kore_runtime_configure(struct kore_runtime_call *, int, char **);
 void	kore_runtime_connect(struct kore_runtime_call *, struct connection *);
 #if !defined(KORE_NO_HTTP)
 int	kore_runtime_http_request(struct kore_runtime_call *,
 	    struct http_request *);
+void	kore_runtime_http_request_free(struct kore_runtime_call *,
+	    struct http_request *);
+void	kore_runtime_http_body_chunk(struct kore_runtime_call *,
+	    struct http_request *, const void *, size_t);
 int	kore_runtime_validator(struct kore_runtime_call *,
 	    struct http_request *, const void *);
 void	kore_runtime_wsconnect(struct kore_runtime_call *, struct connection *);
@@ -1038,13 +1073,15 @@ void	kore_buf_appendv(struct kore_buf *, const char *, va_list);
 void	kore_buf_replace_string(struct kore_buf *,
 	    const char *, const void *, size_t);
 
+int	kore_json_errno(void);
 int	kore_json_parse(struct kore_json *);
 void	kore_json_cleanup(struct kore_json *);
 void	kore_json_item_free(struct kore_json_item *);
 void	kore_json_init(struct kore_json *, const void *, size_t);
 void	kore_json_item_tobuf(struct kore_json_item *, struct kore_buf *);
+void	kore_json_item_attach(struct kore_json_item *, struct kore_json_item *);
 
-const char		*kore_json_strerror(struct kore_json *);
+const char		*kore_json_strerror(void);
 struct kore_json_item	*kore_json_find(struct kore_json_item *,
 			    const char *, u_int32_t);
 struct kore_json_item	*kore_json_create_item(struct kore_json_item *,

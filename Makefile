@@ -21,9 +21,9 @@ VERSION=$(OBJDIR)/version.c
 PYTHON_CURLOPT=misc/curl/python_curlopt.h
 
 S_SRC=	src/kore.c src/buf.c src/config.c src/connection.c \
-	src/domain.c src/filemap.c src/fileref.c src/json.c src/mem.c \
-	src/msg.c src/module.c src/net.c src/pool.c src/runtime.c src/timer.c \
-	src/utils.c src/worker.c src/keymgr.c
+	src/domain.c src/filemap.c src/fileref.c src/json.c src/log.c \
+	src/mem.c src/msg.c src/module.c src/net.c src/pool.c src/runtime.c \
+	src/timer.c src/utils.c src/worker.c src/keymgr.c
 
 FEATURES=
 FEATURES_INC=
@@ -31,7 +31,7 @@ FEATURES_INC=
 CFLAGS+=-Wall -Werror -Wstrict-prototypes -Wmissing-prototypes
 CFLAGS+=-Wmissing-declarations -Wshadow -Wpointer-arith -Wcast-qual
 CFLAGS+=-Wsign-compare -Iinclude/kore -I$(OBJDIR) -std=c99 -pedantic
-CFLAGS+=-Wtype-limits
+CFLAGS+=-Wtype-limits -fno-common
 CFLAGS+=-DPREFIX='"$(PREFIX)"' -fstack-protector-all
 
 ifneq ("$(OPENSSL_PATH)", "")
@@ -66,7 +66,7 @@ ifneq ("$(NOHTTP)", "")
 	FEATURES+=-DKORE_NO_HTTP
 else
 	S_SRC+= src/auth.c src/accesslog.c src/http.c \
-		src/validator.c src/websocket.c
+		src/route.c src/validator.c src/websocket.c
 endif
 
 ifneq ("$(PGSQL)", "")
@@ -132,8 +132,10 @@ ifneq ("$(SANITIZE)", "")
 endif
 
 ifeq ("$(OSNAME)", "darwin")
-	CFLAGS+=-I/opt/local/include/ -I/usr/local/opt/openssl/include
-	LDFLAGS+=-L/opt/local/lib -L/usr/local/opt/openssl/lib
+	OSSL_INCL=$(shell pkg-config openssl --cflags)
+	CFLAGS+=$(OSSL_INCL)
+	LDFLAGS+=$(shell pkg-config openssl --libs)
+	FEATURES_INC+=$(OSSL_INCL)
 	S_SRC+=src/bsd.c
 else ifeq ("$(OSNAME)", "linux")
 	CFLAGS+=-D_GNU_SOURCE=1 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2
@@ -160,7 +162,7 @@ $(PLATFORM): $(OBJDIR) force
 $(PYTHON_CURLOPT): $(OBJDIR) force
 	@cp $(PYTHON_CURLOPT) $(OBJDIR)
 
-$(VERSION): force
+$(VERSION): $(OBJDIR) force
 	@if [ -d .git ]; then \
 		GIT_REVISION=`git rev-parse --short=8 HEAD`; \
 		GIT_BRANCH=`git rev-parse --abbrev-ref HEAD`; \
@@ -174,12 +176,15 @@ $(VERSION): force
 		echo "No version information found (no .git or RELEASE)"; \
 		exit 1; \
 	fi
+	@printf "const char *kore_build_date = \"%s\";\n" \
+	    `date +"%Y-%m-%d"` >> $(VERSION);
 
 $(KODEV): src/cli.c
 	$(MAKE) -C kodev
 
 $(KORE): $(OBJDIR) $(S_OBJS)
 	$(CC) $(S_OBJS) $(LDFLAGS) -o $(KORE)
+	@echo $(LDFLAGS) > kore.linker
 	@echo $(FEATURES) $(FEATURES_INC) > kore.features
 
 objects: $(OBJDIR) $(PLATFORM) $(GENERATED) $(S_OBJS)
@@ -197,7 +202,9 @@ install:
 	install -m 644 share/man/kodev.1 $(DESTDIR)$(MAN_DIR)/man1/kodev.1
 	install -m 555 $(KORE) $(DESTDIR)$(INSTALL_DIR)/$(KORE)
 	install -m 644 kore.features $(DESTDIR)$(SHARE_DIR)/features
+	install -m 644 kore.linker $(DESTDIR)$(SHARE_DIR)/linker
 	install -m 644 include/kore/*.h $(DESTDIR)$(INCLUDE_DIR)
+	install -m 644 misc/ffdhe4096.pem $(DESTDIR)$(SHARE_DIR)/ffdhe4096.pem
 	$(MAKE) -C kodev install
 	$(MAKE) install-sources
 
@@ -253,6 +260,8 @@ tools-install:
 $(OBJDIR)/%.o: src/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
+src/kore.c: $(VERSION)
+
 src/python.c: $(PYTHON_CURLOPT)
 
 src/seccomp.c: $(PLATFORM)
@@ -260,7 +269,7 @@ src/seccomp.c: $(PLATFORM)
 clean:
 	rm -f $(VERSION)
 	find . -type f -name \*.o -exec rm {} \;
-	rm -rf $(KORE) $(OBJDIR) kore.features
+	rm -rf $(KORE) $(OBJDIR) kore.features kore.linker
 	$(MAKE) -C kodev clean
 
 releng-build-examples:

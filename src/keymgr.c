@@ -88,6 +88,9 @@ static struct sock_filter filter_keymgr[] = {
 #if defined(SYS_fstat64)
 	KORE_SYSCALL_ALLOW(fstat64),
 #endif
+#if defined(SYS_newfstatat)
+	KORE_SYSCALL_ALLOW(newfstatat),
+#endif
 	KORE_SYSCALL_ALLOW(futex),
 	KORE_SYSCALL_ALLOW(writev),
 	KORE_SYSCALL_ALLOW(openat),
@@ -137,6 +140,9 @@ static struct sock_filter filter_keymgr[] = {
 #endif
 #if defined(SYS_mmap2)
 	KORE_SYSCALL_ALLOW(mmap2),
+#endif
+#if defined(SYS_madvise)
+	KORE_SYSCALL_ALLOW(madvise),
 #endif
 	KORE_SYSCALL_ALLOW(munmap),
 	KORE_SYSCALL_ALLOW(clock_gettime),
@@ -245,9 +251,8 @@ static void	keymgr_rsa_encrypt(struct kore_msg *, const void *,
 static void	keymgr_ecdsa_sign(struct kore_msg *, const void *,
 		    struct key *);
 
-int	keymgr_active = 0;
-char	*keymgr_root_path = NULL;
-char	*keymgr_runas_user = NULL;
+struct kore_privsep	keymgr_privsep;
+int			keymgr_active = 0;
 
 #if defined(__OpenBSD__)
 #if defined(KORE_USE_ACME)
@@ -290,10 +295,7 @@ kore_keymgr_run(void)
 #if defined(KORE_USE_PYTHON)
 	kore_msg_unregister(KORE_PYTHON_SEND_OBJ);
 #endif
-	kore_worker_privdrop(keymgr_runas_user, keymgr_root_path);
-
-	if (!kore_quiet)
-		kore_log(LOG_NOTICE, "key manager started (pid#%d)", getpid());
+	kore_worker_privsep();
 
 	if (rand_file != NULL) {
 		keymgr_load_randfile();
@@ -317,6 +319,8 @@ kore_keymgr_run(void)
 	acme_oid = OBJ_create(ACME_TLS_ALPN_01_OID, "acme", "acmeIdentifier");
 	X509V3_EXT_add_alias(acme_oid, NID_subject_key_identifier);
 #endif
+
+	kore_worker_started();
 
 	while (quit != 1) {
 		now = kore_time_ms();
@@ -362,9 +366,6 @@ void
 kore_keymgr_cleanup(int final)
 {
 	struct key		*key, *next;
-
-	if (final && !kore_quiet)
-		kore_log(LOG_NOTICE, "cleaning up keys");
 
 	if (initialized == 0)
 		return;
@@ -574,7 +575,8 @@ keymgr_load_domain_privatekey(struct kore_domain *dom)
 
 	key->dom = dom;
 
-	kore_log(LOG_INFO, "loaded private key for '%s'", dom->domain);
+	if (!kore_quiet)
+		kore_log(LOG_INFO, "loaded private key for '%s'", dom->domain);
 }
 
 static struct key *
@@ -690,12 +692,8 @@ keymgr_rsa_encrypt(struct kore_msg *msg, const void *data, struct key *key)
 	u_int8_t			buf[1024];
 
 	req = (const struct kore_keyreq *)data;
-
-#if defined(KORE_OPENSSL_NEWER_API)
 	rsa = EVP_PKEY_get0_RSA(key->pkey);
-#else
-	rsa = key->pkey->pkey.rsa;
-#endif
+
 	keylen = RSA_size(rsa);
 	if (req->data_len > keylen || keylen > sizeof(buf))
 		return;
@@ -718,11 +716,8 @@ keymgr_ecdsa_sign(struct kore_msg *msg, const void *data, struct key *key)
 	u_int8_t			sig[1024];
 
 	req = (const struct kore_keyreq *)data;
-#if defined(KORE_OPENSSL_NEWER_API)
 	ec = EVP_PKEY_get0_EC_KEY(key->pkey);
-#else
-	ec = key->pkey->pkey.ec;
-#endif
+
 	len = ECDSA_size(ec);
 	if (req->data_len > len || len > sizeof(sig))
 		return;
@@ -791,21 +786,15 @@ keymgr_acme_init(void)
 	    ACME_RENEWAL_TIMER, NULL, 0);
 
 	if (key->pkey == NULL) {
-		kore_log(LOG_NOTICE, "generating new ACME account key");
+		kore_log(LOG_INFO, "generating new ACME account key");
 		key->pkey = kore_rsakey_generate(KORE_ACME_ACCOUNT_KEY);
 		needsreg = 1;
 	} else {
 		kore_log(LOG_INFO, "loaded existing ACME account key");
 	}
 
-#if defined(KORE_OPENSSL_NEWER_API)
 	rsa = EVP_PKEY_get0_RSA(key->pkey);
 	RSA_get0_key(rsa, &bn, &be, NULL);
-#else
-	rsa = key->pkey->pkey.rsa;
-	be = rsa->e;
-	bn = rsa->n;
-#endif
 
 	e = keymgr_bignum_base64(be);
 	n = keymgr_bignum_base64(bn);
@@ -837,7 +826,7 @@ keymgr_acme_domainkey(struct kore_domain *dom, struct key *key)
 {
 	char		*p;
 
-	kore_log(LOG_NOTICE, "generated new domain key for %s", dom->domain);
+	kore_log(LOG_INFO, "generated new domain key for %s", dom->domain);
 
 	if ((p = strrchr(dom->certkey, '/')) == NULL)
 		fatalx("invalid certkey path '%s'", dom->certkey);
@@ -1038,7 +1027,7 @@ keymgr_acme_install_cert(const void *data, size_t len, struct key *key)
 
 	fd = open(key->dom->certfile, O_CREAT | O_TRUNC | O_WRONLY, 0700);
 	if (fd == -1)
-		fatal("open(%s): %s", key->dom->certfile, errno_s);
+		fatalx("open(%s): %s", key->dom->certfile, errno_s);
 
 	kore_log(LOG_INFO, "writing %zu bytes of data", len);
 
@@ -1047,14 +1036,14 @@ keymgr_acme_install_cert(const void *data, size_t len, struct key *key)
 		if (ret == -1) {
 			if (errno == EINTR)
 				continue;
-			fatal("write(%s): %s", key->dom->certfile, errno_s);
+			fatalx("write(%s): %s", key->dom->certfile, errno_s);
 		}
 
 		break;
 	}
 
 	if ((size_t)ret != len) {
-		fatal("incorrect write on %s (%zd/%zu)",
+		fatalx("incorrect write on %s (%zd/%zu)",
 		    key->dom->certfile, ret, len);
 	}
 
@@ -1111,7 +1100,7 @@ keymgr_acme_challenge_cert(const void *data, size_t len, struct key *key)
 		slen = snprintf(hex + (idx * 2), sizeof(hex) - (idx * 2),
 		    "%02x", digest[idx]);
 		if (slen == -1 || (size_t)slen >= sizeof(hex))
-			fatal("failed to convert digest to hex");
+			fatalx("failed to convert digest to hex");
 	}
 
 	if ((x509 = X509_new()) == NULL)
@@ -1185,7 +1174,7 @@ keymgr_acme_csr(const struct kore_keyreq *req, struct key *key)
 	kore_log(LOG_INFO, "[%s] creating CSR", req->domain);
 
 	if ((csr = X509_REQ_new()) == NULL)
-		fatal("X509_REQ_new: %s", ssl_errno_s);
+		fatalx("X509_REQ_new: %s", ssl_errno_s);
 
 	if (!X509_REQ_set_version(csr, 3))
 		fatalx("X509_REQ_set_version(): %s", ssl_errno_s);

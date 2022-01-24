@@ -18,7 +18,7 @@
 #define CORO_STATE_SUSPENDED		2
 
 struct python_coro {
-	u_int32_t			id;
+	u_int64_t			id;
 	int				state;
 	int				killed;
 	PyObject			*obj;
@@ -45,6 +45,8 @@ static PyObject		*python_kore_queue(PyObject *, PyObject *);
 static PyObject		*python_kore_worker(PyObject *, PyObject *);
 static PyObject		*python_kore_tracer(PyObject *, PyObject *);
 static PyObject		*python_kore_fatalx(PyObject *, PyObject *);
+static PyObject		*python_kore_task_id(PyObject *, PyObject *);
+static PyObject		*python_kore_sigtrap(PyObject *, PyObject *);
 static PyObject		*python_kore_setname(PyObject *, PyObject *);
 static PyObject		*python_kore_suspend(PyObject *, PyObject *);
 static PyObject		*python_kore_shutdown(PyObject *, PyObject *);
@@ -54,6 +56,7 @@ static PyObject		*python_kore_task_kill(PyObject *, PyObject *);
 static PyObject		*python_kore_prerequest(PyObject *, PyObject *);
 static PyObject		*python_kore_task_create(PyObject *, PyObject *);
 static PyObject		*python_kore_socket_wrap(PyObject *, PyObject *);
+static PyObject		*python_kore_route(PyObject *, PyObject *, PyObject *);
 static PyObject		*python_kore_timer(PyObject *, PyObject *, PyObject *);
 static PyObject		*python_kore_domain(PyObject *, PyObject *, PyObject *);
 static PyObject		*python_kore_gather(PyObject *, PyObject *, PyObject *);
@@ -61,6 +64,9 @@ static PyObject		*python_kore_sendobj(PyObject *, PyObject *,
 			    PyObject *);
 static PyObject		*python_kore_server(PyObject *, PyObject *,
 			    PyObject *);
+static PyObject		*python_kore_privsep(PyObject *, PyObject *,
+			    PyObject *);
+
 
 #if defined(KORE_USE_PGSQL)
 static PyObject		*python_kore_pgsql_query(PyObject *, PyObject *,
@@ -92,6 +98,8 @@ static struct PyMethodDef pykore_methods[] = {
 	METHOD("tracer", python_kore_tracer, METH_VARARGS),
 	METHOD("fatal", python_kore_fatal, METH_VARARGS),
 	METHOD("fatalx", python_kore_fatalx, METH_VARARGS),
+	METHOD("task_id", python_kore_task_id, METH_NOARGS),
+	METHOD("sigtrap", python_kore_sigtrap, METH_VARARGS),
 	METHOD("setname", python_kore_setname, METH_VARARGS),
 	METHOD("suspend", python_kore_suspend, METH_VARARGS),
 	METHOD("shutdown", python_kore_shutdown, METH_NOARGS),
@@ -101,10 +109,12 @@ static struct PyMethodDef pykore_methods[] = {
 	METHOD("prerequest", python_kore_prerequest, METH_VARARGS),
 	METHOD("task_create", python_kore_task_create, METH_VARARGS),
 	METHOD("socket_wrap", python_kore_socket_wrap, METH_VARARGS),
+	METHOD("route", python_kore_route, METH_VARARGS | METH_KEYWORDS),
 	METHOD("timer", python_kore_timer, METH_VARARGS | METH_KEYWORDS),
+	METHOD("domain", python_kore_domain, METH_VARARGS | METH_KEYWORDS),
 	METHOD("server", python_kore_server, METH_VARARGS | METH_KEYWORDS),
 	METHOD("gather", python_kore_gather, METH_VARARGS | METH_KEYWORDS),
-	METHOD("domain", python_kore_domain, METH_VARARGS | METH_KEYWORDS),
+	METHOD("privsep", python_kore_privsep, METH_VARARGS | METH_KEYWORDS),
 	METHOD("sendobj", python_kore_sendobj, METH_VARARGS | METH_KEYWORDS),
 	METHOD("websocket_broadcast", python_websocket_broadcast, METH_VARARGS),
 #if defined(KORE_USE_PGSQL)
@@ -186,9 +196,38 @@ static PyTypeObject pyseccomp_type = {
 };
 #endif
 
+struct pyroute {
+	PyObject_HEAD
+	char			*path;
+	PyObject		*func;
+	PyObject		*kwargs;
+	struct kore_domain	*domain;
+	TAILQ_ENTRY(pyroute)	list;
+};
+
+static PyObject	*pyroute_inner(struct pyroute *, PyObject *);
+static void	pyroute_dealloc(struct pyroute *);
+
+static PyMethodDef pyroute_methods[] = {
+	METHOD("inner", pyroute_inner, METH_VARARGS),
+	METHOD(NULL, NULL, -1)
+};
+
+static PyTypeObject pyroute_type = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "kore.route",
+	.tp_doc = "kore route function",
+	.tp_methods = pyroute_methods,
+	.tp_basicsize = sizeof(struct pyroute),
+	.tp_dealloc = (destructor)pyroute_dealloc,
+	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+};
+
 struct pydomain {
 	PyObject_HEAD
-	struct kore_domain	*config;
+	struct kore_domain		*config;
+	struct kore_module_handle	*next;
+	PyObject			*kwargs;
 };
 
 static PyObject	*pydomain_filemaps(struct pydomain *, PyObject *);
@@ -659,11 +698,13 @@ static PyObject	*pyconnection_get_fd(struct pyconnection *, void *);
 static PyObject	*pyconnection_get_addr(struct pyconnection *, void *);
 
 static PyObject	*pyconnection_get_peer_x509(struct pyconnection *, void *);
+static PyObject	*pyconnection_get_peer_x509dict(struct pyconnection *, void *);
 
 static PyGetSetDef pyconnection_getset[] = {
 	GETTER("fd", pyconnection_get_fd),
 	GETTER("addr", pyconnection_get_addr),
 	GETTER("x509", pyconnection_get_peer_x509),
+	GETTER("x509dict", pyconnection_get_peer_x509dict),
 	GETTER(NULL, NULL),
 };
 
@@ -741,8 +782,10 @@ static PyObject	*pyhttp_get_path(struct pyhttp_request *, void *);
 static PyObject	*pyhttp_get_body(struct pyhttp_request *, void *);
 static PyObject	*pyhttp_get_agent(struct pyhttp_request *, void *);
 static PyObject	*pyhttp_get_method(struct pyhttp_request *, void *);
+static PyObject	*pyhttp_get_protocol(struct pyhttp_request *, void *);
 static PyObject	*pyhttp_get_body_path(struct pyhttp_request *, void *);
 static PyObject	*pyhttp_get_connection(struct pyhttp_request *, void *);
+static PyObject	*pyhttp_get_body_digest(struct pyhttp_request *, void *);
 
 static PyGetSetDef pyhttp_request_getset[] = {
 	GETTER("host", pyhttp_get_host),
@@ -750,7 +793,9 @@ static PyGetSetDef pyhttp_request_getset[] = {
 	GETTER("body", pyhttp_get_body),
 	GETTER("agent", pyhttp_get_agent),
 	GETTER("method", pyhttp_get_method),
+	GETTER("protocol", pyhttp_get_protocol),
 	GETTER("body_path", pyhttp_get_body_path),
+	GETTER("body_digest", pyhttp_get_body_digest),
 	GETTER("connection", pyhttp_get_connection),
 	GETTER(NULL, NULL)
 };
@@ -806,12 +851,16 @@ struct pycurl_slist {
 	LIST_ENTRY(pycurl_slist)	list;
 };
 
+struct pycurl_data {
+	struct kore_curl		curl;
+	LIST_HEAD(, pycurl_slist)	slists;
+};
+
 struct pycurl_handle {
 	PyObject_HEAD
-	struct kore_curl		curl;
-	char				*url;
-	struct kore_buf			*body;
-	LIST_HEAD(, pycurl_slist)	slists;
+	char			*url;
+	struct kore_buf		*body;
+	struct pycurl_data	data;
 };
 
 struct pycurl_handle_op {
@@ -831,11 +880,11 @@ static PyObject *pycurl_handle_run(struct pycurl_handle *, PyObject *);
 static PyObject *pycurl_handle_setopt(struct pycurl_handle *, PyObject *);
 static PyObject *pycurl_handle_setbody(struct pycurl_handle *, PyObject *);
 
-static PyObject *pycurl_handle_setopt_string(struct pycurl_handle *,
+static PyObject *pycurl_handle_setopt_string(struct pycurl_data *,
 		    int, PyObject *);
-static PyObject *pycurl_handle_setopt_long(struct pycurl_handle *,
+static PyObject *pycurl_handle_setopt_long(struct pycurl_data *,
 		    int, PyObject *);
-static PyObject *pycurl_handle_setopt_slist(struct pycurl_handle *,
+static PyObject *pycurl_handle_setopt_slist(struct pycurl_data *,
 		    int, PyObject *);
 
 static PyMethodDef pycurl_handle_methods[] = {
@@ -879,6 +928,7 @@ struct pyhttp_client {
 	char			*tlskey;
 	char			*tlscert;
 	char			*cabundle;
+	PyObject		*curlopt;
 	int			tlsverify;
 };
 
@@ -886,10 +936,11 @@ struct pyhttp_client_op {
 	PyObject_HEAD
 	int			state;
 	int			headers;
-	struct kore_curl	curl;
 	struct python_coro	*coro;
 	struct pyhttp_client	*client;
+	struct pycurl_data	data;
 };
+
 
 static PyObject	*pyhttp_client_op_await(PyObject *);
 static PyObject	*pyhttp_client_op_iternext(struct pyhttp_client_op *);

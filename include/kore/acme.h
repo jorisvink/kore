@@ -54,6 +54,7 @@ int	kore_acme_tls_alpn(SSL *, const unsigned char **, unsigned char *,
 	    const unsigned char *, unsigned int, void *);
 
 extern char	*acme_email;
+extern int	acme_domains;
 extern char	*acme_provider;
 
 #if defined(__cplusplus)
