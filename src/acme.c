@@ -1609,7 +1609,7 @@ acme_sign_submit(struct kore_json_item *json, const char *url, void *udata,
 	op->id = signop_id++;
 	op->payload = acme_base64url(buf.data, buf.offset);
 	op->protected = acme_protected_component(op->nonce, url);
-	op->t = kore_timer_add(acme_sign_expire, 5000, op, KORE_TIMER_ONESHOT);
+	op->t = kore_timer_add(acme_sign_expire, 30000, op, KORE_TIMER_ONESHOT);
 
 	kore_buf_reset(&buf);
 	kore_buf_append(&buf, &op->id, sizeof(op->id));
