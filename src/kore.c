@@ -857,6 +857,10 @@ kore_server_start(int argc, char *argv[])
 	struct kore_server		*srv;
 	u_int64_t			netwait;
 	int				last_sig;
+#if !defined(KORE_NO_HTTP)
+	int				alog;
+	struct kore_domain		*dom;
+#endif
 #if defined(KORE_SINGLE_BINARY)
 	struct kore_runtime_call	*rcall;
 #endif
@@ -952,8 +956,21 @@ kore_server_start(int argc, char *argv[])
 	worker_max_connections = tmp;
 
 	kore_timer_init();
+
 #if !defined(KORE_NO_HTTP)
-	kore_timer_add(kore_accesslog_run, 100, NULL, 0);
+	alog = 0;
+
+	LIST_FOREACH(srv, &kore_servers, list) {
+		TAILQ_FOREACH(dom, &srv->domains, list) {
+			if (dom->accesslog != -1)
+				alog = 1;
+		}
+	}
+
+	if (alog) {
+		kore_timer_add(kore_accesslog_run, 100, NULL, 0);
+		kore_log(LOG_INFO, "accesslog vacuum is enabled");
+	}
 #endif
 
 #if defined(KORE_USE_PYTHON)
