@@ -262,12 +262,27 @@ kore_worker_spawn(u_int16_t idx, u_int16_t id, u_int16_t cpu)
 }
 
 struct kore_worker *
-kore_worker_data(u_int8_t id)
+kore_worker_data(u_int8_t idx)
 {
-	if (id >= worker_count)
-		fatal("id %u too large for worker count", id);
+	if (idx >= worker_count)
+		fatal("idx %u too large for worker count", idx);
 
-	return (WORKER(id));
+	return (WORKER(idx));
+}
+
+struct kore_worker *
+kore_worker_data_byid(u_int16_t id)
+{
+	struct kore_worker	*kw;
+	u_int16_t		idx;
+
+	for (idx = 0; idx < worker_count; idx++) {
+		kw = WORKER(idx);
+		if (kw->id == id)
+			return (kw);
+	}
+
+	return (NULL);
 }
 
 void

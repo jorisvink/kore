@@ -774,6 +774,7 @@ int		kore_worker_keymgr_response_verify(struct kore_msg *,
 void	kore_worker_entry(struct kore_worker *) __attribute__((noreturn));
 
 struct kore_worker	*kore_worker_data(u_int8_t);
+struct kore_worker	*kore_worker_data_byid(u_int16_t);
 
 void		kore_platform_init(void);
 void		kore_platform_sandbox(void);
