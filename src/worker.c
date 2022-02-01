@@ -61,10 +61,6 @@
 #include "seccomp.h"
 #endif
 
-#if !defined(WAIT_ANY)
-#define WAIT_ANY		(-1)
-#endif
-
 #define WORKER_SOLO_COUNT	3
 
 #define WORKER(id)						\
@@ -92,6 +88,7 @@ static void		worker_accept_avail(struct kore_msg *, const void *);
 static void	worker_entropy_recv(struct kore_msg *, const void *);
 static void	worker_keymgr_response(struct kore_msg *, const void *);
 
+static pid_t				worker_pgrp;
 static int				accept_avail;
 static struct kore_worker		*kore_workers;
 static int				worker_no_lock;
@@ -152,6 +149,9 @@ kore_worker_init(void)
 
 	if (!kore_quiet)
 		kore_log(LOG_INFO, "starting worker processes");
+
+	if ((worker_pgrp = getpgrp()) == -1)
+		fatal("%s: getpgrp(): %s", __func__, errno_s);
 
 	/* Now start all the workers. */
 	id = 1;
@@ -647,19 +647,22 @@ kore_worker_reap(void)
 	pid_t			pid;
 	int			status;
 
-	pid = waitpid(WAIT_ANY, &status, WNOHANG);
+	for (;;) {
+		pid = waitpid(-worker_pgrp, &status, WNOHANG);
 
-	if (pid == -1) {
-		if (errno == ECHILD || errno == EINTR)
-			return;
-		kore_log(LOG_ERR, "%s: waitpid(): %s", __func__, errno_s);
-		return;
+		if (pid == -1) {
+			if (errno != ECHILD && errno != EINTR) {
+				kore_log(LOG_ERR,
+				    "%s: waitpid(): %s", __func__, errno_s);
+			}
+			break;
+		}
+
+		if (pid == 0)
+			break;
+
+		worker_reaper(pid, status);
 	}
-
-	if (pid == 0)
-		return;
-
-	worker_reaper(pid, status);
 }
 
 void
