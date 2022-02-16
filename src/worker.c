@@ -306,7 +306,7 @@ kore_worker_shutdown(void)
 
 			if (kw->pid != 0) {
 				pid = waitpid(kw->pid, &status, 0);
-				if (pid == -1)
+				if (pid == -1 && errno != ECHILD)
 					continue;
 
 #if defined(__linux__)
