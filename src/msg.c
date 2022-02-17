@@ -237,7 +237,7 @@ msg_recv_data(struct netbuf *nb)
 			dst = *(u_int16_t *)c->hdlr_extra;
 
 			if (destination == KORE_MSG_WORKER_ALL) {
-				if (keymgr_active && dst == 0)
+				if (kore_keymgr_active && dst == 0)
 					deliver = 0;
 			} else {
 				if (dst != destination)

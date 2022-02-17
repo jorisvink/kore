@@ -976,7 +976,7 @@ http_header_recv(struct netbuf *nb)
 			req->http_body = kore_buf_alloc(req->content_length);
 		}
 
-		SHA256_Init(&req->hashctx);
+		SHA256Init(&req->hashctx);
 		c->http_timeout = http_body_timeout * 1000;
 
 		if (!http_body_update(req, end_headers, nb->s_off - len)) {
@@ -2349,7 +2349,7 @@ http_body_update(struct http_request *req, const void *data, size_t len)
 	ssize_t			ret;
 	u_int64_t		bytes_left;
 
-	SHA256_Update(&req->hashctx, data, len);
+	SHA256Update(&req->hashctx, data, len);
 
 	if (req->http_body_fd != -1) {
 		ret = write(req->http_body_fd, data, len);
@@ -2382,7 +2382,7 @@ http_body_update(struct http_request *req, const void *data, size_t len)
 			    HTTP_STATUS_INTERNAL_ERROR);
 			return (KORE_RESULT_ERROR);
 		}
-		SHA256_Final(req->http_body_digest, &req->hashctx);
+		SHA256Final(req->http_body_digest, &req->hashctx);
 	} else {
 		bytes_left = req->content_length;
 		net_recv_reset(req->owner,

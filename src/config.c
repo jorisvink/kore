@@ -309,7 +309,6 @@ void
 kore_parse_config(void)
 {
 	FILE		*fp;
-	BIO		*bio;
 	struct passwd	*pwd;
 	char		path[PATH_MAX];
 
@@ -334,16 +333,7 @@ kore_parse_config(void)
 		(void)fclose(fp);
 	}
 
-	if (tls_dhparam == NULL) {
-		if ((bio = BIO_new_file(KORE_DHPARAM_PATH, "r")) == NULL)
-			fatal("failed to open %s", KORE_DHPARAM_PATH);
-
-		tls_dhparam = PEM_read_bio_DHparams(bio, NULL, NULL, NULL);
-		BIO_free(bio);
-
-		if (tls_dhparam == NULL)
-			fatal("PEM_read_bio_DHparams(): %s", ssl_errno_s);
-	}
+	kore_tls_dh_check();
 
 	if (!kore_module_loaded())
 		fatal("no application module was loaded");
@@ -631,8 +621,19 @@ configure_server(char *options)
 static int
 configure_tls(char *yesno)
 {
+	if (!kore_tls_supported()) {
+		current_server->tls = 0;
+
+		if (!strcmp(yesno, "yes")) {
+			kore_log(LOG_ERR, "TLS not supported in this build");
+			return (KORE_RESULT_ERROR);
+		}
+
+		return (KORE_RESULT_OK);
+	}
+
 	if (current_server == NULL) {
-		kore_log(LOG_ERR, "bind keyword not inside a server context");
+		kore_log(LOG_ERR, "tls keyword not inside a server context");
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -805,12 +806,14 @@ configure_file(char *file)
 static int
 configure_tls_version(char *version)
 {
+	int	ver;
+
 	if (!strcmp(version, "1.3")) {
-		tls_version = KORE_TLS_VERSION_1_3;
+		ver = KORE_TLS_VERSION_1_3;
 	} else if (!strcmp(version, "1.2")) {
-		tls_version = KORE_TLS_VERSION_1_2;
+		ver = KORE_TLS_VERSION_1_2;
 	} else if (!strcmp(version, "both")) {
-		tls_version = KORE_TLS_VERSION_BOTH;
+		ver = KORE_TLS_VERSION_BOTH;
 	} else {
 		kore_log(LOG_ERR,
 		    "unknown value for tls_version: %s (use 1.3, 1.2, both)",
@@ -818,45 +821,21 @@ configure_tls_version(char *version)
 		return (KORE_RESULT_ERROR);
 	}
 
+	kore_tls_version_set(ver);
+
 	return (KORE_RESULT_OK);
 }
 
 static int
 configure_tls_cipher(char *cipherlist)
 {
-	if (strcmp(kore_tls_cipher_list, KORE_DEFAULT_CIPHER_LIST)) {
-		kore_log(LOG_ERR, "tls_cipher specified twice");
-		return (KORE_RESULT_ERROR);
-	}
-
-	kore_tls_cipher_list = kore_strdup(cipherlist);
-	return (KORE_RESULT_OK);
+	return (kore_tls_ciphersuite_set(cipherlist));
 }
 
 static int
 configure_tls_dhparam(char *path)
 {
-	BIO		*bio;
-
-	if (tls_dhparam != NULL) {
-		kore_log(LOG_ERR, "tls_dhparam specified twice");
-		return (KORE_RESULT_ERROR);
-	}
-
-	if ((bio = BIO_new_file(path, "r")) == NULL) {
-		kore_log(LOG_ERR, "tls_dhparam file '%s' not accessible", path);
-		return (KORE_RESULT_ERROR);
-	}
-
-	tls_dhparam = PEM_read_bio_DHparams(bio, NULL, NULL, NULL);
-	BIO_free(bio);
-
-	if (tls_dhparam == NULL) {
-		kore_log(LOG_ERR, "PEM_read_bio_DHparams(): %s", ssl_errno_s);
-		return (KORE_RESULT_ERROR);
-	}
-
-	return (KORE_RESULT_OK);
+	return (kore_tls_dh_load(path));
 }
 
 static int
@@ -914,10 +893,10 @@ configure_client_verify(char *options)
 static int
 configure_rand_file(char *path)
 {
-	if (rand_file != NULL)
-		kore_free(rand_file);
+	if (kore_rand_file != NULL)
+		kore_free(kore_rand_file);
 
-	rand_file = kore_strdup(path);
+	kore_rand_file = kore_strdup(path);
 
 	return (KORE_RESULT_OK);
 }

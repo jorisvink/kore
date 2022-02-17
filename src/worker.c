@@ -23,8 +23,6 @@
 #include <sys/resource.h>
 #include <sys/socket.h>
 
-#include <openssl/rand.h>
-
 #include <fcntl.h>
 #include <grp.h>
 #include <pwd.h>
@@ -163,7 +161,7 @@ kore_worker_init(void)
 			return (KORE_RESULT_ERROR);
 	}
 
-	if (keymgr_active) {
+	if (kore_keymgr_active) {
 #if defined(KORE_USE_ACME)
 		/* The ACME process is only started if we need it. */
 		if (acme_domains) {
@@ -491,7 +489,7 @@ kore_worker_entry(struct kore_worker *kw)
 #endif
 	kore_timer_init();
 	kore_fileref_init();
-	kore_domain_keymgr_init();
+	kore_tls_keymgr_init();
 
 	quit = 0;
 	had_lock = 0;
@@ -501,7 +499,7 @@ kore_worker_entry(struct kore_worker *kw)
 
 	last_seed = 0;
 
-	if (keymgr_active) {
+	if (kore_keymgr_active) {
 		kore_msg_register(KORE_MSG_CRL, worker_keymgr_response);
 		kore_msg_register(KORE_MSG_ENTROPY_RESP, worker_entropy_recv);
 		kore_msg_register(KORE_MSG_CERTIFICATE, worker_keymgr_response);
@@ -536,7 +534,8 @@ kore_worker_entry(struct kore_worker *kw)
 	for (;;) {
 		now = kore_time_ms();
 
-		if (keymgr_active && (now - last_seed) > KORE_RESEED_TIME) {
+		if (kore_keymgr_active &&
+		    (now - last_seed) > KORE_RESEED_TIME) {
 			kore_msg_send(KORE_WORKER_KEYMGR,
 			    KORE_MSG_ENTROPY_REQ, NULL, 0);
 			last_seed = now;
@@ -636,6 +635,7 @@ kore_worker_entry(struct kore_worker *kw)
 	kore_platform_event_cleanup();
 	kore_connection_cleanup();
 	kore_domain_cleanup();
+	kore_tls_cleanup();
 	kore_module_cleanup();
 #if !defined(KORE_NO_HTTP)
 	http_cleanup();
@@ -1035,8 +1035,7 @@ worker_entropy_recv(struct kore_msg *msg, const void *data)
 		    msg->length);
 	}
 
-	RAND_poll();
-	RAND_seed(data, msg->length);
+	kore_tls_seed(data, msg->length);
 }
 
 static void
@@ -1052,16 +1051,16 @@ worker_keymgr_response(struct kore_msg *msg, const void *data)
 
 	switch (msg->id) {
 	case KORE_MSG_CERTIFICATE:
-		kore_domain_tlsinit(dom, KORE_PEM_CERT_CHAIN,
+		kore_tls_domain_setup(dom, KORE_PEM_CERT_CHAIN,
 		    req->data, req->data_len);
 		break;
 	case KORE_MSG_CRL:
-		kore_domain_crl_add(dom, req->data, req->data_len);
+		kore_tls_domain_crl(dom, req->data, req->data_len);
 		break;
 #if defined(KORE_USE_ACME)
 	case KORE_ACME_CHALLENGE_SET_CERT:
 		if (dom->ssl_ctx == NULL) {
-			kore_domain_tlsinit(dom, KORE_DER_CERT_DATA,
+			kore_tls_domain_setup(dom, KORE_DER_CERT_DATA,
 			    req->data, req->data_len);
 		}
 

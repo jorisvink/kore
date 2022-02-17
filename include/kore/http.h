@@ -22,7 +22,7 @@
 #include <sys/types.h>
 #include <sys/queue.h>
 
-#include <openssl/sha.h>
+#include "sha2.h"
 
 #if defined(__cplusplus)
 extern "C" {
@@ -281,7 +281,7 @@ struct http_request {
 	const char			*agent;
 	const char			*referer;
 	struct connection		*owner;
-	SHA256_CTX			hashctx;
+	SHA2_CTX			hashctx;
 	u_int8_t			*headers;
 	struct kore_buf			*http_body;
 	int				http_body_fd;

@@ -30,10 +30,6 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-#include <openssl/err.h>
-#include <openssl/dh.h>
-#include <openssl/ssl.h>
-
 #include <errno.h>
 #include <regex.h>
 #include <stdarg.h>
@@ -58,24 +54,6 @@ extern int daemon(int, int);
 #if !defined(KORE_NO_SENDFILE)
 #if defined(__MACH__) || defined(__FreeBSD_version) || defined(__linux__)
 #define KORE_USE_PLATFORM_SENDFILE	1
-#endif
-#endif
-
-/*
- * Figure out what type of OpenSSL API we are dealing with.
- */
-#if defined(LIBRESSL_VERSION_NUMBER)
-#if LIBRESSL_VERSION_NUMBER >= 0x3000000fL
-#define KORE_OPENSSL_NEWER_API		1
-#endif
-
-#if LIBRESSL_VERSION_NUMBER >= 0x3020200fL
-#define TLS1_3_VERSION			0x0304
-#endif
-
-#else
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
-#define KORE_OPENSSL_NEWER_API		1
 #endif
 #endif
 
@@ -236,8 +214,8 @@ struct connection {
 	u_int8_t		state;
 	u_int8_t		proto;
 	struct listener		*owner;
-	X509			*cert;
-	SSL			*ssl;
+	void			*ssl;
+	void			*cert;
 	char			*tls_sni;
 	int			tls_reneg;
 	u_int16_t		flags;
@@ -359,7 +337,7 @@ struct kore_domain {
 	char					*crlfile;
 	char					*certfile;
 	char					*certkey;
-	SSL_CTX					*ssl_ctx;
+	void					*ssl_ctx;
 	int					x509_verify_depth;
 #if !defined(KORE_NO_HTTP)
 	TAILQ_HEAD(, kore_route)		routes;
@@ -610,8 +588,8 @@ struct kore_json_item {
 		u_int64_t			u64;
 	} data;
 
-	int				(*parse)(struct kore_json *,
-					    struct kore_json_item *);
+	int	(*parse)(struct kore_json *,
+		    struct kore_json_item *);
 
 	TAILQ_ENTRY(kore_json_item)	list;
 };
@@ -720,14 +698,11 @@ extern int	skip_runas;
 extern int	kore_foreground;
 
 extern char	*kore_pidfile;
-extern char	*kore_tls_cipher_list;
 
 extern volatile sig_atomic_t	sig_recv;
 
-extern int	tls_version;
-extern DH	*tls_dhparam;
-extern char	*rand_file;
-extern int	keymgr_active;
+extern char	*kore_rand_file;
+extern int	kore_keymgr_active;
 
 extern struct kore_privsep	worker_privsep;
 extern struct kore_privsep	keymgr_privsep;
@@ -753,6 +728,7 @@ extern struct kore_pool		nb_pool;
 extern struct kore_domain	*primary_dom;
 extern struct kore_server_list	kore_servers;
 
+/* kore.c */
 void		kore_signal(int);
 void		kore_shutdown(void);
 void		kore_signal_trap(int);
@@ -760,6 +736,26 @@ void		kore_signal_setup(void);
 void		kore_proctitle(const char *);
 void		kore_default_getopt(int, char **);
 
+void		kore_server_closeall(void);
+void		kore_server_cleanup(void);
+void		kore_server_free(struct kore_server *);
+void		kore_server_finalize(struct kore_server *);
+
+struct kore_server	*kore_server_create(const char *);
+struct kore_server	*kore_server_lookup(const char *);
+
+void		kore_listener_accept(void *, int);
+struct listener	*kore_listener_lookup(const char *);
+void		kore_listener_free(struct listener *);
+struct listener	*kore_listener_create(struct kore_server *);
+int		kore_listener_init(struct listener *, int, const char *);
+
+int		kore_sockopt(int, int, int);
+int		kore_server_bind_unix(struct kore_server *,
+		    const char *, const char *);
+int		kore_server_bind(struct kore_server *,
+		    const char *, const char *, const char *);
+/* worker.c */
 void		kore_worker_reap(void);
 int		kore_worker_init(void);
 void		kore_worker_privsep(void);
@@ -776,6 +772,7 @@ void	kore_worker_entry(struct kore_worker *) __attribute__((noreturn));
 struct kore_worker	*kore_worker_data(u_int8_t);
 struct kore_worker	*kore_worker_data_byid(u_int16_t);
 
+/* platform code (linux.c, bsd.c) */
 void		kore_platform_init(void);
 void		kore_platform_sandbox(void);
 void		kore_platform_event_init(void);
@@ -803,12 +800,43 @@ void		kore_platform_pledge(void);
 void		kore_platform_add_pledge(const char *);
 #endif
 
+/* tls variants. */
+#define KORE_X509_NAME_COMMON_NAME	1
+
+void		kore_tls_init(void);
+void		kore_tls_cleanup(void);
+void		kore_tls_dh_check(void);
+int		kore_tls_supported(void);
+void		kore_tls_version_set(int);
+void		kore_tls_keymgr_init(void);
+int		kore_tls_dh_load(const char *);
+void		kore_tls_seed(const void *, size_t);
+int		kore_tls_ciphersuite_set(const char *);
+int		kore_tls_read(struct connection *, size_t *);
+void		kore_tls_domain_cleanup(struct kore_domain *);
+int		kore_tls_connection_accept(struct connection *);
+void		kore_tls_connection_cleanup(struct connection *);
+int		kore_tls_write(struct connection *, size_t, size_t *);
+void		kore_tls_domain_crl(struct kore_domain *, const void *, size_t);
+void		kore_tls_domain_setup(struct kore_domain *,
+		    int, const void *, size_t);
+
+void		*kore_tls_rsakey_load(const char *);
+void		*kore_tls_rsakey_generate(const char *);
+
+void		*kore_tls_x509_issuer_name(struct connection *);
+void		*kore_tls_x509_subject_name(struct connection *);
+int		kore_tls_x509name_foreach(void *, int, void *,
+		    int (*)(void *, int, int, const char *,
+		    const void *, size_t, int));
+/* accesslog.c */
 void		kore_accesslog_init(u_int16_t);
 void		kore_accesslog_worker_init(void);
 void		kore_accesslog_run(void *, u_int64_t);
 void		kore_accesslog_gather(void *, u_int64_t, int);
 
 #if !defined(KORE_NO_HTTP)
+/* auth.c */
 int		kore_auth_run(struct http_request *, struct kore_auth *);
 int		kore_auth_cookie(struct http_request *, struct kore_auth *);
 int		kore_auth_header(struct http_request *, struct kore_auth *);
@@ -818,6 +846,7 @@ int		kore_auth_new(const char *);
 struct kore_auth	*kore_auth_lookup(const char *);
 #endif
 
+/* timer.c */
 void		kore_timer_init(void);
 void		kore_timer_run(u_int64_t);
 u_int64_t	kore_timer_next_run(u_int64_t);
@@ -825,29 +854,7 @@ void		kore_timer_remove(struct kore_timer *);
 struct kore_timer	*kore_timer_add(void (*cb)(void *, u_int64_t),
 			    u_int64_t, void *, int);
 
-void		kore_server_closeall(void);
-void		kore_server_cleanup(void);
-void		kore_server_free(struct kore_server *);
-void		kore_server_finalize(struct kore_server *);
-
-struct kore_server	*kore_server_create(const char *);
-struct kore_server	*kore_server_lookup(const char *);
-
-void		kore_listener_accept(void *, int);
-struct listener	*kore_listener_lookup(const char *);
-void		kore_listener_free(struct listener *);
-struct listener	*kore_listener_create(struct kore_server *);
-int		kore_listener_init(struct listener *, int, const char *);
-
-int		kore_sockopt(int, int, int);
-int		kore_server_bind_unix(struct kore_server *,
-		    const char *, const char *);
-int		kore_server_bind(struct kore_server *,
-		    const char *, const char *, const char *);
-
-int		kore_tls_sni_cb(SSL *, int *, void *);
-void		kore_tls_info_callback(const SSL *, int, int);
-
+/* connection.c */
 void			kore_connection_init(void);
 void			kore_connection_cleanup(void);
 void			kore_connection_prune(int);
@@ -865,7 +872,6 @@ void			kore_connection_check_idletimer(u_int64_t,
 int			kore_connection_accept(struct listener *,
 			    struct connection **);
 
-u_int64_t	kore_time_ms(void);
 void		kore_log_init(void);
 void		kore_log_file(const char *);
 
@@ -873,9 +879,12 @@ void		kore_log_file(const char *);
 int		kore_configure_setting(const char *, char *);
 #endif
 
-void		*kore_malloc(size_t);
+/* config.c */
 void		kore_parse_config(void);
 void		kore_parse_config_file(FILE *);
+
+/* mem.c */
+void		*kore_malloc(size_t);
 void		*kore_calloc(size_t, size_t);
 void		*kore_realloc(void *, size_t);
 void		kore_free(void *);
@@ -886,12 +895,19 @@ void		*kore_mem_lookup(u_int32_t);
 void		kore_mem_tag(void *, u_int32_t);
 void		*kore_malloc_tagged(size_t, u_int32_t);
 
+/* pool.c */
 void		*kore_pool_get(struct kore_pool *);
 void		kore_pool_put(struct kore_pool *, void *);
 void		kore_pool_init(struct kore_pool *, const char *,
 		    size_t, size_t);
 void		kore_pool_cleanup(struct kore_pool *);
 
+/* utils.c */
+void		kore_debug_internal(char *, int, const char *, ...);
+void		fatal(const char *, ...) __attribute__((noreturn));
+void		fatalx(const char *, ...) __attribute__((noreturn));
+
+u_int64_t	kore_time_ms(void);
 char		*kore_time_to_date(time_t);
 char		*kore_strdup(const char *);
 time_t		kore_date_to_time(const char *);
@@ -909,19 +925,15 @@ int		kore_base64_encode(const void *, size_t, char **);
 int		kore_base64_decode(const char *, u_int8_t **, size_t *);
 int		kore_base64url_encode(const void *, size_t, char **, int);
 int		kore_base64url_decode(const char *, u_int8_t **, size_t *, int);
+int		kore_x509_issuer_name(struct connection *, char **, int);
+int		kore_x509_subject_name(struct connection *, char **, int);
+
 void		*kore_mem_find(void *, size_t, const void *, size_t);
 char		*kore_text_trim(char *, size_t);
 char		*kore_read_line(FILE *, char *, size_t);
 
-EVP_PKEY	*kore_rsakey_load(const char *);
-EVP_PKEY	*kore_rsakey_generate(const char *);
-int		kore_x509_issuer_name(struct connection *, char **, int);
-int		kore_x509_subject_name(struct connection *, char **, int);
-int		kore_x509name_foreach(X509_NAME *, int, void *,
-		    int (*)(void *, int, int, const char *,
-		    const void *, size_t, int));
-
 #if !defined(KORE_NO_HTTP)
+/* websocket.c */
 void		kore_websocket_handshake(struct http_request *,
 		    const char *, const char *, const char *);
 int		kore_websocket_send_clean(struct netbuf *);
@@ -931,6 +943,7 @@ void		kore_websocket_broadcast(struct connection *,
 		    u_int8_t, const void *, size_t, int);
 #endif
 
+/* msg.c */
 void		kore_msg_init(void);
 void		kore_msg_worker_init(void);
 void		kore_msg_parent_init(void);
@@ -942,6 +955,7 @@ int		kore_msg_register(u_int8_t,
 		    void (*cb)(struct kore_msg *, const void *));
 
 #if !defined(KORE_NO_HTTP)
+/* filemap.c */
 void		kore_filemap_init(void);
 void		kore_filemap_resolve_paths(void);
 int		kore_filemap_create(struct kore_domain *, const char *,
@@ -950,13 +964,17 @@ extern char	*kore_filemap_ext;
 extern char	*kore_filemap_index;
 #endif
 
+/* fileref.c */
 void			kore_fileref_init(void);
 struct kore_fileref	*kore_fileref_get(const char *, int);
 struct kore_fileref	*kore_fileref_create(struct kore_server *,
 			    const char *, int, off_t, struct timespec *);
 void			kore_fileref_release(struct kore_fileref *);
 
+/* domain.c */
 struct kore_domain	*kore_domain_new(const char *);
+struct kore_domain	*kore_domain_byid(u_int16_t);
+struct kore_domain	*kore_domain_lookup(struct kore_server *, const char *);
 
 void		kore_domain_init(void);
 void		kore_domain_cleanup(void);
@@ -972,11 +990,9 @@ void		kore_domain_load_crl(void);
 void		kore_domain_keymgr_init(void);
 void		kore_domain_callback(void (*cb)(struct kore_domain *));
 int		kore_domain_attach(struct kore_domain *, struct kore_server *);
-void		kore_domain_tlsinit(struct kore_domain *, int,
-		    const void *, size_t);
-void		kore_domain_crl_add(struct kore_domain *, const void *, size_t);
 
 #if !defined(KORE_NO_HTTP)
+/* route.c */
 void		kore_route_reload(void);
 void		kore_route_free(struct kore_route *);
 void		kore_route_callback(struct kore_route *, const char *);
@@ -987,6 +1003,7 @@ int			kore_route_lookup(struct http_request *,
 			    struct kore_domain *, int, struct kore_route **);
 #endif
 
+/* runtime.c */
 struct kore_runtime_call	*kore_runtime_getcall(const char *);
 struct kore_module		*kore_module_load(const char *,
 				    const char *, int);
@@ -1012,10 +1029,8 @@ void	kore_runtime_wsmessage(struct kore_runtime_call *,
 	    struct connection *, u_int8_t, const void *, size_t);
 #endif
 
-struct kore_domain	*kore_domain_byid(u_int16_t);
-struct kore_domain	*kore_domain_lookup(struct kore_server *, const char *);
-
 #if !defined(KORE_NO_HTTP)
+/* validator.c */
 void		kore_validator_init(void);
 void		kore_validator_reload(void);
 int		kore_validator_add(const char *, u_int8_t, const char *);
@@ -1025,12 +1040,9 @@ int		kore_validator_check(struct http_request *,
 struct kore_validator	*kore_validator_lookup(const char *);
 #endif
 
-void		fatal(const char *, ...) __attribute__((noreturn));
-void		fatalx(const char *, ...) __attribute__((noreturn));
-
 const char	*kore_worker_name(int);
-void		kore_debug_internal(char *, int, const char *, ...);
 
+/* net.c */
 u_int16_t	net_read16(u_int8_t *);
 u_int32_t	net_read32(u_int8_t *);
 u_int64_t	net_read64(u_int8_t *);
@@ -1045,9 +1057,7 @@ int		net_send(struct connection *);
 int		net_send_flush(struct connection *);
 int		net_recv_flush(struct connection *);
 int		net_read(struct connection *, size_t *);
-int		net_read_tls(struct connection *, size_t *);
 int		net_write(struct connection *, size_t, size_t *);
-int		net_write_tls(struct connection *, size_t, size_t *);
 void		net_recv_reset(struct connection *, size_t,
 		    int (*cb)(struct netbuf *));
 void		net_remove_netbuf(struct connection *, struct netbuf *);
@@ -1060,6 +1070,7 @@ void		net_send_stream(struct connection *, void *,
 		    size_t, int (*cb)(struct netbuf *), struct netbuf **);
 void		net_send_fileref(struct connection *, struct kore_fileref *);
 
+/* buf.c */
 void		kore_buf_free(struct kore_buf *);
 struct kore_buf	*kore_buf_alloc(size_t);
 void		kore_buf_init(struct kore_buf *, size_t);
@@ -1074,6 +1085,7 @@ void	kore_buf_appendv(struct kore_buf *, const char *, va_list);
 void	kore_buf_replace_string(struct kore_buf *,
 	    const char *, const void *, size_t);
 
+/* json.c */
 int	kore_json_errno(void);
 int	kore_json_parse(struct kore_json *);
 void	kore_json_cleanup(struct kore_json *);
@@ -1088,6 +1100,7 @@ struct kore_json_item	*kore_json_find(struct kore_json_item *,
 struct kore_json_item	*kore_json_create_item(struct kore_json_item *,
 			    const char *, u_int32_t, ...);
 
+/* keymgr.c */
 void	kore_keymgr_run(void);
 void	kore_keymgr_cleanup(int);
 
