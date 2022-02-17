@@ -102,7 +102,9 @@ static struct sock_filter filter_kore[] = {
 	KORE_SYSCALL_ALLOW(geteuid),
 	KORE_SYSCALL_ALLOW(exit_group),
 	KORE_SYSCALL_ALLOW(nanosleep),
+#if defined(SYS_clock_nanosleep)
 	KORE_SYSCALL_ALLOW(clock_nanosleep),
+#endif
 #if defined(SYS_sigreturn)
 	KORE_SYSCALL_ALLOW(sigreturn),
 #endif
@@ -159,7 +161,9 @@ static struct sock_filter filter_kore[] = {
 
 	/* "Other" without clear category. */
 	KORE_SYSCALL_ALLOW(futex),
+#if defined(SYS_clock_gettime)
 	KORE_SYSCALL_ALLOW(clock_gettime),
+#endif
 
 #if defined(__NR_getrandom)
 	KORE_SYSCALL_ALLOW(getrandom),
