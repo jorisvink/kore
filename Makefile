@@ -36,14 +36,16 @@ CFLAGS+=-Wsign-compare -Iinclude/kore -I$(OBJDIR) -std=c99 -pedantic
 CFLAGS+=-Wtype-limits -fno-common
 CFLAGS+=-DPREFIX='"$(PREFIX)"' -fstack-protector-all
 
+LDFLAGS+=-rdynamic
+
 ifeq ("$(TLS_BACKEND)", "openssl")
 	S_SRC+=src/keymgr_openssl.c
 
 	ifneq ("$(OPENSSL_PATH)", "")
 		CFLAGS+=-I$(OPENSSL_PATH)/include
-		LDFLAGS+=-rdynamic -L$(OPENSSL_PATH)/lib -lssl -l$(KORE_CRYPTO)
+		LDFLAGS+=-L$(OPENSSL_PATH)/lib -lssl -l$(KORE_CRYPTO)
 	else
-		LDFLAGS+=-rdynamic -lssl -l$(KORE_CRYPTO)
+		LDFLAGS+=-lssl -l$(KORE_CRYPTO)
 	endif
 endif
 
