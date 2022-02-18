@@ -1982,7 +1982,7 @@ http_request_new(struct connection *c, const char *host,
 		return (NULL);
 	}
 
-	if (dom->cafile != NULL && c->cert == NULL) {
+	if (dom->cafile != NULL && c->tls_cert == NULL) {
 		http_error_response(c, HTTP_STATUS_FORBIDDEN);
 		return (NULL);
 	}
@@ -2485,7 +2485,7 @@ http_response_normal(struct http_request *req, struct connection *c,
 		}
 	}
 
-	if (c->ssl && http_hsts_enable) {
+	if (c->tls && http_hsts_enable) {
 		kore_buf_appendf(header_buf, "strict-transport-security: ");
 		kore_buf_appendf(header_buf,
 		    "max-age=%" PRIu64 "; includeSubDomains\r\n",

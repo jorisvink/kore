@@ -214,10 +214,11 @@ struct connection {
 	u_int8_t		state;
 	u_int8_t		proto;
 	struct listener		*owner;
-	void			*ssl;
-	void			*cert;
+	void			*tls;
+	void			*tls_cert;
 	char			*tls_sni;
 	int			tls_reneg;
+
 	u_int16_t		flags;
 	void			*hdlr_extra;
 

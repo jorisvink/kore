@@ -111,7 +111,7 @@ kore_accesslog(struct http_request *req)
 	cn = "-";
 	cn_value = NULL;
 
-	if (req->owner->cert != NULL) {
+	if (req->owner->tls_cert != NULL) {
 		if (kore_x509_subject_name(req->owner, &cn_value,
 		    KORE_X509_COMMON_NAME_ONLY))
 			cn = cn_value;

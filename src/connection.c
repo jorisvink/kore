@@ -61,15 +61,17 @@ kore_connection_new(void *owner)
 
 	c = kore_pool_get(&connection_pool);
 
-	c->ssl = NULL;
-	c->cert = NULL;
 	c->flags = 0;
 	c->rnb = NULL;
 	c->snb = NULL;
 	c->owner = owner;
 	c->handle = NULL;
+
+	c->tls = NULL;
+	c->tls_cert = NULL;
 	c->tls_reneg = 0;
 	c->tls_sni = NULL;
+
 	c->disconnect = NULL;
 	c->hdlr_extra = NULL;
 	c->proto = CONN_PROTO_UNKNOWN;

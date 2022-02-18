@@ -209,30 +209,30 @@ kore_tls_domain_setup(struct kore_domain *dom, int type,
 
 	kore_debug("kore_domain_tlsinit(%s)", dom->domain);
 
-	if (dom->ssl_ctx != NULL)
-		SSL_CTX_free(dom->ssl_ctx);
+	if (dom->tls_ctx != NULL)
+		SSL_CTX_free(dom->tls_ctx);
 
 	if ((method = TLS_method()) == NULL)
 		fatalx("TLS_method(): %s", ssl_errno_s);
 
-	if ((dom->ssl_ctx = SSL_CTX_new(method)) == NULL)
+	if ((dom->tls_ctx = SSL_CTX_new(method)) == NULL)
 		fatalx("SSL_ctx_new(): %s", ssl_errno_s);
 
-	if (!SSL_CTX_set_min_proto_version(dom->ssl_ctx, TLS1_2_VERSION))
+	if (!SSL_CTX_set_min_proto_version(dom->tls_ctx, TLS1_2_VERSION))
 		fatalx("SSL_CTX_set_min_proto_version: %s", ssl_errno_s);
 
 #if defined(TLS1_3_VERSION)
-	if (!SSL_CTX_set_max_proto_version(dom->ssl_ctx, TLS1_3_VERSION))
+	if (!SSL_CTX_set_max_proto_version(dom->tls_ctx, TLS1_3_VERSION))
 		fatalx("SSL_CTX_set_max_proto_version: %s", ssl_errno_s);
 #else
-	if (!SSL_CTX_set_max_proto_version(dom->ssl_ctx, TLS1_2_VERSION))
+	if (!SSL_CTX_set_max_proto_version(dom->tls_ctx, TLS1_2_VERSION))
 		fatalx("SSL_CTX_set_min_proto_version: %s", ssl_errno_s);
 #endif
 
 	switch (tls_version) {
 	case KORE_TLS_VERSION_1_3:
 #if defined(TLS1_3_VERSION)
-		if (!SSL_CTX_set_min_proto_version(dom->ssl_ctx,
+		if (!SSL_CTX_set_min_proto_version(dom->tls_ctx,
 		    TLS1_3_VERSION)) {
 			fatalx("SSL_CTX_set_min_proto_version: %s",
 			    ssl_errno_s);
@@ -240,7 +240,7 @@ kore_tls_domain_setup(struct kore_domain *dom, int type,
 		break;
 #endif
 	case KORE_TLS_VERSION_1_2:
-		if (!SSL_CTX_set_max_proto_version(dom->ssl_ctx,
+		if (!SSL_CTX_set_max_proto_version(dom->tls_ctx,
 		    TLS1_2_VERSION)) {
 			fatalx("SSL_CTX_set_min_proto_version: %s",
 			    ssl_errno_s);
@@ -255,14 +255,14 @@ kore_tls_domain_setup(struct kore_domain *dom, int type,
 
 	switch (type) {
 	case KORE_PEM_CERT_CHAIN:
-		x509 = tls_domain_load_certificate_chain(dom->ssl_ctx,
+		x509 = tls_domain_load_certificate_chain(dom->tls_ctx,
 		    data, datalen);
 		break;
 	case KORE_DER_CERT_DATA:
 		ptr = data;
 		if ((x509 = d2i_X509(NULL, &ptr, datalen)) == NULL)
 			fatalx("d2i_X509: %s", ssl_errno_s);
-		if (SSL_CTX_use_certificate(dom->ssl_ctx, x509) == 0)
+		if (SSL_CTX_use_certificate(dom->tls_ctx, x509) == 0)
 			fatalx("SSL_CTX_use_certificate: %s", ssl_errno_s);
 		break;
 	default:
@@ -272,8 +272,8 @@ kore_tls_domain_setup(struct kore_domain *dom, int type,
 	if (x509 == NULL) {
 		kore_log(LOG_NOTICE, "failed to load certificate for '%s': %s",
 		    dom->domain, ssl_errno_s);
-		SSL_CTX_free(dom->ssl_ctx);
-		dom->ssl_ctx = NULL;
+		SSL_CTX_free(dom->tls_ctx);
+		dom->tls_ctx = NULL;
 		return;
 	}
 
@@ -297,10 +297,10 @@ kore_tls_domain_setup(struct kore_domain *dom, int type,
 		fatalx("unknown public key in certificate");
 	}
 
-	if (!SSL_CTX_use_PrivateKey(dom->ssl_ctx, pkey))
+	if (!SSL_CTX_use_PrivateKey(dom->tls_ctx, pkey))
 		fatalx("SSL_CTX_use_PrivateKey(): %s", ssl_errno_s);
 
-	if (!SSL_CTX_check_private_key(dom->ssl_ctx)) {
+	if (!SSL_CTX_check_private_key(dom->tls_ctx)) {
 		fatalx("Public/Private key for %s do not match (%s)",
 		    dom->domain, ssl_errno_s);
 	}
@@ -308,14 +308,14 @@ kore_tls_domain_setup(struct kore_domain *dom, int type,
 	if (dh_params == NULL)
 		fatal("no DH parameters specified");
 
-	SSL_CTX_set_tmp_dh(dom->ssl_ctx, dh_params);
-	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_SINGLE_DH_USE);
+	SSL_CTX_set_tmp_dh(dom->tls_ctx, dh_params);
+	SSL_CTX_set_options(dom->tls_ctx, SSL_OP_SINGLE_DH_USE);
 
-	if (!SSL_CTX_set_ecdh_auto(dom->ssl_ctx, 1))
+	if (!SSL_CTX_set_ecdh_auto(dom->tls_ctx, 1))
 		fatalx("SSL_CTX_set_ecdh_auto: %s", ssl_errno_s);
 
-	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_SINGLE_ECDH_USE);
-	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_COMPRESSION);
+	SSL_CTX_set_options(dom->tls_ctx, SSL_OP_SINGLE_ECDH_USE);
+	SSL_CTX_set_options(dom->tls_ctx, SSL_OP_NO_COMPRESSION);
 
 	if (dom->cafile != NULL) {
 		if ((certs = SSL_load_client_CA_file(dom->cafile)) == NULL) {
@@ -323,32 +323,32 @@ kore_tls_domain_setup(struct kore_domain *dom, int type,
 			    dom->cafile, ssl_errno_s);
 		}
 
-		SSL_CTX_load_verify_locations(dom->ssl_ctx, dom->cafile, NULL);
-		SSL_CTX_set_verify_depth(dom->ssl_ctx, dom->x509_verify_depth);
-		SSL_CTX_set_client_CA_list(dom->ssl_ctx, certs);
-		SSL_CTX_set_verify(dom->ssl_ctx, SSL_VERIFY_PEER |
+		SSL_CTX_load_verify_locations(dom->tls_ctx, dom->cafile, NULL);
+		SSL_CTX_set_verify_depth(dom->tls_ctx, dom->x509_verify_depth);
+		SSL_CTX_set_client_CA_list(dom->tls_ctx, certs);
+		SSL_CTX_set_verify(dom->tls_ctx, SSL_VERIFY_PEER |
 		    SSL_VERIFY_FAIL_IF_NO_PEER_CERT, tls_domain_x509_verify);
 	}
 
-	SSL_CTX_set_session_id_context(dom->ssl_ctx,
+	SSL_CTX_set_session_id_context(dom->tls_ctx,
 	    (unsigned char *)TLS_SESSION_ID, strlen(TLS_SESSION_ID));
-	SSL_CTX_set_mode(dom->ssl_ctx, SSL_MODE_ENABLE_PARTIAL_WRITE);
+	SSL_CTX_set_mode(dom->tls_ctx, SSL_MODE_ENABLE_PARTIAL_WRITE);
 
 	if (tls_version == KORE_TLS_VERSION_BOTH) {
-		SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_SSLv2);
-		SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_SSLv3);
-		SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_TLSv1);
-		SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_NO_TLSv1_1);
+		SSL_CTX_set_options(dom->tls_ctx, SSL_OP_NO_SSLv2);
+		SSL_CTX_set_options(dom->tls_ctx, SSL_OP_NO_SSLv3);
+		SSL_CTX_set_options(dom->tls_ctx, SSL_OP_NO_TLSv1);
+		SSL_CTX_set_options(dom->tls_ctx, SSL_OP_NO_TLSv1_1);
 	}
 
-	SSL_CTX_set_options(dom->ssl_ctx, SSL_OP_CIPHER_SERVER_PREFERENCE);
-	SSL_CTX_set_cipher_list(dom->ssl_ctx, tls_cipher_list);
+	SSL_CTX_set_options(dom->tls_ctx, SSL_OP_CIPHER_SERVER_PREFERENCE);
+	SSL_CTX_set_cipher_list(dom->tls_ctx, tls_cipher_list);
 
-	SSL_CTX_set_info_callback(dom->ssl_ctx, tls_info_callback);
-	SSL_CTX_set_tlsext_servername_callback(dom->ssl_ctx, tls_sni_cb);
+	SSL_CTX_set_info_callback(dom->tls_ctx, tls_info_callback);
+	SSL_CTX_set_tlsext_servername_callback(dom->tls_ctx, tls_sni_cb);
 
 #if defined(KORE_USE_ACME)
-	SSL_CTX_set_alpn_select_cb(dom->ssl_ctx, tls_acme_alpn, dom);
+	SSL_CTX_set_alpn_select_cb(dom->tls_ctx, tls_acme_alpn, dom);
 #endif
 
 	X509_free(x509);
@@ -365,7 +365,7 @@ kore_tls_domain_crl(struct kore_domain *dom, const void *pem, size_t pemlen)
 	ERR_clear_error();
 	in = BIO_new_mem_buf(pem, pemlen);
 
-	if ((store = SSL_CTX_get_cert_store(dom->ssl_ctx)) == NULL) {
+	if ((store = SSL_CTX_get_cert_store(dom->tls_ctx)) == NULL) {
 		BIO_free(in);
 		kore_log(LOG_ERR, "SSL_CTX_get_cert_store(): %s", ssl_errno_s);
 		return;
@@ -408,8 +408,8 @@ kore_tls_domain_crl(struct kore_domain *dom, const void *pem, size_t pemlen)
 void
 kore_tls_domain_cleanup(struct kore_domain *dom)
 {
-	if (dom->ssl_ctx != NULL)
-		SSL_CTX_free(dom->ssl_ctx);
+	if (dom->tls_ctx != NULL)
+		SSL_CTX_free(dom->tls_ctx);
 }
 
 int
@@ -423,22 +423,22 @@ kore_tls_connection_accept(struct connection *c)
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (primary_dom->ssl_ctx == NULL) {
+	if (primary_dom->tls_ctx == NULL) {
 		kore_log(LOG_NOTICE,
 		    "TLS configuration for %s not yet complete",
 		    primary_dom->domain);
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (c->ssl == NULL) {
-		c->ssl = SSL_new(primary_dom->ssl_ctx);
-		if (c->ssl == NULL)
+	if (c->tls == NULL) {
+		c->tls = SSL_new(primary_dom->tls_ctx);
+		if (c->tls == NULL)
 			return (KORE_RESULT_ERROR);
 
-		SSL_set_fd(c->ssl, c->fd);
-		SSL_set_accept_state(c->ssl);
+		SSL_set_fd(c->tls, c->fd);
+		SSL_set_accept_state(c->tls);
 
-		if (!SSL_set_ex_data(c->ssl, 0, c))
+		if (!SSL_set_ex_data(c->tls, 0, c))
 			return (KORE_RESULT_ERROR);
 
 		if (primary_dom->cafile != NULL)
@@ -446,9 +446,9 @@ kore_tls_connection_accept(struct connection *c)
 	}
 
 	ERR_clear_error();
-	r = SSL_accept(c->ssl);
+	r = SSL_accept(c->tls);
 	if (r <= 0) {
-		r = SSL_get_error(c->ssl, r);
+		r = SSL_get_error(c->tls, r);
 		switch (r) {
 		case SSL_ERROR_WANT_READ:
 		case SSL_ERROR_WANT_WRITE:
@@ -471,14 +471,14 @@ kore_tls_connection_accept(struct connection *c)
 	}
 #endif
 
-	if (SSL_get_verify_mode(c->ssl) & SSL_VERIFY_PEER) {
-		c->cert = SSL_get_peer_certificate(c->ssl);
-		if (c->cert == NULL) {
+	if (SSL_get_verify_mode(c->tls) & SSL_VERIFY_PEER) {
+		c->tls_cert = SSL_get_peer_certificate(c->tls);
+		if (c->tls_cert == NULL) {
 			kore_log(LOG_NOTICE, "no peer certificate");
 			return (KORE_RESULT_ERROR);
 		}
 	} else {
-		c->cert = NULL;
+		c->tls_cert = NULL;
 	}
 
 	return (KORE_RESULT_OK);
@@ -490,14 +490,14 @@ kore_tls_read(struct connection *c, size_t *bytes)
 	int		r;
 
 	ERR_clear_error();
-	r = SSL_read(c->ssl, (c->rnb->buf + c->rnb->s_off),
+	r = SSL_read(c->tls, (c->rnb->buf + c->rnb->s_off),
 	    (c->rnb->b_len - c->rnb->s_off));
 
 	if (c->tls_reneg > 1)
 		return (KORE_RESULT_ERROR);
 
 	if (r <= 0) {
-		r = SSL_get_error(c->ssl, r);
+		r = SSL_get_error(c->tls, r);
 		switch (r) {
 		case SSL_ERROR_WANT_READ:
 		case SSL_ERROR_WANT_WRITE:
@@ -542,12 +542,12 @@ kore_tls_write(struct connection *c, size_t len, size_t *written)
 		return (KORE_RESULT_ERROR);
 
 	ERR_clear_error();
-	r = SSL_write(c->ssl, (c->snb->buf + c->snb->s_off), len);
+	r = SSL_write(c->tls, (c->snb->buf + c->snb->s_off), len);
 	if (c->tls_reneg > 1)
 		return (KORE_RESULT_ERROR);
 
 	if (r <= 0) {
-		r = SSL_get_error(c->ssl, r);
+		r = SSL_get_error(c->tls, r);
 		switch (r) {
 		case SSL_ERROR_WANT_READ:
 		case SSL_ERROR_WANT_WRITE:
@@ -585,13 +585,13 @@ kore_tls_write(struct connection *c, size_t len, size_t *written)
 void
 kore_tls_connection_cleanup(struct connection *c)
 {
-	if (c->ssl != NULL) {
-		SSL_shutdown(c->ssl);
-		SSL_free(c->ssl);
+	if (c->tls != NULL) {
+		SSL_shutdown(c->tls);
+		SSL_free(c->tls);
 	}
 
-	if (c->cert != NULL)
-		X509_free(c->cert);
+	if (c->tls_cert != NULL)
+		X509_free(c->tls_cert);
 
 	if (c->tls_sni != NULL)
 		kore_free(c->tls_sni);
@@ -656,7 +656,7 @@ kore_tls_x509_subject_name(struct connection *c)
 {
 	X509_NAME	*name;
 
-	if ((name = X509_get_subject_name(c->cert)) == NULL)
+	if ((name = X509_get_subject_name(c->tls_cert)) == NULL)
 		kore_log(LOG_NOTICE, "X509_get_subject_name: %s", ssl_errno_s);
 
 	return (name);
@@ -667,7 +667,7 @@ kore_tls_x509_issuer_name(struct connection *c)
 {
 	X509_NAME	*name;
 
-	if ((name = X509_get_issuer_name(c->cert)) == NULL)
+	if ((name = X509_get_issuer_name(c->tls_cert)) == NULL)
 		kore_log(LOG_NOTICE, "X509_get_issuer_name: %s", ssl_errno_s);
 
 	return (name);
@@ -740,7 +740,7 @@ kore_tls_x509_data(struct connection *c, u_int8_t **ptr, size_t *olen)
 	int		len;
 	u_int8_t	*der, *pp;
 
-	if ((len = i2d_X509(c->cert, NULL)) <= 0) {
+	if ((len = i2d_X509(c->tls_cert, NULL)) <= 0) {
 		kore_log(LOG_NOTICE, "i2d_X509: %s", ssl_errno_s);
 		return (KORE_RESULT_ERROR);
 	}
@@ -748,7 +748,7 @@ kore_tls_x509_data(struct connection *c, u_int8_t **ptr, size_t *olen)
 	der = kore_calloc(1, len);
 	pp = der;
 
-	if (i2d_X509(c->cert, &pp) <= 0) {
+	if (i2d_X509(c->tls_cert, &pp) <= 0) {
 		kore_free(der);
 		kore_log(LOG_NOTICE, "i2d_X509: %s", ssl_errno_s);
 		return (KORE_RESULT_ERROR);
@@ -801,7 +801,7 @@ tls_sni_cb(SSL *ssl, int *ad, void *arg)
 
 	if (sname != NULL &&
 	    (dom = kore_domain_lookup(c->owner->server, sname)) != NULL) {
-		if (dom->ssl_ctx == NULL) {
+		if (dom->tls_ctx == NULL) {
 			kore_log(LOG_NOTICE,
 			    "TLS configuration for %s not complete",
 			    dom->domain);
@@ -809,7 +809,7 @@ tls_sni_cb(SSL *ssl, int *ad, void *arg)
 		}
 
 		kore_debug("kore_ssl_sni_cb(): Using %s CTX", sname);
-		SSL_set_SSL_CTX(ssl, dom->ssl_ctx);
+		SSL_set_SSL_CTX(ssl, dom->tls_ctx);
 
 		if (dom->cafile != NULL) {
 			SSL_set_verify(ssl, SSL_VERIFY_PEER |

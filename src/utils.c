@@ -497,7 +497,7 @@ kore_x509_issuer_name(struct connection *c, char **out, int flags)
 	struct kore_buf		buf;
 	void			*name;
 
-	if ((name = kore_tls_x509_issuer_name(c->cert)) == NULL)
+	if ((name = kore_tls_x509_issuer_name(c)) == NULL)
 		return (KORE_RESULT_ERROR);
 
 	kore_buf_init(&buf, 1024);

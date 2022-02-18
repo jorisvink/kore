@@ -2916,7 +2916,7 @@ pyconnection_get_peer_x509(struct pyconnection *pyc, void *closure)
 	u_int8_t	*der;
 	PyObject	*bytes;
 
-	if (pyc->c->cert == NULL) {
+	if (pyc->c->tls_cert == NULL) {
 		Py_RETURN_NONE;
 	}
 
@@ -2942,7 +2942,7 @@ pyconnection_get_peer_x509dict(struct pyconnection *pyc, void *closure)
 	issuer = NULL;
 	subject = NULL;
 
-	if (pyc->c->cert == NULL) {
+	if (pyc->c->tls_cert == NULL) {
 		Py_RETURN_NONE;
 	}
 
@@ -2963,7 +2963,7 @@ pyconnection_get_peer_x509dict(struct pyconnection *pyc, void *closure)
 
 	PyErr_Clear();
 
-	if ((name = kore_tls_x509_subject_name(pyc->c->cert)) == NULL) {
+	if ((name = kore_tls_x509_subject_name(pyc->c)) == NULL) {
 		PyErr_Format(PyExc_RuntimeError,
 		    "failed to obtain x509 subjectName");
 		goto out;
@@ -2977,7 +2977,7 @@ pyconnection_get_peer_x509dict(struct pyconnection *pyc, void *closure)
 		goto out;
 	}
 
-	if ((name = kore_tls_x509_issuer_name(pyc->c->cert)) == NULL) {
+	if ((name = kore_tls_x509_issuer_name(pyc->c)) == NULL) {
 		PyErr_Format(PyExc_RuntimeError,
 		    "failed to obtain x509 issuerName");
 		goto out;

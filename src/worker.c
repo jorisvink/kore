@@ -1059,7 +1059,7 @@ worker_keymgr_response(struct kore_msg *msg, const void *data)
 		break;
 #if defined(KORE_USE_ACME)
 	case KORE_ACME_CHALLENGE_SET_CERT:
-		if (dom->ssl_ctx == NULL) {
+		if (dom->tls_ctx == NULL) {
 			kore_tls_domain_setup(dom, KORE_DER_CERT_DATA,
 			    req->data, req->data_len);
 		}
