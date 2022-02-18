@@ -47,9 +47,6 @@
 
 #include "sha2.h"
 
-/* no-op out, similar to DEF_WEAK but only needed here */
-#define MAKE_CLONE(x, y)	void __ssh_compat_make_clone_##x_##y(void)
-
 /*
  * UNROLLED TRANSFORM LOOP NOTE:
  * You can define SHA2_UNROLL_TRANSFORM to use the unrolled transform
@@ -842,10 +839,6 @@ SHA384Init(SHA2_CTX *context)
 	memset(context->buffer, 0, sizeof(context->buffer));
 	context->bitcount[0] = context->bitcount[1] = 0;
 }
-
-MAKE_CLONE(SHA384Transform, SHA512Transform);
-MAKE_CLONE(SHA384Update, SHA512Update);
-MAKE_CLONE(SHA384Pad, SHA512Pad);
 
 /* Equivalent of MAKE_CLONE (which is a no-op) for SHA384 funcs */
 void
