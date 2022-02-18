@@ -909,6 +909,7 @@ void		kore_mem_init(void);
 void		kore_mem_cleanup(void);
 void		kore_mem_untag(void *);
 void		*kore_mem_lookup(u_int32_t);
+void		kore_mem_zero(void *, size_t);
 void		kore_mem_tag(void *, u_int32_t);
 void		*kore_malloc_tagged(size_t, u_int32_t);
 

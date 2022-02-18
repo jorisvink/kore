@@ -17,6 +17,7 @@
 #include <sys/types.h>
 #include <string.h>
 
+#include "kore.h"
 #include "sha1.h"
 
 #define rol(value, bits) (((value) << (bits)) | ((value) >> (32 - (bits))))
@@ -167,5 +168,5 @@ SHA1Final(u_int8_t digest[SHA1_DIGEST_LENGTH], SHA1_CTX *context)
 		   ((context->state[i>>2] >> ((3-(i & 3)) * 8) ) & 255);
 	}
 
-	//explicit_bzero(context, sizeof(*context));
+	kore_mem_zero(context, sizeof(*context));
 }

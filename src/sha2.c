@@ -45,6 +45,7 @@
 #include <endian.h>
 #endif
 
+#include "kore.h"
 #include "sha2.h"
 
 /*
@@ -551,7 +552,7 @@ SHA256Final(u_int8_t digest[SHA256_DIGEST_LENGTH], SHA2_CTX *context)
 #else
 	memcpy(digest, context->state.st32, SHA256_DIGEST_LENGTH);
 #endif
-	//explicit_bzero(context, sizeof(*context));
+	kore_mem_zero(context, sizeof(*context));
 }
 
 
@@ -827,7 +828,7 @@ SHA512Final(u_int8_t digest[SHA512_DIGEST_LENGTH], SHA2_CTX *context)
 #else
 	memcpy(digest, context->state.st64, SHA512_DIGEST_LENGTH);
 #endif
-	//explicit_bzero(context, sizeof(*context));
+	kore_mem_zero(context, sizeof(*context));
 }
 
 /*** SHA-384: *********************************************************/
@@ -874,5 +875,5 @@ SHA384Final(u_int8_t digest[SHA384_DIGEST_LENGTH], SHA2_CTX *context)
 	memcpy(digest, context->state.st64, SHA384_DIGEST_LENGTH);
 #endif
 	/* Zero out state data */
-	//explicit_bzero(context, sizeof(*context));
+	kore_mem_zero(context, sizeof(*context));
 }
