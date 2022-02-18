@@ -824,6 +824,7 @@ void		kore_tls_domain_setup(struct kore_domain *,
 void		*kore_tls_rsakey_load(const char *);
 void		*kore_tls_rsakey_generate(const char *);
 
+int		kore_tls_x509_data(struct connection *, u_int8_t **, size_t *);
 void		*kore_tls_x509_issuer_name(struct connection *);
 void		*kore_tls_x509_subject_name(struct connection *);
 int		kore_tls_x509name_foreach(void *, int, void *,

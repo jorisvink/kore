@@ -29,6 +29,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdarg.h>
+#include <stddef.h>
 
 #include "kore.h"
 #include "http.h"
@@ -2904,25 +2905,17 @@ pyconnection_get_addr(struct pyconnection *pyc, void *closure)
 static PyObject *
 pyconnection_get_peer_x509(struct pyconnection *pyc, void *closure)
 {
-	int			len;
-	PyObject		*bytes;
-	u_int8_t		*der, *pp;
+	size_t		len;
+	u_int8_t	*der;
+	PyObject	*bytes;
 
 	if (pyc->c->cert == NULL) {
 		Py_RETURN_NONE;
 	}
 
-	if ((len = i2d_X509(pyc->c->cert, NULL)) <= 0) {
-		PyErr_SetString(PyExc_RuntimeError, "i2d_X509 failed");
-		return (NULL);
-	}
-
-	der = kore_calloc(1, len);
-	pp = der;
-
-	if (i2d_X509(pyc->c->cert, &pp) <= 0) {
-		kore_free(der);
-		PyErr_SetString(PyExc_RuntimeError, "i2d_X509 failed");
+	if (!kore_tls_x509_data(pyc->c, &der, &len)) {
+		PyErr_SetString(PyExc_RuntimeError,
+		    "failed to obtain certificate data");
 		return (NULL);
 	}
 
@@ -2935,7 +2928,7 @@ pyconnection_get_peer_x509(struct pyconnection *pyc, void *closure)
 static PyObject *
 pyconnection_get_peer_x509dict(struct pyconnection *pyc, void *closure)
 {
-	X509_NAME	*name;
+	void		*name;
 	PyObject	*dict, *issuer, *subject, *ret;
 
 	ret = NULL;
@@ -2963,13 +2956,13 @@ pyconnection_get_peer_x509dict(struct pyconnection *pyc, void *closure)
 
 	PyErr_Clear();
 
-	if ((name = X509_get_issuer_name(pyc->c->cert)) == NULL) {
+	if ((name = kore_tls_x509_subject_name(pyc->c->cert)) == NULL) {
 		PyErr_Format(PyExc_RuntimeError,
-		    "X509_get_issuer_name: %s", ssl_errno_s);
+		    "failed to obtain x509 subjectName");
 		goto out;
 	}
 
-	if (!kore_x509name_foreach(name, 0, issuer, pyconnection_x509_cb)) {
+	if (!kore_tls_x509name_foreach(name, 0, issuer, pyconnection_x509_cb)) {
 		if (PyErr_Occurred() == NULL) {
 			PyErr_Format(PyExc_RuntimeError,
 			    "failed to add issuer name to dictionary");
@@ -2977,13 +2970,14 @@ pyconnection_get_peer_x509dict(struct pyconnection *pyc, void *closure)
 		goto out;
 	}
 
-	if ((name = X509_get_subject_name(pyc->c->cert)) == NULL) {
+	if ((name = kore_tls_x509_issuer_name(pyc->c->cert)) == NULL) {
 		PyErr_Format(PyExc_RuntimeError,
-		    "X509_get_subject_name: %s", ssl_errno_s);
+		    "failed to obtain x509 issuerName");
 		goto out;
 	}
 
-	if (!kore_x509name_foreach(name, 0, subject, pyconnection_x509_cb)) {
+	if (!kore_tls_x509name_foreach(name, 0, subject,
+	    pyconnection_x509_cb)) {
 		if (PyErr_Occurred() == NULL) {
 			PyErr_Format(PyExc_RuntimeError,
 			    "failed to add subject name to dictionary");

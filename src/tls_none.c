@@ -159,3 +159,9 @@ kore_tls_x509name_foreach(void *name, int flags, void *udata,
 {
 	fatal("%s: not supported", __func__);
 }
+
+int
+kore_tls_x509_data(struct connection *c, u_int8_t **ptr, size_t *olen)
+{
+	fatal("%s: not supported", __func__);
+}

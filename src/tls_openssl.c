@@ -654,13 +654,23 @@ kore_tls_rsakey_generate(const char *path)
 void *
 kore_tls_x509_subject_name(struct connection *c)
 {
-	return (X509_get_subject_name(c->cert));
+	X509_NAME	*name;
+
+	if ((name = X509_get_subject_name(c->cert)) == NULL)
+		kore_log(LOG_NOTICE, "X509_get_subject_name: %s", ssl_errno_s);
+
+	return (name);
 }
 
 void *
 kore_tls_x509_issuer_name(struct connection *c)
 {
-	return (X509_get_issuer_name(c->cert));
+	X509_NAME	*name;
+
+	if ((name = X509_get_issuer_name(c->cert)) == NULL)
+		kore_log(LOG_NOTICE, "X509_get_issuer_name: %s", ssl_errno_s);
+
+	return (name);
 }
 
 int
@@ -722,6 +732,32 @@ cleanup:
 		OPENSSL_free(data);
 
 	return (ret);
+}
+
+int
+kore_tls_x509_data(struct connection *c, u_int8_t **ptr, size_t *olen)
+{
+	int		len;
+	u_int8_t	*der, *pp;
+
+	if ((len = i2d_X509(c->cert, NULL)) <= 0) {
+		kore_log(LOG_NOTICE, "i2d_X509: %s", ssl_errno_s);
+		return (KORE_RESULT_ERROR);
+	}
+
+	der = kore_calloc(1, len);
+	pp = der;
+
+	if (i2d_X509(c->cert, &pp) <= 0) {
+		kore_free(der);
+		kore_log(LOG_NOTICE, "i2d_X509: %s", ssl_errno_s);
+		return (KORE_RESULT_ERROR);
+	}
+
+	*ptr = der;
+	*olen = len;
+
+	return (KORE_RESULT_OK);
 }
 
 void
