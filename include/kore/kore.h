@@ -68,11 +68,13 @@ typedef X509		KORE_X509;
 typedef SSL		KORE_TLS;
 typedef SSL_CTX		KORE_TLS_CTX;
 typedef X509_NAME	KORE_X509_NAMES;
+typedef EVP_PKEY	KORE_PRIVATE_KEY;
 #else
 typedef void		KORE_X509;
 typedef void		KORE_TLS;
 typedef void		KORE_TLS_CTX;
 typedef void		KORE_X509_NAMES;
+typedef void		KORE_PRIVATE_KEY;
 #endif
 
 #define KORE_RSAKEY_BITS	4096
@@ -835,8 +837,8 @@ void		kore_tls_domain_crl(struct kore_domain *, const void *, size_t);
 void		kore_tls_domain_setup(struct kore_domain *,
 		    int, const void *, size_t);
 
-void		*kore_tls_rsakey_load(const char *);
-void		*kore_tls_rsakey_generate(const char *);
+KORE_PRIVATE_KEY	*kore_tls_rsakey_load(const char *);
+KORE_PRIVATE_KEY	*kore_tls_rsakey_generate(const char *);
 
 int		kore_tls_x509_data(struct connection *, u_int8_t **, size_t *);
 KORE_X509_NAMES	*kore_tls_x509_issuer_name(struct connection *);

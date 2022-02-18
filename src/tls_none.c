@@ -129,32 +129,32 @@ kore_tls_write(struct connection *c, size_t len, size_t *written)
 	fatal("%s: not supported", __func__);
 }
 
-void *
+KORE_PRIVATE_KEY *
 kore_tls_rsakey_load(const char *path)
 {
 	fatal("%s: not supported", __func__);
 }
 
-void *
+KORE_PRIVATE_KEY *
 kore_tls_rsakey_generate(const char *path)
 {
 	fatal("%s: not supported", __func__);
 }
 
-void *
+KORE_X509_NAMES *
 kore_tls_x509_subject_name(struct connection *c)
 {
 	fatal("%s: not supported", __func__);
 }
 
-void *
+KORE_X509_NAMES *
 kore_tls_x509_issuer_name(struct connection *c)
 {
 	fatal("%s: not supported", __func__);
 }
 
 int
-kore_tls_x509name_foreach(void *name, int flags, void *udata,
+kore_tls_x509name_foreach(KORE_X509_NAMES *name, int flags, void *udata,
     int (*cb)(void *, int, int, const char *, const void *, size_t, int))
 {
 	fatal("%s: not supported", __func__);

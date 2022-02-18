@@ -598,11 +598,11 @@ kore_tls_connection_cleanup(struct connection *c)
 }
 
 
-void *
+KORE_PRIVATE_KEY *
 kore_tls_rsakey_load(const char *path)
 {
-	FILE		*fp;
-	EVP_PKEY	*pkey;
+	FILE			*fp;
+	KORE_PRIVATE_KEY	*pkey;
 
 	if (access(path, R_OK) == -1)
 		return (NULL);
@@ -618,12 +618,12 @@ kore_tls_rsakey_load(const char *path)
 	return (pkey);
 }
 
-void *
+KORE_PRIVATE_KEY *
 kore_tls_rsakey_generate(const char *path)
 {
 	FILE			*fp;
 	EVP_PKEY_CTX		*ctx;
-	EVP_PKEY		*pkey;
+	KORE_PRIVATE_KEY	*pkey;
 
 	if ((ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, NULL)) == NULL)
 		fatalx("EVP_PKEY_CTX_new_id: %s", ssl_errno_s);

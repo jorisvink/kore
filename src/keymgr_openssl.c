@@ -163,7 +163,7 @@ static struct sock_filter filter_keymgr[] = {
 #endif
 
 struct key {
-	EVP_PKEY		*pkey;
+	KORE_PRIVATE_KEY	*pkey;
 	struct kore_domain	*dom;
 	TAILQ_ENTRY(key)	list;
 };
