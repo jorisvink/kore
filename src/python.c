@@ -1895,6 +1895,13 @@ python_kore_server(PyObject *self, PyObject *args, PyObject *kwargs)
 	srv = kore_server_create(name);
 	python_bool_from_dict(kwargs, "tls", &srv->tls);
 
+	if (srv->tls && !kore_tls_supported()) {
+		kore_server_free(srv);
+		PyErr_SetString(PyExc_RuntimeError,
+		    "TLS not supported in this Kore build");
+		return (NULL);
+	}
+
 	if (ip != NULL) {
 		if ((port = python_string_from_dict(kwargs, "port")) == NULL) {
 			kore_server_free(srv);
