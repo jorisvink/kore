@@ -651,7 +651,7 @@ kore_tls_rsakey_generate(const char *path)
 	return (pkey);
 }
 
-void *
+KORE_X509_NAMES *
 kore_tls_x509_subject_name(struct connection *c)
 {
 	X509_NAME	*name;
@@ -662,7 +662,7 @@ kore_tls_x509_subject_name(struct connection *c)
 	return (name);
 }
 
-void *
+KORE_X509_NAMES *
 kore_tls_x509_issuer_name(struct connection *c)
 {
 	X509_NAME	*name;
@@ -674,7 +674,7 @@ kore_tls_x509_issuer_name(struct connection *c)
 }
 
 int
-kore_tls_x509name_foreach(void *name, int flags, void *udata,
+kore_tls_x509name_foreach(KORE_X509_NAMES *name, int flags, void *udata,
     int (*cb)(void *, int, int, const char *, const void *, size_t, int))
 {
 	u_int8_t		*data;

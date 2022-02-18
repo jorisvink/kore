@@ -495,7 +495,7 @@ int
 kore_x509_issuer_name(struct connection *c, char **out, int flags)
 {
 	struct kore_buf		buf;
-	void			*name;
+	KORE_X509_NAMES		*name;
 
 	if ((name = kore_tls_x509_issuer_name(c)) == NULL)
 		return (KORE_RESULT_ERROR);
@@ -520,7 +520,7 @@ int
 kore_x509_subject_name(struct connection *c, char **out, int flags)
 {
 	struct kore_buf		buf;
-	void			*name;
+	KORE_X509_NAMES		*name;
 
 	if ((name = kore_tls_x509_subject_name(c)) == NULL)
 		return (KORE_RESULT_ERROR);

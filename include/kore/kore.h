@@ -61,6 +61,20 @@ extern int daemon(int, int);
 #define KORE_USE_PLATFORM_PLEDGE	1
 #endif
 
+#if defined(TLS_BACKEND_OPENSSL)
+#include <openssl/x509.h>
+#include <openssl/ssl.h>
+typedef X509		KORE_X509;
+typedef SSL		KORE_TLS;
+typedef SSL_CTX		KORE_TLS_CTX;
+typedef X509_NAME	KORE_X509_NAMES;
+#else
+typedef void		KORE_X509;
+typedef void		KORE_TLS;
+typedef void		KORE_TLS_CTX;
+typedef void		KORE_X509_NAMES;
+#endif
+
 #define KORE_RSAKEY_BITS	4096
 
 #define KORE_RESULT_ERROR	0
@@ -78,7 +92,6 @@ extern int daemon(int, int);
 
 #define errno_s			strerror(errno)
 #define ssl_errno_s		ERR_error_string(ERR_get_error(), NULL)
-
 #define KORE_DOMAINNAME_LEN		255
 #define KORE_PIDFILE_DEFAULT		"kore.pid"
 #define KORE_DHPARAM_PATH		PREFIX "/share/kore/ffdhe4096.pem"
@@ -214,8 +227,8 @@ struct connection {
 	u_int8_t		state;
 	u_int8_t		proto;
 	struct listener		*owner;
-	void			*tls;
-	void			*tls_cert;
+	KORE_TLS		*tls;
+	KORE_X509		*tls_cert;
 	char			*tls_sni;
 	int			tls_reneg;
 
@@ -338,7 +351,7 @@ struct kore_domain {
 	char					*crlfile;
 	char					*certfile;
 	char					*certkey;
-	void					*ssl_ctx;
+	KORE_TLS_CTX				*tls_ctx;
 	int					x509_verify_depth;
 #if !defined(KORE_NO_HTTP)
 	TAILQ_HEAD(, kore_route)		routes;
@@ -826,9 +839,9 @@ void		*kore_tls_rsakey_load(const char *);
 void		*kore_tls_rsakey_generate(const char *);
 
 int		kore_tls_x509_data(struct connection *, u_int8_t **, size_t *);
-void		*kore_tls_x509_issuer_name(struct connection *);
-void		*kore_tls_x509_subject_name(struct connection *);
-int		kore_tls_x509name_foreach(void *, int, void *,
+KORE_X509_NAMES	*kore_tls_x509_issuer_name(struct connection *);
+KORE_X509_NAMES	*kore_tls_x509_subject_name(struct connection *);
+int		kore_tls_x509name_foreach(KORE_X509_NAMES *, int, void *,
 		    int (*)(void *, int, int, const char *,
 		    const void *, size_t, int));
 /* accesslog.c */

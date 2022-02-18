@@ -2935,7 +2935,7 @@ pyconnection_get_peer_x509(struct pyconnection *pyc, void *closure)
 static PyObject *
 pyconnection_get_peer_x509dict(struct pyconnection *pyc, void *closure)
 {
-	void		*name;
+	KORE_X509_NAMES	*name;
 	PyObject	*dict, *issuer, *subject, *ret;
 
 	ret = NULL;

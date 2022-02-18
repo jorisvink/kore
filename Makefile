@@ -40,6 +40,8 @@ LDFLAGS+=-rdynamic
 
 ifeq ("$(TLS_BACKEND)", "openssl")
 	S_SRC+=src/keymgr_openssl.c
+	CFLAGS+=-DTLS_BACKEND_OPENSSL
+	FEATURES+=-DTLS_BACKEND_OPENSSL
 
 	ifneq ("$(OPENSSL_PATH)", "")
 		CFLAGS+=-I$(OPENSSL_PATH)/include
