@@ -47,6 +47,10 @@ ifeq ("$(TLS_BACKEND)", "openssl")
 	else
 		LDFLAGS+=-lssl -l$(KORE_CRYPTO)
 	endif
+else
+ifneq ("$(ACME)", "")
+$(error ACME not supported under TLS backend $(TLS_BACKEND))
+endif
 endif
 
 ifneq ("$(KORE_SINGLE_BINARY)", "")
