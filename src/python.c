@@ -1789,9 +1789,7 @@ python_push_type(const char *name, PyObject *module, PyTypeObject *type)
 static void
 python_push_integer(PyObject *module, const char *name, long value)
 {
-	int		ret;
-
-	if ((ret = PyModule_AddIntConstant(module, name, value)) == -1)
+	if (PyModule_AddIntConstant(module, name, value) == -1)
 		fatal("python_push_integer: failed to add %s", name);
 }
 
