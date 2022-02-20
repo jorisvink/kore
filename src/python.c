@@ -2664,7 +2664,7 @@ python_kore_proc(PyObject *self, PyObject *args)
 {
 	const char		*cmd;
 	struct pyproc		*proc;
-	char			*copy, *argv[32];
+	char			*copy, *argv[32], *env[1];
 	int			timeo, in_pipe[2], out_pipe[2];
 
 	timeo = -1;
@@ -2734,9 +2734,11 @@ python_kore_proc(PyObject *self, PyObject *args)
 		    dup2(in_pipe[0], STDIN_FILENO) == -1)
 			fatal("dup2: %s", errno_s);
 
+		env[0] = NULL;
 		copy = kore_strdup(cmd);
 		python_split_arguments(copy, argv, 32);
-		(void)execve(argv[0], argv, NULL);
+
+		(void)execve(argv[0], argv, env);
 		kore_log(LOG_ERR, "kore.proc failed to execute %s (%s)",
 		    argv[0], errno_s);
 		exit(1);
