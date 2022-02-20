@@ -1274,8 +1274,8 @@ python_runtime_http_request(void *addr, struct http_request *req)
 			    req->cgroups[idx].rm_eo - req->cgroups[idx].rm_so);
 
 			if (cargs[cnt] == NULL) {
-				while (cnt-- >= 0)
-					Py_XDECREF(cargs[cnt]);
+				while (cnt >= 0)
+					Py_XDECREF(cargs[cnt--]);
 				kore_python_log_error("http request");
 				http_response(req,
 				    HTTP_STATUS_INTERNAL_ERROR, NULL, 0);
