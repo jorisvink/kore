@@ -67,8 +67,8 @@ kore_accesslog(struct http_request *req)
 	size_t			avail;
 	time_t			curtime;
 	int			len, attempts;
-	const char		*ptr, *method, *http_version, *cn, *referer;
 	char			addr[INET6_ADDRSTRLEN], *cn_value;
+	const char		*ptr, *method, *http_version, *cn, *referer;
 
 	switch (req->method) {
 	case HTTP_METHOD_GET:
@@ -96,8 +96,7 @@ kore_accesslog(struct http_request *req)
 
 	if (req->flags & HTTP_VERSION_1_0)
 		http_version = "HTTP/1.0";
-
-	if (req->flags & HTTP_VERSION_1_1)
+	else
 		http_version = "HTTP/1.1";
 
 	if (req->referer != NULL)
