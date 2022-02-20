@@ -3654,6 +3654,8 @@ pysocket_async_recv(struct pysocket_op *op)
 		Py_RETURN_NONE;
 	}
 
+	socklen = 0;
+
 	for (;;) {
 		switch (op->type) {
 		case PYSOCKET_TYPE_RECV:
