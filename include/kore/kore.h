@@ -569,13 +569,13 @@ struct kore_buf {
     kore_json_create_item(o, n, KORE_JSON_TYPE_STRING, v)
 
 #define kore_json_create_number(o, n, v)			\
-    kore_json_create_item(o, n, KORE_JSON_TYPE_NUMBER, v)
+    kore_json_create_item(o, n, KORE_JSON_TYPE_NUMBER, (double)v)
 
 #define kore_json_create_integer(o, n, v)			\
-    kore_json_create_item(o, n, KORE_JSON_TYPE_INTEGER, v)
+    kore_json_create_item(o, n, KORE_JSON_TYPE_INTEGER, (int64_t)v)
 
 #define kore_json_create_integer_u64(o, n, v)			\
-    kore_json_create_item(o, n, KORE_JSON_TYPE_INTEGER_U64, v)
+    kore_json_create_item(o, n, KORE_JSON_TYPE_INTEGER_U64, (u_int64_t)v)
 
 #define kore_json_create_literal(o, n, v)			\
     kore_json_create_item(o, n, KORE_JSON_TYPE_LITERAL, v)
