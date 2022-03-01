@@ -90,6 +90,7 @@ those by setting a shell environment variable before running **_make_**.
 * NOOPT=1 (disable compiler optimizations)
 * JSONRPC=1 (compiles in JSONRPC support)
 * PYTHON=1 (compiles in the Python support)
+* TLS_BACKEND=none (compiles Kore without any TLS backend)
 
 Note that certain build flavors cannot be mixed together and you will just
 be met with compilation errors.

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2021 Joris Vink <joris@coders.se>
+ * Copyright (c) 2013-2022 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -61,15 +61,17 @@ kore_connection_new(void *owner)
 
 	c = kore_pool_get(&connection_pool);
 
-	c->ssl = NULL;
-	c->cert = NULL;
 	c->flags = 0;
 	c->rnb = NULL;
 	c->snb = NULL;
 	c->owner = owner;
 	c->handle = NULL;
+
+	c->tls = NULL;
+	c->tls_cert = NULL;
 	c->tls_reneg = 0;
 	c->tls_sni = NULL;
+
 	c->disconnect = NULL;
 	c->hdlr_extra = NULL;
 	c->proto = CONN_PROTO_UNKNOWN;
@@ -147,8 +149,8 @@ kore_connection_accept(struct listener *listener, struct connection **out)
 
 	if (listener->server->tls) {
 		c->state = CONN_STATE_TLS_SHAKE;
-		c->write = net_write_tls;
-		c->read = net_read_tls;
+		c->write = kore_tls_write;
+		c->read = kore_tls_read;
 	} else {
 		c->state = CONN_STATE_ESTABLISHED;
 		c->write = net_write;
@@ -250,7 +252,6 @@ kore_connection_event(void *arg, int error)
 int
 kore_connection_handle(struct connection *c)
 {
-	int			r;
 	struct listener		*listener;
 
 	kore_debug("kore_connection_handle(%p) -> %d", c, c->state);
@@ -258,75 +259,8 @@ kore_connection_handle(struct connection *c)
 
 	switch (c->state) {
 	case CONN_STATE_TLS_SHAKE:
-		if (primary_dom == NULL) {
-			kore_log(LOG_NOTICE,
-			    "TLS handshake but no TLS configured on server");
+		if (!kore_tls_connection_accept(c))
 			return (KORE_RESULT_ERROR);
-		}
-
-		if (primary_dom->ssl_ctx == NULL) {
-			kore_log(LOG_NOTICE,
-			    "TLS configuration for %s not yet complete",
-			    primary_dom->domain);
-			return (KORE_RESULT_ERROR);
-		}
-
-		if (c->ssl == NULL) {
-			c->ssl = SSL_new(primary_dom->ssl_ctx);
-			if (c->ssl == NULL) {
-				kore_debug("SSL_new(): %s", ssl_errno_s);
-				return (KORE_RESULT_ERROR);
-			}
-
-			SSL_set_fd(c->ssl, c->fd);
-			SSL_set_accept_state(c->ssl);
-
-			if (!SSL_set_ex_data(c->ssl, 0, c)) {
-				kore_debug("SSL_set_ex_data(): %s",
-				    ssl_errno_s);
-				return (KORE_RESULT_ERROR);
-			}
-
-			if (primary_dom->cafile != NULL)
-				c->flags |= CONN_LOG_TLS_FAILURE;
-		}
-
-		ERR_clear_error();
-		r = SSL_accept(c->ssl);
-		if (r <= 0) {
-			r = SSL_get_error(c->ssl, r);
-			switch (r) {
-			case SSL_ERROR_WANT_READ:
-			case SSL_ERROR_WANT_WRITE:
-				kore_connection_start_idletimer(c);
-				return (KORE_RESULT_OK);
-			default:
-				kore_debug("SSL_accept(): %s", ssl_errno_s);
-				if (c->flags & CONN_LOG_TLS_FAILURE) {
-					kore_log(LOG_NOTICE,
-					    "SSL_accept: %s", ssl_errno_s);
-				}
-				return (KORE_RESULT_ERROR);
-			}
-		}
-
-#if defined(KORE_USE_ACME)
-		if (c->proto == CONN_PROTO_ACME_ALPN) {
-			kore_log(LOG_INFO, "disconnecting acme client");
-			kore_connection_disconnect(c);
-			return (KORE_RESULT_OK);
-		}
-#endif
-
-		if (SSL_get_verify_mode(c->ssl) & SSL_VERIFY_PEER) {
-			c->cert = SSL_get_peer_certificate(c->ssl);
-			if (c->cert == NULL) {
-				kore_log(LOG_NOTICE, "no peer certificate");
-				return (KORE_RESULT_ERROR);
-			}
-		} else {
-			c->cert = NULL;
-		}
 
 		if (c->owner != NULL) {
 			listener = (struct listener *)c->owner;
@@ -383,16 +317,7 @@ kore_connection_remove(struct connection *c)
 
 	kore_debug("kore_connection_remove(%p)", c);
 
-	if (c->ssl != NULL) {
-		SSL_shutdown(c->ssl);
-		SSL_free(c->ssl);
-	}
-
-	if (c->cert != NULL)
-		X509_free(c->cert);
-
-	if (c->tls_sni != NULL)
-		kore_free(c->tls_sni);
+	kore_tls_connection_cleanup(c);
 
 	close(c->fd);
 

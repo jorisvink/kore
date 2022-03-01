@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2016 Stanislav Yudin <stan@endlessinsomnia.com>
- * Copyright (c) 2017-2021 Joris Vink <joris@coders.se>
+ * Copyright (c) 2017-2022 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -29,6 +29,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdarg.h>
+#include <stddef.h>
 
 #include "kore.h"
 #include "http.h"
@@ -1273,8 +1274,8 @@ python_runtime_http_request(void *addr, struct http_request *req)
 			    req->cgroups[idx].rm_eo - req->cgroups[idx].rm_so);
 
 			if (cargs[cnt] == NULL) {
-				while (cnt-- >= 0)
-					Py_XDECREF(cargs[cnt]);
+				while (cnt >= 0)
+					Py_XDECREF(cargs[cnt--]);
 				kore_python_log_error("http request");
 				http_response(req,
 				    HTTP_STATUS_INTERNAL_ERROR, NULL, 0);
@@ -1788,9 +1789,7 @@ python_push_type(const char *name, PyObject *module, PyTypeObject *type)
 static void
 python_push_integer(PyObject *module, const char *name, long value)
 {
-	int		ret;
-
-	if ((ret = PyModule_AddIntConstant(module, name, value)) == -1)
+	if (PyModule_AddIntConstant(module, name, value) == -1)
 		fatal("python_push_integer: failed to add %s", name);
 }
 
@@ -1893,6 +1892,13 @@ python_kore_server(PyObject *self, PyObject *args, PyObject *kwargs)
 
 	srv = kore_server_create(name);
 	python_bool_from_dict(kwargs, "tls", &srv->tls);
+
+	if (srv->tls && !kore_tls_supported()) {
+		kore_server_free(srv);
+		PyErr_SetString(PyExc_RuntimeError,
+		    "TLS not supported in this Kore build");
+		return (NULL);
+	}
 
 	if (ip != NULL) {
 		if ((port = python_string_from_dict(kwargs, "port")) == NULL) {
@@ -2656,7 +2662,7 @@ python_kore_proc(PyObject *self, PyObject *args)
 {
 	const char		*cmd;
 	struct pyproc		*proc;
-	char			*copy, *argv[32];
+	char			*copy, *argv[32], *env[1];
 	int			timeo, in_pipe[2], out_pipe[2];
 
 	timeo = -1;
@@ -2726,9 +2732,11 @@ python_kore_proc(PyObject *self, PyObject *args)
 		    dup2(in_pipe[0], STDIN_FILENO) == -1)
 			fatal("dup2: %s", errno_s);
 
+		env[0] = NULL;
 		copy = kore_strdup(cmd);
 		python_split_arguments(copy, argv, 32);
-		(void)execve(argv[0], argv, NULL);
+
+		(void)execve(argv[0], argv, env);
 		kore_log(LOG_ERR, "kore.proc failed to execute %s (%s)",
 		    argv[0], errno_s);
 		exit(1);
@@ -2904,25 +2912,17 @@ pyconnection_get_addr(struct pyconnection *pyc, void *closure)
 static PyObject *
 pyconnection_get_peer_x509(struct pyconnection *pyc, void *closure)
 {
-	int			len;
-	PyObject		*bytes;
-	u_int8_t		*der, *pp;
+	size_t		len;
+	u_int8_t	*der;
+	PyObject	*bytes;
 
-	if (pyc->c->cert == NULL) {
+	if (pyc->c->tls_cert == NULL) {
 		Py_RETURN_NONE;
 	}
 
-	if ((len = i2d_X509(pyc->c->cert, NULL)) <= 0) {
-		PyErr_SetString(PyExc_RuntimeError, "i2d_X509 failed");
-		return (NULL);
-	}
-
-	der = kore_calloc(1, len);
-	pp = der;
-
-	if (i2d_X509(pyc->c->cert, &pp) <= 0) {
-		kore_free(der);
-		PyErr_SetString(PyExc_RuntimeError, "i2d_X509 failed");
+	if (!kore_tls_x509_data(pyc->c, &der, &len)) {
+		PyErr_SetString(PyExc_RuntimeError,
+		    "failed to obtain certificate data");
 		return (NULL);
 	}
 
@@ -2935,14 +2935,14 @@ pyconnection_get_peer_x509(struct pyconnection *pyc, void *closure)
 static PyObject *
 pyconnection_get_peer_x509dict(struct pyconnection *pyc, void *closure)
 {
-	X509_NAME	*name;
+	KORE_X509_NAMES	*name;
 	PyObject	*dict, *issuer, *subject, *ret;
 
 	ret = NULL;
 	issuer = NULL;
 	subject = NULL;
 
-	if (pyc->c->cert == NULL) {
+	if (pyc->c->tls_cert == NULL) {
 		Py_RETURN_NONE;
 	}
 
@@ -2963,13 +2963,13 @@ pyconnection_get_peer_x509dict(struct pyconnection *pyc, void *closure)
 
 	PyErr_Clear();
 
-	if ((name = X509_get_issuer_name(pyc->c->cert)) == NULL) {
+	if ((name = kore_tls_x509_subject_name(pyc->c)) == NULL) {
 		PyErr_Format(PyExc_RuntimeError,
-		    "X509_get_issuer_name: %s", ssl_errno_s);
+		    "failed to obtain x509 subjectName");
 		goto out;
 	}
 
-	if (!kore_x509name_foreach(name, 0, issuer, pyconnection_x509_cb)) {
+	if (!kore_tls_x509name_foreach(name, 0, issuer, pyconnection_x509_cb)) {
 		if (PyErr_Occurred() == NULL) {
 			PyErr_Format(PyExc_RuntimeError,
 			    "failed to add issuer name to dictionary");
@@ -2977,13 +2977,14 @@ pyconnection_get_peer_x509dict(struct pyconnection *pyc, void *closure)
 		goto out;
 	}
 
-	if ((name = X509_get_subject_name(pyc->c->cert)) == NULL) {
+	if ((name = kore_tls_x509_issuer_name(pyc->c)) == NULL) {
 		PyErr_Format(PyExc_RuntimeError,
-		    "X509_get_subject_name: %s", ssl_errno_s);
+		    "failed to obtain x509 issuerName");
 		goto out;
 	}
 
-	if (!kore_x509name_foreach(name, 0, subject, pyconnection_x509_cb)) {
+	if (!kore_tls_x509name_foreach(name, 0, subject,
+	    pyconnection_x509_cb)) {
 		if (PyErr_Occurred() == NULL) {
 			PyErr_Format(PyExc_RuntimeError,
 			    "failed to add subject name to dictionary");
@@ -3652,6 +3653,8 @@ pysocket_async_recv(struct pysocket_op *op)
 	if (!(op->socket->event.evt.flags & KORE_EVENT_READ)) {
 		Py_RETURN_NONE;
 	}
+
+	socklen = 0;
 
 	for (;;) {
 		switch (op->type) {

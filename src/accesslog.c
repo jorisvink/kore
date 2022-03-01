@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2021 Joris Vink <joris@coders.se>
+ * Copyright (c) 2013-2022 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -67,8 +67,8 @@ kore_accesslog(struct http_request *req)
 	size_t			avail;
 	time_t			curtime;
 	int			len, attempts;
-	const char		*ptr, *method, *http_version, *cn, *referer;
 	char			addr[INET6_ADDRSTRLEN], *cn_value;
+	const char		*ptr, *method, *http_version, *cn, *referer;
 
 	switch (req->method) {
 	case HTTP_METHOD_GET:
@@ -96,8 +96,7 @@ kore_accesslog(struct http_request *req)
 
 	if (req->flags & HTTP_VERSION_1_0)
 		http_version = "HTTP/1.0";
-
-	if (req->flags & HTTP_VERSION_1_1)
+	else
 		http_version = "HTTP/1.1";
 
 	if (req->referer != NULL)
@@ -111,7 +110,7 @@ kore_accesslog(struct http_request *req)
 	cn = "-";
 	cn_value = NULL;
 
-	if (req->owner->cert != NULL) {
+	if (req->owner->tls_cert != NULL) {
 		if (kore_x509_subject_name(req->owner, &cn_value,
 		    KORE_X509_COMMON_NAME_ONLY))
 			cn = cn_value;

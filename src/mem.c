@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2021 Joris Vink <joris@coders.se>
+ * Copyright (c) 2013-2022 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -262,6 +262,20 @@ kore_mem_lookup(u_int32_t id)
 	}
 
 	return (NULL);
+}
+
+/* Best effort to try and let the compiler not optimize this call away. */
+void
+kore_mem_zero(void *ptr, size_t len)
+{
+	volatile char	*p;
+
+	p = (volatile char *)ptr;
+
+	if (p != NULL) {
+		while (len-- > 0)
+			*(p)++ = 0x00;
+	}
 }
 
 static size_t

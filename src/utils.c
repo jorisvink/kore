@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2021 Joris Vink <joris@coders.se>
+ * Copyright (c) 2013-2022 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -16,9 +16,6 @@
 
 #include <sys/types.h>
 #include <sys/time.h>
-
-#include <openssl/evp.h>
-#include <openssl/rsa.h>
 
 #include <ctype.h>
 #include <stdio.h>
@@ -56,7 +53,6 @@ static int	utils_base64_decode(const char *, u_int8_t **,
 		    size_t *, const char *, int);
 static int	utils_x509name_tobuf(void *, int, int, const char *,
 		    const void *, size_t, int);
-
 
 static char b64_table[] = 	\
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -475,59 +471,6 @@ kore_read_line(FILE *fp, char *in, size_t len)
 	return (p);
 }
 
-EVP_PKEY *
-kore_rsakey_load(const char *path)
-{
-	FILE		*fp;
-	EVP_PKEY	*pkey;
-
-	if (access(path, R_OK) == -1)
-		return (NULL);
-
-	if ((fp = fopen(path, "r")) == NULL)
-		fatalx("%s(%s): %s", __func__, path, errno_s);
-
-	if ((pkey = PEM_read_PrivateKey(fp, NULL, NULL, NULL)) == NULL)
-		fatalx("PEM_read_PrivateKey: %s", ssl_errno_s);
-
-	fclose(fp);
-
-	return (pkey);
-}
-
-EVP_PKEY *
-kore_rsakey_generate(const char *path)
-{
-	FILE			*fp;
-	EVP_PKEY_CTX		*ctx;
-	EVP_PKEY		*pkey;
-
-	if ((ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, NULL)) == NULL)
-		fatalx("EVP_PKEY_CTX_new_id: %s", ssl_errno_s);
-
-	if (EVP_PKEY_keygen_init(ctx) <= 0)
-		fatalx("EVP_PKEY_keygen_init: %s", ssl_errno_s);
-
-	if (EVP_PKEY_CTX_set_rsa_keygen_bits(ctx, KORE_RSAKEY_BITS) <= 0)
-		fatalx("EVP_PKEY_CTX_set_rsa_keygen_bits: %s", ssl_errno_s);
-
-	pkey = NULL;
-	if (EVP_PKEY_keygen(ctx, &pkey) <= 0)
-		fatalx("EVP_PKEY_keygen: %s", ssl_errno_s);
-
-	if (path != NULL) {
-		if ((fp = fopen(path, "w")) == NULL)
-			fatalx("fopen(%s): %s", path, errno_s);
-
-		if (!PEM_write_PrivateKey(fp, pkey, NULL, NULL, 0, NULL, NULL))
-			fatalx("PEM_write_PrivateKey: %s", ssl_errno_s);
-
-		fclose(fp);
-	}
-
-	return (pkey);
-}
-
 const char *
 kore_worker_name(int id)
 {
@@ -552,14 +495,15 @@ int
 kore_x509_issuer_name(struct connection *c, char **out, int flags)
 {
 	struct kore_buf		buf;
-	X509_NAME		*name;
+	KORE_X509_NAMES		*name;
 
-	if ((name = X509_get_issuer_name(c->cert)) == NULL)
+	if ((name = kore_tls_x509_issuer_name(c)) == NULL)
 		return (KORE_RESULT_ERROR);
 
 	kore_buf_init(&buf, 1024);
 
-	if (!kore_x509name_foreach(name, flags, &buf, utils_x509name_tobuf)) {
+	if (!kore_tls_x509name_foreach(name, flags, &buf,
+	    utils_x509name_tobuf)) {
 		kore_buf_cleanup(&buf);
 		return (KORE_RESULT_ERROR);
 	}
@@ -576,14 +520,15 @@ int
 kore_x509_subject_name(struct connection *c, char **out, int flags)
 {
 	struct kore_buf		buf;
-	X509_NAME		*name;
+	KORE_X509_NAMES		*name;
 
-	if ((name = X509_get_subject_name(c->cert)) == NULL)
+	if ((name = kore_tls_x509_subject_name(c)) == NULL)
 		return (KORE_RESULT_ERROR);
 
 	kore_buf_init(&buf, 1024);
 
-	if (!kore_x509name_foreach(name, flags, &buf, utils_x509name_tobuf)) {
+	if (!kore_tls_x509name_foreach(name, flags, &buf,
+	    utils_x509name_tobuf)) {
 		kore_buf_cleanup(&buf);
 		return (KORE_RESULT_ERROR);
 	}
@@ -594,58 +539,6 @@ kore_x509_subject_name(struct connection *c, char **out, int flags)
 	buf.data = NULL;
 
 	return (KORE_RESULT_OK);
-}
-
-int
-kore_x509name_foreach(X509_NAME *name, int flags, void *udata,
-    int (*cb)(void *, int, int, const char *, const void *, size_t, int))
-{
-	u_int8_t		*data;
-	ASN1_STRING		*astr;
-	X509_NAME_ENTRY		*entry;
-	const char		*field;
-	int			islast, ret, idx, namelen, nid, len;
-
-	data = NULL;
-	ret = KORE_RESULT_ERROR;
-
-	if ((namelen = X509_NAME_entry_count(name)) == 0)
-		goto cleanup;
-
-	for (idx = 0; idx < namelen; idx++) {
-		if ((entry = X509_NAME_get_entry(name, idx)) == NULL)
-			goto cleanup;
-
-		nid = OBJ_obj2nid(X509_NAME_ENTRY_get_object(entry));
-		if ((field = OBJ_nid2sn(nid)) == NULL)
-			goto cleanup;
-
-		if ((astr = X509_NAME_ENTRY_get_data(entry)) == NULL)
-			goto cleanup;
-
-		data = NULL;
-		if ((len = ASN1_STRING_to_UTF8(&data, astr)) < 0)
-			goto cleanup;
-
-		if (idx != (namelen - 1))
-			islast = 0;
-		else
-			islast = 1;
-
-		if (!cb(udata, islast, nid, field, data, len, flags))
-			goto cleanup;
-
-		OPENSSL_free(data);
-		data = NULL;
-	}
-
-	ret = KORE_RESULT_OK;
-
-cleanup:
-	if (data != NULL)
-		OPENSSL_free(data);
-
-	return (ret);
 }
 
 void
@@ -695,7 +588,7 @@ utils_x509name_tobuf(void *udata, int islast, int nid, const char *field,
 	struct kore_buf		*buf = udata;
 
 	if (flags & KORE_X509_COMMON_NAME_ONLY) {
-		if (nid == NID_commonName)
+		if (nid == KORE_X509_NAME_COMMON_NAME)
 			kore_buf_append(buf, data, len);
 	} else {
 		kore_buf_appendf(buf, "%s=", field);

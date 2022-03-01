@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019-2021 Joris Vink <joris@coders.se>
+ * Copyright (c) 2019-2022 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -48,10 +48,6 @@ void	kore_acme_init(void);
 void	kore_acme_run(void);
 void	kore_acme_setup(void);
 void	kore_acme_get_paths(const char *, char **, char **);
-
-void	kore_acme_tls_challenge_use_cert(SSL *, struct kore_domain *);
-int	kore_acme_tls_alpn(SSL *, const unsigned char **, unsigned char *,
-	    const unsigned char *, unsigned int, void *);
 
 extern char	*acme_email;
 extern int	acme_domains;

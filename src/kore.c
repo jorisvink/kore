@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2021 Joris Vink <joris@coders.se>
+ * Copyright (c) 2013-2022 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -67,7 +67,6 @@ int			kore_foreground = 0;
 char			*kore_progname = NULL;
 u_int32_t		kore_socket_backlog = 5000;
 char			*kore_pidfile = KORE_PIDFILE_DEFAULT;
-char			*kore_tls_cipher_list = KORE_DEFAULT_CIPHER_LIST;
 
 struct kore_privsep	worker_privsep;
 
@@ -80,7 +79,6 @@ static void	version(void);
 
 static void	kore_write_kore_pid(void);
 static void	kore_proctitle_setup(void);
-static void	kore_server_sslstart(void);
 static void	kore_server_shutdown(void);
 static void	kore_server_start(int, char *[]);
 static void	kore_call_parent_configure(int, char **);
@@ -150,6 +148,8 @@ version(void)
 #if defined(KORE_USE_ACME)
 	printf("acme ");
 #endif
+	if (!kore_tls_supported())
+		printf("notls ");
 	printf("\n");
 	exit(0);
 }
@@ -223,7 +223,7 @@ main(int argc, char *argv[])
 #endif
 	kore_domain_init();
 	kore_module_init();
-	kore_server_sslstart();
+	kore_tls_init();
 
 #if !defined(KORE_SINGLE_BINARY) && !defined(KORE_USE_PYTHON)
 	if (config_file == NULL)
@@ -346,74 +346,6 @@ kore_default_getopt(int argc, char **argv)
 }
 
 int
-kore_tls_sni_cb(SSL *ssl, int *ad, void *arg)
-{
-	struct connection	*c;
-	struct kore_domain	*dom;
-	const char		*sname;
-
-	if ((c = SSL_get_ex_data(ssl, 0)) == NULL)
-		fatal("no connection data in %s", __func__);
-
-	sname = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
-	kore_debug("kore_tls_sni_cb(): received host %s", sname);
-
-	if (sname != NULL)
-		c->tls_sni = kore_strdup(sname);
-
-	if (sname != NULL &&
-	    (dom = kore_domain_lookup(c->owner->server, sname)) != NULL) {
-		if (dom->ssl_ctx == NULL) {
-			kore_log(LOG_NOTICE,
-			    "TLS configuration for %s not complete",
-			    dom->domain);
-			return (SSL_TLSEXT_ERR_NOACK);
-		}
-
-		kore_debug("kore_ssl_sni_cb(): Using %s CTX", sname);
-		SSL_set_SSL_CTX(ssl, dom->ssl_ctx);
-
-		if (dom->cafile != NULL) {
-			SSL_set_verify(ssl, SSL_VERIFY_PEER |
-			    SSL_VERIFY_FAIL_IF_NO_PEER_CERT, NULL);
-			c->flags |= CONN_LOG_TLS_FAILURE;
-		} else {
-			SSL_set_verify(ssl, SSL_VERIFY_NONE, NULL);
-		}
-
-#if defined(KORE_USE_ACME)
-		/*
-		 * If ALPN callback was called before SNI was parsed we
-		 * must make sure we swap to the correct certificate now.
-		 */
-		if (c->flags & CONN_TLS_ALPN_ACME_SEEN)
-			kore_acme_tls_challenge_use_cert(ssl, dom);
-
-		c->flags |= CONN_TLS_SNI_SEEN;
-#endif
-		return (SSL_TLSEXT_ERR_OK);
-	}
-
-	return (SSL_TLSEXT_ERR_NOACK);
-}
-
-void
-kore_tls_info_callback(const SSL *ssl, int flags, int ret)
-{
-	struct connection	*c;
-
-	if (flags & SSL_CB_HANDSHAKE_START) {
-		if ((c = SSL_get_app_data(ssl)) == NULL)
-			fatal("no SSL_get_app_data");
-
-#if defined(TLS1_3_VERSION)
-		if (SSL_version(ssl) != TLS1_3_VERSION)
-#endif
-			c->tls_reneg++;
-	}
-}
-
-int
 kore_server_bind(struct kore_server *srv, const char *ip, const char *port,
     const char *ccb)
 {
@@ -523,7 +455,11 @@ kore_server_create(const char *name)
 
 	srv = kore_calloc(1, sizeof(struct kore_server));
 	srv->name = kore_strdup(name);
-	srv->tls = 1;
+
+	if (kore_tls_supported())
+		srv->tls = 1;
+	else
+		srv->tls = 0;
 
 	TAILQ_INIT(&srv->domains);
 	LIST_INIT(&srv->listeners);
@@ -844,13 +780,6 @@ kore_proctitle_setup(void)
 }
 
 static void
-kore_server_sslstart(void)
-{
-	SSL_library_init();
-	SSL_load_error_strings();
-}
-
-static void
 kore_server_start(int argc, char *argv[])
 {
 	u_int32_t			tmp;
@@ -922,11 +851,15 @@ kore_server_start(int argc, char *argv[])
 #endif
 
 	/* Check if keymgr will be active. */
-	LIST_FOREACH(srv, &kore_servers, list) {
-		if (srv->tls) {
-			keymgr_active = 1;
-			break;
+	if (kore_tls_supported()) {
+		LIST_FOREACH(srv, &kore_servers, list) {
+			if (srv->tls) {
+				kore_keymgr_active = 1;
+				break;
+			}
 		}
+	} else {
+		kore_keymgr_active = 0;
 	}
 
 	kore_platform_proctitle("[parent]");
@@ -1033,6 +966,7 @@ kore_server_shutdown(void)
 	kore_platform_event_cleanup();
 	kore_connection_cleanup();
 	kore_domain_cleanup();
+	kore_tls_cleanup();
 	net_cleanup();
 }
 

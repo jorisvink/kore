@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2021 Joris Vink <joris@coders.se>
+ * Copyright (c) 2017-2022 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -40,9 +40,11 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 
+#include <openssl/err.h>
 #include <openssl/evp.h>
 #include <openssl/rsa.h>
 #include <openssl/rand.h>
+#include <openssl/pem.h>
 #include <openssl/sha.h>
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
@@ -161,12 +163,12 @@ static struct sock_filter filter_keymgr[] = {
 #endif
 
 struct key {
-	EVP_PKEY		*pkey;
+	KORE_PRIVATE_KEY	*pkey;
 	struct kore_domain	*dom;
 	TAILQ_ENTRY(key)	list;
 };
 
-char				*rand_file = NULL;
+char				*kore_rand_file = NULL;
 
 static TAILQ_HEAD(, key)	keys;
 static int			initialized = 0;
@@ -251,9 +253,6 @@ static void	keymgr_rsa_encrypt(struct kore_msg *, const void *,
 static void	keymgr_ecdsa_sign(struct kore_msg *, const void *,
 		    struct key *);
 
-struct kore_privsep	keymgr_privsep;
-int			keymgr_active = 0;
-
 #if defined(__OpenBSD__)
 #if defined(KORE_USE_ACME)
 static const char *keymgr_pledges = "stdio rpath wpath cpath";
@@ -268,8 +267,8 @@ kore_keymgr_run(void)
 	int		quit;
 	u_int64_t	now, netwait, last_seed;
 
-	if (keymgr_active == 0)
-		fatalx("%s: called with keymgr_active == 0", __func__);
+	if (kore_keymgr_active == 0)
+		fatalx("%s: called with kore_keymgr_active == 0", __func__);
 
 	quit = 0;
 
@@ -297,7 +296,7 @@ kore_keymgr_run(void)
 #endif
 	kore_worker_privsep();
 
-	if (rand_file != NULL) {
+	if (kore_rand_file != NULL) {
 		keymgr_load_randfile();
 		keymgr_save_randfile();
 	} else if (!kore_quiet) {
@@ -463,30 +462,30 @@ keymgr_load_randfile(void)
 	size_t		total;
 	u_int8_t	buf[RAND_FILE_SIZE];
 
-	if (rand_file == NULL)
+	if (kore_rand_file == NULL)
 		return;
 
-	if ((fd = open(rand_file, O_RDONLY)) == -1)
-		fatalx("open(%s): %s", rand_file, errno_s);
+	if ((fd = open(kore_rand_file, O_RDONLY)) == -1)
+		fatalx("open(%s): %s", kore_rand_file, errno_s);
 
 	if (fstat(fd, &st) == -1)
-		fatalx("stat(%s): %s", rand_file, errno_s);
+		fatalx("stat(%s): %s", kore_rand_file, errno_s);
 	if (!S_ISREG(st.st_mode))
-		fatalx("%s is not a file", rand_file);
+		fatalx("%s is not a file", kore_rand_file);
 	if (st.st_size != RAND_FILE_SIZE)
-		fatalx("%s has an invalid size", rand_file);
+		fatalx("%s has an invalid size", kore_rand_file);
 
 	total = 0;
 
 	while (total != RAND_FILE_SIZE) {
 		ret = read(fd, buf, sizeof(buf));
 		if (ret == 0)
-			fatalx("EOF on %s", rand_file);
+			fatalx("EOF on %s", kore_rand_file);
 
 		if (ret == -1) {
 			if (errno == EINTR)
 				continue;
-			fatalx("read(%s): %s", rand_file, errno_s);
+			fatalx("read(%s): %s", kore_rand_file, errno_s);
 		}
 
 		total += (size_t)ret;
@@ -495,9 +494,9 @@ keymgr_load_randfile(void)
 	}
 
 	(void)close(fd);
-	if (unlink(rand_file) == -1) {
+	if (unlink(kore_rand_file) == -1) {
 		kore_log(LOG_WARNING, "failed to unlink %s: %s",
-		    rand_file, errno_s);
+		    kore_rand_file, errno_s);
 	}
 }
 
@@ -509,7 +508,7 @@ keymgr_save_randfile(void)
 	ssize_t		ret;
 	u_int8_t	buf[RAND_FILE_SIZE];
 
-	if (rand_file == NULL)
+	if (kore_rand_file == NULL)
 		return;
 
 	if (stat(RAND_TMP_FILE, &st) != -1) {
@@ -541,10 +540,10 @@ keymgr_save_randfile(void)
 	if (close(fd) == -1)
 		kore_log(LOG_WARNING, "close(%s): %s", RAND_TMP_FILE, errno_s);
 
-	if (rename(RAND_TMP_FILE, rand_file) == -1) {
+	if (rename(RAND_TMP_FILE, kore_rand_file) == -1) {
 		kore_log(LOG_WARNING, "rename(%s, %s): %s",
-		    RAND_TMP_FILE, rand_file, errno_s);
-		(void)unlink(rand_file);
+		    RAND_TMP_FILE, kore_rand_file, errno_s);
+		(void)unlink(kore_rand_file);
 		(void)unlink(RAND_TMP_FILE);
 	}
 
@@ -589,7 +588,7 @@ keymgr_load_privatekey(const char *path)
 
 	/* Caller should check if pkey was loaded. */
 	if (path)
-		key->pkey = kore_rsakey_load(path);
+		key->pkey = kore_tls_rsakey_load(path);
 
 	return (key);
 }
@@ -787,7 +786,7 @@ keymgr_acme_init(void)
 
 	if (key->pkey == NULL) {
 		kore_log(LOG_INFO, "generating new ACME account key");
-		key->pkey = kore_rsakey_generate(KORE_ACME_ACCOUNT_KEY);
+		key->pkey = kore_tls_rsakey_generate(KORE_ACME_ACCOUNT_KEY);
 		needsreg = 1;
 	} else {
 		kore_log(LOG_INFO, "loaded existing ACME account key");
@@ -839,7 +838,7 @@ keymgr_acme_domainkey(struct kore_domain *dom, struct key *key)
 	}
 
 	*p = '/';
-	key->pkey = kore_rsakey_generate(dom->certkey);
+	key->pkey = kore_tls_rsakey_generate(dom->certkey);
 }
 
 static void

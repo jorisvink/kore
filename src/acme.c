@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019-2021 Joris Vink <joris@coders.se>
+ * Copyright (c) 2019-2022 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -262,9 +262,6 @@ static char		*revoke_url = NULL;
 static char		*account_id = NULL;
 static char		*account_url = NULL;
 
-static u_int8_t acme_alpn_name[] =
-    { 0xa, 'a', 'c', 'm', 'e', '-', 't', 'l', 's', '/', '1' };
-
 struct kore_privsep	acme_privsep;
 int			acme_domains = 0;
 char			*acme_email = NULL;
@@ -358,39 +355,6 @@ kore_acme_run(void)
 	net_cleanup();
 }
 
-int
-kore_acme_tls_alpn(SSL *ssl, const unsigned char **out, unsigned char *outlen,
-    const unsigned char *in, unsigned int inlen, void *udata)
-{
-	struct connection	*c;
-
-	if ((c = SSL_get_ex_data(ssl, 0)) == NULL)
-		fatal("%s: no connection data present", __func__);
-
-	if (inlen != sizeof(acme_alpn_name))
-		return (SSL_TLSEXT_ERR_NOACK);
-
-	if (memcmp(acme_alpn_name, in, sizeof(acme_alpn_name)))
-		return (SSL_TLSEXT_ERR_NOACK);
-
-	*out = in + 1;
-	*outlen = inlen - 1;
-
-	c->flags |= CONN_TLS_ALPN_ACME_SEEN;
-
-	/*
-	 * If SNI was already done, we can continue, otherwise we mark
-	 * that we saw the right ALPN negotiation on this connection
-	 * and wait for the SNI extension to be parsed.
-	 */
-	if (c->flags & CONN_TLS_SNI_SEEN) {
-		/* SNI was seen, we are on the right domain. */
-		kore_acme_tls_challenge_use_cert(ssl, udata);
-	}
-
-	return (SSL_TLSEXT_ERR_OK);
-}
-
 void
 kore_acme_get_paths(const char *domain, char **key, char **cert)
 {
@@ -410,43 +374,6 @@ kore_acme_get_paths(const char *domain, char **key, char **cert)
 		fatal("failed to create certkey path");
 
 	*key = kore_strdup(path);
-}
-
-void
-kore_acme_tls_challenge_use_cert(SSL *ssl, struct kore_domain *dom)
-{
-	struct connection	*c;
-	const unsigned char	*ptr;
-	X509			*x509;
-
-	if (dom->acme == 0) {
-		kore_log(LOG_NOTICE, "[%s] ACME not active", dom->domain);
-		return;
-	}
-
-	if (dom->acme_challenge == 0) {
-		kore_log(LOG_NOTICE,
-		    "[%s] ACME auth challenge not active", dom->domain);
-		return;
-	}
-
-	kore_log(LOG_INFO, "[%s] acme-tls/1 challenge requested",
-	    dom->domain);
-
-	if ((c = SSL_get_ex_data(ssl, 0)) == NULL)
-		fatal("%s: no connection data present", __func__);
-
-	ptr = dom->acme_cert;
-	if ((x509 = d2i_X509(NULL, &ptr, dom->acme_cert_len)) == NULL)
-		fatal("d2i_X509: %s", ssl_errno_s);
-
-	if (SSL_use_certificate(ssl, x509) == 0)
-		fatal("SSL_use_certificate: %s", ssl_errno_s);
-
-	SSL_clear_chain_certs(ssl);
-	SSL_set_verify(ssl, SSL_VERIFY_NONE, NULL);
-
-	c->proto = CONN_PROTO_ACME_ALPN;
 }
 
 static void

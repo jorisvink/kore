@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2021 Joris Vink <joris@coders.se>
+ * Copyright (c) 2015-2022 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -154,17 +154,33 @@ void
 kore_msg_send(u_int16_t dst, u_int8_t id, const void *data, size_t len)
 {
 	struct kore_msg		m;
+	struct connection	*c;
+	struct kore_worker	*kw;
 
 	m.id = id;
 	m.dst = dst;
 	m.length = len;
-	m.src = worker->id;
 
-	net_send_queue(worker->msg[1], &m, sizeof(m));
+	if (worker == NULL) {
+		m.src = KORE_MSG_PARENT;
+
+		if ((kw = kore_worker_data_byid(dst)) == NULL) {
+			kore_log(LOG_NOTICE, "no such worker by id %u", dst);
+			return;
+		}
+
+		c = kw->msg[0];
+		m.dst = kw->id;
+	} else {
+		m.src = worker->id;
+		c = worker->msg[1];
+	}
+
+	net_send_queue(c, &m, sizeof(m));
 	if (data != NULL && len > 0)
-		net_send_queue(worker->msg[1], data, len);
+		net_send_queue(c, data, len);
 
-	net_send_flush(worker->msg[1]);
+	net_send_flush(c);
 }
 
 static int
@@ -221,7 +237,7 @@ msg_recv_data(struct netbuf *nb)
 			dst = *(u_int16_t *)c->hdlr_extra;
 
 			if (destination == KORE_MSG_WORKER_ALL) {
-				if (keymgr_active && dst == 0)
+				if (kore_keymgr_active && dst == 0)
 					deliver = 0;
 			} else {
 				if (dst != destination)

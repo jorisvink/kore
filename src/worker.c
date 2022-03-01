@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2021 Joris Vink <joris@coders.se>
+ * Copyright (c) 2013-2022 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -22,8 +22,6 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
-
-#include <openssl/rand.h>
 
 #include <fcntl.h>
 #include <grp.h>
@@ -61,10 +59,6 @@
 #include "seccomp.h"
 #endif
 
-#if !defined(WAIT_ANY)
-#define WAIT_ANY		(-1)
-#endif
-
 #define WORKER_SOLO_COUNT	3
 
 #define WORKER(id)						\
@@ -92,6 +86,7 @@ static void		worker_accept_avail(struct kore_msg *, const void *);
 static void	worker_entropy_recv(struct kore_msg *, const void *);
 static void	worker_keymgr_response(struct kore_msg *, const void *);
 
+static pid_t				worker_pgrp;
 static int				accept_avail;
 static struct kore_worker		*kore_workers;
 static int				worker_no_lock;
@@ -153,6 +148,9 @@ kore_worker_init(void)
 	if (!kore_quiet)
 		kore_log(LOG_INFO, "starting worker processes");
 
+	if ((worker_pgrp = getpgrp()) == -1)
+		fatal("%s: getpgrp(): %s", __func__, errno_s);
+
 	/* Now start all the workers. */
 	id = 1;
 	cpu = 1;
@@ -163,7 +161,7 @@ kore_worker_init(void)
 			return (KORE_RESULT_ERROR);
 	}
 
-	if (keymgr_active) {
+	if (kore_keymgr_active) {
 #if defined(KORE_USE_ACME)
 		/* The ACME process is only started if we need it. */
 		if (acme_domains) {
@@ -262,12 +260,27 @@ kore_worker_spawn(u_int16_t idx, u_int16_t id, u_int16_t cpu)
 }
 
 struct kore_worker *
-kore_worker_data(u_int8_t id)
+kore_worker_data(u_int8_t idx)
 {
-	if (id >= worker_count)
-		fatal("id %u too large for worker count", id);
+	if (idx >= worker_count)
+		fatal("idx %u too large for worker count", idx);
 
-	return (WORKER(id));
+	return (WORKER(idx));
+}
+
+struct kore_worker *
+kore_worker_data_byid(u_int16_t id)
+{
+	struct kore_worker	*kw;
+	u_int16_t		idx;
+
+	for (idx = 0; idx < worker_count; idx++) {
+		kw = WORKER(idx);
+		if (kw->id == id)
+			return (kw);
+	}
+
+	return (NULL);
 }
 
 void
@@ -291,7 +304,7 @@ kore_worker_shutdown(void)
 
 			if (kw->pid != 0) {
 				pid = waitpid(kw->pid, &status, 0);
-				if (pid == -1)
+				if (pid == -1 && errno != ECHILD)
 					continue;
 
 #if defined(__linux__)
@@ -476,7 +489,7 @@ kore_worker_entry(struct kore_worker *kw)
 #endif
 	kore_timer_init();
 	kore_fileref_init();
-	kore_domain_keymgr_init();
+	kore_tls_keymgr_init();
 
 	quit = 0;
 	had_lock = 0;
@@ -486,7 +499,7 @@ kore_worker_entry(struct kore_worker *kw)
 
 	last_seed = 0;
 
-	if (keymgr_active) {
+	if (kore_keymgr_active) {
 		kore_msg_register(KORE_MSG_CRL, worker_keymgr_response);
 		kore_msg_register(KORE_MSG_ENTROPY_RESP, worker_entropy_recv);
 		kore_msg_register(KORE_MSG_CERTIFICATE, worker_keymgr_response);
@@ -521,7 +534,8 @@ kore_worker_entry(struct kore_worker *kw)
 	for (;;) {
 		now = kore_time_ms();
 
-		if (keymgr_active && (now - last_seed) > KORE_RESEED_TIME) {
+		if (kore_keymgr_active &&
+		    (now - last_seed) > KORE_RESEED_TIME) {
 			kore_msg_send(KORE_WORKER_KEYMGR,
 			    KORE_MSG_ENTROPY_REQ, NULL, 0);
 			last_seed = now;
@@ -621,6 +635,7 @@ kore_worker_entry(struct kore_worker *kw)
 	kore_platform_event_cleanup();
 	kore_connection_cleanup();
 	kore_domain_cleanup();
+	kore_tls_cleanup();
 	kore_module_cleanup();
 #if !defined(KORE_NO_HTTP)
 	http_cleanup();
@@ -647,19 +662,22 @@ kore_worker_reap(void)
 	pid_t			pid;
 	int			status;
 
-	pid = waitpid(WAIT_ANY, &status, WNOHANG);
+	for (;;) {
+		pid = waitpid(-worker_pgrp, &status, WNOHANG);
 
-	if (pid == -1) {
-		if (errno == ECHILD || errno == EINTR)
-			return;
-		kore_log(LOG_ERR, "%s: waitpid(): %s", __func__, errno_s);
-		return;
+		if (pid == -1) {
+			if (errno != ECHILD && errno != EINTR) {
+				kore_log(LOG_ERR,
+				    "%s: waitpid(): %s", __func__, errno_s);
+			}
+			break;
+		}
+
+		if (pid == 0)
+			break;
+
+		worker_reaper(pid, status);
 	}
-
-	if (pid == 0)
-		return;
-
-	worker_reaper(pid, status);
 }
 
 void
@@ -1017,8 +1035,7 @@ worker_entropy_recv(struct kore_msg *msg, const void *data)
 		    msg->length);
 	}
 
-	RAND_poll();
-	RAND_seed(data, msg->length);
+	kore_tls_seed(data, msg->length);
 }
 
 static void
@@ -1034,16 +1051,16 @@ worker_keymgr_response(struct kore_msg *msg, const void *data)
 
 	switch (msg->id) {
 	case KORE_MSG_CERTIFICATE:
-		kore_domain_tlsinit(dom, KORE_PEM_CERT_CHAIN,
+		kore_tls_domain_setup(dom, KORE_PEM_CERT_CHAIN,
 		    req->data, req->data_len);
 		break;
 	case KORE_MSG_CRL:
-		kore_domain_crl_add(dom, req->data, req->data_len);
+		kore_tls_domain_crl(dom, req->data, req->data_len);
 		break;
 #if defined(KORE_USE_ACME)
 	case KORE_ACME_CHALLENGE_SET_CERT:
-		if (dom->ssl_ctx == NULL) {
-			kore_domain_tlsinit(dom, KORE_DER_CERT_DATA,
+		if (dom->tls_ctx == NULL) {
+			kore_tls_domain_setup(dom, KORE_DER_CERT_DATA,
 			    req->data, req->data_len);
 		}
 

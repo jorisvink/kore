@@ -12,6 +12,7 @@ INSTALL_DIR=$(PREFIX)/bin
 MAN_DIR?=$(PREFIX)/share/man
 SHARE_DIR=$(PREFIX)/share/kore
 INCLUDE_DIR=$(PREFIX)/include/kore
+TLS_BACKEND?=openssl
 
 TOOLS=	kore-serve
 
@@ -23,7 +24,8 @@ PYTHON_CURLOPT=misc/curl/python_curlopt.h
 S_SRC=	src/kore.c src/buf.c src/config.c src/connection.c \
 	src/domain.c src/filemap.c src/fileref.c src/json.c src/log.c \
 	src/mem.c src/msg.c src/module.c src/net.c src/pool.c src/runtime.c \
-	src/timer.c src/utils.c src/worker.c src/keymgr.c
+	src/sha1.c src/sha2.c src/timer.c src/utils.c src/worker.c
+S_SRC+= src/tls_$(TLS_BACKEND).c
 
 FEATURES=
 FEATURES_INC=
@@ -34,11 +36,23 @@ CFLAGS+=-Wsign-compare -Iinclude/kore -I$(OBJDIR) -std=c99 -pedantic
 CFLAGS+=-Wtype-limits -fno-common
 CFLAGS+=-DPREFIX='"$(PREFIX)"' -fstack-protector-all
 
-ifneq ("$(OPENSSL_PATH)", "")
-CFLAGS+=-I$(OPENSSL_PATH)/include
-LDFLAGS+=-rdynamic -L$(OPENSSL_PATH)/lib -lssl -l$(KORE_CRYPTO)
+LDFLAGS+=-rdynamic
+
+ifeq ("$(TLS_BACKEND)", "openssl")
+	S_SRC+=src/keymgr_openssl.c
+	CFLAGS+=-DTLS_BACKEND_OPENSSL
+	FEATURES+=-DTLS_BACKEND_OPENSSL
+
+	ifneq ("$(OPENSSL_PATH)", "")
+		CFLAGS+=-I$(OPENSSL_PATH)/include
+		LDFLAGS+=-L$(OPENSSL_PATH)/lib -lssl -l$(KORE_CRYPTO)
+	else
+		LDFLAGS+=-lssl -l$(KORE_CRYPTO)
+	endif
 else
-LDFLAGS+=-rdynamic -lssl -l$(KORE_CRYPTO)
+ifneq ("$(ACME)", "")
+$(error ACME not supported under TLS backend $(TLS_BACKEND))
+endif
 endif
 
 ifneq ("$(KORE_SINGLE_BINARY)", "")
@@ -132,10 +146,12 @@ ifneq ("$(SANITIZE)", "")
 endif
 
 ifeq ("$(OSNAME)", "darwin")
-	OSSL_INCL=$(shell pkg-config openssl --cflags)
-	CFLAGS+=$(OSSL_INCL)
-	LDFLAGS+=$(shell pkg-config openssl --libs)
-	FEATURES_INC+=$(OSSL_INCL)
+	ifeq ("$(TLS_BACKEND)", "openssl")
+		OSSL_INCL=$(shell pkg-config openssl --cflags)
+		CFLAGS+=$(OSSL_INCL)
+		LDFLAGS+=$(shell pkg-config openssl --libs)
+		FEATURES_INC+=$(OSSL_INCL)
+	endif
 	S_SRC+=src/bsd.c
 else ifeq ("$(OSNAME)", "linux")
 	CFLAGS+=-D_GNU_SOURCE=1 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2

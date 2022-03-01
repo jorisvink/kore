@@ -25,9 +25,6 @@ EXAMPLES=	async-curl \
 		pgsql \
 		pgsql-sync \
 		pipe_task \
-		python-async \
-		python-echo \
-		python-pgsql \
 		sse \
 		tasks \
 		tls-proxy \
