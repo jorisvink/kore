@@ -304,7 +304,7 @@ memsize(void *ptr)
 	ms = (struct memsize *)((u_int8_t *)ptr - sizeof(*ms));
 
 	if (ms->magic != KORE_MEM_MAGIC)
-		fatal("%s: bad memsize magic (0x%x)", __func__, ms->magic);
+		fatal("%s: bad memsize magic (0x%zx)", __func__, ms->magic);
 
 	return (ms);
 }
@@ -319,7 +319,7 @@ meminfo(void *ptr)
 	info = (struct meminfo *)((u_int8_t *)ptr + ms->len);
 
 	if (info->magic != KORE_MEM_MAGIC)
-		fatal("%s: bad meminfo magic (0x%x)", __func__, info->magic);
+		fatal("%s: bad meminfo magic (0x%zx)", __func__, info->magic);
 
 	return (info);
 }
