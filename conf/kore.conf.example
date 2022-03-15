@@ -23,12 +23,12 @@ server tls {
 # Kore can have multiple settings for each processes that run under it.
 # There are 3 different type of processes:
 #
-#	1) Worker processes, these handle the HTTP requests and your code
+#	1) A worker process, these handle the HTTP requests and your code
 #	   runs inside of these.
-#	2) The keymgr process, this handles your domain private keys
+#	2) A keymgr process, this handles your domain private keys
 #	   and signing during the TLS handshakes. It also holds your
 #	   ACME account-key and will sign ACME requests.
-#	3) The acme process, this talks to the ACME servers.
+#	3) An acme process, this talks to the ACME servers.
 #
 # You can individually turn on/off chrooting and dropping user
 # privileges per process. The -n and -r command-line options
@@ -71,6 +71,15 @@ privsep keymgr {
 	# will chroot into this directory.
 	root		/etc/keymgr
 }
+
+# Configure Kore to log all worker output to a certain file.
+#
+# This forces all logs from the workers to be written to this file
+# instead of stdout. Note that this is not the actual access log.
+#
+# Any message logged by your application with kore_log() will also
+# appear under here.
+#logfile /var/log/kore.log
 
 # How many worker processes Kore will spawn. If the directive
 # worker_set_affinity is set to 1 (the default) Kore will automatically
