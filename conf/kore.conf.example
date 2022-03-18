@@ -301,17 +301,16 @@ authentication auth_example {
 #		- Configure the depth for x509 chain validation.
 #		  By default 1.
 #
-# Handlers
+# Routes
 #
-# Handlers are either static (for fixed paths) or dynamic.
-# Dynamic handlers take a POSIX regular expression as its path.
+# Routes can be a static path or a POSIX regular expression.
 #
-# Syntax:
-#	handler		path		module_callback		[auth block]
+# route /path {
+#	handler myhandler
+#	methods get post
+#	...
+# }
 #
-# Note that the auth block is optional and if set will force Kore to
-# authenticate the user according to the authentication block its settings
-# before allowing access to the page.
 
 # Example domain that responds to localhost.
 domain localhost {
@@ -321,23 +320,23 @@ domain localhost {
 	certkey		cert/server.key
 	accesslog	/var/log/kore_access.log
 
-	# Page handlers with no authentication required.
-	route		/css/style.css		serve_style_css
-	route		/			serve_index
-	route		/intro.jpg		serve_intro
-	route		/b64test		serve_b64test
-	route		/upload			serve_file_upload
-	route		/lock-test		serve_lock_test
-	route		/validator		serve_validator
-	route		/params-test		serve_params_test
-	route		/private		serve_private
+	route / {
+		handler index_page
+		methods get
+	}
 
-	# Restrict some URIs to certain methods
-	restrict /private post
-	restrict /validator post get head
+	route /login {
+		handler login_do
+		methods post
+		validate post username v_username
+		validate post passphrase v_passphrase
+	}
 
-	# Page handlers with authentication.
-	route		/private/test	serve_private_test	auth_example
+	route /mypages/ {
+		handler mypages_index
+		methods get
+		authenticate auth_example
+	}
 
 	# Allow access to files from the directory route_files via
 	# the /files/ URI.
@@ -345,34 +344,6 @@ domain localhost {
 	# Note the directory given must be relative to the root configuration
 	# option.
 	filemap		/files/			static_files
-
-	# Configure /params-test POST to only accept the following parameters.
-	# They are automatically tested against the validator listed.
-	# If the validator would fail Kore will automatically remove the
-	# failing parameter, indicating something was wrong with it.
-	# Any parameters not present in the params block are also filtered out.
-	params post /params-test {
-		validate	test1		v_example
-		validate	test2		v_regex
-	}
-
-	# Configure a GET parameter that /params-test can received. As before
-	# this is validated against the validator and removed if validation
-	# fails. All extra parameters in the GET query are filtered out.
-	params get /params-test {
-		validate	arg1		v_example
-		validate	id		v_number
-	}
-
-	# Configure a params block for allowed parameters in the
-	# querystring when performing a POST against /params-test.
-	# You do this by prefixing the method with the qs: marker.
-	# In the param blocks below we allow the parameter "post_id"
-	# in the querystring validated by v_number when a POST is
-	# done against the supplied URL.
-	params qs:post /params-test {
-		validate	post_id		v_number
-	}
 }
 
 # Example redirect 80->443.
@@ -384,16 +355,4 @@ domain localhost {
 #
 #	# redirect the others back to root.
 #	redirect	^/.*$		301	https://localhost
-#}
-
-#domain domain.com {
-#	certfile		cert/other/server.crt
-#	certkey			cert/other/server.key
-#	accesslog		/var/log/other_kore_access.log
-#	client_verify		/other/ca.crt
-#	client_verify_depth	1
-
-#	route		/css/style.css		serve_style_css
-#	route		/			serve_index
-#	route		^/[a-z0-9_]*$		serve_profile
 #}
