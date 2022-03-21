@@ -259,8 +259,14 @@ kore_connection_handle(struct connection *c)
 
 	switch (c->state) {
 	case CONN_STATE_TLS_SHAKE:
-		if (!kore_tls_connection_accept(c))
+		switch (kore_tls_connection_accept(c)) {
+		case KORE_RESULT_OK:
+			break;
+		case KORE_RESULT_RETRY:
+			return (KORE_RESULT_OK);
+		default:
 			return (KORE_RESULT_ERROR);
+		}
 
 		if (c->owner != NULL) {
 			listener = (struct listener *)c->owner;

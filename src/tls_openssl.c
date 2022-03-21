@@ -453,7 +453,7 @@ kore_tls_connection_accept(struct connection *c)
 		case SSL_ERROR_WANT_READ:
 		case SSL_ERROR_WANT_WRITE:
 			kore_connection_start_idletimer(c);
-			return (KORE_RESULT_OK);
+			return (KORE_RESULT_RETRY);
 		default:
 			if (c->flags & CONN_LOG_TLS_FAILURE) {
 				kore_log(LOG_NOTICE,
@@ -467,7 +467,7 @@ kore_tls_connection_accept(struct connection *c)
 	if (c->proto == CONN_PROTO_ACME_ALPN) {
 		kore_log(LOG_INFO, "disconnecting acme client");
 		kore_connection_disconnect(c);
-		return (KORE_RESULT_OK);
+		return (KORE_RESULT_ERROR);
 	}
 #endif
 
