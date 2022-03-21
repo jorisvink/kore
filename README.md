@@ -35,7 +35,7 @@ License
 
 Documentation
 --------------
-[Read the documentation](https://docs.kore.io/4.1.0/)
+[Read the documentation](https://docs.kore.io/4.2.0/)
 
 Performance
 -----------
@@ -52,7 +52,7 @@ Kore only supports x64, arm and aarch64 architectures.
 
 Building Kore
 -------------
-Clone this repository or get the latest release at [https://kore.io/releases/4.1.0](https://kore.io/releases/4.1.0).
+Clone this repository or get the latest release at [https://kore.io/releases/4.2.1](https://kore.io/releases/4.2.1).
 
 Requirements
 * openssl 1.1.1 or libressl 3.x
