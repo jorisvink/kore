@@ -23,6 +23,8 @@
 #include <linux/filter.h>
 #include <linux/seccomp.h>
 
+#include <stddef.h>
+
 #if __BYTE_ORDER == __LITTLE_ENDIAN
 #define ARGS_LO_OFFSET		0
 #define ARGS_HI_OFFSET		sizeof(u_int32_t)
