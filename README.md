@@ -1,7 +1,7 @@
 About
 -----
 
-Kore 4.2.1 (https://kore.io) is an easy to use web application platform for
+Kore 4.2.2 (https://kore.io) is an easy to use web application platform for
 writing scalable web APIs in C. Its main goals are security, scalability
 and allowing rapid development and deployment of such APIs.
 
