@@ -2971,7 +2971,8 @@ pyconnection_get_peer_x509dict(struct pyconnection *pyc, void *closure)
 		goto out;
 	}
 
-	if (!kore_tls_x509name_foreach(name, 0, issuer, pyconnection_x509_cb)) {
+	if (!kore_tls_x509name_foreach(name, 0, subject,
+	    pyconnection_x509_cb)) {
 		if (PyErr_Occurred() == NULL) {
 			PyErr_Format(PyExc_RuntimeError,
 			    "failed to add issuer name to dictionary");
@@ -2985,8 +2986,7 @@ pyconnection_get_peer_x509dict(struct pyconnection *pyc, void *closure)
 		goto out;
 	}
 
-	if (!kore_tls_x509name_foreach(name, 0, subject,
-	    pyconnection_x509_cb)) {
+	if (!kore_tls_x509name_foreach(name, 0, issuer, pyconnection_x509_cb)) {
 		if (PyErr_Occurred() == NULL) {
 			PyErr_Format(PyExc_RuntimeError,
 			    "failed to add subject name to dictionary");
