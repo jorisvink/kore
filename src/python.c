@@ -898,6 +898,7 @@ static PyObject *
 python_cmsg_to_list(struct msghdr *msg)
 {
 	struct cmsghdr		*c;
+	size_t			len;
 	Py_ssize_t		idx;
 	PyObject		*list, *tuple;
 
@@ -907,8 +908,10 @@ python_cmsg_to_list(struct msghdr *msg)
 	idx = 0;
 
 	for (c = CMSG_FIRSTHDR(msg); c != NULL; c = CMSG_NXTHDR(msg, c)) {
-		tuple = Py_BuildValue("(Iiiy#)", c->cmsg_len,
-		    c->cmsg_level, c->cmsg_type, CMSG_DATA(c), c->cmsg_len);
+		len = c->cmsg_len - sizeof(*c);
+
+		tuple = Py_BuildValue("(Iiiy#)", len,
+		    c->cmsg_level, c->cmsg_type, CMSG_DATA(c), len);
 
 		if (tuple == NULL) {
 			Py_DECREF(list);
