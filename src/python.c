@@ -55,6 +55,14 @@
 
 #include <frameobject.h>
 
+#if PY_VERSION_HEX < 0x030A0000
+typedef enum {
+	PYGEN_RETURN = 0,
+	PYGEN_ERROR = -1,
+	PYGEN_NEXT = 1,
+} PySendResult;
+#endif
+
 struct reqcall {
 	PyObject		*f;
 	TAILQ_ENTRY(reqcall)	list;
@@ -1075,6 +1083,7 @@ python_coro_create(PyObject *obj, struct http_request *req)
 static int
 python_coro_run(struct python_coro *coro)
 {
+	PySendResult	res;
 	PyObject	*item;
 	PyObject	*type, *traceback;
 
@@ -1087,7 +1096,8 @@ python_coro_run(struct python_coro *coro)
 		python_coro_trace("running", coro);
 
 		PyErr_Clear();
-#if PY_VERSION_HEX < 0x030a00a1
+#if PY_VERSION_HEX < 0x030A0000
+		res = PYGEN_RETURN;
 		item = _PyGen_Send((PyGenObject *)coro->obj, NULL);
 #else
 		/*
@@ -1096,10 +1106,10 @@ python_coro_run(struct python_coro *coro)
 		 * ends up being Py_None. This means the returned item is
 		 * NULL but no StopIteration exception has occurred.
 		 */
-		(void)PyIter_Send(coro->obj, NULL, &item);
+		res = PyIter_Send(coro->obj, NULL, &item);
 #endif
 
-		if (item == NULL) {
+		if (item == NULL || res == PYGEN_ERROR) {
 			if (coro->gatherop == NULL && PyErr_Occurred() &&
 			    PyErr_ExceptionMatches(PyExc_StopIteration)) {
 				PyErr_Fetch(&type, &coro->result, &traceback);
@@ -1114,6 +1124,12 @@ python_coro_run(struct python_coro *coro)
 				}
 			}
 
+			coro_running = NULL;
+			return (KORE_RESULT_OK);
+		}
+
+		if (res == PYGEN_RETURN) {
+			Py_XDECREF(item);
 			coro_running = NULL;
 			return (KORE_RESULT_OK);
 		}
