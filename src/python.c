@@ -1090,7 +1090,12 @@ python_coro_run(struct python_coro *coro)
 #if PY_VERSION_HEX < 0x030a00a1
 		item = _PyGen_Send((PyGenObject *)coro->obj, NULL);
 #else
-		/* Depend on the result in item only. */
+		/*
+		 * Python 3.10.x its PyIter_Send() will return a PYGEN_ERROR
+		 * if the coro returned (instead of yielding) and the result
+		 * ends up being Py_None. This means the returned item is
+		 * NULL but no StopIteration exception has occurred.
+		 */
 		(void)PyIter_Send(coro->obj, NULL, &item);
 #endif
 
@@ -1100,9 +1105,8 @@ python_coro_run(struct python_coro *coro)
 				PyErr_Fetch(&type, &coro->result, &traceback);
 				Py_DECREF(type);
 				Py_XDECREF(traceback);
-			} else {
+			} else if (PyErr_Occurred()) {
 				kore_python_log_error("coroutine");
-
 				if (coro->request != NULL) {
 					http_response(coro->request,
 					    HTTP_STATUS_INTERNAL_ERROR,
