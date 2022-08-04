@@ -4529,6 +4529,11 @@ pygather_reap_coro(struct pygather_op *op, struct python_coro *reap)
 		PyErr_Fetch(&type, &coro->coro->result, &traceback);
 		Py_DECREF(type);
 		Py_XDECREF(traceback);
+	} else {
+		if (coro->coro->result == NULL) {
+			coro->coro->result = Py_None;
+			Py_INCREF(Py_None);
+		}
 	}
 
 	result->obj = coro->coro->result;
