@@ -1108,8 +1108,8 @@ python_coro_run(struct python_coro *coro)
 		 */
 		res = PyIter_Send(coro->obj, NULL, &item);
 #endif
-
 		if (item == NULL || res == PYGEN_ERROR) {
+			Py_XDECREF(item);
 			if (coro->gatherop == NULL && PyErr_Occurred() &&
 			    PyErr_ExceptionMatches(PyExc_StopIteration)) {
 				PyErr_Fetch(&type, &coro->result, &traceback);
@@ -1128,11 +1128,13 @@ python_coro_run(struct python_coro *coro)
 			return (KORE_RESULT_OK);
 		}
 
+#if PY_VERSION_HEX >= 0x030A0000
 		if (res == PYGEN_RETURN) {
-			Py_XDECREF(item);
+			coro->result = item;
 			coro_running = NULL;
 			return (KORE_RESULT_OK);
 		}
+#endif
 
 		if (item == Py_None) {
 			Py_DECREF(item);
@@ -4497,6 +4499,9 @@ pygather_reap_coro(struct pygather_op *op, struct python_coro *reap)
 {
 	struct pygather_coro	*coro;
 	struct pygather_result	*result;
+#if PY_VERSION_HEX >= 0x030A0000
+	PyObject		*type, *traceback;
+#endif
 
 	TAILQ_FOREACH(coro, &op->coroutines, list) {
 		if (coro->coro->id == reap->id)
@@ -4513,10 +4518,22 @@ pygather_reap_coro(struct pygather_op *op, struct python_coro *reap)
 	result = kore_pool_get(&gather_result_pool);
 	result->obj = NULL;
 
+#if PY_VERSION_HEX < 0x030A0000
 	if (_PyGen_FetchStopIterationValue(&result->obj) == -1) {
 		result->obj = Py_None;
 		Py_INCREF(Py_None);
 	}
+#else
+	if (PyErr_Occurred()) {
+		Py_XDECREF(coro->coro->result);
+		PyErr_Fetch(&type, &coro->coro->result, &traceback);
+		Py_DECREF(type);
+		Py_XDECREF(traceback);
+	}
+
+	result->obj = coro->coro->result;
+	Py_INCREF(result->obj);
+#endif
 
 	TAILQ_INSERT_TAIL(&op->results, result, list);
 
