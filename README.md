@@ -1,11 +1,18 @@
 About
 -----
 
-Kore (https://kore.io) is an easy to use web application platform for
-writing scalable web APIs in C. Its main goals are security, scalability
-and allowing rapid development and deployment of such APIs.
+Kore (https://kore.io) is a web application platform for writing scalable,
+concurrent web based processes in C or Python.
 
-Because of this Kore is an ideal candidate for building robust, scalable and secure web things.
+It is built with a "secure by default" approach. It is fully privilege
+separated while using strong security features at the operating system level
+such as seccomp, pledge, unveil and more.
+
+Today Kore is used in a variety of applications ranging from high assurance
+cryptographic devices, machine-learning stacks and even in the aerospace
+industry.
+
+From embedded platforms all the way to high performance servers. *Kore scales.*
 
 Key Features
 ------------
