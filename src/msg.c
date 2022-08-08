@@ -64,6 +64,7 @@ kore_msg_parent_init(void)
 			kore_msg_parent_add(kw);
 	}
 
+	kore_msg_register(KORE_MSG_FATALX, msg_type_shutdown);
 	kore_msg_register(KORE_MSG_SHUTDOWN, msg_type_shutdown);
 }
 
@@ -273,7 +274,10 @@ msg_type_shutdown(struct kore_msg *msg, const void *data)
 		    "shutdown requested by worker %u, going down", msg->src);
 	}
 
-	kore_quit = 1;
+	if (msg->id == KORE_MSG_FATALX)
+		kore_quit = KORE_QUIT_FATAL;
+	else
+		kore_quit = KORE_QUIT_NORMAL;
 }
 
 #if !defined(KORE_NO_HTTP)
