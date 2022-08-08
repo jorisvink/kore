@@ -897,7 +897,7 @@ worker_reaper(pid_t pid, int status)
 			kore_log(LOG_CRIT,
 			    "keymgr or acme process gone, stopping");
 			kw->pid = 0;
-			kore_quit = 1;
+			kore_quit = KORE_QUIT_FATAL;
 			break;
 		}
 
@@ -919,17 +919,17 @@ worker_reaper(pid_t pid, int status)
 			kw->pid = 0;
 			kore_log(LOG_NOTICE,
 			    "worker policy is 'terminate', stopping");
-			kore_quit = 1;
+			kore_quit = KORE_QUIT_FATAL;
 			break;
 		}
 
-		if (kore_quit == 0) {
+		if (kore_quit == KORE_QUIT_NONE) {
 			kore_log(LOG_NOTICE, "restarting worker %d", kw->id);
 			kw->restarted = 1;
 			kore_msg_parent_remove(kw);
 
 			if (!kore_worker_spawn(idx, kw->id, kw->cpu)) {
-				kore_quit = 1;
+				kore_quit = KORE_QUIT_FATAL;
 				kore_log(LOG_ERR, "failed to restart worker");
 			} else {
 				kore_msg_parent_add(kw);

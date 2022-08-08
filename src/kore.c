@@ -54,7 +54,6 @@ volatile sig_atomic_t	sig_recv;
 struct kore_server_list	kore_servers;
 u_int8_t		nlisteners;
 int			kore_argc = 0;
-int			kore_quit = 0;
 pid_t			kore_pid = -1;
 u_int16_t		cpu_count = 1;
 int			kore_debug = 0;
@@ -66,6 +65,7 @@ char			**kore_argv = NULL;
 int			kore_foreground = 0;
 char			*kore_progname = NULL;
 u_int32_t		kore_socket_backlog = 5000;
+int			kore_quit = KORE_QUIT_NONE;
 char			*kore_pidfile = KORE_PIDFILE_DEFAULT;
 
 struct kore_privsep	worker_privsep;
@@ -295,7 +295,7 @@ main(int argc, char *argv[])
 
 	kore_mem_cleanup();
 
-	return (0);
+	return (kore_quit);
 }
 
 void
@@ -910,7 +910,7 @@ kore_server_start(int argc, char *argv[])
 	kore_msg_unregister(KORE_PYTHON_SEND_OBJ);
 #endif
 
-	while (kore_quit != 1) {
+	while (kore_quit == KORE_QUIT_NONE) {
 		last_sig = sig_recv;
 
 		if (last_sig != 0) {
@@ -922,7 +922,7 @@ kore_server_start(int argc, char *argv[])
 			case SIGINT:
 			case SIGQUIT:
 			case SIGTERM:
-				kore_quit = 1;
+				kore_quit = KORE_QUIT_NORMAL;
 				kore_worker_dispatch_signal(last_sig);
 				continue;
 			case SIGUSR1:

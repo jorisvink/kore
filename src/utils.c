@@ -560,7 +560,7 @@ fatalx(const char *fmt, ...)
 
 	/* In case people call fatalx() from the parent context. */
 	if (worker != NULL)
-		kore_msg_send(KORE_MSG_PARENT, KORE_MSG_SHUTDOWN, NULL, 0);
+		kore_msg_send(KORE_MSG_PARENT, KORE_MSG_FATALX, NULL, 0);
 
 	va_start(args, fmt);
 	fatal_log(fmt, args);
@@ -575,7 +575,7 @@ fatal_log(const char *fmt, va_list args)
 	char			buf[2048];
 
 	(void)vsnprintf(buf, sizeof(buf), fmt, args);
-	kore_log(LOG_ERR, "FATAL: %s", buf);
+	kore_log(LOG_ERR, "fatal: %s", buf);
 
 	if (worker != NULL && worker->id == KORE_WORKER_KEYMGR)
 		kore_keymgr_cleanup(1);

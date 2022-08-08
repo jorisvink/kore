@@ -79,6 +79,11 @@ typedef void		KORE_PRIVATE_KEY;
 
 #define KORE_RSAKEY_BITS	4096
 
+/* Kore quit reasons. */
+#define KORE_QUIT_NONE		-1
+#define KORE_QUIT_NORMAL	0
+#define KORE_QUIT_FATAL		1
+
 #define KORE_RESULT_ERROR	0
 #define KORE_RESULT_OK		1
 #define KORE_RESULT_RETRY	2
@@ -672,6 +677,7 @@ struct kore_timer {
 #define KORE_MSG_ACCEPT_AVAILABLE	10
 #define KORE_PYTHON_SEND_OBJ		11
 #define KORE_MSG_WORKER_LOG		12
+#define KORE_MSG_FATALX			13
 #define KORE_MSG_ACME_BASE		100
 
 /* messages for applications should start at 201. */
