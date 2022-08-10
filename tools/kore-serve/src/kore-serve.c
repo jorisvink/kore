@@ -90,6 +90,6 @@ kore_parent_configure(int argc, char *argv[])
 	dom = kore_domain_new("*");
 	kore_domain_attach(dom, srv);
 
-	if (!kore_filemap_create(dom, rpath, "/"))
+	if (!kore_filemap_create(dom, rpath, "/", NULL))
 		fatal("failed to create filemap for %s", rpath);
 }

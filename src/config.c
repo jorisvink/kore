@@ -1335,21 +1335,21 @@ configure_redirect(char *options)
 static int
 configure_filemap(char *options)
 {
-	char		*argv[3];
+	char		*argv[4];
 
 	if (current_domain == NULL) {
 		kore_log(LOG_ERR, "filemap keyword not in domain context");
 		return (KORE_RESULT_ERROR);
 	}
 
-	kore_split_string(options, " ", argv, 3);
+	kore_split_string(options, " ", argv, 4);
 
 	if (argv[0] == NULL || argv[1] == NULL) {
 		kore_log(LOG_ERR, "missing parameters for filemap");
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (!kore_filemap_create(current_domain, argv[1], argv[0])) {
+	if (!kore_filemap_create(current_domain, argv[1], argv[0], argv[2])) {
 		kore_log(LOG_ERR, "cannot create filemap for %s", argv[1]);
 		return (KORE_RESULT_ERROR);
 	}

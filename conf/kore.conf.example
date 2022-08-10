@@ -352,7 +352,7 @@ domain localhost {
 	#
 	# Note the directory given must be relative to the root configuration
 	# option.
-	filemap		/files/			static_files
+	filemap		/files/			static_files	[auth]
 }
 
 # Example redirect 80->443.
