@@ -1349,7 +1349,8 @@ configure_filemap(char *options)
 		return (KORE_RESULT_ERROR);
 	}
 
-	if (!kore_filemap_create(current_domain, argv[1], argv[0], argv[2])) {
+	if (kore_filemap_create(current_domain,
+	    argv[1], argv[0], argv[2]) == NULL) {
 		kore_log(LOG_ERR, "cannot create filemap for %s", argv[1]);
 		return (KORE_RESULT_ERROR);
 	}
