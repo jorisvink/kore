@@ -5396,8 +5396,9 @@ static PyObject *
 pydomain_filemaps(struct pydomain *domain, PyObject *args)
 {
 	Py_ssize_t		idx;
+	struct kore_route	*rt;
 	const char		*url, *path;
-	PyObject		*dict, *key, *value;
+	PyObject		*dict, *key, *value, *auth;
 
 	if (!PyArg_ParseTuple(args, "O", &dict))
 		return (NULL);
@@ -5409,21 +5410,55 @@ pydomain_filemaps(struct pydomain *domain, PyObject *args)
 
 	idx = 0;
 	while (PyDict_Next(dict, &idx, &key, &value)) {
-		if (!PyUnicode_CheckExact(key) ||
-		    !PyUnicode_CheckExact(value)) {
+		if (!PyUnicode_CheckExact(key)) {
 			PyErr_SetString(PyExc_RuntimeError,
-			    "filemap entries not strings");
+			    "filemap key not a string");
 			return (NULL);
 		}
 
 		url = PyUnicode_AsUTF8(key);
+
+		if (!PyUnicode_CheckExact(value) &&
+		    !PyTuple_CheckExact(value)) {
+			PyErr_SetString(PyExc_RuntimeError,
+			    "filemap value can be either be a string or tuple");
+			return (NULL);
+		}
+
+		if (PyTuple_CheckExact(value)) {
+			auth = PyTuple_GetItem(value, 1);
+			if (!PyDict_CheckExact(auth)) {
+				PyErr_SetString(PyExc_RuntimeError,
+				    "filemap value tuple auth is not a dict");
+				return (NULL);
+			}
+
+			value = PyTuple_GetItem(value, 0);
+			if (!PyUnicode_CheckExact(value)) {
+				PyErr_SetString(PyExc_RuntimeError,
+				    "filemap value tuple path is invalid");
+				return (NULL);
+			}
+		} else {
+			auth = NULL;
+		}
+
 		path = PyUnicode_AsUTF8(value);
 
-		if (!kore_filemap_create(domain->config, path, url)) {
+		rt = kore_filemap_create(domain->config, path, url, NULL);
+		if (rt == NULL) {
 			PyErr_Format(PyExc_RuntimeError,
 			    "failed to create filemap %s->%s for %s",
 			    url, path, domain->config->domain);
 			return (NULL);
+		}
+
+		if (auth != NULL) {
+			if (!python_route_auth(auth, rt)) {
+				kore_python_log_error("python_route_auth");
+				kore_route_free(rt);
+				return (KORE_RESULT_ERROR);
+			}
 		}
 	}
 

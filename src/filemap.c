@@ -52,8 +52,9 @@ kore_filemap_init(void)
 	TAILQ_INIT(&maps);
 }
 
-int
-kore_filemap_create(struct kore_domain *dom, const char *path, const char *root)
+struct kore_route *
+kore_filemap_create(struct kore_domain *dom, const char *path,
+    const char *root, const char *auth)
 {
 	size_t				sz;
 	struct stat			st;
@@ -64,10 +65,10 @@ kore_filemap_create(struct kore_domain *dom, const char *path, const char *root)
 
 	sz = strlen(root);
 	if (sz == 0)
-		return (KORE_RESULT_ERROR);
+		return (NULL);
 
 	if (root[0] != '/' || root[sz - 1] != '/')
-		return (KORE_RESULT_ERROR);
+		return (NULL);
 
 	if (worker_privsep.root != NULL) {
 		len = snprintf(fpath, sizeof(fpath), "%s/%s",
@@ -82,7 +83,7 @@ kore_filemap_create(struct kore_domain *dom, const char *path, const char *root)
 	if (stat(fpath, &st) == -1) {
 		kore_log(LOG_ERR, "%s: failed to stat '%s': %s", __func__,
 		    fpath, errno_s);
-		return (KORE_RESULT_ERROR);
+		return (NULL);
 	}
 
 	len = snprintf(regex, sizeof(regex), "^%s.*$", root);
@@ -90,7 +91,15 @@ kore_filemap_create(struct kore_domain *dom, const char *path, const char *root)
 		fatal("kore_filemap_create: buffer too small");
 
 	if ((rt = kore_route_create(dom, regex, HANDLER_TYPE_DYNAMIC)) == NULL)
-		return (KORE_RESULT_ERROR);
+		return (NULL);
+
+	if (auth != NULL) {
+		rt->auth = kore_auth_lookup(auth);
+		if (rt->auth == NULL) {
+			fatal("filemap for '%s' has unknown auth '%s'",
+			    path, auth);
+		}
+	}
 
 	kore_route_callback(rt, "filemap_resolve");
 	rt->methods = HTTP_METHOD_GET | HTTP_METHOD_HEAD;
@@ -109,7 +118,7 @@ kore_filemap_create(struct kore_domain *dom, const char *path, const char *root)
 
 	TAILQ_INSERT_TAIL(&maps, entry, list);
 
-	return (KORE_RESULT_OK);
+	return (rt);
 }
 
 void
