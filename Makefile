@@ -13,6 +13,7 @@ MAN_DIR?=$(PREFIX)/share/man
 SHARE_DIR=$(PREFIX)/share/kore
 INCLUDE_DIR=$(PREFIX)/include/kore
 TLS_BACKEND?=openssl
+KORE_TMPDIR?=/tmp
 
 TOOLS=	kore-serve
 
@@ -56,7 +57,7 @@ endif
 endif
 
 ifneq ("$(KORE_SINGLE_BINARY)", "")
-	CFLAGS+=-DKORE_SINGLE_BINARY
+	CFLAGS+=-DKORE_SINGLE_BINARY -DKORE_TMPDIR='"$(KORE_TMPDIR)"'
 	FEATURES+=-DKORE_SINGLE_BINARY
 endif
 
