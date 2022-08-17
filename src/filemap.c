@@ -39,7 +39,7 @@ struct filemap_entry {
 
 int	filemap_resolve(struct http_request *);
 
-static void	filemap_serve(struct http_request *, struct filemap_entry *);
+static void	filemap_serve(struct http_request *, const struct filemap_entry *);
 
 static TAILQ_HEAD(, filemap_entry)	maps;
 
@@ -177,7 +177,7 @@ filemap_resolve(struct http_request *req)
 }
 
 static void
-filemap_serve(struct http_request *req, struct filemap_entry *map)
+filemap_serve(struct http_request *req, const struct filemap_entry *map)
 {
 	struct stat		st;
 	struct connection	*c;
