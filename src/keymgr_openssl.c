@@ -219,7 +219,8 @@ static void	keymgr_acme_order_redo(void *, u_int64_t);
 static void	keymgr_acme_order_start(void *, u_int64_t);
 
 static void	keymgr_x509_ext(STACK_OF(X509_EXTENSION) *,
-		    int, const char *, ...);
+		    int, const char *, ...)
+		    __attribute__((format (printf, 3, 4)));
 
 static void	keymgr_acme_csr(const struct kore_keyreq *, struct key *);
 static void	keymgr_acme_install_cert(const void *, size_t, struct key *);

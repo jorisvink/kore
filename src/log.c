@@ -28,7 +28,8 @@ struct kore_wlog {
 	char		logmsg[];
 };
 
-static void	log_print(int, const char *, ...);
+static void	log_print(int, const char *, ...)
+		    __attribute__((format (printf, 2, 3)));
 static void	log_from_worker(struct kore_msg *, const void *);
 
 static FILE	*fp = NULL;

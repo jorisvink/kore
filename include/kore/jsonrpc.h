@@ -73,7 +73,8 @@ enum jsonrpc_error_code
 	JSONRPC_LIMIT_REACHED		= -31997
 };
 
-void	jsonrpc_log(struct jsonrpc_request *, int, const char *, ...);
+void	jsonrpc_log(struct jsonrpc_request *, int, const char *, ...)
+	    __attribute__((format (printf, 3, 4)));
 int	jsonrpc_read_request(struct http_request *, struct jsonrpc_request *);
 void	jsonrpc_destroy_request(struct jsonrpc_request *);
 int	jsonrpc_error(struct jsonrpc_request *, int, const char *);

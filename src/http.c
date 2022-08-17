@@ -1351,7 +1351,7 @@ http_body_digest(struct http_request *req, char *out, size_t len)
 	int		slen;
 
 	if (len != HTTP_BODY_DIGEST_STRLEN) {
-		fatal("http_body_digest: bad len:%zu wanted:%zu",
+		fatal("http_body_digest: bad len:%zu wanted:%u",
 		    len, HTTP_BODY_DIGEST_STRLEN);
 	}
 
