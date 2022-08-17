@@ -1676,8 +1676,10 @@ acme_base64url(const void *data, size_t len)
 {
 	char		*b64;
 
-	if (!kore_base64url_encode(data, len, &b64, KORE_BASE64_RAW))
-		fatal("%s: failed to encode base64url data of %zu bytes", len);
+	if (!kore_base64url_encode(data, len, &b64, KORE_BASE64_RAW)) {
+		fatal("%s: failed to encode base64url data of %zu bytes",
+		    __func__, len);
+	}
 
 	return (b64);
 }

@@ -4122,8 +4122,10 @@ pylock_aenter(struct pylock *lock, PyObject *args)
 {
 	struct pylock_op	*op;
 
-	if (coro_running->lockop != NULL)
-		fatal("%s: lockop not NULL for %u", __func__, coro_running->id);
+	if (coro_running->lockop != NULL) {
+		fatal("%s: lockop not NULL for %" PRIu64,
+		    __func__, coro_running->id);
+	}
 
 	if (lock->owner != NULL && lock->owner->id == coro_running->id) {
 		PyErr_SetString(PyExc_RuntimeError, "recursive lock detected");
@@ -4153,8 +4155,10 @@ pylock_aexit(struct pylock *lock, PyObject *args)
 {
 	struct pylock_op	*op;
 
-	if (coro_running->lockop != NULL)
-		fatal("%s: lockop not NULL for %u", __func__, coro_running->id);
+	if (coro_running->lockop != NULL) {
+		fatal("%s: lockop not NULL for %" PRIu64,
+		    __func__, coro_running->id);
+	}
 
 	if (lock->owner == NULL || lock->owner->id != coro_running->id) {
 		PyErr_SetString(PyExc_RuntimeError, "invalid lock owner");
@@ -4509,7 +4513,7 @@ pygather_reap_coro(struct pygather_op *op, struct python_coro *reap)
 	}
 
 	if (coro == NULL)
-		fatal("coroutine %u not found in gather", reap->id);
+		fatal("coroutine %" PRIu64 " not found in gather", reap->id);
 
 	op->running--;
 	if (op->running < 0)
@@ -4820,7 +4824,7 @@ pyhttp_iterobj_next(struct pyhttp_iterobj *iterobj)
 	}
 
 	kore_buf_reset(&iterobj->buf);
-	kore_buf_appendf(&iterobj->buf, "%x\r\n", length);
+	kore_buf_appendf(&iterobj->buf, "%lx\r\n", length);
 	kore_buf_append(&iterobj->buf, ptr, length);
 	kore_buf_appendf(&iterobj->buf, "\r\n");
 
