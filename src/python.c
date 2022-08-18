@@ -2221,11 +2221,12 @@ python_kore_domain(PyObject *self, PyObject *args, PyObject *kwargs)
 	long			depth;
 	const char		*name;
 	struct pydomain		*domain;
-	const char		*cert, *key, *ca, *attach;
+	const char		*cert, *key, *ca, *attach, *crl;
 
 	ca = NULL;
 	depth = -1;
 	key = NULL;
+	crl = NULL;
 	cert = NULL;
 	attach = NULL;
 
@@ -2282,6 +2283,7 @@ python_kore_domain(PyObject *self, PyObject *args, PyObject *kwargs)
 				    "invalid depth '%d'", depth);
 				return (NULL);
 			}
+			crl = python_string_from_dict(kwargs, "crl");
 		}
 	} else if (key != NULL || cert != NULL || ca != NULL) {
 		kore_log(LOG_INFO, "ignoring tls settings for '%s'", name);
@@ -2319,6 +2321,8 @@ python_kore_domain(PyObject *self, PyObject *args, PyObject *kwargs)
 		if (ca != NULL) {
 			domain->config->cafile = kore_strdup(ca);
 			domain->config->x509_verify_depth = depth;
+			if (crl != NULL)
+				domain->config->crlfile = kore_strdup(crl);
 		}
 	}
 
