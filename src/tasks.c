@@ -113,8 +113,6 @@ kore_task_run(struct kore_task *t)
 void
 kore_task_bind_request(struct kore_task *t, struct http_request *req)
 {
-	kore_debug("kore_task_bind_request: %p bound to %p", req, t);
-
 	if (t->cb != NULL)
 		fatal("cannot bind cbs and requests at the same time");
 
@@ -138,8 +136,6 @@ kore_task_bind_callback(struct kore_task *t, void (*cb)(struct kore_task *))
 void
 kore_task_destroy(struct kore_task *t)
 {
-	kore_debug("kore_task_destroy: %p", t);
-
 #if !defined(KORE_NO_HTTP)
 	if (t->req != NULL) {
 		t->req = NULL;
@@ -172,7 +168,6 @@ kore_task_finished(struct kore_task *t)
 void
 kore_task_finish(struct kore_task *t)
 {
-	kore_debug("kore_task_finished: %p (%d)", t, t->result);
 	pthread_rwlock_wrlock(&(t->lock));
 
 	if (t->fds[1] != -1) {
@@ -188,8 +183,6 @@ kore_task_channel_write(struct kore_task *t, void *data, u_int32_t len)
 {
 	int		fd;
 
-	kore_debug("kore_task_channel_write: %p <- %p (%ld)", t, data, len);
-
 	THREAD_FD_ASSIGN(t->thread->tid, fd, t->fds[1], t->fds[0]);
 	task_channel_write(fd, &len, sizeof(len));
 	task_channel_write(fd, data, len);
@@ -200,8 +193,6 @@ kore_task_channel_read(struct kore_task *t, void *out, u_int32_t len)
 {
 	int		fd;
 	u_int32_t	dlen, bytes;
-
-	kore_debug("kore_task_channel_read: %p -> %p (%ld)", t, out, len);
 
 	THREAD_FD_ASSIGN(t->thread->tid, fd, t->fds[1], t->fds[0]);
 	task_channel_read(fd, &dlen, sizeof(dlen));
@@ -220,8 +211,6 @@ void
 kore_task_handle(void *arg, int finished)
 {
 	struct kore_task	*t = arg;
-
-	kore_debug("kore_task_handle: %p, %d", t, finished);
 
 #if !defined(KORE_NO_HTTP)
 	if (t->req != NULL)
@@ -350,21 +339,15 @@ task_thread(void *arg)
 	struct kore_task		*t;
 	struct kore_task_thread		*tt = arg;
 
-	kore_debug("task_thread: #%d starting", tt->idx);
-
 	pthread_mutex_lock(&(tt->lock));
 
 	for (;;) {
 		if (TAILQ_EMPTY(&(tt->tasks)))
 			pthread_cond_wait(&(tt->cond), &(tt->lock));
 
-		kore_debug("task_thread#%d: woke up", tt->idx);
-
 		t = TAILQ_FIRST(&(tt->tasks));
 		TAILQ_REMOVE(&(tt->tasks), t, list);
 		pthread_mutex_unlock(&(tt->lock));
-
-		kore_debug("task_thread#%d: executing %p", tt->idx, t);
 
 		kore_task_set_state(t, KORE_TASK_STATE_RUNNING);
 		kore_task_set_result(t, t->entry(t));

@@ -1363,7 +1363,7 @@ static int
 configure_accesslog(char *path)
 {
 	if (current_domain == NULL) {
-		kore_debug("accesslog not specified in domain context\n");
+		kore_log(LOG_ERR, "accesslog not specified in domain context");
 		return (KORE_RESULT_ERROR);
 	}
 

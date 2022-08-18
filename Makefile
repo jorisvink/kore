@@ -62,7 +62,7 @@ ifneq ("$(KORE_SINGLE_BINARY)", "")
 endif
 
 ifneq ("$(DEBUG)", "")
-	CFLAGS+=-DKORE_DEBUG -g
+	CFLAGS+=-g
 	FEATURES+=-DKORE_DEBUG
 endif
 

@@ -84,7 +84,6 @@ kore_websocket_handshake(struct http_request *req, const char *onconnect,
 	kore_buf_free(buf);
 
 	if (!kore_base64_encode(digest, sizeof(digest), &base64)) {
-		kore_debug("failed to base64 encode digest");
 		http_response(req, HTTP_STATUS_INTERNAL_ERROR, NULL, 0);
 		return;
 	}
@@ -93,8 +92,6 @@ kore_websocket_handshake(struct http_request *req, const char *onconnect,
 	http_response_header(req, "connection", "upgrade");
 	http_response_header(req, "sec-websocket-accept", base64);
 	kore_free(base64);
-
-	kore_debug("%p: new websocket connection", req->owner);
 
 	req->owner->proto = CONN_PROTO_WEBSOCKET;
 	http_response(req, HTTP_STATUS_SWITCHING_PROTOCOLS, NULL, 0);
@@ -231,16 +228,12 @@ websocket_recv_opcode(struct netbuf *nb)
 	u_int8_t		op, len;
 	struct connection	*c = nb->owner;
 
-	if (!WEBSOCKET_HAS_MASK(nb->buf[1])) {
-		kore_debug("%p: frame did not have a mask set", c);
+	if (!WEBSOCKET_HAS_MASK(nb->buf[1]))
 		return (KORE_RESULT_ERROR);
-	}
 
 	if (WEBSOCKET_RSV(nb->buf[0], 1) || WEBSOCKET_RSV(nb->buf[0], 2) ||
-	    WEBSOCKET_RSV(nb->buf[0], 3)) {
-		kore_debug("%p: RSV bits are not zero", c);
+	    WEBSOCKET_RSV(nb->buf[0], 3))
 		return (KORE_RESULT_ERROR);
-	}
 
 	len = WEBSOCKET_FRAME_LENGTH(nb->buf[1]);
 
@@ -254,13 +247,10 @@ websocket_recv_opcode(struct netbuf *nb)
 	case WEBSOCKET_OP_PING:
 	case WEBSOCKET_OP_PONG:
 		if (len > WEBSOCKET_PAYLOAD_SINGLE ||
-		    !WEBSOCKET_HAS_FINFLAG(nb->buf[0])) {
-			kore_debug("%p: large or fragmented control frame", c);
+		    !WEBSOCKET_HAS_FINFLAG(nb->buf[0]))
 			return (KORE_RESULT_ERROR);
-		}
 		break;
 	default:
-		kore_debug("%p: bad websocket op %d", c, op);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -308,10 +298,8 @@ websocket_recv_frame(struct netbuf *nb)
 		break;
 	}
 
-	if (len > kore_websocket_maxframe) {
-		kore_debug("%p: frame too big", c);
+	if (len > kore_websocket_maxframe)
 		return (KORE_RESULT_ERROR);
-	}
 
 	extra += WEBSOCKET_FRAME_HDR;
 	total = len + extra + WEBSOCKET_MASK_LEN;
@@ -356,7 +344,6 @@ websocket_recv_frame(struct netbuf *nb)
 		    &nb->buf[moff + 4], len);
 		break;
 	default:
-		kore_debug("%p: bad websocket op %d", c, op);
 		return (KORE_RESULT_ERROR);
 	}
 

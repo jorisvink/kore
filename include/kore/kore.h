@@ -104,14 +104,6 @@ typedef void		KORE_PRIVATE_KEY;
 #define KORE_DHPARAM_PATH		PREFIX "/share/kore/ffdhe4096.pem"
 #define KORE_DEFAULT_CIPHER_LIST	"AEAD-AES256-GCM-SHA384:AEAD-CHACHA20-POLY1305-SHA256:AEAD-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256"
 
-#if defined(KORE_DEBUG)
-#define kore_debug(...)		\
-	if (kore_debug)		\
-		kore_debug_internal(__FILE__, __LINE__, __VA_ARGS__)
-#else
-#define kore_debug(...)
-#endif
-
 #define NETBUF_RECV			0
 #define NETBUF_SEND			1
 #define NETBUF_SEND_PAYLOAD_MAX		8192
@@ -714,7 +706,6 @@ extern char	*config_file;
 extern pid_t	kore_pid;
 extern int	kore_quit;
 extern int	kore_quiet;
-extern int	kore_debug;
 extern int	skip_chroot;
 extern int	skip_runas;
 extern int	kore_foreground;
@@ -927,8 +918,6 @@ void		kore_pool_init(struct kore_pool *, const char *,
 void		kore_pool_cleanup(struct kore_pool *);
 
 /* utils.c */
-void		kore_debug_internal(char *, int, const char *, ...)
-		    __attribute__((format (printf, 3, 4)));
 void		fatal(const char *, ...) __attribute__((noreturn))
 		    __attribute__((format (printf, 1, 2)));
 void		fatalx(const char *, ...) __attribute__((noreturn))
