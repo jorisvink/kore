@@ -927,9 +927,12 @@ void		kore_pool_init(struct kore_pool *, const char *,
 void		kore_pool_cleanup(struct kore_pool *);
 
 /* utils.c */
-void		kore_debug_internal(char *, int, const char *, ...);
-void		fatal(const char *, ...) __attribute__((noreturn));
-void		fatalx(const char *, ...) __attribute__((noreturn));
+void		kore_debug_internal(char *, int, const char *, ...)
+		    __attribute__((format (printf, 3, 4)));
+void		fatal(const char *, ...) __attribute__((noreturn))
+		    __attribute__((format (printf, 1, 2)));
+void		fatalx(const char *, ...) __attribute__((noreturn))
+		    __attribute__((format (printf, 1, 2)));
 
 u_int64_t	kore_time_ms(void);
 char		*kore_time_to_date(time_t);
@@ -942,7 +945,8 @@ size_t		kore_strlcpy(char *, const char *, const size_t);
 void		kore_server_disconnect(struct connection *);
 int		kore_split_string(char *, const char *, char **, size_t);
 void		kore_strip_chars(char *, const char, char **);
-int		kore_snprintf(char *, size_t, int *, const char *, ...);
+int		kore_snprintf(char *, size_t, int *, const char *, ...)
+		    __attribute__((format (printf, 4, 5)));
 long long	kore_strtonum(const char *, int, long long, long long, int *);
 double		kore_strtodouble(const char *, long double, long double, int *);
 int		kore_base64_encode(const void *, size_t, char **);
@@ -1105,8 +1109,10 @@ void		kore_buf_reset(struct kore_buf *);
 void		kore_buf_cleanup(struct kore_buf *);
 
 char	*kore_buf_stringify(struct kore_buf *, size_t *);
-void	kore_buf_appendf(struct kore_buf *, const char *, ...);
-void	kore_buf_appendv(struct kore_buf *, const char *, va_list);
+void	kore_buf_appendf(struct kore_buf *, const char *, ...)
+		    __attribute__((format (printf, 2, 3)));
+void	kore_buf_appendv(struct kore_buf *, const char *, va_list)
+		    __attribute__((format (printf, 2, 0)));
 void	kore_buf_replace_string(struct kore_buf *,
 	    const char *, const void *, size_t);
 

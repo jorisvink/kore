@@ -2221,11 +2221,12 @@ python_kore_domain(PyObject *self, PyObject *args, PyObject *kwargs)
 	long			depth;
 	const char		*name;
 	struct pydomain		*domain;
-	const char		*cert, *key, *ca, *attach;
+	const char		*cert, *key, *ca, *attach, *crl;
 
 	ca = NULL;
 	depth = -1;
 	key = NULL;
+	crl = NULL;
 	cert = NULL;
 	attach = NULL;
 
@@ -2282,6 +2283,7 @@ python_kore_domain(PyObject *self, PyObject *args, PyObject *kwargs)
 				    "invalid depth '%d'", depth);
 				return (NULL);
 			}
+			crl = python_string_from_dict(kwargs, "crl");
 		}
 	} else if (key != NULL || cert != NULL || ca != NULL) {
 		kore_log(LOG_INFO, "ignoring tls settings for '%s'", name);
@@ -2319,6 +2321,8 @@ python_kore_domain(PyObject *self, PyObject *args, PyObject *kwargs)
 		if (ca != NULL) {
 			domain->config->cafile = kore_strdup(ca);
 			domain->config->x509_verify_depth = depth;
+			if (crl != NULL)
+				domain->config->crlfile = kore_strdup(crl);
 		}
 	}
 
@@ -4122,8 +4126,10 @@ pylock_aenter(struct pylock *lock, PyObject *args)
 {
 	struct pylock_op	*op;
 
-	if (coro_running->lockop != NULL)
-		fatal("%s: lockop not NULL for %u", __func__, coro_running->id);
+	if (coro_running->lockop != NULL) {
+		fatal("%s: lockop not NULL for %" PRIu64,
+		    __func__, coro_running->id);
+	}
 
 	if (lock->owner != NULL && lock->owner->id == coro_running->id) {
 		PyErr_SetString(PyExc_RuntimeError, "recursive lock detected");
@@ -4153,8 +4159,10 @@ pylock_aexit(struct pylock *lock, PyObject *args)
 {
 	struct pylock_op	*op;
 
-	if (coro_running->lockop != NULL)
-		fatal("%s: lockop not NULL for %u", __func__, coro_running->id);
+	if (coro_running->lockop != NULL) {
+		fatal("%s: lockop not NULL for %" PRIu64,
+		    __func__, coro_running->id);
+	}
 
 	if (lock->owner == NULL || lock->owner->id != coro_running->id) {
 		PyErr_SetString(PyExc_RuntimeError, "invalid lock owner");
@@ -4509,7 +4517,7 @@ pygather_reap_coro(struct pygather_op *op, struct python_coro *reap)
 	}
 
 	if (coro == NULL)
-		fatal("coroutine %u not found in gather", reap->id);
+		fatal("coroutine %" PRIu64 " not found in gather", reap->id);
 
 	op->running--;
 	if (op->running < 0)
@@ -4820,7 +4828,7 @@ pyhttp_iterobj_next(struct pyhttp_iterobj *iterobj)
 	}
 
 	kore_buf_reset(&iterobj->buf);
-	kore_buf_appendf(&iterobj->buf, "%x\r\n", length);
+	kore_buf_appendf(&iterobj->buf, "%lx\r\n", length);
 	kore_buf_append(&iterobj->buf, ptr, length);
 	kore_buf_appendf(&iterobj->buf, "\r\n");
 

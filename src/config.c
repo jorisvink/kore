@@ -761,7 +761,8 @@ config_file_write(void)
 	int		fd, len;
 	char		fpath[MAXPATHLEN];
 
-	len = snprintf(fpath, sizeof(fpath), "/tmp/%s.XXXXXX", __progname);
+	len = snprintf(fpath, sizeof(fpath), "%s/%s.XXXXXX", KORE_TMPDIR,
+	    __progname);
 	if (len == -1 || (size_t)len >= sizeof(fpath))
 		fatal("failed to create temporary path");
 

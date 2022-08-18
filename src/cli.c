@@ -124,9 +124,10 @@ static struct cli_buf	*cli_buf_alloc(size_t);
 static void		cli_buf_free(struct cli_buf *);
 static char		*cli_buf_stringify(struct cli_buf *, size_t *);
 static void		cli_buf_append(struct cli_buf *, const void *, size_t);
-static void		cli_buf_appendf(struct cli_buf *, const char *, ...);
+static void		cli_buf_appendf(struct cli_buf *, const char *, ...)
+			    __attribute__((format (printf, 2, 3)));
 static void		cli_buf_appendv(struct cli_buf *, const char *,
-			    va_list);
+			    va_list) __attribute__((format (printf, 2, 0)));
 
 static void		*cli_malloc(size_t);
 static char		*cli_strdup(const char *);
@@ -138,7 +139,8 @@ static long long	cli_strtonum(const char *, long long, long long);
 static int		cli_split_string(char *, const char *, char **, size_t);
 
 static void		usage(void) __attribute__((noreturn));
-static void		fatal(const char *, ...) __attribute__((noreturn));
+static void		fatal(const char *, ...) __attribute__((noreturn))
+			    __attribute__((format (printf, 1, 2)));
 
 static void		cli_file_close(int);
 static void		cli_run_kore(void);
@@ -154,12 +156,14 @@ static void		cli_build_cflags(struct buildopt *);
 static void		cli_build_cxxflags(struct buildopt *);
 static void		cli_build_ldflags(struct buildopt *);
 static void		cli_file_read(int, char **, size_t *);
-static void		cli_file_writef(int, const char *, ...);
+static void		cli_file_writef(int, const char *, ...)
+			    __attribute__((format (printf, 2, 3)));
 static void		cli_file_open(const char *, int, int *);
 static void		cli_file_remove(char *, struct dirent *);
 static void		cli_build_asset(char *, struct dirent *);
 static void		cli_file_write(int, const void *, size_t);
-static int		cli_vasprintf(char **, const char *, ...);
+static int		cli_vasprintf(char **, const char *, ...)
+			    __attribute__((format (printf, 2, 3)));
 static void		cli_spawn_proc(void (*cb)(void *), void *);
 static void		cli_write_asset(const char *, const char *,
 			    struct buildopt *);

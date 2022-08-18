@@ -839,7 +839,7 @@ worker_domain_check(struct kore_domain *dom)
 		if (stat(dom->cafile, &st) == -1)
 			fatalx("'%s': %s", dom->cafile, errno_s);
 		if (access(dom->cafile, R_OK) == -1)
-			fatalx("'%s': not readable", dom->cafile, errno_s);
+			fatalx("'%s': not readable", dom->cafile);
 	}
 }
 
