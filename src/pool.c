@@ -39,8 +39,6 @@ void
 kore_pool_init(struct kore_pool *pool, const char *name,
     size_t len, size_t elm)
 {
-	kore_debug("kore_pool_init(%p, %s, %zu, %zu)", pool, name, len, elm);
-
 	if (elm < POOL_MIN_ELEMENTS)
 		elm = POOL_MIN_ELEMENTS;
 
@@ -92,7 +90,7 @@ kore_pool_get(struct kore_pool *pool)
 
 	entry = LIST_FIRST(&(pool->freelist));
 	if (entry->state != POOL_ELEMENT_FREE)
-		fatal("%s: element %p was not free", pool->name, (void*) entry);
+		fatal("%s: element %p was not free", pool->name, (void *)entry);
 	LIST_REMOVE(entry, list);
 
 	entry->state = POOL_ELEMENT_BUSY;
@@ -140,8 +138,6 @@ pool_region_create(struct kore_pool *pool, size_t elms)
 	struct kore_pool_region		*reg;
 	struct kore_pool_entry		*entry;
 
-	kore_debug("pool_region_create(%p, %zu)", pool, elms);
-
 	if ((reg = calloc(1, sizeof(struct kore_pool_region))) == NULL)
 		fatal("pool_region_create: calloc: %s", errno_s);
 
@@ -174,8 +170,6 @@ static void
 pool_region_destroy(struct kore_pool *pool)
 {
 	struct kore_pool_region		*reg;
-
-	kore_debug("pool_region_destroy(%p)", pool);
 
 	/* Take care iterating when modifying list contents */
 	while (!LIST_EMPTY(&pool->regions)) {

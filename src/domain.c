@@ -54,8 +54,6 @@ kore_domain_new(const char *domain)
 {
 	struct kore_domain	*dom;
 
-	kore_debug("kore_domain_new(%s)", domain);
-
 	dom = kore_calloc(1, sizeof(*dom));
 	dom->id = domain_id++;
 

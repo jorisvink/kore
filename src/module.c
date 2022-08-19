@@ -67,8 +67,6 @@ kore_module_load(const char *path, const char *onload, int type)
 	struct stat		st;
 	struct kore_module	*module;
 
-	kore_debug("kore_module_load(%s, %s)", path, onload);
-
 	module = kore_malloc(sizeof(struct kore_module));
 	module->ocb = NULL;
 	module->type = type;

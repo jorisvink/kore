@@ -286,8 +286,6 @@ void
 http_request_sleep(struct http_request *req)
 {
 	if (!(req->flags & HTTP_REQUEST_SLEEPING)) {
-		kore_debug("http_request_sleep: %p napping", req);
-
 		req->flags |= HTTP_REQUEST_SLEEPING;
 		TAILQ_REMOVE(&http_requests, req, list);
 		TAILQ_INSERT_TAIL(&http_requests_sleeping, req, list);
@@ -298,8 +296,6 @@ void
 http_request_wakeup(struct http_request *req)
 {
 	if (req->flags & HTTP_REQUEST_SLEEPING) {
-		kore_debug("http_request_wakeup: %p woke up", req);
-
 		req->flags &= ~HTTP_REQUEST_SLEEPING;
 		TAILQ_REMOVE(&http_requests_sleeping, req, list);
 		TAILQ_INSERT_TAIL(&http_requests, req, list);
@@ -343,9 +339,6 @@ void
 http_process_request(struct http_request *req)
 {
 	int		r;
-
-	kore_debug("http_process_request: %p->%p (%s)",
-	    req->owner, req, req->path);
 
 	if (req->flags & HTTP_REQUEST_DELETE || req->rt == NULL)
 		return;
@@ -404,7 +397,6 @@ http_response_header(struct http_request *req,
 	struct http_header	*hdr;
 
 	hdr = NULL;
-	kore_debug("http_response_header(%p, %s, %s)", req, header, value);
 
 	TAILQ_FOREACH(hdr, &req->resp_headers, list) {
 		if (!strcasecmp(hdr->header, header)) {
@@ -461,10 +453,8 @@ http_request_free(struct http_request *req)
 		}
 	}
 
-	if (pending_tasks) {
-		kore_debug("http_request_free %d pending tasks", pending_tasks);
+	if (pending_tasks)
 		return;
-	}
 #endif
 
 #if defined(KORE_USE_PYTHON)
@@ -490,7 +480,6 @@ http_request_free(struct http_request *req)
 		kore_curl_cleanup(client);
 	}
 #endif
-	kore_debug("http_request_free: %p->%p", req->owner, req);
 	kore_free(req->headers);
 
 	req->host = NULL;
@@ -601,8 +590,6 @@ http_response(struct http_request *req, int code, const void *d, size_t l)
 	if (req->owner == NULL)
 		return;
 
-	kore_debug("%s(%p, %d, %p, %zu)", __func__, req, code, d, l);
-
 	req->status = code;
 
 	switch (req->owner->proto) {
@@ -621,8 +608,6 @@ http_response_close(struct http_request *req, int code, const void *d, size_t l)
 {
 	if (req->owner == NULL)
 		return;
-
-	kore_debug("%s(%p, %d, %p, %zu)", __func__, req, code, d, l);
 
 	req->status = code;
 	req->owner->flags |= CONN_CLOSE_EMPTY;
@@ -646,8 +631,6 @@ http_response_json(struct http_request *req, int status,
 
 	if (req->owner == NULL)
 		return;
-
-	kore_debug("%s(%p, %d)", __func__, req, status);
 
 	buf = kore_buf_alloc(1024);
 	kore_json_item_tobuf(json, buf);
@@ -815,7 +798,6 @@ http_header_recv(struct netbuf *nb)
 	char			*value, *host, *request[4], *hbuf;
 
 	c = nb->owner;
-	kore_debug("http_header_recv(%p)", nb);
 
 	if (nb->b_len < 4)
 		return (KORE_RESULT_OK);
@@ -1038,10 +1020,8 @@ http_argument_urldecode(char *arg)
 			continue;
 		}
 
-		if ((p + 2) >= (arg + len)) {
-			kore_debug("overflow in '%s'", arg);
+		if ((p + 2) >= (arg + len))
 			return (KORE_RESULT_ERROR);
-		}
 
 		if (!isxdigit((unsigned char)*(p + 1)) ||
 		    !isxdigit((unsigned char)*(p + 2))) {
@@ -1422,9 +1402,6 @@ http_state_run(struct http_state *states, u_int8_t elm,
 			    req->fsm_state, elm);
 		}
 
-		kore_debug("http_state_run: running %s",
-		    states[req->fsm_state].name);
-
 		r = states[req->fsm_state].cb(req);
 		switch (r) {
 		case HTTP_STATE_ERROR:
@@ -1442,7 +1419,6 @@ http_state_run(struct http_state *states, u_int8_t elm,
 	}
 
 	req->fsm_state = 0;
-	kore_debug("http_state_run(%p): done", req);
 
 	return (KORE_RESULT_OK);
 }
@@ -1918,9 +1894,6 @@ http_request_new(struct connection *c, const char *host,
 		return (NULL);
 	}
 
-	kore_debug("http_request_new(%p, %s, %s, %s, %s)", c, host,
-	    method, path, version);
-
 	if (strlen(host) >= KORE_DOMAINNAME_LEN - 1) {
 		http_error_response(c, HTTP_STATUS_BAD_REQUEST);
 		return (NULL);
@@ -2234,8 +2207,6 @@ multipart_parse_headers(struct http_request *req, struct kore_buf *in,
 				    in, name, fname, boundary, blen);
 			}
 			kore_free(fname);
-		} else {
-			kore_debug("got unknown: %s", opt[2]);
 		}
 
 		kore_free(name);
@@ -2402,7 +2373,6 @@ http_body_update(struct http_request *req, const void *data, size_t len)
 static void
 http_error_response(struct connection *c, int status)
 {
-	kore_debug("http_error_response(%p, %d)", c, status);
 	c->flags |= CONN_CLOSE_EMPTY;
 
 	switch (c->proto) {

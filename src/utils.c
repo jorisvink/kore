@@ -63,21 +63,6 @@ static char b64url_table[] = 	\
 /* b64_table and b64url_table are the same size. */
 #define B64_TABLE_LEN		(sizeof(b64_table))
 
-#if defined(KORE_DEBUG)
-void
-kore_debug_internal(char *file, int line, const char *fmt, ...)
-{
-	va_list		args;
-	char		buf[2048];
-
-	va_start(args, fmt);
-	(void)vsnprintf(buf, sizeof(buf), fmt, args);
-	va_end(args);
-
-	printf("[%d] %s:%d - %s\n", kore_pid, file, line, buf);
-}
-#endif
-
 size_t
 kore_strlcpy(char *dst, const char *src, const size_t len)
 {
@@ -288,7 +273,7 @@ kore_date_to_time(const char *http_date)
 	t = KORE_RESULT_ERROR;
 
 	if (kore_split_string(sdup, " ", args, 7) != 6) {
-		kore_debug("misformed http-date: '%s'", http_date);
+		kore_log(LOG_WARNING, "misformed http-date: '%s'", http_date);
 		goto out;
 	}
 
@@ -296,7 +281,8 @@ kore_date_to_time(const char *http_date)
 
 	tm.tm_year = kore_strtonum(args[3], 10, 1900, 2068, &err) - 1900;
 	if (err == KORE_RESULT_ERROR) {
-		kore_debug("misformed year in http-date: '%s'", http_date);
+		kore_log(LOG_WARNING, "misformed year in http-date: '%s'",
+		    http_date);
 		goto out;
 	}
 
@@ -308,36 +294,42 @@ kore_date_to_time(const char *http_date)
 	}
 
 	if (month_names[i].name == NULL) {
-		kore_debug("misformed month in http-date: '%s'", http_date);
+		kore_log(LOG_WARNING, "misformed month in http-date: '%s'",
+		    http_date);
 		goto out;
 	}
 
 	tm.tm_mday = kore_strtonum(args[1], 10, 1, 31, &err);
 	if (err == KORE_RESULT_ERROR) {
-		kore_debug("misformed mday in http-date: '%s'", http_date);
+		kore_log(LOG_WARNING, "misformed mday in http-date: '%s'",
+		    http_date);
 		goto out;
 	}
 
 	if (kore_split_string(args[4], ":", tbuf, 5) != 3) {
-		kore_debug("misformed HH:MM:SS in http-date: '%s'", http_date);
+		kore_log(LOG_WARNING, "misformed HH:MM:SS in http-date: '%s'",
+		    http_date);
 		goto out;
 	}
 
 	tm.tm_hour = kore_strtonum(tbuf[0], 10, 0, 23, &err);
 	if (err == KORE_RESULT_ERROR) {
-		kore_debug("misformed hour in http-date: '%s'", http_date);
+		kore_log(LOG_WARNING, "misformed hour in http-date: '%s'",
+		    http_date);
 		goto out;
 	}
 
 	tm.tm_min = kore_strtonum(tbuf[1], 10, 0, 59, &err);
 	if (err == KORE_RESULT_ERROR) {
-		kore_debug("misformed minutes in http-date: '%s'", http_date);
+		kore_log(LOG_WARNING, "misformed minutes in http-date: '%s'",
+		    http_date);
 		goto out;
 	}
 
 	tm.tm_sec = kore_strtonum(tbuf[2], 10, 0, 60, &err);
 	if (err == KORE_RESULT_ERROR) {
-		kore_debug("misformed seconds in http-date: '%s'", http_date);
+		kore_log(LOG_WARNING, "misformed seconds in http-date: '%s'",
+		    http_date);
 		goto out;
 	}
 
@@ -345,7 +337,7 @@ kore_date_to_time(const char *http_date)
 	t = mktime(&tm) + ltm->tm_gmtoff;
 	if (t == -1) {
 		t = 0;
-		kore_debug("mktime() on '%s' failed", http_date);
+		kore_log(LOG_WARNING, "mktime() on '%s' failed", http_date);
 	}
 
 out:
@@ -364,10 +356,8 @@ kore_time_to_date(time_t now)
 		last = now;
 
 		tm = gmtime(&now);
-		if (!strftime(tbuf, sizeof(tbuf), "%a, %d %b %Y %T GMT", tm)) {
-			kore_debug("strftime() gave us NULL (%ld)", now);
+		if (!strftime(tbuf, sizeof(tbuf), "%a, %d %b %Y %T GMT", tm))
 			return (NULL);
-		}
 	}
 
 	return (tbuf);

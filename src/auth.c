@@ -55,8 +55,6 @@ kore_auth_run(struct http_request *req, struct kore_auth *auth)
 {
 	int		r;
 
-	kore_debug("kore_auth(%p, %p)", req, auth);
-
 	switch (auth->type) {
 	case KORE_AUTH_TYPE_COOKIE:
 		r = kore_auth_cookie(req, auth);
@@ -75,7 +73,6 @@ kore_auth_run(struct http_request *req, struct kore_auth *auth)
 	switch (r) {
 	case KORE_RESULT_OK:
 		req->flags |= HTTP_REQUEST_AUTHED;
-		kore_debug("kore_auth_run() for %s successful", req->path);
 		/* FALLTHROUGH */
 	case KORE_RESULT_RETRY:
 		return (r);
@@ -86,8 +83,6 @@ kore_auth_run(struct http_request *req, struct kore_auth *auth)
 	/* Authentication types of "request" send their own HTTP responses. */
 	if (auth->type == KORE_AUTH_TYPE_REQUEST)
 		return (r);
-
-	kore_debug("kore_auth_run() for %s failed", req->path);
 
 	if (auth->redirect == NULL) {
 		http_response(req, HTTP_STATUS_FORBIDDEN, NULL, 0);

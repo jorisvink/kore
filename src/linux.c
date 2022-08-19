@@ -44,7 +44,6 @@ kore_platform_init(void)
 	kore_seccomp_init();
 
 	if ((n = sysconf(_SC_NPROCESSORS_ONLN)) == -1) {
-		kore_debug("could not get number of cpu's falling back to 1");
 		cpu_count = 1;
 	} else {
 		cpu_count = (u_int16_t)n;
@@ -58,12 +57,9 @@ kore_platform_worker_setcpu(struct kore_worker *kw)
 
 	CPU_ZERO(&cpuset);
 	CPU_SET(kw->cpu, &cpuset);
-	if (sched_setaffinity(0, sizeof(cpu_set_t), &cpuset) == -1) {
-		kore_debug("kore_worker_setcpu(): %s", errno_s);
-	} else {
-		kore_debug("kore_worker_setcpu(): worker %d on cpu %d",
-		    kw->id, kw->cpu);
-	}
+
+	if (sched_setaffinity(0, sizeof(cpu_set_t), &cpuset) == -1)
+		kore_log(LOG_WARNING, "kore_worker_setcpu(): %s", errno_s);
 }
 
 void
@@ -114,10 +110,6 @@ kore_platform_event_wait(u_int64_t timer)
 		fatal("epoll_wait(): %s", errno_s);
 	}
 
-	if (n > 0) {
-		kore_debug("main(): %d sockets available", n);
-	}
-
 	r = 0;
 	for (i = 0; i < n; i++) {
 		if (events[i].data.ptr == NULL)
@@ -165,9 +157,6 @@ kore_platform_event_schedule(int fd, int type, int flags, void *udata)
 {
 	struct epoll_event	evt;
 
-	kore_debug("kore_platform_event_schedule(%d, %d, %d, %p)",
-	    fd, type, flags, udata);
-
 	evt.events = type;
 	evt.data.ptr = udata;
 	if (epoll_ctl(efd, EPOLL_CTL_ADD, fd, &evt) == -1) {
@@ -205,8 +194,6 @@ kore_platform_enable_accept(void)
 	struct listener		*l;
 	struct kore_server	*srv;
 
-	kore_debug("kore_platform_enable_accept()");
-
 	LIST_FOREACH(srv, &kore_servers, list) {
 		LIST_FOREACH(l, &srv->listeners, list)
 			kore_platform_event_schedule(l->fd, EPOLLIN, 0, l);
@@ -218,8 +205,6 @@ kore_platform_disable_accept(void)
 {
 	struct listener		*l;
 	struct kore_server	*srv;
-
-	kore_debug("kore_platform_disable_accept()");
 
 	LIST_FOREACH(srv, &kore_servers, list) {
 		LIST_FOREACH(l, &srv->listeners, list) {

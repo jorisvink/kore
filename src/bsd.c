@@ -54,7 +54,6 @@ kore_platform_init(void)
 	int	mib[] = { CTL_HW, HW_NCPU };
 
 	if (sysctl(mib, 2, &n, &len, NULL, 0) == -1) {
-		kore_debug("kore_platform_init(): sysctl %s", errno_s);
 		cpu_count = 1;
 	} else {
 		cpu_count = (u_int16_t)n;
@@ -127,9 +126,6 @@ kore_platform_event_wait(u_int64_t timer)
 			return;
 		fatal("kevent(): %s", errno_s);
 	}
-
-	if (n > 0)
-		kore_debug("main(): %d sockets available", n);
 
 	for (i = 0; i < n; i++) {
 		evt = (struct kore_event *)events[i].udata;

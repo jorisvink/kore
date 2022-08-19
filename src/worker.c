@@ -132,12 +132,8 @@ kore_worker_init(void)
 	    sizeof(*accept_lock));
 	memset(kore_workers, 0, sizeof(struct kore_worker) * worker_count);
 
-	kore_debug("kore_worker_init(): system has %d cpu's", cpu_count);
-	kore_debug("kore_worker_init(): starting %d workers", worker_count);
-
-	if (worker_count > cpu_count) {
-		kore_debug("kore_worker_init(): more workers than cpu's");
-	}
+	if (worker_count > cpu_count)
+		kore_log(LOG_NOTICE, "more worker processes than cpu cores");
 
 	/* Setup log buffers. */
 	for (idx = KORE_WORKER_BASE; idx < worker_count; idx++) {
@@ -357,7 +353,8 @@ kore_worker_dispatch_signal(int sig)
 			continue;
 
 		if (kill(kw->pid, sig) == -1) {
-			kore_debug("kill(%d, %d): %s", kw->pid, sig, errno_s);
+			kore_log(LOG_WARNING, "kill(%d, %d): %s",
+			    kw->pid, sig, errno_s);
 		}
 	}
 }
@@ -649,8 +646,6 @@ kore_worker_entry(struct kore_worker *kw)
 #if defined(KORE_USE_PGSQL)
 	kore_pgsql_sys_cleanup();
 #endif
-
-	kore_debug("worker %d shutting down", kw->id);
 
 	kore_mem_cleanup();
 	exit(0);

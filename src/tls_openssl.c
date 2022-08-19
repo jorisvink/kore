@@ -207,8 +207,6 @@ kore_tls_domain_setup(struct kore_domain *dom, int type,
 	EC_KEY			*eckey;
 	const SSL_METHOD	*method;
 
-	kore_debug("kore_domain_tlsinit(%s)", dom->domain);
-
 	if (dom->tls_ctx != NULL)
 		SSL_CTX_free(dom->tls_ctx);
 
@@ -519,7 +517,6 @@ kore_tls_read(struct connection *c, size_t *bytes)
 			}
 			/* FALLTHROUGH */
 		default:
-			kore_debug("SSL_read(): %s", ssl_errno_s);
 			if (c->flags & CONN_LOG_TLS_FAILURE) {
 				kore_log(LOG_NOTICE,
 				    "SSL_read(): %s", ssl_errno_s);
@@ -568,7 +565,6 @@ kore_tls_write(struct connection *c, size_t len, size_t *written)
 			}
 			/* FALLTHROUGH */
 		default:
-			kore_debug("SSL_write(): %s", ssl_errno_s);
 			if (c->flags & CONN_LOG_TLS_FAILURE) {
 				kore_log(LOG_NOTICE,
 				    "SSL_write(): %s", ssl_errno_s);
@@ -794,7 +790,6 @@ tls_sni_cb(SSL *ssl, int *ad, void *arg)
 		fatal("no connection data in %s", __func__);
 
 	sname = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
-	kore_debug("kore_tls_sni_cb(): received host %s", sname);
 
 	if (sname != NULL)
 		c->tls_sni = kore_strdup(sname);
@@ -808,7 +803,6 @@ tls_sni_cb(SSL *ssl, int *ad, void *arg)
 			return (SSL_TLSEXT_ERR_NOACK);
 		}
 
-		kore_debug("kore_ssl_sni_cb(): Using %s CTX", sname);
 		SSL_set_SSL_CTX(ssl, dom->tls_ctx);
 
 		if (dom->cafile != NULL) {

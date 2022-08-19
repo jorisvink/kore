@@ -56,7 +56,6 @@ u_int8_t		nlisteners;
 int			kore_argc = 0;
 pid_t			kore_pid = -1;
 u_int16_t		cpu_count = 1;
-int			kore_debug = 0;
 int			kore_quiet = 0;
 int			skip_runas = 0;
 int			skip_chroot = 0;
@@ -304,9 +303,9 @@ kore_default_getopt(int argc, char **argv)
 	int		ch;
 
 #if !defined(KORE_SINGLE_BINARY)
-	while ((ch = getopt(argc, argv, "c:dfhnqrv")) != -1) {
+	while ((ch = getopt(argc, argv, "c:fhnqrv")) != -1) {
 #else
-	while ((ch = getopt(argc, argv, "dfhnqrv")) != -1) {
+	while ((ch = getopt(argc, argv, "fhnqrv")) != -1) {
 #endif
 		switch (ch) {
 #if !defined(KORE_SINGLE_BINARY)
@@ -314,11 +313,6 @@ kore_default_getopt(int argc, char **argv)
 			free(config_file);
 			if ((config_file = strdup(optarg)) == NULL)
 				fatal("strdup");
-			break;
-#endif
-#if defined(KORE_DEBUG)
-		case 'd':
-			kore_debug = 1;
 			break;
 #endif
 		case 'f':
@@ -352,8 +346,6 @@ kore_server_bind(struct kore_server *srv, const char *ip, const char *port,
 	int			r;
 	struct listener		*l;
 	struct addrinfo		hints, *results;
-
-	kore_debug("kore_server_bind(%s, %s, %s)", srv->name, ip, port);
 
 	memset(&hints, 0, sizeof(hints));
 	hints.ai_family = AF_UNSPEC;
