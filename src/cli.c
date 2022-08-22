@@ -48,7 +48,7 @@
 
 #if defined(OpenBSD) || defined(__FreeBSD_version) || \
     defined(NetBSD) || defined(__DragonFly_version)
-#define PRI_TIME_T		"d"
+#define PRI_TIME_T		"lld"
 #endif
 
 #if defined(__linux__)
