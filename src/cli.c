@@ -46,23 +46,6 @@
 #define errno_s			strerror(errno)
 #define ssl_errno_s		ERR_error_string(ERR_get_error(), NULL)
 
-#if defined(OpenBSD) || defined(__FreeBSD_version) || \
-    defined(NetBSD) || defined(__DragonFly_version)
-#define PRI_TIME_T		"lld"
-#endif
-
-#if defined(__linux__)
-#if defined(__x86_64__)
-#define PRI_TIME_T		PRIu64
-#else
-#define PRI_TIME_T		"ld"
-#endif
-#endif
-
-#if defined(__MACH__)
-#define PRI_TIME_T		"ld"
-#endif
-
 #define LD_FLAGS_MAX		300
 #define CFLAGS_MAX		300
 #define CXXFLAGS_MAX		CFLAGS_MAX
@@ -1308,8 +1291,8 @@ cli_build_asset(char *fpath, struct dirent *dp)
 	cli_file_writef(out, "const u_int32_t asset_len_%s_%s = %" PRIu32 ";\n",
 	    name, ext, (u_int32_t)st.st_size);
 	cli_file_writef(out,
-	    "const time_t asset_mtime_%s_%s = %" PRI_TIME_T ";\n",
-	    name, ext, st.st_mtime);
+	    "const time_t asset_mtime_%s_%s = %" PRId64 ";\n",
+	    name, ext, (int64_t)st.st_mtime);
 
 #if !defined(KODEV_MINIMAL)
 	if (bopt->flavor_nohttp == 0) {
