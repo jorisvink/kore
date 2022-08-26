@@ -41,7 +41,7 @@ kore_keymgr_cleanup(int final)
 void
 kore_tls_init(void)
 {
-	kore_log(LOG_ERR, "No compiled in TLS backend");
+	kore_log(LOG_NOTICE, "No compiled in TLS backend");
 }
 
 void
