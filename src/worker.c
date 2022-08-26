@@ -132,7 +132,7 @@ kore_worker_init(void)
 	    sizeof(*accept_lock));
 	memset(kore_workers, 0, sizeof(struct kore_worker) * worker_count);
 
-	if (worker_count > cpu_count)
+	if ((worker_count - 2) > cpu_count)
 		kore_log(LOG_NOTICE, "more worker processes than cpu cores");
 
 	/* Setup log buffers. */
