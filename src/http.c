@@ -919,6 +919,7 @@ http_header_recv(struct netbuf *nb)
 		}
 
 		if (req->content_length == 0) {
+			c->http_timeout = 0;
 			req->flags |= HTTP_REQUEST_COMPLETE;
 			req->flags &= ~HTTP_REQUEST_EXPECT_BODY;
 			return (KORE_RESULT_OK);
@@ -2342,6 +2343,7 @@ http_body_update(struct http_request *req, const void *data, size_t len)
 	req->content_length -= len;
 
 	if (req->content_length == 0) {
+		req->owner->http_timeout = 0;
 		req->owner->rnb->extra = NULL;
 		http_request_wakeup(req);
 		req->flags |= HTTP_REQUEST_COMPLETE;
