@@ -885,6 +885,10 @@ void			kore_connection_check_idletimer(u_int64_t,
 			    struct connection *);
 int			kore_connection_accept(struct listener *,
 			    struct connection **);
+void			kore_connection_log(struct connection *,
+			    const char *, ...)
+			    __attribute__((format (printf, 2, 3)));
+const char		*kore_connection_ip(struct connection *);
 
 void		kore_log_init(void);
 void		kore_log_file(const char *);

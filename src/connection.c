@@ -399,3 +399,52 @@ kore_connection_nonblock(int fd, int nodelay)
 
 	return (KORE_RESULT_OK);
 }
+
+void
+kore_connection_log(struct connection *c, const char *fmt, ...)
+{
+	struct kore_buf		buf;
+	va_list			args;
+	char			*ptr;
+
+	kore_buf_init(&buf, 128);
+	kore_buf_appendf(&buf, "ip=[%s] msg=[", kore_connection_ip(c));
+
+	va_start(args, fmt);
+	kore_buf_appendv(&buf, fmt, args);
+	va_end(args);
+
+	kore_buf_appendf(&buf, "]");
+
+	ptr = kore_buf_stringify(&buf, NULL);
+	kore_log(LOG_NOTICE, "%s", ptr);
+	kore_free(ptr);
+}
+
+const char *
+kore_connection_ip(struct connection *c)
+{
+	static char	addr[INET6_ADDRSTRLEN];
+
+	memset(addr, 0, sizeof(addr));
+
+	switch (c->family) {
+	case AF_INET:
+		if (inet_ntop(c->family,
+		    &(c->addr.ipv4.sin_addr), addr, sizeof(addr)) == NULL)
+			fatal("inet_ntop: %s", errno_s);
+		break;
+	case AF_INET6:
+		if (inet_ntop(c->family,
+		    &(c->addr.ipv6.sin6_addr), addr, sizeof(addr)) == NULL)
+			fatal("inet_ntop: %s", errno_s);
+		break;
+	case AF_UNIX:
+		(void)kore_strlcpy(addr, "unix-socket", sizeof(addr));
+		break;
+	default:
+		fatal("unknown family %d", c->family);
+	}
+
+	return (addr);
+}
