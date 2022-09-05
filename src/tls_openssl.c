@@ -358,7 +358,9 @@ kore_tls_domain_crl(struct kore_domain *dom, const void *pem, size_t pemlen)
 	int			err;
 	BIO			*in;
 	X509_CRL		*crl;
+	X509_REVOKED		*rev;
 	X509_STORE		*store;
+	struct connection	*c, *next;
 
 	ERR_clear_error();
 	in = BIO_new_mem_buf(pem, pemlen);
@@ -368,6 +370,9 @@ kore_tls_domain_crl(struct kore_domain *dom, const void *pem, size_t pemlen)
 		kore_log(LOG_ERR, "SSL_CTX_get_cert_store(): %s", ssl_errno_s);
 		return;
 	}
+
+	X509_STORE_set_flags(store,
+	    X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
 
 	for (;;) {
 		crl = PEM_read_bio_X509_CRL(in, NULL, NULL, NULL);
@@ -395,12 +400,42 @@ kore_tls_domain_crl(struct kore_domain *dom, const void *pem, size_t pemlen)
 			X509_CRL_free(crl);
 			continue;
 		}
+
+		/*
+		 * Check if any accepted connection authenticated themselves
+		 * with a now revoked certificate.
+		 */
+		for (c = TAILQ_FIRST(&connections); c != NULL; c = next) {
+			next = TAILQ_NEXT(c, list);
+			if (c->proto != CONN_PROTO_HTTP)
+				continue;
+
+			/*
+			 * Prune any connection that is currently not yet done
+			 * with the TLS handshake. This is to prevent a race
+			 * where a handshake could not yet be complete but
+			 * did pass the x509 verification step and their cert
+			 * was revoked in this CRL update.
+			 */
+			if (c->state == CONN_STATE_TLS_SHAKE) {
+				kore_connection_disconnect(c);
+				continue;
+			}
+
+			if (c->tls_cert == NULL)
+				continue;
+
+			if (X509_CRL_get0_by_cert(crl, &rev, c->tls_cert) != 1)
+				continue;
+
+			kore_connection_log(c,
+			    "connection removed, its certificate is revoked");
+
+			kore_connection_disconnect(c);
+		}
 	}
 
 	BIO_free(in);
-
-	X509_STORE_set_flags(store,
-	    X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
 }
 
 void
@@ -416,13 +451,13 @@ kore_tls_connection_accept(struct connection *c)
 	int		r;
 
 	if (primary_dom == NULL) {
-		kore_log(LOG_NOTICE,
+		kore_connection_log(c,
 		    "TLS handshake but no TLS configured on server");
 		return (KORE_RESULT_ERROR);
 	}
 
 	if (primary_dom->tls_ctx == NULL) {
-		kore_log(LOG_NOTICE,
+		kore_connection_log(c,
 		    "TLS configuration for %s not yet complete",
 		    primary_dom->domain);
 		return (KORE_RESULT_ERROR);
@@ -436,8 +471,11 @@ kore_tls_connection_accept(struct connection *c)
 		SSL_set_fd(c->tls, c->fd);
 		SSL_set_accept_state(c->tls);
 
-		if (!SSL_set_ex_data(c->tls, 0, c))
+		if (!SSL_set_ex_data(c->tls, 0, c)) {
+			kore_connection_log(c,
+			    "SSL_set_ex_data: %s", ssl_errno_s);
 			return (KORE_RESULT_ERROR);
+		}
 
 		if (primary_dom->cafile != NULL)
 			c->flags |= CONN_LOG_TLS_FAILURE;
@@ -454,7 +492,7 @@ kore_tls_connection_accept(struct connection *c)
 			return (KORE_RESULT_RETRY);
 		default:
 			if (c->flags & CONN_LOG_TLS_FAILURE) {
-				kore_log(LOG_NOTICE,
+				kore_connection_log(c,
 				    "SSL_accept: %s", ssl_errno_s);
 			}
 			return (KORE_RESULT_ERROR);
@@ -463,7 +501,7 @@ kore_tls_connection_accept(struct connection *c)
 
 #if defined(KORE_USE_ACME)
 	if (c->proto == CONN_PROTO_ACME_ALPN) {
-		kore_log(LOG_INFO, "disconnecting acme client");
+		kore_connection_log(c, "disconnecting ACME client");
 		kore_connection_disconnect(c);
 		return (KORE_RESULT_ERROR);
 	}
@@ -472,7 +510,7 @@ kore_tls_connection_accept(struct connection *c)
 	if (SSL_get_verify_mode(c->tls) & SSL_VERIFY_PEER) {
 		c->tls_cert = SSL_get_peer_certificate(c->tls);
 		if (c->tls_cert == NULL) {
-			kore_log(LOG_NOTICE, "no peer certificate");
+			kore_connection_log(c, "no peer certificate returned");
 			return (KORE_RESULT_ERROR);
 		}
 	} else {
@@ -518,8 +556,8 @@ kore_tls_read(struct connection *c, size_t *bytes)
 			/* FALLTHROUGH */
 		default:
 			if (c->flags & CONN_LOG_TLS_FAILURE) {
-				kore_log(LOG_NOTICE,
-				    "SSL_read(): %s", ssl_errno_s);
+				kore_connection_log(c, "SSL_read: %s",
+				    ssl_errno_s);
 			}
 			return (KORE_RESULT_ERROR);
 		}
@@ -566,8 +604,8 @@ kore_tls_write(struct connection *c, size_t len, size_t *written)
 			/* FALLTHROUGH */
 		default:
 			if (c->flags & CONN_LOG_TLS_FAILURE) {
-				kore_log(LOG_NOTICE,
-				    "SSL_write(): %s", ssl_errno_s);
+				kore_connection_log(c,
+				    "SSL_write: %s", ssl_errno_s);
 			}
 			return (KORE_RESULT_ERROR);
 		}
@@ -652,8 +690,10 @@ kore_tls_x509_subject_name(struct connection *c)
 {
 	X509_NAME	*name;
 
-	if ((name = X509_get_subject_name(c->tls_cert)) == NULL)
-		kore_log(LOG_NOTICE, "X509_get_subject_name: %s", ssl_errno_s);
+	if ((name = X509_get_subject_name(c->tls_cert)) == NULL) {
+		kore_connection_log(c,
+		    "X509_get_subject_name: %s", ssl_errno_s);
+	}
 
 	return (name);
 }
@@ -664,7 +704,7 @@ kore_tls_x509_issuer_name(struct connection *c)
 	X509_NAME	*name;
 
 	if ((name = X509_get_issuer_name(c->tls_cert)) == NULL)
-		kore_log(LOG_NOTICE, "X509_get_issuer_name: %s", ssl_errno_s);
+		kore_connection_log(c, "X509_get_issuer_name: %s", ssl_errno_s);
 
 	return (name);
 }
@@ -737,7 +777,7 @@ kore_tls_x509_data(struct connection *c, u_int8_t **ptr, size_t *olen)
 	u_int8_t	*der, *pp;
 
 	if ((len = i2d_X509(c->tls_cert, NULL)) <= 0) {
-		kore_log(LOG_NOTICE, "i2d_X509: %s", ssl_errno_s);
+		kore_connection_log(c, "i2d_X509: %s", ssl_errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -746,7 +786,7 @@ kore_tls_x509_data(struct connection *c, u_int8_t **ptr, size_t *olen)
 
 	if (i2d_X509(c->tls_cert, &pp) <= 0) {
 		kore_free(der);
-		kore_log(LOG_NOTICE, "i2d_X509: %s", ssl_errno_s);
+		kore_connection_log(c, "i2d_X509: %s", ssl_errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -1044,9 +1084,18 @@ tls_keymgr_msg_response(struct kore_msg *msg, const void *data)
 static int
 tls_domain_x509_verify(int ok, X509_STORE_CTX *ctx)
 {
-	X509		*cert;
-	const char	*text;
-	int		error, depth;
+	struct connection	*c;
+	SSL			*tls;
+	X509			*cert;
+	const char		*text;
+	int			error, depth;
+
+	if ((tls = X509_STORE_CTX_get_ex_data(ctx,
+	    SSL_get_ex_data_X509_STORE_CTX_idx())) == NULL)
+		fatal("X509_STORE_CTX_get_ex_data: no data");
+
+	if ((c = SSL_get_ex_data(tls, 0)) == NULL)
+		fatal("no connection data in %s", __func__);
 
 	error = X509_STORE_CTX_get_error(ctx);
 	cert = X509_STORE_CTX_get_current_cert(ctx);
@@ -1055,8 +1104,8 @@ tls_domain_x509_verify(int ok, X509_STORE_CTX *ctx)
 		text = X509_verify_cert_error_string(error);
 		depth = X509_STORE_CTX_get_error_depth(ctx);
 
-		kore_log(LOG_WARNING, "X509 verification error depth:%d - %s",
-		    depth, text);
+		kore_connection_log(c,
+		    "X509 verification error depth:%d - %s", depth, text);
 
 		/* Continue on CRL validity errors. */
 		switch (error) {
