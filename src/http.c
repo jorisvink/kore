@@ -799,7 +799,7 @@ http_header_recv(struct netbuf *nb)
 
 	c = nb->owner;
 
-	if (nb->b_len < 4)
+	if (nb->s_off < 4)
 		return (KORE_RESULT_OK);
 
 	if (!isalpha(nb->buf[0])) {
@@ -811,8 +811,14 @@ http_header_recv(struct netbuf *nb)
 	end_headers = kore_mem_find(nb->buf, nb->s_off, "\r\n\r\n", 4);
 	if (end_headers == NULL) {
 		end_headers = kore_mem_find(nb->buf, nb->s_off, "\n\n", 2);
-		if (end_headers == NULL)
+		if (end_headers == NULL) {
+			if (nb->s_off == http_header_max) {
+				http_error_response(c,
+				    HTTP_STATUS_REQUEST_ENTITY_TOO_LARGE);
+				return (KORE_RESULT_ERROR);
+			}
 			return (KORE_RESULT_OK);
+		}
 		skip = 2;
 	}
 
