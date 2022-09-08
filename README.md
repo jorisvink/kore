@@ -59,7 +59,7 @@ Kore only supports x64, arm and aarch64 architectures.
 
 Building Kore
 -------------
-Clone this repository or get the latest release at [https://kore.io/releases/4.2.2](https://kore.io/releases/4.2.2).
+Clone this repository or get the latest release at [https://kore.io/releases/4.2.3](https://kore.io/releases/4.2.3).
 
 Requirements
 * openssl 1.1.1 or libressl 3.x
