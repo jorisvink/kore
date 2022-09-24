@@ -55,6 +55,10 @@
 
 #include <frameobject.h>
 
+#if PY_VERSION_HEX >= 0x030b0000
+#include <internal/pycore_frame.h>
+#endif
+
 #if PY_VERSION_HEX < 0x030A0000
 typedef enum {
 	PYGEN_RETURN = 0,
@@ -1183,17 +1187,27 @@ static void
 python_coro_trace(const char *label, struct python_coro *coro)
 {
 	int			line;
-	PyGenObject		*gen;
+	PyCoroObject		*obj;
 	PyCodeObject		*code;
+#if PY_VERSION_HEX >= 0x030b0000
+	_PyInterpreterFrame	*frame;
+#else
+	PyFrameObject		*frame;
+#endif
 	const char		*func, *fname, *file;
 
 	if (coro_tracing == 0)
 		return;
 
-	gen = (PyGenObject *)coro->obj;
+	obj = (PyCoroObject *)coro->obj;
 
-	if (gen->gi_frame != NULL && gen->gi_frame->f_code != NULL) {
-		code = gen->gi_frame->f_code;
+#if PY_VERSION_HEX >= 0x030b0000
+	frame = (_PyInterpreterFrame *)obj->cr_iframe;
+#else
+	frame = obj->cr_frame;
+#endif
+	if (frame != NULL && frame->f_code != NULL) {
+		code = frame->f_code;
 		func = PyUnicode_AsUTF8AndSize(code->co_name, NULL);
 		file = PyUnicode_AsUTF8AndSize(code->co_filename, NULL);
 
@@ -1206,10 +1220,16 @@ python_coro_trace(const char *label, struct python_coro *coro)
 		fname = "unknown";
 	}
 
-	if (gen->gi_frame != NULL)
-		line = PyFrame_GetLineNumber(gen->gi_frame);
-	else
+	if (frame != NULL) {
+#if PY_VERSION_HEX >= 0x030b0000
+		line = _PyInterpreterFrame_GetLine(frame);
+#else
+		line = PyFrame_GetLineNumber(frame);
+#endif
+	} else {
 		line = -1;
+	}
+
 
 	if (coro->name) {
 		kore_log(LOG_NOTICE, "coro '%s' %s <%s> @ [%s:%d]",
