@@ -77,6 +77,7 @@ TAILQ_HEAD(reqcall_list, reqcall);
 PyMODINIT_FUNC		python_module_init(void);
 
 static PyObject		*python_import(const char *);
+static int		python_resolve_frame_line(void *);
 static PyObject		*pyconnection_alloc(struct connection *);
 static PyObject		*python_callable(PyObject *, const char *);
 static void		python_split_arguments(char *, char **, size_t);
@@ -1183,6 +1184,24 @@ python_coro_suspend(struct python_coro *coro)
 	python_coro_trace("suspended", coro);
 }
 
+static int
+python_resolve_frame_line(void *ptr)
+{
+	int			line;
+#if PY_VERSION_HEX >= 0x030b0000
+	int			addr;
+	_PyInterpreterFrame	*frame;
+
+	frame = ptr;
+	addr = _PyInterpreterFrame_LASTI(frame) * sizeof(_Py_CODEUNIT);
+	line = PyCode_Addr2Line(frame->f_code, addr);
+#else
+	line = PyFrame_GetLineNumber(ptr);
+#endif
+
+	return (line);
+}
+
 static void
 python_coro_trace(const char *label, struct python_coro *coro)
 {
@@ -1220,16 +1239,10 @@ python_coro_trace(const char *label, struct python_coro *coro)
 		fname = "unknown";
 	}
 
-	if (frame != NULL) {
-#if PY_VERSION_HEX >= 0x030b0000
-		line = _PyInterpreterFrame_GetLine(frame);
-#else
-		line = PyFrame_GetLineNumber(frame);
-#endif
-	} else {
+	if (frame != NULL)
+		line = python_resolve_frame_line(frame);
+	else
 		line = -1;
-	}
-
 
 	if (coro->name) {
 		kore_log(LOG_NOTICE, "coro '%s' %s <%s> @ [%s:%d]",
