@@ -72,6 +72,11 @@ struct reqcall {
 	TAILQ_ENTRY(reqcall)	list;
 };
 
+union deconst {
+	char		*p;
+	const char	*cp;
+};
+
 TAILQ_HEAD(reqcall_list, reqcall);
 
 PyMODINIT_FUNC		python_module_init(void);
@@ -2722,12 +2727,15 @@ python_kore_timer(PyObject *self, PyObject *args, PyObject *kwargs)
 }
 
 static PyObject *
-python_kore_proc(PyObject *self, PyObject *args)
+python_kore_proc(PyObject *self, PyObject *args, PyObject *kwargs)
 {
+	union deconst		cp;
 	const char		*cmd;
 	struct pyproc		*proc;
-	char			*copy, *argv[32], *env[1];
+	Py_ssize_t		idx, len;
+	PyObject		*obj, *item;
 	int			timeo, in_pipe[2], out_pipe[2];
+	char			*copy, *argv[32], *env[PYTHON_PROC_MAX_ENV + 1];
 
 	timeo = -1;
 
@@ -2739,6 +2747,37 @@ python_kore_proc(PyObject *self, PyObject *args)
 
 	if (!PyArg_ParseTuple(args, "s|i", &cmd, &timeo))
 		return (NULL);
+
+	if (kwargs != NULL &&
+	    (obj = PyDict_GetItemString(kwargs, "env")) != NULL) {
+		if (!PyList_CheckExact(obj)) {
+			PyErr_SetString(PyExc_RuntimeError,
+			    "kore.proc: env is not of type 'list'");
+			return (NULL);
+		}
+
+		len = PyList_Size(obj);
+		if (len > PYTHON_PROC_MAX_ENV) {
+			PyErr_SetString(PyExc_RuntimeError,
+			    "kore.proc: too many entries in 'env' keyword");
+			return (NULL);
+		}
+
+		for (idx = 0; idx < len; idx++) {
+			if ((item = PyList_GetItem(obj, idx)) == NULL)
+				return (NULL);
+
+			if (!PyUnicode_CheckExact(item))
+				return (NULL);
+
+			if ((cp.cp = PyUnicode_AsUTF8(item)) == NULL)
+				return (NULL);
+
+			env[idx] = cp.p;
+		}
+
+		env[idx] = NULL;
+	}
 
 	if (pipe(in_pipe) == -1) {
 		PyErr_SetString(PyExc_RuntimeError, errno_s);
@@ -2796,7 +2835,6 @@ python_kore_proc(PyObject *self, PyObject *args)
 		    dup2(in_pipe[0], STDIN_FILENO) == -1)
 			fatal("dup2: %s", errno_s);
 
-		env[0] = NULL;
 		copy = kore_strdup(cmd);
 		python_split_arguments(copy, argv, 32);
 
