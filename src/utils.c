@@ -239,10 +239,11 @@ kore_split_string(char *input, const char *delim, char **out, size_t ele)
 }
 
 void
-kore_strip_chars(char *in, const char strip, char **out)
+kore_strip_chars(const char *in, const char strip, char **out)
 {
+	char		*p;
+	const char	*s;
 	u_int32_t	len;
-	char		*s, *p;
 
 	len = strlen(in);
 	*out = kore_malloc(len + 1);
