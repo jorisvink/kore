@@ -62,8 +62,7 @@ Building Kore
 Clone this repository or get the latest release at [https://kore.io/releases/4.2.3](https://kore.io/releases/4.2.3).
 
 Requirements
-* openssl 1.1.1 or libressl 3.x
-(note: openssl 3.0.0 is currently *not* supported)
+* openssl 1.1.1, libressl 3.x or openssl 3.
 
 Requirement for asynchronous curl (optional)
 * libcurl (7.64.0 or higher)
