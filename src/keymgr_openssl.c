@@ -747,7 +747,7 @@ keymgr_x509_msg(const char *domain, const void *data, size_t len,
 static void
 keymgr_acme_init(void)
 {
-	RSA		*rsa;
+	const RSA	*rsa;
 	struct key	*key;
 	char		*e, *n;
 	int		needsreg;
