@@ -43,6 +43,24 @@
 #include <unistd.h>
 #include <utime.h>
 
+/*
+ * Turn off deprecated function warnings when building against OpenSSL 3.
+ *
+ * The OpenSSL 3 library deprecated most low-level functions in favour
+ * for their higher level APIs.
+ *
+ * I am planning a replacement, but for now we can still make it build
+ * and function by ignoring these warnings completely.
+ *
+ * The functions in question are:
+ *	- SHA256_Init, SHA256_Update, SHA256_Final
+ *	- RSA_new, RSA_generate_key_ex
+ *	- EVP_PKEY_assign
+ */
+#if defined(OPENSSL_VERSION_MAJOR) && OPENSSL_VERSION_MAJOR >= 3
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+
 #define errno_s			strerror(errno)
 #define ssl_errno_s		ERR_error_string(ERR_get_error(), NULL)
 

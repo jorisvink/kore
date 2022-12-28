@@ -36,6 +36,16 @@
 #include "kore.h"
 #include "http.h"
 
+/*
+ * Disable deprecated declaration warnings if we're building against
+ * OpenSSL 3 as they marked all low-level APIs as deprecated.
+ *
+ * Work is being done to replace these, but for now let things build.
+ */
+#if defined(OPENSSL_VERSION_MAJOR) && OPENSSL_VERSION_MAJOR >= 3
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+
 #define TLS_SESSION_ID		"kore_tls_sessionid"
 
 static int	tls_domain_x509_verify(int, X509_STORE_CTX *);
@@ -59,11 +69,7 @@ static int	tls_keymgr_rsa_finish(RSA *);
 static int	tls_keymgr_rsa_privenc(int, const unsigned char *,
 		    unsigned char *, RSA *, int);
 
-static ECDSA_SIG *tls_keymgr_ecdsa_sign(const unsigned char *, int,
-		    const BIGNUM *, const BIGNUM *, EC_KEY *);
-
 static RSA_METHOD	*keymgr_rsa_meth = NULL;
-static EC_KEY_METHOD	*keymgr_ec_meth = NULL;
 
 static DH		*dh_params = NULL;
 static int		tls_version = KORE_TLS_VERSION_BOTH;
@@ -102,12 +108,6 @@ kore_tls_init(void)
 	RSA_meth_set_finish(keymgr_rsa_meth, tls_keymgr_rsa_finish);
 	RSA_meth_set_priv_enc(keymgr_rsa_meth, tls_keymgr_rsa_privenc);
 
-	if ((keymgr_ec_meth = EC_KEY_METHOD_new(NULL)) == NULL)
-		fatal("failed to allocate EC KEY method");
-
-	EC_KEY_METHOD_set_sign(keymgr_ec_meth,
-	    NULL, NULL, tls_keymgr_ecdsa_sign);
-
 	kore_log(LOG_NOTICE, "TLS backend %s", OPENSSL_VERSION_TEXT);
 #if !defined(TLS1_3_VERSION)
 	if (!kore_quiet) {
@@ -122,7 +122,6 @@ void
 kore_tls_cleanup(void)
 {
 	RSA_meth_free(keymgr_rsa_meth);
-	EC_KEY_METHOD_free(keymgr_ec_meth);
 }
 
 void
@@ -204,7 +203,6 @@ kore_tls_domain_setup(struct kore_domain *dom, int type,
 	X509			*x509;
 	EVP_PKEY		*pkey;
 	STACK_OF(X509_NAME)	*certs;
-	EC_KEY			*eckey;
 	const SSL_METHOD	*method;
 
 	if (dom->tls_ctx != NULL)
@@ -284,12 +282,6 @@ kore_tls_domain_setup(struct kore_domain *dom, int type,
 			fatalx("no RSA public key present");
 		RSA_set_app_data(rsa, dom);
 		RSA_set_method(rsa, keymgr_rsa_meth);
-		break;
-	case EVP_PKEY_EC:
-		if ((eckey = EVP_PKEY_get1_EC_KEY(pkey)) == NULL)
-			fatalx("no EC public key present");
-		EC_KEY_set_ex_data(eckey, 0, dom);
-		EC_KEY_set_method(eckey, keymgr_ec_meth);
 		break;
 	default:
 		fatalx("unknown public key in certificate");
@@ -932,53 +924,6 @@ static int
 tls_keymgr_rsa_finish(RSA *rsa)
 {
 	return (1);
-}
-
-static ECDSA_SIG *
-tls_keymgr_ecdsa_sign(const unsigned char *dgst, int dgst_len,
-    const BIGNUM *in_kinv, const BIGNUM *in_r, EC_KEY *eckey)
-{
-	size_t				len;
-	ECDSA_SIG			*sig;
-	const u_int8_t			*ptr;
-	struct kore_domain		*dom;
-	struct kore_keyreq		*req;
-
-	if (in_kinv != NULL || in_r != NULL)
-		return (NULL);
-
-	len = sizeof(*req) + dgst_len;
-	if (len > sizeof(keymgr_buf))
-		fatal("keymgr_buf too small");
-
-	if ((dom = EC_KEY_get_ex_data(eckey, 0)) == NULL)
-		fatal("EC_KEY has no domain");
-
-	memset(keymgr_buf, 0, sizeof(keymgr_buf));
-	req = (struct kore_keyreq *)keymgr_buf;
-
-	if (kore_strlcpy(req->domain, dom->domain, sizeof(req->domain)) >=
-	    sizeof(req->domain))
-		fatal("%s: domain truncated", __func__);
-
-	req->data_len = dgst_len;
-	memcpy(&req->data[0], dgst, req->data_len);
-
-	kore_msg_send(KORE_WORKER_KEYMGR, KORE_MSG_KEYMGR_REQ, keymgr_buf, len);
-	tls_keymgr_await_data();
-
-	if (keymgr_response) {
-		ptr = keymgr_buf;
-		sig = d2i_ECDSA_SIG(NULL, &ptr, keymgr_buflen);
-	} else {
-		sig = NULL;
-	}
-
-	keymgr_buflen = 0;
-	keymgr_response = 0;
-	kore_platform_event_all(worker->msg[1]->fd, worker->msg[1]);
-
-	return (sig);
 }
 
 static void
