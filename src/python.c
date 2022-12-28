@@ -6399,6 +6399,7 @@ static PyObject *
 pycurl_handle_setopt_string(struct pycurl_data *data, int idx, PyObject *obj)
 {
 	const char		*str;
+	CURLoption		option;
 
 	if (!PyUnicode_Check(obj)) {
 		PyErr_Format(PyExc_RuntimeError,
@@ -6410,8 +6411,8 @@ pycurl_handle_setopt_string(struct pycurl_data *data, int idx, PyObject *obj)
 	if ((str = PyUnicode_AsUTF8(obj)) == NULL)
 		return (NULL);
 
-	curl_easy_setopt(data->curl.handle,
-	    CURLOPTTYPE_OBJECTPOINT + py_curlopt[idx].value, str);
+	option = CURLOPTTYPE_OBJECTPOINT + py_curlopt[idx].value;
+	curl_easy_setopt(data->curl.handle, option, str);
 
 	Py_RETURN_TRUE;
 }
