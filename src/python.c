@@ -6421,6 +6421,7 @@ static PyObject *
 pycurl_handle_setopt_long(struct pycurl_data *data, int idx, PyObject *obj)
 {
 	long		val;
+	CURLoption	option;
 
 	if (!PyLong_CheckExact(obj)) {
 		PyErr_Format(PyExc_RuntimeError,
@@ -6434,8 +6435,8 @@ pycurl_handle_setopt_long(struct pycurl_data *data, int idx, PyObject *obj)
 	if (val == -1 && PyErr_Occurred())
 		return (NULL);
 
-	curl_easy_setopt(data->curl.handle,
-	    CURLOPTTYPE_LONG + py_curlopt[idx].value, val);
+	option = CURLOPTTYPE_LONG + py_curlopt[idx].value;
+	curl_easy_setopt(data->curl.handle, option, val);
 
 	Py_RETURN_TRUE;
 }
@@ -6447,6 +6448,7 @@ pycurl_handle_setopt_slist(struct pycurl_data *data, int idx, PyObject *obj)
 	PyObject		*item;
 	const char		*sval;
 	struct curl_slist	*slist;
+	CURLoption		option;
 	Py_ssize_t		list_len, i;
 
 	if (!PyList_CheckExact(obj)) {
@@ -6477,8 +6479,8 @@ pycurl_handle_setopt_slist(struct pycurl_data *data, int idx, PyObject *obj)
 	psl->slist = slist;
 	LIST_INSERT_HEAD(&data->slists, psl, list);
 
-	curl_easy_setopt(data->curl.handle,
-	    CURLOPTTYPE_OBJECTPOINT + py_curlopt[idx].value, slist);
+	option = CURLOPTTYPE_OBJECTPOINT + py_curlopt[idx].value;
+	curl_easy_setopt(data->curl.handle, option, slist);
 
 	Py_RETURN_TRUE;
 }
