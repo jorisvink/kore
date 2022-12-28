@@ -867,7 +867,6 @@ static int
 tls_keymgr_rsa_init(RSA *rsa)
 {
 	if (rsa != NULL) {
-		kore_log(LOG_INFO, "Set the flags on %p", (void *)rsa);
 		RSA_set_flags(rsa, RSA_flags(rsa) |
 		    RSA_FLAG_EXT_PKEY | RSA_METHOD_FLAG_NO_CHECK);
 		return (1);
