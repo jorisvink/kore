@@ -48,9 +48,16 @@
 
 #define TLS_SESSION_ID		"kore_tls_sessionid"
 
+/* Helper for weird API designs (looking at you OpenSSL). */
+union deconst {
+	void		*p;
+	const void	*cp;
+};
+
 static int	tls_domain_x509_verify(int, X509_STORE_CTX *);
 static X509	*tls_domain_load_certificate_chain(SSL_CTX *,
 		    const void *, size_t);
+static EVP_PKEY	*tls_privsep_private_key(EVP_PKEY *, struct kore_domain *);
 
 static int	tls_sni_cb(SSL *, int *, void *);
 static void	tls_info_callback(const SSL *, int, int);
@@ -69,9 +76,8 @@ static int	tls_keymgr_rsa_finish(RSA *);
 static int	tls_keymgr_rsa_privenc(int, const unsigned char *,
 		    unsigned char *, RSA *, int);
 
-static RSA_METHOD	*keymgr_rsa_meth = NULL;
-
 static DH		*dh_params = NULL;
+static RSA_METHOD	*keymgr_rsa_meth = NULL;
 static int		tls_version = KORE_TLS_VERSION_BOTH;
 static char		*tls_cipher_list = KORE_DEFAULT_CIPHER_LIST;
 
@@ -99,14 +105,6 @@ kore_tls_init(void)
 	SSL_library_init();
 	SSL_load_error_strings();
 	ERR_load_crypto_strings();
-
-	if ((keymgr_rsa_meth = RSA_meth_new("kore RSA keymgr method",
-	    RSA_METHOD_FLAG_NO_CHECK)) == NULL)
-		fatal("failed to setup RSA method");
-
-	RSA_meth_set_init(keymgr_rsa_meth, tls_keymgr_rsa_init);
-	RSA_meth_set_finish(keymgr_rsa_meth, tls_keymgr_rsa_finish);
-	RSA_meth_set_priv_enc(keymgr_rsa_meth, tls_keymgr_rsa_privenc);
 
 	kore_log(LOG_NOTICE, "TLS backend %s", OPENSSL_VERSION_TEXT);
 #if !defined(TLS1_3_VERSION)
@@ -187,6 +185,14 @@ kore_tls_keymgr_init(void)
 	if ((meth = RSA_get_default_method()) == NULL)
 		fatal("failed to obtain RSA method");
 
+	if ((keymgr_rsa_meth = RSA_meth_new("kore RSA keymgr method",
+	    RSA_METHOD_FLAG_NO_CHECK)) == NULL)
+		fatal("failed to setup RSA method");
+
+	RSA_meth_set_init(keymgr_rsa_meth, tls_keymgr_rsa_init);
+	RSA_meth_set_finish(keymgr_rsa_meth, tls_keymgr_rsa_finish);
+	RSA_meth_set_priv_enc(keymgr_rsa_meth, tls_keymgr_rsa_privenc);
+
 	RSA_meth_set_pub_enc(keymgr_rsa_meth, RSA_meth_get_pub_enc(meth));
 	RSA_meth_set_pub_dec(keymgr_rsa_meth, RSA_meth_get_pub_dec(meth));
 	RSA_meth_set_bn_mod_exp(keymgr_rsa_meth, RSA_meth_get_bn_mod_exp(meth));
@@ -199,9 +205,8 @@ kore_tls_domain_setup(struct kore_domain *dom, int type,
     const void *data, size_t datalen)
 {
 	const u_int8_t		*ptr;
-	RSA			*rsa;
-	X509			*x509;
 	EVP_PKEY		*pkey;
+	X509			*x509;
 	STACK_OF(X509_NAME)	*certs;
 	const SSL_METHOD	*method;
 
@@ -278,10 +283,7 @@ kore_tls_domain_setup(struct kore_domain *dom, int type,
 
 	switch (EVP_PKEY_id(pkey)) {
 	case EVP_PKEY_RSA:
-		if ((rsa = EVP_PKEY_get1_RSA(pkey)) == NULL)
-			fatalx("no RSA public key present");
-		RSA_set_app_data(rsa, dom);
-		RSA_set_method(rsa, keymgr_rsa_meth);
+		pkey = tls_privsep_private_key(pkey, dom);
 		break;
 	default:
 		fatalx("unknown public key in certificate");
@@ -865,6 +867,7 @@ static int
 tls_keymgr_rsa_init(RSA *rsa)
 {
 	if (rsa != NULL) {
+		kore_log(LOG_INFO, "Set the flags on %p", (void *)rsa);
 		RSA_set_flags(rsa, RSA_flags(rsa) |
 		    RSA_FLAG_EXT_PKEY | RSA_METHOD_FLAG_NO_CHECK);
 		return (1);
@@ -1105,6 +1108,41 @@ tls_domain_load_certificate_chain(SSL_CTX *ctx, const void *data, size_t len)
 	BIO_free(in);
 
 	return (x);
+}
+
+static EVP_PKEY *
+tls_privsep_private_key(EVP_PKEY *pub, struct kore_domain *dom)
+{
+	EVP_PKEY		*pkey;
+	RSA			*rsa_new;
+	const RSA		*rsa_cur;
+	const BIGNUM		*e_cur, *n_cur;
+	BIGNUM			*e_new, *n_new;
+
+	if ((pkey = EVP_PKEY_new()) == NULL)
+		fatalx("failed to create new EVP_PKEY data structure");
+
+	if ((rsa_new = RSA_new()) == NULL)
+		fatalx("failed to create new RSA data structure");
+
+	if ((rsa_cur = EVP_PKEY_get0_RSA(pub)) == NULL)
+		fatalx("no RSA public key present");
+
+	RSA_get0_key(rsa_cur, &n_cur, &e_cur, NULL);
+
+	if ((n_new = BN_dup(n_cur)) == NULL)
+		fatalx("BN_dup failed");
+
+	if ((e_new = BN_dup(e_cur)) == NULL)
+		fatalx("BN_dup failed");
+
+	RSA_set_app_data(rsa_new, dom);
+	RSA_set_method(rsa_new, keymgr_rsa_meth);
+	RSA_set0_key(rsa_new, n_new, e_new, NULL);
+
+	EVP_PKEY_set1_RSA(pkey, rsa_new);
+
+	return (pkey);
 }
 
 #if defined(KORE_USE_ACME)
