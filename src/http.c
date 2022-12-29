@@ -1798,6 +1798,9 @@ http_validate_header(char *header)
 			break;
 		}
 
+		if (*p >= 'A' && *p <= 'Z')
+			*p += 32;
+
 		if (http_token[idx] == 0x00)
 			return (NULL);
 	}
