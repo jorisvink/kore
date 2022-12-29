@@ -750,6 +750,7 @@ static void	pyhttp_dealloc(struct pyhttp_request *);
 static void	pyhttp_file_dealloc(struct pyhttp_file *);
 
 static PyObject *pyhttp_cookie(struct pyhttp_request *, PyObject *);
+static PyObject *pyhttp_headers(struct pyhttp_request *, PyObject *);
 static PyObject	*pyhttp_response(struct pyhttp_request *, PyObject *);
 static PyObject *pyhttp_argument(struct pyhttp_request *, PyObject *);
 static PyObject	*pyhttp_body_read(struct pyhttp_request *, PyObject *);
@@ -765,6 +766,7 @@ static PyObject *pyhttp_websocket_handshake(struct pyhttp_request *,
 
 static PyMethodDef pyhttp_request_methods[] = {
 	METHOD("cookie", pyhttp_cookie, METH_VARARGS),
+	METHOD("headers", pyhttp_headers, METH_NOARGS),
 	METHOD("response", pyhttp_response, METH_VARARGS),
 	METHOD("argument", pyhttp_argument, METH_VARARGS),
 	METHOD("body_read", pyhttp_body_read, METH_VARARGS),

@@ -5094,6 +5094,46 @@ pyhttp_cookie(struct pyhttp_request *pyreq, PyObject *args)
 }
 
 static PyObject *
+pyhttp_headers(struct pyhttp_request *pyreq, PyObject *args)
+{
+	struct http_header	*hdr;
+	struct http_request	*req;
+	PyObject		*obj, *dict, *ret;
+
+	ret = NULL;
+	obj = NULL;
+	dict = NULL;
+
+	req = pyreq->req;
+
+	if ((dict = PyDict_New()) == NULL)
+		goto cleanup;
+
+	if ((obj = PyUnicode_FromString(req->host)) == NULL)
+		goto cleanup;
+
+	if (PyDict_SetItemString(dict, "host", obj) == -1)
+		goto cleanup;
+
+	TAILQ_FOREACH(hdr, &req->req_headers, list) {
+		if ((obj = PyUnicode_FromString(hdr->value)) == NULL)
+			goto cleanup;
+		if (PyDict_SetItemString(dict, hdr->header, obj) == -1)
+			goto cleanup;
+	}
+
+	ret = dict;
+	obj = NULL;
+	dict = NULL;
+
+cleanup:
+	Py_XDECREF(obj);
+	Py_XDECREF(dict);
+
+	return (ret);
+}
+
+static PyObject *
 pyhttp_file_lookup(struct pyhttp_request *pyreq, PyObject *args)
 {
 	const char		*name;
