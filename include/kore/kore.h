@@ -803,6 +803,7 @@ void		kore_platform_schedule_read(int, void *);
 void		kore_platform_schedule_write(int, void *);
 void		kore_platform_event_schedule(int, int, int, void *);
 void		kore_platform_worker_setcpu(struct kore_worker *);
+u_int32_t	kore_platform_random_uint32(void);
 
 #if defined(KORE_USE_PLATFORM_SENDFILE)
 int		kore_platform_sendfile(struct connection *, struct netbuf *);

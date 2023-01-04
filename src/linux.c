@@ -15,6 +15,7 @@
  */
 
 #include <sys/param.h>
+#include <sys/random.h>
 #include <sys/epoll.h>
 #include <sys/sendfile.h>
 #include <sys/syscall.h>
@@ -261,4 +262,19 @@ void
 kore_platform_sandbox(void)
 {
 	kore_seccomp_enable();
+}
+
+u_int32_t
+kore_platform_random_uint32(void)
+{
+	ssize_t		ret;
+	u_int32_t	val;
+
+	if ((ret = getrandom(&val, sizeof(val), 0)) == -1)
+		fatalx("getrandom(): %s", errno_s);
+
+	if ((size_t)ret != sizeof(val))
+		fatalx("getrandom() %zd != %zu", ret, sizeof(val));
+
+	return (val);
 }

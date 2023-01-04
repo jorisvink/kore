@@ -298,6 +298,12 @@ kore_platform_sandbox(void)
 #endif
 }
 
+u_int32_t
+kore_platform_random_uint32(void)
+{
+	return (arc4random());
+}
+
 #if defined(KORE_USE_PLATFORM_PLEDGE)
 void
 kore_platform_pledge(void)
