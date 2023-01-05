@@ -10,7 +10,7 @@ while read oldrev newrev ref; do
         logmsg=""
         commits=$(git rev-list ${oldrev}..${newrev})
         for commit in $commits; do
-            log=$(git log -1 --pretty=format:'[%h](https://github.com/jorisvink/kore/commit/%H) %cn: %s' $commit)
+            log=$(git log -1 --pretty=format:'[%h](https://git.kore.io/kore/commit/%H) %cn: %s' $commit)
             logmsg="$logmsg $log\\n"
         done
 
