@@ -607,29 +607,24 @@ struct kore_json_item {
 	TAILQ_ENTRY(kore_json_item)	list;
 };
 
-struct kore_pool_region {
-	void				*start;
-	size_t				length;
-	LIST_ENTRY(kore_pool_region)	list;
-};
-
 struct kore_pool_entry {
 	u_int8_t			state;
-	struct kore_pool_region		*region;
-	LIST_ENTRY(kore_pool_entry)	list;
+	void				*uptr;
+	void				*canary;
+	struct kore_pool_entry		*nextfree;
 };
 
 struct kore_pool {
-	size_t			elen;
-	size_t			slen;
-	size_t			elms;
-	size_t			inuse;
+	size_t			memsz;
 	size_t			growth;
+	size_t			pagesz;
+	size_t			elmlen;
+	size_t			uselen;
+	u_int64_t		canary;
 	volatile int		lock;
 	char			*name;
 
-	LIST_HEAD(, kore_pool_region)	regions;
-	LIST_HEAD(, kore_pool_entry)	freelist;
+	struct kore_pool_entry	*freelist;
 };
 
 struct kore_timer {
@@ -708,6 +703,7 @@ extern int	kore_quit;
 extern int	kore_quiet;
 extern int	skip_chroot;
 extern int	skip_runas;
+extern int	kore_mem_guard;
 extern int	kore_foreground;
 
 extern char	*kore_pidfile;
@@ -904,6 +900,7 @@ void		kore_parse_config_file(FILE *);
 
 /* mem.c */
 void		*kore_malloc(size_t);
+void		*kore_mmap_region(size_t);
 void		*kore_calloc(size_t, size_t);
 void		*kore_realloc(void *, size_t);
 void		kore_free(void *);

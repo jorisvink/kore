@@ -61,6 +61,7 @@ int			skip_runas = 0;
 int			skip_chroot = 0;
 u_int8_t		worker_count = 0;
 char			**kore_argv = NULL;
+int			kore_mem_guard = 0;
 int			kore_foreground = 0;
 char			*kore_progname = NULL;
 u_int32_t		kore_socket_backlog = 5000;
@@ -103,21 +104,30 @@ usage(void)
 #endif
 
 	printf("\n");
-	printf("Available options:\n");
+	printf("Command-line options:\n");
 #if !defined(KORE_SINGLE_BINARY)
-	printf("\t-c\tconfiguration to use\n");
+	printf("\t-c\tThe configuration file to load when starting.\n");
 #endif
-#if defined(KORE_DEBUG)
-	printf("\t-d\trun with debug on\n");
-#endif
-	printf("\t-f\tstart in foreground\n");
-	printf("\t-h\tthis help text\n");
-	printf("\t-n\tdo not chroot on any worker\n");
-	printf("\t-q\tonly log errors\n");
-	printf("\t-r\tdo not change user on any worker\n");
-	printf("\t-v\tdisplay %s build information\n", __progname);
+	printf("\t-f\tDo not daemonize, everything runs in the foreground.\n");
+	printf("\t-h\tThis help text.\n");
+	printf("\t-n\tDo not do the chroot privsep step.\n");
+	printf("\t-q\tQuiet mode, only logs errors.\n");
+	printf("\t-r\tDo not do the privsep user swapping step.\n");
+	printf("\t-v\tDisplay %s build information.\n", __progname);
 
-	printf("\nFind more information on https://kore.io\n");
+	printf("\n");
+	printf("Environment options:\n");
+	printf("  env KORE_MEM_GUARD=1\n");
+	printf("      Enables memory pool guards and other protections.\n");
+	printf("\n");
+	printf("      Enabling this will include guard pages for each\n");
+	printf("      pool entry allocations and mark pool entries as\n");
+	printf("      PROT_NONE when unused.\n");
+	printf("\n");
+	printf("      This catches bugs and prevents memory vulnerabilities\n");
+	printf("      but with performance and memory pressure costs.\n");
+
+	printf("\n");
 
 	exit(1);
 }
@@ -138,17 +148,18 @@ version(void)
 #if defined(KORE_USE_TASKS)
 	printf("tasks ");
 #endif
-#if defined(KORE_DEBUG)
-	printf("debug ");
-#endif
 #if defined(KORE_USE_PYTHON)
 	printf("python-%s ", PY_VERSION);
 #endif
 #if defined(KORE_USE_ACME)
 	printf("acme ");
 #endif
+#if defined(KORE_DEBUG)
+	printf("debug ");
+#endif
 	if (!kore_tls_supported())
 		printf("notls ");
+
 	printf("\n");
 	exit(0);
 }
@@ -789,6 +800,8 @@ kore_server_start(int argc, char *argv[])
 	if (!kore_quiet) {
 		kore_log(LOG_INFO, "%s %s starting, built=%s",
 		    __progname, kore_version, kore_build_date);
+		kore_log(LOG_INFO, "memory pool protections: %s",
+		    kore_mem_guard ? "enabled" : "disabled");
 		kore_log(LOG_INFO, "built-ins: "
 #if defined(__linux__)
 		    "seccomp "
