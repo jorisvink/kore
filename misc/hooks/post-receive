@@ -22,3 +22,32 @@ while read oldrev newrev ref; do
             $URL
     fi
 done
+
+ROOT=/var/chroot/kore-site
+TARGET=$ROOT/stagit
+STATIC=$HOME/src/stagit_static
+export TMPDIR=$ROOT/.tmp
+
+STAGING=`mktemp -d`
+
+function update_stagit {
+    mkdir -p $STAGING/$1
+    pushd $STAGING/$1
+    stagit-index > index.html
+    cp -R $2 ${STAGING}/${1}.git
+    chmod -R +rx ${STAGING}/${1}.git
+    popd
+
+}
+
+git update-server-info
+
+update_stagit kore /home/git/kore.git
+
+cp -R $STATIC/* $STAGING
+chmod -R o+rx $STAGING
+
+rm -rf $ROOT/.old
+mv $TARGET $ROOT/.old
+mv $STAGING $TARGET
+rm -rf $ROOT/.old
