@@ -35,7 +35,8 @@ STAGING=`mktemp -d`
 function update_stagit {
     mkdir -p $STAGING/$1
     pushd $STAGING/$1
-    stagit-index $2 > index.html
+    stagit $2
+    cp log.html index.html
     cp -R $2 ${STAGING}/${1}.git
     chmod -R +rx ${STAGING}/${1}.git
     popd
