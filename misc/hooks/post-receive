@@ -23,6 +23,8 @@ while read oldrev newrev ref; do
     fi
 done
 
+git update-server-info
+
 ROOT=/var/chroot/kore-site
 TARGET=$ROOT/stagit
 STATIC=$HOME/src/stagit_static
@@ -33,14 +35,12 @@ STAGING=`mktemp -d`
 function update_stagit {
     mkdir -p $STAGING/$1
     pushd $STAGING/$1
-    stagit-index > index.html
+    stagit-index $2 > index.html
     cp -R $2 ${STAGING}/${1}.git
     chmod -R +rx ${STAGING}/${1}.git
     popd
 
 }
-
-git update-server-info
 
 update_stagit kore /home/git/kore.git
 
