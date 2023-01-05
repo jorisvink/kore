@@ -38,6 +38,7 @@ function update_stagit {
     stagit $2
     cp log.html index.html
     cp -R $2 ${STAGING}/${1}.git
+    rm ${STAGING}/${1}.git/hooks/post-receive
     chmod -R +rx ${STAGING}/${1}.git
     popd
 
