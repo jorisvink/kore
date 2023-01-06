@@ -182,6 +182,7 @@ main(int argc, char *argv[])
 	kore_mem_init();
 	kore_msg_init();
 	kore_log_init();
+	kore_tls_init();
 
 	kore_progname = kore_strdup(argv[0]);
 	kore_proctitle_setup();
@@ -233,7 +234,6 @@ main(int argc, char *argv[])
 #endif
 	kore_domain_init();
 	kore_module_init();
-	kore_tls_init();
 
 #if !defined(KORE_SINGLE_BINARY) && !defined(KORE_USE_PYTHON)
 	if (config_file == NULL)
