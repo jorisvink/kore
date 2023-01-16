@@ -111,15 +111,23 @@ kore_tls_init(void)
 #if !defined(LIBRESSL_VERSION_NUMBER)
 	if (!CRYPTO_set_mem_functions(tls_malloc, tls_realloc, tls_free))
 		fatalx("CRYPTO_set_mem_functions failed");
-#else
-	kore_log(LOG_NOTICE, "libressl does not support malloc-wrappers");
 #endif
 
 	SSL_library_init();
 	SSL_load_error_strings();
 	ERR_load_crypto_strings();
 
+}
+
+void
+kore_tls_log_version(void)
+{
 	kore_log(LOG_NOTICE, "TLS backend %s", OPENSSL_VERSION_TEXT);
+
+#if defined(LIBRESSL_VERSION_NUMBER)
+	kore_log(LOG_NOTICE, "libressl does not support malloc-wrappers");
+#endif
+
 #if !defined(TLS1_3_VERSION)
 	if (!kore_quiet) {
 		kore_log(LOG_NOTICE,

@@ -25,6 +25,7 @@
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/queue.h>
+#include <sys/stat.h>
 #include <sys/un.h>
 
 #include <netinet/in.h>
@@ -276,6 +277,7 @@ extern struct connection_list	disconnected;
 
 struct kore_runtime {
 	int	type;
+	int	(*resolve)(const char *, const struct stat *);
 #if !defined(KORE_NO_HTTP)
 	int	(*http_request)(void *, struct http_request *);
 	void	(*http_request_free)(void *, struct http_request *);
@@ -749,6 +751,7 @@ void		kore_server_closeall(void);
 void		kore_server_cleanup(void);
 void		kore_server_free(struct kore_server *);
 void		kore_server_finalize(struct kore_server *);
+void		kore_hooks_set(const char *, const char *, const char *);
 
 struct kore_server	*kore_server_create(const char *);
 struct kore_server	*kore_server_lookup(const char *);
@@ -819,6 +822,7 @@ void		kore_tls_dh_check(void);
 int		kore_tls_supported(void);
 void		kore_tls_version_set(int);
 void		kore_tls_keymgr_init(void);
+void		kore_tls_log_version(void);
 int		kore_tls_dh_load(const char *);
 void		kore_tls_seed(const void *, size_t);
 int		kore_tls_ciphersuite_set(const char *);
@@ -1024,6 +1028,7 @@ int			kore_route_lookup(struct http_request *,
 #endif
 
 /* runtime.c */
+const size_t			kore_runtime_count(void);
 struct kore_runtime_call	*kore_runtime_getcall(const char *);
 struct kore_module		*kore_module_load(const char *,
 				    const char *, int);
@@ -1031,6 +1036,7 @@ struct kore_module		*kore_module_load(const char *,
 void	kore_runtime_execute(struct kore_runtime_call *);
 int	kore_runtime_onload(struct kore_runtime_call *, int);
 void	kore_runtime_signal(struct kore_runtime_call *, int);
+void	kore_runtime_resolve(const char *, const struct stat *);
 void	kore_runtime_configure(struct kore_runtime_call *, int, char **);
 void	kore_runtime_connect(struct kore_runtime_call *, struct connection *);
 #if !defined(KORE_NO_HTTP)

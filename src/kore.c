@@ -62,7 +62,7 @@ int			skip_chroot = 0;
 u_int8_t		worker_count = 0;
 char			**kore_argv = NULL;
 int			kore_mem_guard = 0;
-int			kore_foreground = 0;
+int			kore_foreground = 1;
 char			*kore_progname = NULL;
 u_int32_t		kore_socket_backlog = 5000;
 int			kore_quit = KORE_QUIT_NONE;
@@ -83,15 +83,15 @@ static void	kore_server_shutdown(void);
 static void	kore_server_start(int, char *[]);
 static void	kore_call_parent_configure(int, char **);
 
-#if !defined(KORE_SINGLE_BINARY) && defined(KORE_USE_PYTHON)
-static const char	*parent_config_hook = KORE_PYTHON_CONFIG_HOOK;
-static const char	*parent_teardown_hook = KORE_PYTHON_TEARDOWN_HOOK;
-#else
+#if !defined(KORE_SINGLE_BINARY)
+static const char	*rarg0 = NULL;
+#endif
+
 static const char	*parent_config_hook = KORE_CONFIG_HOOK;
 static const char	*parent_teardown_hook = KORE_TEARDOWN_HOOK;
+
 #if defined(KORE_SINGLE_BINARY)
 static const char	*parent_daemonized_hook = KORE_DAEMONIZED_HOOK;
-#endif
 #endif
 
 static void
@@ -167,10 +167,10 @@ version(void)
 int
 main(int argc, char *argv[])
 {
-	struct kore_runtime_call	*rcall;
-#if !defined(KORE_SINGLE_BINARY) && defined(KORE_USE_PYTHON)
+#if !defined(KORE_SINGLE_BINARY)
 	struct stat			st;
 #endif
+	struct kore_runtime_call	*rcall;
 
 	kore_argc = argc;
 	kore_argv = argv;
@@ -192,23 +192,22 @@ main(int argc, char *argv[])
 	argv += optind;
 #endif
 
-#if !defined(KORE_SINGLE_BINARY) && defined(KORE_USE_PYTHON)
-	if (argc > 0) {
-		kore_pymodule = argv[0];
-		argc--;
-		argv++;
-	} else {
-		kore_pymodule = NULL;
-	}
-
-	if (kore_pymodule) {
-		if (lstat(kore_pymodule, &st) == -1) {
-			fatal("failed to stat '%s': %s",
-			    kore_pymodule, errno_s);
+#if !defined(KORE_SINGLE_BINARY)
+	if (kore_runtime_count() > 0) {
+		if (argc > 0) {
+			rarg0 = argv[0];
+			argc--;
+			argv++;
 		}
 
-		if (!S_ISDIR(st.st_mode) && !S_ISREG(st.st_mode))
-			fatal("%s: not a directory or file", kore_pymodule);
+		if (rarg0) {
+			if (lstat(rarg0, &st) == -1) {
+				if (errno == ENOENT)
+					rarg0 = NULL;
+				else
+					fatal("stat(%s): %s", rarg0, errno_s);
+			}
+		}
 	}
 #endif
 
@@ -243,25 +242,17 @@ main(int argc, char *argv[])
 
 #if defined(KORE_USE_PYTHON)
 	kore_python_init();
-#if !defined(KORE_SINGLE_BINARY)
-	if (kore_pymodule) {
-		kore_module_load(kore_pymodule, NULL, KORE_MODULE_PYTHON);
-		if (S_ISDIR(st.st_mode) && chdir(kore_pymodule) == -1)
-			fatal("chdir(%s): %s", kore_pymodule, errno_s);
-	} else {
-		/* swap back to non-python hooks. */
-		parent_config_hook = KORE_CONFIG_HOOK;
-		parent_teardown_hook = KORE_TEARDOWN_HOOK;
-	}
 #endif
+
+#if !defined(KORE_SINGLE_BINARY)
+	if (kore_runtime_count() > 0 && rarg0 != NULL)
+		kore_runtime_resolve(rarg0, &st);
 #endif
 
 #if defined(KORE_SINGLE_BINARY)
 	kore_call_parent_configure(argc, argv);
-#endif
-
-#if defined(KORE_USE_PYTHON) && !defined(KORE_SINGLE_BINARY)
-	if (kore_pymodule)
+#else
+	if (kore_runtime_count() > 0 && rarg0 != NULL)
 		kore_call_parent_configure(argc, argv);
 #endif
 
@@ -314,9 +305,9 @@ kore_default_getopt(int argc, char **argv)
 	int		ch;
 
 #if !defined(KORE_SINGLE_BINARY)
-	while ((ch = getopt(argc, argv, "c:fhnqrv")) != -1) {
+	while ((ch = getopt(argc, argv, "c:dfhnqrv")) != -1) {
 #else
-	while ((ch = getopt(argc, argv, "fhnqrv")) != -1) {
+	while ((ch = getopt(argc, argv, "dfhnqrv")) != -1) {
 #endif
 		switch (ch) {
 #if !defined(KORE_SINGLE_BINARY)
@@ -326,8 +317,12 @@ kore_default_getopt(int argc, char **argv)
 				fatal("strdup");
 			break;
 #endif
+		case 'd':
+			kore_foreground = 0;
+			break;
 		case 'f':
-			kore_foreground = 1;
+			printf("note: -f is the default now, "
+			    "use -d to daemonize\n");
 			break;
 		case 'h':
 			usage();
@@ -763,6 +758,17 @@ kore_proctitle(const char *title)
 	memset(kore_argv[0] + len, 0, proctitle_maxlen - len);
 }
 
+void
+kore_hooks_set(const char *config, const char *teardown, const char *daemonized)
+{
+	parent_config_hook = config;
+	parent_teardown_hook = teardown;
+
+#if defined(KORE_SINGLE_BINARY)
+	parent_daemonized_hook = daemonized;
+#endif
+}
+
 static void
 kore_proctitle_setup(void)
 {
@@ -827,6 +833,8 @@ kore_server_start(int argc, char *argv[])
 		);
 	}
 
+	kore_tls_log_version();
+
 	if (kore_foreground == 0) {
 		if (daemon(1, 0) == -1)
 			fatal("cannot daemon(): %s", errno_s);
@@ -842,12 +850,8 @@ kore_server_start(int argc, char *argv[])
 	kore_pid = getpid();
 	kore_write_kore_pid();
 
-#if !defined(KORE_SINGLE_BINARY) && !defined(KORE_USE_PYTHON)
-	kore_call_parent_configure(argc, argv);
-#endif
-
-#if defined(KORE_USE_PYTHON) && !defined(KORE_SINGLE_BINARY)
-	if (kore_pymodule == NULL)
+#if !defined(KORE_SINGLE_BINARY)
+	if (kore_runtime_count() == 0 || rarg0 == NULL)
 		kore_call_parent_configure(argc, argv);
 #endif
 

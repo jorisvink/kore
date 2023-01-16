@@ -167,6 +167,7 @@ static void	python_push_integer(PyObject *, const char *, long);
 static void	python_push_type(const char *, PyObject *, PyTypeObject *);
 
 static int	python_validator_check(PyObject *);
+static int	python_runtime_resolve(const char *, const struct stat *);
 static int	python_runtime_http_request(void *, struct http_request *);
 static void	python_runtime_http_request_free(void *, struct http_request *);
 static void	python_runtime_http_body_chunk(void *, struct http_request *,
@@ -200,6 +201,7 @@ struct kore_module_functions kore_python_module = {
 
 struct kore_runtime kore_python_runtime = {
 	KORE_RUNTIME_PYTHON,
+	.resolve = python_runtime_resolve,
 	.http_request = python_runtime_http_request,
 	.http_body_chunk = python_runtime_http_body_chunk,
 	.http_request_free = python_runtime_http_request_free,
@@ -330,7 +332,7 @@ static PyObject		*python_tracer = NULL;
 static struct python_coro		*coro_running = NULL;
 
 #if !defined(KORE_SINGLE_BINARY)
-const char	*kore_pymodule = NULL;
+static const char	*kore_pymodule = NULL;
 #endif
 
 void
@@ -1276,6 +1278,36 @@ static void
 pyhttp_file_dealloc(struct pyhttp_file *pyfile)
 {
 	PyObject_Del((PyObject *)pyfile);
+}
+
+static int
+python_runtime_resolve(const char *module, const struct stat *st)
+{
+	const char		*ext;
+
+	if (!S_ISDIR(st->st_mode) && !S_ISREG(st->st_mode))
+		return (KORE_RESULT_ERROR);
+
+	if (S_ISDIR(st->st_mode)) {
+		kore_module_load(module, NULL, KORE_MODULE_PYTHON);
+		if (chdir(module) == -1)
+			fatal("chdir(%s): %s", module, errno_s);
+	} else {
+		if ((ext = strrchr(module, '.')) == NULL)
+			return (KORE_RESULT_ERROR);
+
+		if (strcasecmp(ext, ".py"))
+			return (KORE_RESULT_ERROR);
+
+		kore_module_load(module, NULL, KORE_MODULE_PYTHON);
+	}
+
+	kore_pymodule = module;
+
+	kore_hooks_set(KORE_PYTHON_CONFIG_HOOK,
+	    KORE_PYTHON_TEARDOWN_HOOK, KORE_PYTHON_DAEMONIZED_HOOK);
+
+	return (KORE_RESULT_OK);
 }
 
 static int

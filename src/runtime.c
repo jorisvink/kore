@@ -62,6 +62,38 @@ struct kore_runtime kore_native_runtime = {
 	.configure = native_runtime_configure
 };
 
+static struct kore_runtime *runtimes[] = {
+#if defined(KORE_USE_PYTHON)
+	&kore_python_runtime,
+#endif
+	NULL
+};
+
+const size_t
+kore_runtime_count(void)
+{
+	return ((sizeof(runtimes) / sizeof(runtimes[0])) - 1);
+}
+
+void
+kore_runtime_resolve(const char *module, const struct stat *st)
+{
+	int		i;
+
+	if (runtimes[0] == NULL)
+		return;
+
+	for (i = 0; runtimes[i] != NULL; i++) {
+		if (runtimes[i]->resolve == NULL)
+			continue;
+		if (runtimes[i]->resolve(module, st))
+			break;
+	}
+
+	if (runtimes[i] == NULL)
+		fatal("No runtime available to run '%s'", module);
+}
+
 struct kore_runtime_call *
 kore_runtime_getcall(const char *symbol)
 {
