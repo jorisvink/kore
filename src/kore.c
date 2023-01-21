@@ -46,6 +46,10 @@
 #include "python_api.h"
 #endif
 
+#if defined(KORE_USE_LUA)
+#include "lua_api.h"
+#endif
+
 #if defined(KORE_USE_ACME)
 #include "acme.h"
 #endif
@@ -97,11 +101,11 @@ static const char	*parent_daemonized_hook = KORE_DAEMONIZED_HOOK;
 static void
 usage(void)
 {
-#if defined(KORE_USE_PYTHON)
-	printf("Usage: %s [options] [app | app.py]\n", __progname);
-#else
-	printf("Usage: %s [options]\n", __progname);
-#endif
+	if (kore_runtime_count() > 0) {
+		printf("Usage: %s [options] [app | script]\n", __progname);
+	} else {
+		printf("Usage: %s [options]\n", __progname);
+	}
 
 	printf("\n");
 	printf("Command-line options:\n");
@@ -150,6 +154,10 @@ version(void)
 #endif
 #if defined(KORE_USE_PYTHON)
 	printf("python-%s ", PY_VERSION);
+#endif
+#if defined(KORE_USE_LUA)
+	printf("lua-%s.%s.%s ",
+	    LUA_VERSION_MAJOR, LUA_VERSION_MINOR, LUA_VERSION_RELEASE);
 #endif
 #if defined(KORE_USE_ACME)
 	printf("acme ");
@@ -234,14 +242,18 @@ main(int argc, char *argv[])
 	kore_domain_init();
 	kore_module_init();
 
-#if !defined(KORE_SINGLE_BINARY) && !defined(KORE_USE_PYTHON)
-	if (config_file == NULL)
+#if !defined(KORE_SINGLE_BINARY)
+	if (kore_runtime_count() == 0 && config_file == NULL)
 		usage();
 #endif
 	kore_module_load(NULL, NULL, KORE_MODULE_NATIVE);
 
 #if defined(KORE_USE_PYTHON)
 	kore_python_init();
+#endif
+
+#if defined(KORE_USE_LUA)
+	kore_lua_init();
 #endif
 
 #if !defined(KORE_SINGLE_BINARY)
@@ -292,6 +304,10 @@ main(int argc, char *argv[])
 
 #if defined(KORE_USE_PYTHON)
 	kore_python_cleanup();
+#endif
+
+#if defined(KORE_USE_LUA)
+	kore_lua_cleanup();
 #endif
 
 	kore_mem_cleanup();

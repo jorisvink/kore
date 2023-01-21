@@ -93,6 +93,7 @@ static int		configure_socket_backlog(char *);
 static int		configure_privsep_skip(char *);
 static int		configure_privsep_root(char *);
 static int		configure_privsep_runas(char *);
+static int		configure_deployment(char *);
 
 #if defined(KORE_USE_PLATFORM_PLEDGE)
 static int		configure_add_pledge(char *);
@@ -157,7 +158,6 @@ static int		configure_task_threads(char *);
 #endif
 
 #if defined(KORE_USE_PYTHON)
-static int		configure_deployment(char *);
 static int		configure_python_path(char *);
 static int		configure_python_import(char *);
 #endif
@@ -240,6 +240,7 @@ static struct {
 	{ "tls_cipher",			configure_tls_cipher },
 	{ "tls_dhparam",		configure_tls_dhparam },
 	{ "rand_file",			configure_rand_file },
+	{ "deployment",			configure_deployment },
 #if defined(KORE_USE_ACME)
 	{ "acme_email",			configure_acme_email },
 	{ "acme_provider",		configure_acme_provider },
@@ -268,9 +269,6 @@ static struct {
 	{ "http_pretty_error",		configure_http_pretty_error },
 	{ "websocket_maxframe",		configure_websocket_maxframe },
 	{ "websocket_timeout",		configure_websocket_timeout },
-#endif
-#if defined(KORE_USE_PYTHON)
-	{ "deployment",			configure_deployment },
 #endif
 #if defined(KORE_USE_PGSQL)
 	{ "pgsql_conn_max",		configure_pgsql_conn_max },
@@ -524,7 +522,6 @@ kore_parse_config_file(FILE *fp)
 	}
 }
 
-#if defined(KORE_USE_PYTHON)
 int
 kore_configure_setting(const char *name, char *value)
 {
@@ -544,7 +541,6 @@ kore_configure_setting(const char *name, char *value)
 	kore_log(LOG_NOTICE, "ignoring unknown kore.config.%s setting", name);
 	return (KORE_RESULT_OK);
 }
-#endif
 
 static void
 configure_check_var(char **var, const char *other, const char *logmsg)
@@ -2015,7 +2011,6 @@ configure_task_threads(char *option)
 }
 #endif
 
-#if defined(KORE_USE_PYTHON)
 static int
 configure_deployment(char *value)
 {
@@ -2040,6 +2035,7 @@ configure_deployment(char *value)
 	return (KORE_RESULT_OK);
 }
 
+#if defined(KORE_USE_PYTHON)
 static int
 configure_python_path(char *path)
 {

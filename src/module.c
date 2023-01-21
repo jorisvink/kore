@@ -29,6 +29,10 @@
 #include "python_api.h"
 #endif
 
+#if defined(KORE_USE_LUA)
+#include "lua_api.h"
+#endif
+
 static TAILQ_HEAD(, kore_module)	modules;
 
 static void	native_free(struct kore_module *);
@@ -91,6 +95,12 @@ kore_module_load(const char *path, const char *onload, int type)
 	case KORE_MODULE_PYTHON:
 		module->fun = &kore_python_module;
 		module->runtime = &kore_python_runtime;
+		break;
+#endif
+#if defined(KORE_USE_LUA)
+	case KORE_MODULE_LUA:
+		module->fun = &kore_lua_module;
+		module->runtime = &kore_lua_runtime;
 		break;
 #endif
 	default:

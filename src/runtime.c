@@ -27,6 +27,10 @@
 #include "python_api.h"
 #endif
 
+#if defined(KORE_USE_LUA)
+#include "lua_api.h"
+#endif
+
 static void	native_runtime_execute(void *);
 static int	native_runtime_onload(void *, int);
 static void	native_runtime_signal(void *, int);
@@ -65,6 +69,9 @@ struct kore_runtime kore_native_runtime = {
 static struct kore_runtime *runtimes[] = {
 #if defined(KORE_USE_PYTHON)
 	&kore_python_runtime,
+#endif
+#if defined(KORE_USE_LUA)
+	&kore_lua_runtime,
 #endif
 	NULL
 };

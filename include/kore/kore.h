@@ -274,6 +274,7 @@ extern struct connection_list	disconnected;
 
 #define KORE_RUNTIME_NATIVE	0
 #define KORE_RUNTIME_PYTHON	1
+#define KORE_RUNTIME_LUA	2
 
 struct kore_runtime {
 	int	type;
@@ -413,8 +414,9 @@ struct kore_auth {
 #define KORE_MODULE_LOAD	1
 #define KORE_MODULE_UNLOAD	2
 
-#define KORE_MODULE_NATIVE	0
-#define KORE_MODULE_PYTHON	1
+#define KORE_MODULE_NATIVE	KORE_RUNTIME_NATIVE
+#define KORE_MODULE_PYTHON	KORE_RUNTIME_PYTHON
+#define KORE_MODULE_LUA		KORE_RUNTIME_LUA
 
 struct kore_module;
 
@@ -894,13 +896,10 @@ const char		*kore_connection_ip(struct connection *);
 void		kore_log_init(void);
 void		kore_log_file(const char *);
 
-#if defined(KORE_USE_PYTHON)
-int		kore_configure_setting(const char *, char *);
-#endif
-
 /* config.c */
 void		kore_parse_config(void);
 void		kore_parse_config_file(FILE *);
+int		kore_configure_setting(const char *, char *);
 
 /* mem.c */
 void		*kore_malloc(size_t);

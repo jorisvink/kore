@@ -117,6 +117,16 @@ ifneq ("$(PYTHON)", "")
 	FEATURES_INC+=$(KORE_PYTHON_INC)
 endif
 
+ifneq ("$(LUA)", "")
+	S_SRC+=src/lua.c
+	KORE_LUA_LIB?=$(shell pkg-config --libs lua)
+	KORE_LUA_INC?=$(shell pkg-config --cflags lua)
+	LDFLAGS+=$(KORE_LUA_LIB)
+	CFLAGS+=$(KORE_LUA_INC) -DKORE_USE_LUA
+	FEATURES+=-DKORE_USE_LUA
+	FEATURES_INC+=$(KORE_LUA_INC)
+endif
+
 OSNAME=$(shell uname -s | sed -e 's/[-_].*//g' | tr A-Z a-z)
 ifeq ("$(OSNAME)", "freebsd")
 	KORE_CURL_LIB=-L/usr/local/lib -lcurl

@@ -206,7 +206,6 @@ kore_pool_put(struct kore_pool *pool, void *ptr)
 		pool_mark_entry_none(pool, entry);
 
 	pool->freelist = entry;
-
 #if defined(KORE_USE_TASKS)
 	pool_unlock(pool);
 #endif
