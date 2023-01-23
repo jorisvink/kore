@@ -76,6 +76,9 @@ Requirements for pgsql (optional)
 Requirements for python (optional)
 * Python 3.6+
 
+Requirements for lua support (optional)
+* Lua 5.4+
+
 Normal compilation and installation:
 
 ```
@@ -87,6 +90,7 @@ $ make
 If you would like to build a specific flavor, you can enable
 those by setting a shell environment variable before running **_make_**.
 
+* LUA=1 (compiles in LUA support)
 * ACME=1 (compiles in ACME support)
 * CURL=1 (compiles in asynchronous curl support)
 * TASKS=1 (compiles in task support)
