@@ -846,6 +846,9 @@ kore_server_start(int argc, char *argv[])
 #if defined(KORE_USE_CURL)
 		    "curl "
 #endif
+#if defined(KORE_USE_LUA)
+		    "lua "
+#endif
 		);
 	}
 
