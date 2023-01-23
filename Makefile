@@ -119,8 +119,8 @@ endif
 
 ifneq ("$(LUA)", "")
 	S_SRC+=src/lua.c
-	KORE_LUA_LIB?=$(shell pkg-config --libs lua)
-	KORE_LUA_INC?=$(shell pkg-config --cflags lua)
+	KORE_LUA_LIB?=$(shell pkg-config --libs lua$(LUA_VERSION))
+	KORE_LUA_INC?=$(shell pkg-config --cflags lua$(LUA_VERSION))
 	LDFLAGS+=$(KORE_LUA_LIB)
 	CFLAGS+=$(KORE_LUA_INC) -DKORE_USE_LUA
 	FEATURES+=-DKORE_USE_LUA
