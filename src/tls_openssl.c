@@ -76,12 +76,6 @@ static int	tls_keymgr_rsa_finish(RSA *);
 static int	tls_keymgr_rsa_privenc(int, const unsigned char *,
 		    unsigned char *, RSA *, int);
 
-#if !defined(LIBRESSL_VERSION_NUMBER)
-static void	tls_free(void *, const char *, int);
-static void	*tls_malloc(size_t, const char *, int);
-static void	*tls_realloc(void *, size_t, const char *, int);
-#endif
-
 static DH		*dh_params = NULL;
 static RSA_METHOD	*keymgr_rsa_meth = NULL;
 static int		tls_version = KORE_TLS_VERSION_BOTH;
@@ -108,11 +102,6 @@ kore_tls_supported(void)
 void
 kore_tls_init(void)
 {
-#if !defined(LIBRESSL_VERSION_NUMBER)
-	if (!CRYPTO_set_mem_functions(tls_malloc, tls_realloc, tls_free))
-		fatalx("CRYPTO_set_mem_functions failed");
-#endif
-
 	SSL_library_init();
 	SSL_load_error_strings();
 	ERR_load_crypto_strings();
@@ -1164,26 +1153,6 @@ tls_privsep_private_key(EVP_PKEY *pub, struct kore_domain *dom)
 
 	return (pkey);
 }
-
-#if !defined(LIBRESSL_VERSION_NUMBER)
-static void *
-tls_malloc(size_t len, const char *file, int line)
-{
-	return (kore_malloc(len));
-}
-
-static void *
-tls_realloc(void *ptr, size_t len, const char *file, int line)
-{
-	return (kore_realloc(ptr, len));
-}
-
-static void
-tls_free(void *ptr, const char *file, int line)
-{
-	kore_free(ptr);
-}
-#endif
 
 #if defined(KORE_USE_ACME)
 static int
