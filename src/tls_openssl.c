@@ -113,10 +113,6 @@ kore_tls_log_version(void)
 {
 	kore_log(LOG_NOTICE, "TLS backend %s", OPENSSL_VERSION_TEXT);
 
-#if defined(LIBRESSL_VERSION_NUMBER)
-	kore_log(LOG_NOTICE, "libressl does not support malloc-wrappers");
-#endif
-
 #if !defined(TLS1_3_VERSION)
 	if (!kore_quiet) {
 		kore_log(LOG_NOTICE,
