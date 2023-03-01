@@ -123,11 +123,11 @@ kore_realloc(void *ptr, size_t len)
 		nptr = mem_alloc(len);
 	} else {
 		mem = meminfo(ptr);
-		if (len == mem->len)
+		if (len <= mem->len)
 			return (ptr);
 		nptr = mem_alloc(len);
-		memcpy(nptr, ptr, MIN(len, mem->len));
-		kore_free(ptr);
+		memcpy(nptr, ptr, mem->len);
+		kore_free_zero(ptr);
 	}
 
 	return (nptr);
@@ -147,6 +147,20 @@ kore_calloc(size_t memb, size_t len)
 	memset(ptr, 0, total);
 
 	return (ptr);
+}
+
+void
+kore_free_zero(void *ptr)
+{
+	struct meminfo		*mem;
+
+	if (ptr == NULL)
+		return;
+
+	mem = meminfo(ptr);
+	kore_mem_zero(ptr, mem->len);
+
+	kore_free(ptr);
 }
 
 void

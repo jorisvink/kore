@@ -908,6 +908,7 @@ void		*kore_calloc(size_t, size_t);
 void		*kore_realloc(void *, size_t);
 void		kore_free(void *);
 void		kore_mem_init(void);
+void		kore_free_zero(void *);
 void		kore_mem_cleanup(void);
 void		kore_mem_untag(void *);
 void		*kore_mem_lookup(u_int32_t);
