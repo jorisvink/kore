@@ -67,8 +67,6 @@ static void	lua_symbol_resolve(struct lua_symbol *, lua_State **);
 
 static int		lua_argument_get_bool(lua_State *, const char *);
 static const char	*lua_argument_get_string(lua_State *, const char *);
-//static int		lua_argument_get_integer(lua_State *, const char *,
-//			    lua_Integer *);
 
 struct kore_module_functions kore_lua_module = {
 	.free = lua_module_free,
@@ -142,29 +140,6 @@ lua_symbol_resolve(struct lua_symbol *sym, lua_State **L)
 	lua_rawgeti(sym->L, LUA_REGISTRYINDEX, sym->ref);
 	*L = sym->L;
 }
-
-#if 0
-static int
-lua_argument_get_integer(lua_State *L, const char *field, lua_Integer *ret)
-{
-	int		type;
-
-	lua_pushstring(L, field);
-	type = lua_gettable(L, -2);
-
-	if (type == LUA_TNIL) {
-		lua_pop(L, 1);
-		return (KORE_RESULT_ERROR);
-	}
-
-	luaL_argcheck(L, type == LUA_TNUMBER, 0, field);
-
-	*ret = lua_tointeger(L, -1);
-	lua_pop(L, 1);
-
-	return (KORE_RESULT_OK);
-}
-#endif
 
 static int
 lua_argument_get_bool(lua_State *L, const char *field)
