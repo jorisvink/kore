@@ -5617,6 +5617,23 @@ pydomain_filemaps(struct pydomain *domain, PyObject *args)
 }
 
 static PyObject *
+pydomain_redirect(struct pydomain *domain, PyObject *args)
+{
+	int			status;
+	const char		*src, *dst;
+
+	if (!PyArg_ParseTuple(args, "sis", &src, &status, &dst))
+		return (NULL);
+
+	if (!http_redirect_add(domain->config, src, status, dst)) {
+		fatal("failed to add redirect '%s' on '%s'",
+		    src, domain->config->domain);
+	}
+
+	Py_RETURN_NONE;
+}
+
+static PyObject *
 pydomain_route(struct pydomain *domain, PyObject *args, PyObject *kwargs)
 {
 	PyObject		*obj;

@@ -231,10 +231,12 @@ struct pydomain {
 };
 
 static PyObject	*pydomain_filemaps(struct pydomain *, PyObject *);
+static PyObject	*pydomain_redirect(struct pydomain *, PyObject *);
 static PyObject	*pydomain_route(struct pydomain *, PyObject *, PyObject *);
 
 static PyMethodDef pydomain_methods[] = {
 	METHOD("filemaps", pydomain_filemaps, METH_VARARGS),
+	METHOD("redirect", pydomain_redirect, METH_VARARGS),
 	METHOD("route", pydomain_route, METH_VARARGS | METH_KEYWORDS),
 	METHOD(NULL, NULL, -1)
 };
