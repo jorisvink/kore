@@ -369,6 +369,9 @@ kore_worker_privsep(void)
 	if (worker == NULL)
 		fatalx("%s called with no worker", __func__);
 
+	if (worker_set_affinity == 1)
+		kore_platform_worker_setcpu(worker);
+
 	pw = NULL;
 
 	/* Must happen before chroot. */
@@ -748,9 +751,6 @@ void
 kore_worker_started(void)
 {
 	const char	*chroot;
-
-	if (worker_set_affinity == 1)
-		kore_platform_worker_setcpu(worker);
 
 	if (worker->ps->skip_chroot)
 		chroot = "root";
