@@ -450,9 +450,6 @@ kore_worker_entry(struct kore_worker *kw)
 
 	kore_platform_proctitle(kore_worker_name(kw->id));
 
-	if (worker_set_affinity == 1)
-		kore_platform_worker_setcpu(kw);
-
 	kore_pid = kw->pid;
 	kore_signal_setup();
 
@@ -751,6 +748,9 @@ void
 kore_worker_started(void)
 {
 	const char	*chroot;
+
+	if (worker_set_affinity == 1)
+		kore_platform_worker_setcpu(worker);
 
 	if (worker->ps->skip_chroot)
 		chroot = "root";
