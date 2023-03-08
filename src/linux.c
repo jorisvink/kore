@@ -60,7 +60,7 @@ kore_platform_worker_setcpu(struct kore_worker *kw)
 	CPU_SET(kw->cpu, &cpuset);
 
 	if (sched_setaffinity(0, sizeof(cpu_set_t), &cpuset) == -1)
-		kore_log(LOG_WARNING, "kore_worker_setcpu(): %s", errno_s);
+		kore_log(LOG_NOTICE, "kore_worker_setcpu(): %s", errno_s);
 }
 
 void
