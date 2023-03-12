@@ -195,7 +195,7 @@ filemap_serve(struct http_request *req, const struct filemap_entry *map)
 		return;
 	}
 
-	if (!http_argument_urldecode(fpath)) {
+	if (!http_argument_urldecode(fpath, 1)) {
 		http_response(req, HTTP_STATUS_BAD_REQUEST, NULL, 0);
 		return;
 	}

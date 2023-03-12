@@ -415,8 +415,8 @@ int		http_state_exists(struct http_request *);
 void		http_state_cleanup(struct http_request *);
 void		*http_state_create(struct http_request *, size_t);
 
-int		http_argument_urldecode(char *);
 int		http_header_recv(struct netbuf *);
+int		http_argument_urldecode(char *, int);
 void		http_populate_qs(struct http_request *);
 void		http_populate_post(struct http_request *);
 void		http_populate_multipart_form(struct http_request *);

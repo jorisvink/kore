@@ -1008,7 +1008,7 @@ http_argument_get(struct http_request *req, const char *name,
 }
 
 int
-http_argument_urldecode(char *arg)
+http_argument_urldecode(char *arg, int url)
 {
 	u_int8_t	v;
 	int		err;
@@ -1046,8 +1046,14 @@ http_argument_urldecode(char *arg)
 		if (err != KORE_RESULT_OK)
 			return (err);
 
-		if (v <= 0x1f || v == 0x7f)
-			return (KORE_RESULT_ERROR);
+		if (url) {
+			if (v <= 0x1f || v == 0x7f)
+				return (KORE_RESULT_ERROR);
+		} else {
+			if ((v <= 0x1f || v == 0x7f) &&
+			    (v != '\n' && v != '\r'))
+				return (KORE_RESULT_ERROR);
+		}
 
 		*in++ = (char)v;
 		p += 3;
@@ -2284,7 +2290,7 @@ http_argument_add(struct http_request *req, char *name, char *value, int qs,
 	struct kore_route_params	*p;
 
 	if (decode) {
-		if (!http_argument_urldecode(name))
+		if (!http_argument_urldecode(name, qs))
 			return;
 	}
 
@@ -2301,7 +2307,7 @@ http_argument_add(struct http_request *req, char *name, char *value, int qs,
 			continue;
 
 		if (decode) {
-			if (!http_argument_urldecode(value))
+			if (!http_argument_urldecode(value, qs))
 				return;
 		}
 
