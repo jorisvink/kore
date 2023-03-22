@@ -445,10 +445,6 @@ main(int argc, char **argv)
 
 	for (i = 0; cmds[i].name != NULL; i++) {
 		if (!strcmp(argv[0], cmds[i].name)) {
-			if (strcmp(argv[0], "create")) {
-				argc--;
-				argv++;
-			}
 			command = &cmds[i];
 			cmds[i].cb(argc, argv);
 			break;
@@ -563,7 +559,7 @@ cli_flavor(int argc, char **argv)
 	(void)cli_buildopt_new("_default");
 	cli_buildopt_parse("conf/build.conf");
 
-	if (argc == 0) {
+	if (argc < 2) {
 		cli_flavor_load();
 		TAILQ_FOREACH(bopt, &build_options, list) {
 			if (!strcmp(bopt->name, "_default"))
@@ -575,8 +571,8 @@ cli_flavor(int argc, char **argv)
 			}
 		}
 	} else {
-		cli_flavor_change(argv[0]);
-		printf("changed build flavor to: %s\n", argv[0]);
+		cli_flavor_change(argv[1]);
+		printf("changed build flavor to: %s\n", argv[1]);
 	}
 
 	cli_buildopt_cleanup();
@@ -909,7 +905,7 @@ cli_genasset(int argc, char **argv)
 	if (getenv("KORE_OBJDIR") == NULL)
 		object_dir = out_dir;
 
-	if (argv[0] == NULL)
+	if (argv[1] == NULL)
 		cli_genasset_help();
 
 	(void)cli_vasprintf(&hdr, "%s/assets.h", out_dir);
@@ -919,20 +915,20 @@ cli_genasset(int argc, char **argv)
 	cli_file_writef(s_fd, "#ifndef __H_KORE_ASSETS_H\n");
 	cli_file_writef(s_fd, "#define __H_KORE_ASSETS_H\n");
 
-	if (stat(argv[0], &st) == -1)
-		fatal("%s: %s", argv[0], errno_s);
+	if (stat(argv[1], &st) == -1)
+		fatal("%s: %s", argv[1], errno_s);
 
 	if (S_ISDIR(st.st_mode)) {
-		if (cli_dir_exists(argv[0]))
-			cli_find_files(argv[0], cli_build_asset);
+		if (cli_dir_exists(argv[1]))
+			cli_find_files(argv[1], cli_build_asset);
 	} else if (S_ISREG(st.st_mode)) {
 		memset(&dp, 0, sizeof(dp));
 		dp.d_type = DT_REG;
 		(void)snprintf(dp.d_name, sizeof(dp.d_name), "%s",
-		    basename(argv[0]));
-		cli_build_asset(argv[0], &dp);
+		    basename(argv[1]));
+		cli_build_asset(argv[1], &dp);
 	} else {
-		fatal("%s is not a directory or regular file", argv[0]);
+		fatal("%s is not a directory or regular file", argv[1]);
 	}
 
 	cli_file_writef(s_fd, "\n#endif\n");
