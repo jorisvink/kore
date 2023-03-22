@@ -139,6 +139,8 @@ static char		*cli_read_line(FILE *, char *, size_t);
 static long long	cli_strtonum(const char *, long long, long long);
 static int		cli_split_string(char *, const char *, char **, size_t);
 
+static int		cli_generate_compiler_args(char **, char **, struct cfile *);
+
 static void		usage(void) __attribute__((noreturn));
 static void		fatal(const char *, ...) __attribute__((noreturn))
 			    __attribute__((format (printf, 1, 2)));
@@ -1554,17 +1556,13 @@ cli_generate_certs(void)
 }
 #endif
 
-static void
-cli_compile_source_file(void *arg)
+static int
+cli_generate_compiler_args(char **compiler_out, char **args, struct cfile *cf)
 {
-	struct cfile		*cf;
 	int			idx, i;
 	char			**flags;
 	char			*compiler;
 	int			flags_count;
-	char			*args[34 + CFLAGS_MAX];
-
-	cf = arg;
 
 	switch (cf->build) {
 	case BUILD_C:
@@ -1584,7 +1582,8 @@ cli_compile_source_file(void *arg)
 	}
 
 	idx = 0;
-	args[idx++] = compiler;
+
+	*compiler_out = args[idx++] = compiler;
 
 	for (i = 0; i < flags_count; i++)
 		args[idx++] = flags[i];
@@ -1596,6 +1595,19 @@ cli_compile_source_file(void *arg)
 	args[idx++] = "-o";
 	args[idx++] = cf->opath;
 	args[idx] = NULL;
+
+	return idx;
+}
+
+static void
+cli_compile_source_file(void *arg)
+{
+	struct cfile		*cf;
+	char			*compiler;
+	char			*args[34 + CFLAGS_MAX];
+
+	cf = arg;
+	cli_generate_compiler_args(&compiler, args, cf);
 
 	execvp(compiler, args);
 	fatal("failed to start '%s': %s", compiler, errno_s);
