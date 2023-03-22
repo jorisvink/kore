@@ -206,6 +206,8 @@ static void		cli_run(int, char **);
 static void		cli_help(int, char **);
 static void		cli_info(int, char **);
 static void		cli_build(int, char **);
+static void		cli_build_help(void);
+static void		cli_build_clangdb(const char *);
 static void		cli_clean(int, char **);
 static void		cli_source(int, char **);
 static void		cli_reload(int, char **);
@@ -581,6 +583,85 @@ cli_flavor(int argc, char **argv)
 }
 
 static void
+cli_build_clangdb(const char *pwd)
+{
+	const char		*filename = "compile_commands.json";
+	struct cfile	*cf;
+	int				fd, i, args_count, genpath_len;
+	char			*args[34 + CFLAGS_MAX], *genpath;
+	char			*compiler_unused;
+
+	printf("generating %s...\n", filename);
+
+	(void)unlink(filename);
+
+	genpath_len = cli_vasprintf(&genpath, "%s/", object_dir);
+
+	cli_file_open(filename, O_CREAT | O_TRUNC | O_WRONLY, &fd);
+	cli_file_writef(fd, "[\n");
+
+	TAILQ_FOREACH(cf, &source_files, list) {
+		int tempbuild = cf->build;
+
+		// exclude generated source files
+		if (!strncmp(cf->fpath, genpath, genpath_len))
+			continue;
+
+		if (cf->build == BUILD_NOBUILD) {
+			char *ext = strrchr(cf->fpath, '.');
+
+			if (ext == NULL)
+				continue;
+
+			// temporarily rewrite build to our file type to include unchanged files
+			if (!strcmp(ext, ".cpp"))
+				cf->build = BUILD_CXX;
+			else if (!strcmp(ext, ".c"))
+				cf->build = BUILD_C;
+			else
+				continue;
+		}
+
+		cli_file_writef(fd, "\t{\n");
+
+		cli_file_writef(fd, "\t\t\"arguments\": [\n");
+		args_count = cli_generate_compiler_args(&compiler_unused, args, cf);
+		for (i = 0; i < args_count; i++)
+		{
+			cli_file_writef(fd, "\t\t\t\"%s\"%s\n",
+				args[i], i == args_count - 1 ? "" : ",");
+		}
+		cli_file_writef(fd, "\t\t],\n");
+
+		cli_file_writef(fd, "\t\t\"directory\": \"%s\",\n", pwd);
+		cli_file_writef(fd, "\t\t\"file\": \"%s\"\n", cf->fpath);
+		cli_file_writef(fd, "\t}%s\n", cf == TAILQ_LAST(&source_files, cfile_list) ? "" : ",");
+
+		cf->build = tempbuild;
+	}
+
+	cli_file_writef(fd, "]\n");
+	cli_file_close(fd);
+
+	free(genpath);
+
+	printf("%s generated successfully...\n", filename);
+}
+
+static void
+cli_build_help(void)
+{
+	printf("Usage: kodev build [-c]\n");
+	printf("Synopsis:\n");
+	printf("  Build a kore application in current working directory.\n");
+	printf("\n");
+	printf("  Optional flags:\n");
+	printf("\t-c = generate Clang compilation database after build\n");
+
+	exit(1);
+}
+
+static void
 cli_build(int argc, char **argv)
 {
 #if !defined(KODEV_MINIMAL)
@@ -597,6 +678,23 @@ cli_build(int argc, char **argv)
 	char			*sofile, *config;
 	char			*assets_path, *p, *src_path;
 	char			pwd[PATH_MAX], *assets_header;
+	int				ch, clangdb;
+
+	clangdb = 0;
+
+	while ((ch = getopt(argc, argv, "ch")) != -1) {
+		switch (ch) {
+		case 'h':
+			cli_build_help();
+			break;
+		case 'c':
+			clangdb = 1;
+			break;
+		default:
+			cli_build_help();
+			break;
+		}
+	}
 
 	if (getcwd(pwd, sizeof(pwd)) == NULL)
 		fatal("could not get cwd: %s", errno_s);
@@ -748,6 +846,9 @@ cli_build(int argc, char **argv)
 	} else {
 		printf("nothing to be done!\n");
 	}
+
+	if (clangdb)
+		cli_build_clangdb(pwd);
 
 	if (run_after == 0)
 		cli_buildopt_cleanup();
