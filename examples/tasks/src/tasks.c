@@ -55,6 +55,8 @@ KORE_SECCOMP_FILTER("tasks",
 	KORE_SYSCALL_ALLOW(recvmsg),
 	KORE_SYSCALL_ALLOW(sendmmsg),
 	KORE_SYSCALL_ALLOW(getpeername),
+	KORE_SYSCALL_ALLOW(rseq),
+	KORE_SYSCALL_ALLOW(clone3),
 );
 #endif
 
