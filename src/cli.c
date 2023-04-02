@@ -72,6 +72,8 @@
 #define BUILD_C			1
 #define BUILD_CXX		2
 
+#define CLANGDB_FILE_PATH	 "compile_commands.json"
+
 struct cli_buf {
 	u_int8_t		*data;
 	size_t			length;
@@ -138,8 +140,8 @@ static char		*cli_text_trim(char *, size_t);
 static char		*cli_read_line(FILE *, char *, size_t);
 static long long	cli_strtonum(const char *, long long, long long);
 static int		cli_split_string(char *, const char *, char **, size_t);
-
-static int		cli_generate_compiler_args(char **, char **, struct cfile *);
+static int		cli_generate_compiler_args(struct cfile *, char **,
+			    char **, size_t);
 
 static void		usage(void) __attribute__((noreturn));
 static void		fatal(const char *, ...) __attribute__((noreturn))
@@ -207,7 +209,6 @@ static void		cli_help(int, char **);
 static void		cli_info(int, char **);
 static void		cli_build(int, char **);
 static void		cli_build_help(void);
-static void		cli_build_clangdb(const char *);
 static void		cli_clean(int, char **);
 static void		cli_source(int, char **);
 static void		cli_reload(int, char **);
@@ -216,6 +217,7 @@ static void		cli_cflags(int, char **);
 static void		cli_ldflags(int, char **);
 static void		cli_genasset(int, char **);
 static void		cli_genasset_help(void);
+static void		cli_build_clangdb(const char *);
 
 #if !defined(KODEV_MINIMAL)
 static void		cli_create(int, char **);
@@ -585,35 +587,32 @@ cli_flavor(int argc, char **argv)
 static void
 cli_build_clangdb(const char *pwd)
 {
-	const char		*filename = "compile_commands.json";
-	struct cfile	*cf;
-	int				fd, i, args_count, genpath_len;
-	char			*args[34 + CFLAGS_MAX], *genpath;
-	char			*compiler_unused;
+	struct cfile		*cf;
+	int			fd, i, nargs, genpath_len;
+	char			*args[64 + CFLAGS_MAX], *genpath, *ext;
 
-	printf("generating %s...\n", filename);
-
-	(void)unlink(filename);
+	printf("generating %s...\n", CLANGDB_FILE_PATH);
 
 	genpath_len = cli_vasprintf(&genpath, "%s/", object_dir);
 
-	cli_file_open(filename, O_CREAT | O_TRUNC | O_WRONLY, &fd);
+	cli_file_open(CLANGDB_FILE_PATH, O_CREAT | O_TRUNC | O_WRONLY, &fd);
 	cli_file_writef(fd, "[\n");
 
 	TAILQ_FOREACH(cf, &source_files, list) {
 		int tempbuild = cf->build;
 
-		// exclude generated source files
+		/* Exclude generated source files. */
 		if (!strncmp(cf->fpath, genpath, genpath_len))
 			continue;
 
 		if (cf->build == BUILD_NOBUILD) {
-			char *ext = strrchr(cf->fpath, '.');
-
-			if (ext == NULL)
+			if ((ext = strrchr(cf->fpath, '.')) == NULL)
 				continue;
 
-			// temporarily rewrite build to our file type to include unchanged files
+			/*
+			 * Temporarily rewrite build to our file type to
+			 * include unchanged files.
+			 */
 			if (!strcmp(ext, ".cpp"))
 				cf->build = BUILD_CXX;
 			else if (!strcmp(ext, ".c"))
@@ -623,19 +622,21 @@ cli_build_clangdb(const char *pwd)
 		}
 
 		cli_file_writef(fd, "\t{\n");
-
 		cli_file_writef(fd, "\t\t\"arguments\": [\n");
-		args_count = cli_generate_compiler_args(&compiler_unused, args, cf);
-		for (i = 0; i < args_count; i++)
-		{
-			cli_file_writef(fd, "\t\t\t\"%s\"%s\n",
-				args[i], i == args_count - 1 ? "" : ",");
-		}
-		cli_file_writef(fd, "\t\t],\n");
 
+		nargs = cli_generate_compiler_args(cf, NULL, args,
+		    64 + CFLAGS_MAX);
+
+		for (i = 0; i < nargs; i++) {
+			cli_file_writef(fd, "\t\t\t\"%s\"%s\n",
+				args[i], i == nargs - 1 ? "" : ",");
+		}
+
+		cli_file_writef(fd, "\t\t],\n");
 		cli_file_writef(fd, "\t\t\"directory\": \"%s\",\n", pwd);
 		cli_file_writef(fd, "\t\t\"file\": \"%s\"\n", cf->fpath);
-		cli_file_writef(fd, "\t}%s\n", cf == TAILQ_LAST(&source_files, cfile_list) ? "" : ",");
+		cli_file_writef(fd, "\t}%s\n",
+		    cf == TAILQ_LAST(&source_files, cfile_list) ? "" : ",");
 
 		cf->build = tempbuild;
 	}
@@ -645,7 +646,7 @@ cli_build_clangdb(const char *pwd)
 
 	free(genpath);
 
-	printf("%s generated successfully...\n", filename);
+	printf("%s generated successfully...\n", CLANGDB_FILE_PATH);
 }
 
 static void
@@ -1658,33 +1659,36 @@ cli_generate_certs(void)
 #endif
 
 static int
-cli_generate_compiler_args(char **compiler_out, char **args, struct cfile *cf)
+cli_generate_compiler_args(struct cfile *cf, char **cout,
+    char **args, size_t elm)
 {
-	int			idx, i;
-	char			**flags;
-	char			*compiler;
-	int			flags_count;
+	char		*compiler, **flags;
+	int		idx, i, flags_count;
 
 	switch (cf->build) {
 	case BUILD_C:
-		compiler = compiler_c;
 		flags = cflags;
+		compiler = compiler_c;
 		flags_count = cflags_count;
 		break;
 	case BUILD_CXX:
-		compiler = compiler_cpp;
 		flags = cxxflags;
+		compiler = compiler_cpp;
 		flags_count = cxxflags_count;
 		break;
 	default:
-		fatal("cli_compile_file: unexpected file type: %d",
-		    cf->build);
-		break;
+		fatal("%s: unexpected file type: %d", __func__, cf->build);
+		/* NOTREACHED */
 	}
 
-	idx = 0;
+	if ((size_t)flags_count + 2 >= elm)
+		fatal("%s: flags %d >= %zu", __func__, flags_count, elm);
 
-	*compiler_out = args[idx++] = compiler;
+	if (cout != NULL)
+		*cout = compiler;
+
+	idx = 0;
+	args[idx++] = compiler;
 
 	for (i = 0; i < flags_count; i++)
 		args[idx++] = flags[i];
@@ -1697,18 +1701,16 @@ cli_generate_compiler_args(char **compiler_out, char **args, struct cfile *cf)
 	args[idx++] = cf->opath;
 	args[idx] = NULL;
 
-	return idx;
+	return (idx);
 }
 
 static void
 cli_compile_source_file(void *arg)
 {
-	struct cfile		*cf;
-	char			*compiler;
-	char			*args[34 + CFLAGS_MAX];
+	char		*compiler;
+	char		*args[64 + CFLAGS_MAX];
 
-	cf = arg;
-	cli_generate_compiler_args(&compiler, args, cf);
+	cli_generate_compiler_args(arg, &compiler, args, 64 + CFLAGS_MAX);
 
 	execvp(compiler, args);
 	fatal("failed to start '%s': %s", compiler, errno_s);
