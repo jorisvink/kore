@@ -1302,7 +1302,9 @@ python_runtime_resolve(const char *module, const struct stat *st)
 		kore_module_load(module, NULL, KORE_MODULE_PYTHON);
 	}
 
+#if !defined(KORE_SINGLE_BINARY)
 	kore_pymodule = module;
+#endif
 
 	kore_hooks_set(KORE_PYTHON_CONFIG_HOOK,
 	    KORE_PYTHON_TEARDOWN_HOOK, KORE_PYTHON_DAEMONIZED_HOOK);
