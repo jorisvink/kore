@@ -25,6 +25,7 @@
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/queue.h>
+#include <sys/stat.h>
 #include <sys/un.h>
 
 #include <netinet/in.h>
@@ -273,9 +274,11 @@ extern struct connection_list	disconnected;
 
 #define KORE_RUNTIME_NATIVE	0
 #define KORE_RUNTIME_PYTHON	1
+#define KORE_RUNTIME_LUA	2
 
 struct kore_runtime {
 	int	type;
+	int	(*resolve)(const char *, const struct stat *);
 #if !defined(KORE_NO_HTTP)
 	int	(*http_request)(void *, struct http_request *);
 	void	(*http_request_free)(void *, struct http_request *);
@@ -411,8 +414,9 @@ struct kore_auth {
 #define KORE_MODULE_LOAD	1
 #define KORE_MODULE_UNLOAD	2
 
-#define KORE_MODULE_NATIVE	0
-#define KORE_MODULE_PYTHON	1
+#define KORE_MODULE_NATIVE	KORE_RUNTIME_NATIVE
+#define KORE_MODULE_PYTHON	KORE_RUNTIME_PYTHON
+#define KORE_MODULE_LUA		KORE_RUNTIME_LUA
 
 struct kore_module;
 
@@ -607,29 +611,24 @@ struct kore_json_item {
 	TAILQ_ENTRY(kore_json_item)	list;
 };
 
-struct kore_pool_region {
-	void				*start;
-	size_t				length;
-	LIST_ENTRY(kore_pool_region)	list;
-};
-
 struct kore_pool_entry {
 	u_int8_t			state;
-	struct kore_pool_region		*region;
-	LIST_ENTRY(kore_pool_entry)	list;
+	void				*uptr;
+	void				*canary;
+	struct kore_pool_entry		*nextfree;
 };
 
 struct kore_pool {
-	size_t			elen;
-	size_t			slen;
-	size_t			elms;
-	size_t			inuse;
+	size_t			memsz;
 	size_t			growth;
+	size_t			pagesz;
+	size_t			elmlen;
+	size_t			uselen;
+	u_int64_t		canary;
 	volatile int		lock;
 	char			*name;
 
-	LIST_HEAD(, kore_pool_region)	regions;
-	LIST_HEAD(, kore_pool_entry)	freelist;
+	struct kore_pool_entry	*freelist;
 };
 
 struct kore_timer {
@@ -708,6 +707,7 @@ extern int	kore_quit;
 extern int	kore_quiet;
 extern int	skip_chroot;
 extern int	skip_runas;
+extern int	kore_mem_guard;
 extern int	kore_foreground;
 
 extern char	*kore_pidfile;
@@ -753,6 +753,7 @@ void		kore_server_closeall(void);
 void		kore_server_cleanup(void);
 void		kore_server_free(struct kore_server *);
 void		kore_server_finalize(struct kore_server *);
+void		kore_hooks_set(const char *, const char *, const char *);
 
 struct kore_server	*kore_server_create(const char *);
 struct kore_server	*kore_server_lookup(const char *);
@@ -803,6 +804,7 @@ void		kore_platform_schedule_read(int, void *);
 void		kore_platform_schedule_write(int, void *);
 void		kore_platform_event_schedule(int, int, int, void *);
 void		kore_platform_worker_setcpu(struct kore_worker *);
+u_int32_t	kore_platform_random_uint32(void);
 
 #if defined(KORE_USE_PLATFORM_SENDFILE)
 int		kore_platform_sendfile(struct connection *, struct netbuf *);
@@ -822,6 +824,7 @@ void		kore_tls_dh_check(void);
 int		kore_tls_supported(void);
 void		kore_tls_version_set(int);
 void		kore_tls_keymgr_init(void);
+void		kore_tls_log_version(void);
 int		kore_tls_dh_load(const char *);
 void		kore_tls_seed(const void *, size_t);
 int		kore_tls_ciphersuite_set(const char *);
@@ -885,24 +888,27 @@ void			kore_connection_check_idletimer(u_int64_t,
 			    struct connection *);
 int			kore_connection_accept(struct listener *,
 			    struct connection **);
+void			kore_connection_log(struct connection *,
+			    const char *, ...)
+			    __attribute__((format (printf, 2, 3)));
+const char		*kore_connection_ip(struct connection *);
 
 void		kore_log_init(void);
 void		kore_log_file(const char *);
 
-#if defined(KORE_USE_PYTHON)
-int		kore_configure_setting(const char *, char *);
-#endif
-
 /* config.c */
 void		kore_parse_config(void);
 void		kore_parse_config_file(FILE *);
+int		kore_configure_setting(const char *, char *);
 
 /* mem.c */
 void		*kore_malloc(size_t);
+void		*kore_mmap_region(size_t);
 void		*kore_calloc(size_t, size_t);
 void		*kore_realloc(void *, size_t);
 void		kore_free(void *);
 void		kore_mem_init(void);
+void		kore_free_zero(void *);
 void		kore_mem_cleanup(void);
 void		kore_mem_untag(void *);
 void		*kore_mem_lookup(u_int32_t);
@@ -933,7 +939,7 @@ u_int64_t	kore_strtonum64(const char *, int, int *);
 size_t		kore_strlcpy(char *, const char *, const size_t);
 void		kore_server_disconnect(struct connection *);
 int		kore_split_string(char *, const char *, char **, size_t);
-void		kore_strip_chars(char *, const char, char **);
+void		kore_strip_chars(const char *, const char, char **);
 int		kore_snprintf(char *, size_t, int *, const char *, ...)
 		    __attribute__((format (printf, 4, 5)));
 long long	kore_strtonum(const char *, int, long long, long long, int *);
@@ -1022,6 +1028,7 @@ int			kore_route_lookup(struct http_request *,
 #endif
 
 /* runtime.c */
+const size_t			kore_runtime_count(void);
 struct kore_runtime_call	*kore_runtime_getcall(const char *);
 struct kore_module		*kore_module_load(const char *,
 				    const char *, int);
@@ -1029,6 +1036,7 @@ struct kore_module		*kore_module_load(const char *,
 void	kore_runtime_execute(struct kore_runtime_call *);
 int	kore_runtime_onload(struct kore_runtime_call *, int);
 void	kore_runtime_signal(struct kore_runtime_call *, int);
+void	kore_runtime_resolve(const char *, const struct stat *);
 void	kore_runtime_configure(struct kore_runtime_call *, int, char **);
 void	kore_runtime_connect(struct kore_runtime_call *, struct connection *);
 #if !defined(KORE_NO_HTTP)

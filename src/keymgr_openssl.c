@@ -63,6 +63,16 @@
 #include "acme.h"
 #endif
 
+/*
+ * Disable deprecated declaration warnings if we're building against
+ * OpenSSL 3 as they marked all low-level APIs as deprecated.
+ *
+ * Work is being done to replace these, but for now let things build.
+ */
+#if defined(OPENSSL_VERSION_MAJOR) && OPENSSL_VERSION_MAJOR >= 3
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+
 #define RAND_TMP_FILE		"rnd.tmp"
 #define RAND_POLL_INTERVAL	(1800 * 1000)
 #define RAND_FILE_SIZE		1024
@@ -168,10 +178,11 @@ struct key {
 	TAILQ_ENTRY(key)	list;
 };
 
-char				*kore_rand_file = NULL;
-
-static TAILQ_HEAD(, key)	keys;
-static int			initialized = 0;
+/* Helper for weird API designs (looking at you OpenSSL). */
+union deconst {
+	void		*p;
+	const void	*cp;
+};
 
 #if defined(KORE_USE_ACME)
 
@@ -251,8 +262,6 @@ static void	keymgr_x509_msg(const char *, const void *, size_t, int, int);
 
 static void	keymgr_rsa_encrypt(struct kore_msg *, const void *,
 		    struct key *);
-static void	keymgr_ecdsa_sign(struct kore_msg *, const void *,
-		    struct key *);
 
 #if defined(__OpenBSD__)
 #if defined(KORE_USE_ACME)
@@ -261,6 +270,11 @@ static const char *keymgr_pledges = "stdio rpath wpath cpath";
 static const char *keymgr_pledges = "stdio rpath";
 #endif
 #endif
+
+static TAILQ_HEAD(, key)	keys;
+static int			initialized = 0;
+
+char				*kore_rand_file = NULL;
 
 void
 kore_keymgr_run(void)
@@ -658,9 +672,6 @@ keymgr_msg_recv(struct kore_msg *msg, const void *data)
 		case EVP_PKEY_RSA:
 			keymgr_rsa_encrypt(msg, data, key);
 			break;
-		case EVP_PKEY_EC:
-			keymgr_ecdsa_sign(msg, data, key);
-			break;
 		default:
 			break;
 		}
@@ -685,6 +696,7 @@ keymgr_msg_recv(struct kore_msg *msg, const void *data)
 static void
 keymgr_rsa_encrypt(struct kore_msg *msg, const void *data, struct key *key)
 {
+	union deconst			cp;
 	int				ret;
 	RSA				*rsa;
 	const struct kore_keyreq	*req;
@@ -692,7 +704,9 @@ keymgr_rsa_encrypt(struct kore_msg *msg, const void *data, struct key *key)
 	u_int8_t			buf[1024];
 
 	req = (const struct kore_keyreq *)data;
-	rsa = EVP_PKEY_get0_RSA(key->pkey);
+	cp.cp = EVP_PKEY_get0_RSA(key->pkey);
+
+	rsa = cp.p;
 
 	keylen = RSA_size(rsa);
 	if (req->data_len > keylen || keylen > sizeof(buf))
@@ -704,32 +718,6 @@ keymgr_rsa_encrypt(struct kore_msg *msg, const void *data, struct key *key)
 		return;
 
 	kore_msg_send(msg->src, KORE_MSG_KEYMGR_RESP, buf, ret);
-}
-
-static void
-keymgr_ecdsa_sign(struct kore_msg *msg, const void *data, struct key *key)
-{
-	size_t				len;
-	EC_KEY				*ec;
-	const struct kore_keyreq	*req;
-	unsigned int			siglen;
-	u_int8_t			sig[1024];
-
-	req = (const struct kore_keyreq *)data;
-	ec = EVP_PKEY_get0_EC_KEY(key->pkey);
-
-	len = ECDSA_size(ec);
-	if (req->data_len > len || len > sizeof(sig))
-		return;
-
-	if (ECDSA_sign(EVP_PKEY_NONE, req->data, req->data_len,
-	    sig, &siglen, ec) == 0)
-		return;
-
-	if (siglen > sizeof(sig))
-		return;
-
-	kore_msg_send(msg->src, KORE_MSG_KEYMGR_RESP, sig, siglen);
 }
 
 static void
@@ -759,7 +747,7 @@ keymgr_x509_msg(const char *domain, const void *data, size_t len,
 static void
 keymgr_acme_init(void)
 {
-	RSA		*rsa;
+	const RSA	*rsa;
 	struct key	*key;
 	char		*e, *n;
 	int		needsreg;

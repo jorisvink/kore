@@ -14,35 +14,32 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include <sys/param.h>
+/*
+ * The memory facitilies such as kore_malloc / kore_calloc are all
+ * based on the kore pool system as long as the allocations are
+ * below 8192 bytes.
+ *
+ * Anything over 8192 bytes will get an mmap() allocation instead
+ * that does not benefit from the protections offered by the kore_pool API.
+ */
+
 #include <sys/types.h>
+#include <sys/mman.h>
 
 #include <stdlib.h>
 #include <stdint.h>
 
 #include "kore.h"
 
-#define KORE_MEM_BLOCKS			11
-#define KORE_MEM_BLOCK_SIZE_MAX		8192
-#define KORE_MEM_BLOCK_PREALLOC		128
+#define KORE_MEM_POOLS			11
+#define KORE_MEM_POOLS_PREALLOC		32
+#define KORE_MEM_POOLS_SIZE_MAX		8192
 
-#define KORE_MEM_ALIGN		16
-#define KORE_MEM_MAGIC		0xd0d0
-
-#define KORE_MEM_TAGGED		0x0001
-
-struct memsize {
-	size_t			len;
-	size_t			magic;
-} __attribute__((packed));
+#define KORE_MEM_TAGGED			0x0001
 
 struct meminfo {
+	size_t			len;
 	u_int16_t		flags;
-	u_int16_t		magic;
-} __attribute__((packed));
-
-struct memblock {
-	struct kore_pool	pool;
 };
 
 struct tag {
@@ -51,36 +48,38 @@ struct tag {
 	TAILQ_ENTRY(tag)	list;
 };
 
-static inline struct memsize	*memsize(void *);
 static inline struct meminfo	*meminfo(void *);
-static size_t			memblock_index(size_t);
+static void			*mem_alloc(size_t);
+static size_t			mem_index(size_t);
 
 static TAILQ_HEAD(, tag)	tags;
 static struct kore_pool		tag_pool;
-static struct memblock		blocks[KORE_MEM_BLOCKS];
+static struct kore_pool		mempools[KORE_MEM_POOLS];
 
 void
 kore_mem_init(void)
 {
+	const char	*opt;
 	int		i, len;
 	char		name[32];
-	u_int32_t	size, elm, mlen;
+	size_t		size, elm, mlen;
+
+	if ((opt = getenv("KORE_MEM_GUARD")) != NULL && !strcmp(opt, "1"))
+		kore_mem_guard = 1;
 
 	size = 8;
 	TAILQ_INIT(&tags);
-	kore_pool_init(&tag_pool, "tag_pool", sizeof(struct tag), 100);
+	kore_pool_init(&tag_pool, "tag_pool", sizeof(struct tag), 4);
 
-	for (i = 0; i < KORE_MEM_BLOCKS; i++) {
-		len = snprintf(name, sizeof(name), "block-%u", size);
+	for (i = 0; i < KORE_MEM_POOLS; i++) {
+		len = snprintf(name, sizeof(name), "block-%zu", size);
 		if (len == -1 || (size_t)len >= sizeof(name))
 			fatal("kore_mem_init: snprintf");
 
-		elm = (KORE_MEM_BLOCK_PREALLOC * 1024) / size;
-		mlen = sizeof(struct memsize) + size +
-		    sizeof(struct meminfo) + KORE_MEM_ALIGN;
-		mlen = mlen & ~(KORE_MEM_ALIGN - 1);
+		elm = (KORE_MEM_POOLS_PREALLOC * 1024) / size;
+		mlen = sizeof(struct meminfo) + size;
 
-		kore_pool_init(&blocks[i].pool, name, mlen, elm);
+		kore_pool_init(&mempools[i], name, mlen, elm);
 
 		size = size << 1;
 	}
@@ -91,60 +90,44 @@ kore_mem_cleanup(void)
 {
 	int		i;
 
-	for (i = 0; i < KORE_MEM_BLOCKS; i++) {
-		kore_pool_cleanup(&blocks[i].pool);
+	for (i = 0; i < KORE_MEM_POOLS; i++) {
+		kore_pool_cleanup(&mempools[i]);
 	}
+}
+
+void *
+kore_mmap_region(size_t len)
+{
+	void		*ptr;
+
+	if ((ptr = mmap(NULL, len, PROT_READ | PROT_WRITE,
+	    MAP_ANONYMOUS | MAP_PRIVATE, -1, 0)) == MAP_FAILED)
+		fatal("%s: mmap: %s", __func__, errno_s);
+
+	return (ptr);
 }
 
 void *
 kore_malloc(size_t len)
 {
-	void			*ptr;
-	struct meminfo		*mem;
-	struct memsize		*size;
-	u_int8_t		*addr;
-	size_t			mlen, idx;
-
-	if (len == 0)
-		len = 8;
-
-	if (len <= KORE_MEM_BLOCK_SIZE_MAX) {
-		idx = memblock_index(len);
-		ptr = kore_pool_get(&blocks[idx].pool);
-	} else {
-		mlen = sizeof(struct memsize) + len + sizeof(struct meminfo);
-		if ((ptr = calloc(1, mlen)) == NULL)
-			fatal("kore_malloc(%zu): %d", len, errno);
-	}
-
-	size = (struct memsize *)ptr;
-	size->len = len;
-	size->magic = KORE_MEM_MAGIC;
-
-	addr = (u_int8_t *)ptr + sizeof(struct memsize);
-
-	mem = (struct meminfo *)(addr + size->len);
-	mem->flags = 0;
-	mem->magic = KORE_MEM_MAGIC;
-
-	return (addr);
+	return (mem_alloc(len));
 }
 
 void *
 kore_realloc(void *ptr, size_t len)
 {
-	struct memsize		*size;
+	struct meminfo		*mem;
 	void			*nptr;
 
 	if (ptr == NULL) {
-		nptr = kore_malloc(len);
+		nptr = mem_alloc(len);
 	} else {
-		size = memsize(ptr);
-		if (len == size->len)
+		mem = meminfo(ptr);
+		if (len == mem->len)
 			return (ptr);
-		nptr = kore_malloc(len);
-		memcpy(nptr, ptr, MIN(len, size->len));
-		kore_free(ptr);
+		nptr = mem_alloc(len);
+		memcpy(nptr, ptr, MIN(len, mem->len));
+		kore_free_zero(ptr);
 	}
 
 	return (nptr);
@@ -160,10 +143,24 @@ kore_calloc(size_t memb, size_t len)
 		fatal("kore_calloc(): memb * len > SIZE_MAX");
 
 	total = memb * len;
-	ptr = kore_malloc(total);
+	ptr = mem_alloc(total);
 	memset(ptr, 0, total);
 
 	return (ptr);
+}
+
+void
+kore_free_zero(void *ptr)
+{
+	struct meminfo		*mem;
+
+	if (ptr == NULL)
+		return;
+
+	mem = meminfo(ptr);
+	kore_mem_zero(ptr, mem->len);
+
+	kore_free(ptr);
 }
 
 void
@@ -171,7 +168,6 @@ kore_free(void *ptr)
 {
 	size_t			idx;
 	struct meminfo		*mem;
-	struct memsize		*size;
 	u_int8_t		*addr;
 
 	if (ptr == NULL)
@@ -183,14 +179,14 @@ kore_free(void *ptr)
 		mem->flags &= ~KORE_MEM_TAGGED;
 	}
 
-	size = memsize(ptr);
-	addr = (u_int8_t *)ptr - sizeof(struct memsize);
+	addr = (u_int8_t *)ptr - sizeof(struct meminfo);
 
-	if (size->len <= KORE_MEM_BLOCK_SIZE_MAX) {
-		idx = memblock_index(size->len);
-		kore_pool_put(&blocks[idx].pool, addr);
+	if (mem->len <= KORE_MEM_POOLS_SIZE_MAX) {
+		idx = mem_index(mem->len);
+		kore_pool_put(&mempools[idx], addr);
 	} else {
-		free(addr);
+		if (munmap(addr, sizeof(*mem) + mem->len) == -1)
+			fatal("%s: munmap: %s", __func__, errno_s);
 	}
 }
 
@@ -201,7 +197,7 @@ kore_strdup(const char *str)
 	char		*nstr;
 
 	len = strlen(str) + 1;
-	nstr = kore_malloc(len);
+	nstr = mem_alloc(len);
 	(void)kore_strlcpy(nstr, str, len);
 
 	return (nstr);
@@ -212,7 +208,7 @@ kore_malloc_tagged(size_t len, u_int32_t tag)
 {
 	void		*ptr;
 
-	ptr = kore_malloc(len);
+	ptr = mem_alloc(len);
 	kore_mem_tag(ptr, tag);
 
 	return (ptr);
@@ -278,8 +274,33 @@ kore_mem_zero(void *ptr, size_t len)
 	}
 }
 
+static void *
+mem_alloc(size_t len)
+{
+	void			*ptr;
+	struct meminfo		*mem;
+	size_t			mlen, idx;
+
+	if (len == 0)
+		len = 8;
+
+	if (len <= KORE_MEM_POOLS_SIZE_MAX) {
+		idx = mem_index(len);
+		ptr = kore_pool_get(&mempools[idx]);
+	} else {
+		mlen = sizeof(struct meminfo) + len;
+		ptr = kore_mmap_region(mlen);
+	}
+
+	mem = (struct meminfo *)ptr;
+	mem->len = len;
+	mem->flags = 0;
+
+	return ((u_int8_t *)ptr + sizeof(struct meminfo));
+}
+
 static size_t
-memblock_index(size_t len)
+mem_index(size_t len)
 {
 	size_t		mlen, idx;
 
@@ -290,36 +311,14 @@ memblock_index(size_t len)
 		mlen = mlen << 1;
 	}
 
-	if (idx > (KORE_MEM_BLOCKS - 1))
-		fatal("kore_malloc: idx too high");
+	if (idx > (KORE_MEM_POOLS - 1))
+		fatal("mem_index: idx too high");
 
 	return (idx);
-}
-
-static inline struct memsize *
-memsize(void *ptr)
-{
-	struct memsize	*ms;
-
-	ms = (struct memsize *)((u_int8_t *)ptr - sizeof(*ms));
-
-	if (ms->magic != KORE_MEM_MAGIC)
-		fatal("%s: bad memsize magic (0x%zx)", __func__, ms->magic);
-
-	return (ms);
 }
 
 static inline struct meminfo *
 meminfo(void *ptr)
 {
-	struct memsize	*ms;
-	struct meminfo	*info;
-
-	ms = memsize(ptr);
-	info = (struct meminfo *)((u_int8_t *)ptr + ms->len);
-
-	if (info->magic != KORE_MEM_MAGIC)
-		fatal("%s: bad meminfo magic (0x%x)", __func__, info->magic);
-
-	return (info);
+	return ((struct meminfo *)((u_int8_t *)ptr - sizeof(struct meminfo)));
 }

@@ -46,6 +46,10 @@
 #include "python_api.h"
 #endif
 
+#if defined(KORE_USE_LUA)
+#include "lua_api.h"
+#endif
+
 #if defined(KORE_USE_ACME)
 #include "acme.h"
 #endif
@@ -61,7 +65,8 @@ int			skip_runas = 0;
 int			skip_chroot = 0;
 u_int8_t		worker_count = 0;
 char			**kore_argv = NULL;
-int			kore_foreground = 0;
+int			kore_mem_guard = 0;
+int			kore_foreground = 1;
 char			*kore_progname = NULL;
 u_int32_t		kore_socket_backlog = 5000;
 int			kore_quit = KORE_QUIT_NONE;
@@ -82,42 +87,51 @@ static void	kore_server_shutdown(void);
 static void	kore_server_start(int, char *[]);
 static void	kore_call_parent_configure(int, char **);
 
-#if !defined(KORE_SINGLE_BINARY) && defined(KORE_USE_PYTHON)
-static const char	*parent_config_hook = KORE_PYTHON_CONFIG_HOOK;
-static const char	*parent_teardown_hook = KORE_PYTHON_TEARDOWN_HOOK;
-#else
+#if !defined(KORE_SINGLE_BINARY)
+static const char	*rarg0 = NULL;
+#endif
+
 static const char	*parent_config_hook = KORE_CONFIG_HOOK;
 static const char	*parent_teardown_hook = KORE_TEARDOWN_HOOK;
+
 #if defined(KORE_SINGLE_BINARY)
 static const char	*parent_daemonized_hook = KORE_DAEMONIZED_HOOK;
-#endif
 #endif
 
 static void
 usage(void)
 {
-#if defined(KORE_USE_PYTHON)
-	printf("Usage: %s [options] [app | app.py]\n", __progname);
-#else
-	printf("Usage: %s [options]\n", __progname);
-#endif
+	if (kore_runtime_count() > 0) {
+		printf("Usage: %s [options] [app | script]\n", __progname);
+	} else {
+		printf("Usage: %s [options]\n", __progname);
+	}
 
 	printf("\n");
-	printf("Available options:\n");
+	printf("Command-line options:\n");
 #if !defined(KORE_SINGLE_BINARY)
-	printf("\t-c\tconfiguration to use\n");
+	printf("\t-c\tThe configuration file to load when starting.\n");
 #endif
-#if defined(KORE_DEBUG)
-	printf("\t-d\trun with debug on\n");
-#endif
-	printf("\t-f\tstart in foreground\n");
-	printf("\t-h\tthis help text\n");
-	printf("\t-n\tdo not chroot on any worker\n");
-	printf("\t-q\tonly log errors\n");
-	printf("\t-r\tdo not change user on any worker\n");
-	printf("\t-v\tdisplay %s build information\n", __progname);
+	printf("\t-f\tDo not daemonize, everything runs in the foreground.\n");
+	printf("\t-h\tThis help text.\n");
+	printf("\t-n\tDo not do the chroot privsep step.\n");
+	printf("\t-q\tQuiet mode, only logs errors.\n");
+	printf("\t-r\tDo not do the privsep user swapping step.\n");
+	printf("\t-v\tDisplay %s build information.\n", __progname);
 
-	printf("\nFind more information on https://kore.io\n");
+	printf("\n");
+	printf("Environment options:\n");
+	printf("  env KORE_MEM_GUARD=1\n");
+	printf("      Enables memory pool guards and other protections.\n");
+	printf("\n");
+	printf("      Enabling this will include guard pages for each\n");
+	printf("      pool entry allocations and mark pool entries as\n");
+	printf("      PROT_NONE when unused.\n");
+	printf("\n");
+	printf("      This catches bugs and prevents memory vulnerabilities\n");
+	printf("      but with performance and memory pressure costs.\n");
+
+	printf("\n");
 
 	exit(1);
 }
@@ -138,17 +152,22 @@ version(void)
 #if defined(KORE_USE_TASKS)
 	printf("tasks ");
 #endif
-#if defined(KORE_DEBUG)
-	printf("debug ");
-#endif
 #if defined(KORE_USE_PYTHON)
 	printf("python-%s ", PY_VERSION);
+#endif
+#if defined(KORE_USE_LUA)
+	printf("lua-%s.%s.%s ",
+	    LUA_VERSION_MAJOR, LUA_VERSION_MINOR, LUA_VERSION_RELEASE);
 #endif
 #if defined(KORE_USE_ACME)
 	printf("acme ");
 #endif
+#if defined(KORE_DEBUG)
+	printf("debug ");
+#endif
 	if (!kore_tls_supported())
 		printf("notls ");
+
 	printf("\n");
 	exit(0);
 }
@@ -156,10 +175,10 @@ version(void)
 int
 main(int argc, char *argv[])
 {
-	struct kore_runtime_call	*rcall;
-#if !defined(KORE_SINGLE_BINARY) && defined(KORE_USE_PYTHON)
+#if !defined(KORE_SINGLE_BINARY)
 	struct stat			st;
 #endif
+	struct kore_runtime_call	*rcall;
 
 	kore_argc = argc;
 	kore_argv = argv;
@@ -171,6 +190,7 @@ main(int argc, char *argv[])
 	kore_mem_init();
 	kore_msg_init();
 	kore_log_init();
+	kore_tls_init();
 
 	kore_progname = kore_strdup(argv[0]);
 	kore_proctitle_setup();
@@ -180,23 +200,22 @@ main(int argc, char *argv[])
 	argv += optind;
 #endif
 
-#if !defined(KORE_SINGLE_BINARY) && defined(KORE_USE_PYTHON)
-	if (argc > 0) {
-		kore_pymodule = argv[0];
-		argc--;
-		argv++;
-	} else {
-		kore_pymodule = NULL;
-	}
-
-	if (kore_pymodule) {
-		if (lstat(kore_pymodule, &st) == -1) {
-			fatal("failed to stat '%s': %s",
-			    kore_pymodule, errno_s);
+#if !defined(KORE_SINGLE_BINARY)
+	if (kore_runtime_count() > 0) {
+		if (argc > 0) {
+			rarg0 = argv[0];
+			argc--;
+			argv++;
 		}
 
-		if (!S_ISDIR(st.st_mode) && !S_ISREG(st.st_mode))
-			fatal("%s: not a directory or file", kore_pymodule);
+		if (rarg0) {
+			if (lstat(rarg0, &st) == -1) {
+				if (errno == ENOENT)
+					rarg0 = NULL;
+				else
+					fatal("stat(%s): %s", rarg0, errno_s);
+			}
+		}
 	}
 #endif
 
@@ -222,35 +241,30 @@ main(int argc, char *argv[])
 #endif
 	kore_domain_init();
 	kore_module_init();
-	kore_tls_init();
 
-#if !defined(KORE_SINGLE_BINARY) && !defined(KORE_USE_PYTHON)
-	if (config_file == NULL)
+#if !defined(KORE_SINGLE_BINARY)
+	if (kore_runtime_count() == 0 && config_file == NULL)
 		usage();
 #endif
 	kore_module_load(NULL, NULL, KORE_MODULE_NATIVE);
 
 #if defined(KORE_USE_PYTHON)
 	kore_python_init();
-#if !defined(KORE_SINGLE_BINARY)
-	if (kore_pymodule) {
-		kore_module_load(kore_pymodule, NULL, KORE_MODULE_PYTHON);
-		if (S_ISDIR(st.st_mode) && chdir(kore_pymodule) == -1)
-			fatal("chdir(%s): %s", kore_pymodule, errno_s);
-	} else {
-		/* swap back to non-python hooks. */
-		parent_config_hook = KORE_CONFIG_HOOK;
-		parent_teardown_hook = KORE_TEARDOWN_HOOK;
-	}
 #endif
+
+#if defined(KORE_USE_LUA)
+	kore_lua_init();
+#endif
+
+#if !defined(KORE_SINGLE_BINARY)
+	if (kore_runtime_count() > 0 && rarg0 != NULL)
+		kore_runtime_resolve(rarg0, &st);
 #endif
 
 #if defined(KORE_SINGLE_BINARY)
 	kore_call_parent_configure(argc, argv);
-#endif
-
-#if defined(KORE_USE_PYTHON) && !defined(KORE_SINGLE_BINARY)
-	if (kore_pymodule)
+#else
+	if (kore_runtime_count() > 0 && rarg0 != NULL)
 		kore_call_parent_configure(argc, argv);
 #endif
 
@@ -292,6 +306,10 @@ main(int argc, char *argv[])
 	kore_python_cleanup();
 #endif
 
+#if defined(KORE_USE_LUA)
+	kore_lua_cleanup();
+#endif
+
 	kore_mem_cleanup();
 
 	return (kore_quit);
@@ -303,9 +321,9 @@ kore_default_getopt(int argc, char **argv)
 	int		ch;
 
 #if !defined(KORE_SINGLE_BINARY)
-	while ((ch = getopt(argc, argv, "c:fhnqrv")) != -1) {
+	while ((ch = getopt(argc, argv, "c:dfhnqrv")) != -1) {
 #else
-	while ((ch = getopt(argc, argv, "fhnqrv")) != -1) {
+	while ((ch = getopt(argc, argv, "dfhnqrv")) != -1) {
 #endif
 		switch (ch) {
 #if !defined(KORE_SINGLE_BINARY)
@@ -315,8 +333,12 @@ kore_default_getopt(int argc, char **argv)
 				fatal("strdup");
 			break;
 #endif
+		case 'd':
+			kore_foreground = 0;
+			break;
 		case 'f':
-			kore_foreground = 1;
+			printf("note: -f is the default now, "
+			    "use -d to daemonize\n");
 			break;
 		case 'h':
 			usage();
@@ -752,6 +774,17 @@ kore_proctitle(const char *title)
 	memset(kore_argv[0] + len, 0, proctitle_maxlen - len);
 }
 
+void
+kore_hooks_set(const char *config, const char *teardown, const char *daemonized)
+{
+	parent_config_hook = config;
+	parent_teardown_hook = teardown;
+
+#if defined(KORE_SINGLE_BINARY)
+	parent_daemonized_hook = daemonized;
+#endif
+}
+
 static void
 kore_proctitle_setup(void)
 {
@@ -789,6 +822,8 @@ kore_server_start(int argc, char *argv[])
 	if (!kore_quiet) {
 		kore_log(LOG_INFO, "%s %s starting, built=%s",
 		    __progname, kore_version, kore_build_date);
+		kore_log(LOG_INFO, "memory pool protections: %s",
+		    kore_mem_guard ? "enabled" : "disabled");
 		kore_log(LOG_INFO, "built-ins: "
 #if defined(__linux__)
 		    "seccomp "
@@ -811,8 +846,13 @@ kore_server_start(int argc, char *argv[])
 #if defined(KORE_USE_CURL)
 		    "curl "
 #endif
+#if defined(KORE_USE_LUA)
+		    "lua "
+#endif
 		);
 	}
+
+	kore_tls_log_version();
 
 	if (kore_foreground == 0) {
 		if (daemon(1, 0) == -1)
@@ -829,12 +869,8 @@ kore_server_start(int argc, char *argv[])
 	kore_pid = getpid();
 	kore_write_kore_pid();
 
-#if !defined(KORE_SINGLE_BINARY) && !defined(KORE_USE_PYTHON)
-	kore_call_parent_configure(argc, argv);
-#endif
-
-#if defined(KORE_USE_PYTHON) && !defined(KORE_SINGLE_BINARY)
-	if (kore_pymodule == NULL)
+#if !defined(KORE_SINGLE_BINARY)
+	if (kore_runtime_count() == 0 || rarg0 == NULL)
 		kore_call_parent_configure(argc, argv);
 #endif
 

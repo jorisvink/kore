@@ -44,10 +44,6 @@ void	kore_python_seccomp_cleanup(void);
 void	kore_python_seccomp_hook(const char *);
 #endif
 
-#if !defined(KORE_SINGLE_BINARY)
-extern const char			*kore_pymodule;
-#endif
-
 extern struct kore_module_functions	kore_python_module;
 extern struct kore_runtime		kore_python_runtime;
 

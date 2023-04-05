@@ -36,11 +36,28 @@
 #include "kore.h"
 #include "http.h"
 
+/*
+ * Disable deprecated declaration warnings if we're building against
+ * OpenSSL 3 as they marked all low-level APIs as deprecated.
+ *
+ * Work is being done to replace these, but for now let things build.
+ */
+#if defined(OPENSSL_VERSION_MAJOR) && OPENSSL_VERSION_MAJOR >= 3
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+
 #define TLS_SESSION_ID		"kore_tls_sessionid"
+
+/* Helper for weird API designs (looking at you OpenSSL). */
+union deconst {
+	void		*p;
+	const void	*cp;
+};
 
 static int	tls_domain_x509_verify(int, X509_STORE_CTX *);
 static X509	*tls_domain_load_certificate_chain(SSL_CTX *,
 		    const void *, size_t);
+static EVP_PKEY	*tls_privsep_private_key(EVP_PKEY *, struct kore_domain *);
 
 static int	tls_sni_cb(SSL *, int *, void *);
 static void	tls_info_callback(const SSL *, int, int);
@@ -59,13 +76,8 @@ static int	tls_keymgr_rsa_finish(RSA *);
 static int	tls_keymgr_rsa_privenc(int, const unsigned char *,
 		    unsigned char *, RSA *, int);
 
-static ECDSA_SIG *tls_keymgr_ecdsa_sign(const unsigned char *, int,
-		    const BIGNUM *, const BIGNUM *, EC_KEY *);
-
-static RSA_METHOD	*keymgr_rsa_meth = NULL;
-static EC_KEY_METHOD	*keymgr_ec_meth = NULL;
-
 static DH		*dh_params = NULL;
+static RSA_METHOD	*keymgr_rsa_meth = NULL;
 static int		tls_version = KORE_TLS_VERSION_BOTH;
 static char		*tls_cipher_list = KORE_DEFAULT_CIPHER_LIST;
 
@@ -94,21 +106,13 @@ kore_tls_init(void)
 	SSL_load_error_strings();
 	ERR_load_crypto_strings();
 
-	if ((keymgr_rsa_meth = RSA_meth_new("kore RSA keymgr method",
-	    RSA_METHOD_FLAG_NO_CHECK)) == NULL)
-		fatal("failed to setup RSA method");
+}
 
-	RSA_meth_set_init(keymgr_rsa_meth, tls_keymgr_rsa_init);
-	RSA_meth_set_finish(keymgr_rsa_meth, tls_keymgr_rsa_finish);
-	RSA_meth_set_priv_enc(keymgr_rsa_meth, tls_keymgr_rsa_privenc);
-
-	if ((keymgr_ec_meth = EC_KEY_METHOD_new(NULL)) == NULL)
-		fatal("failed to allocate EC KEY method");
-
-	EC_KEY_METHOD_set_sign(keymgr_ec_meth,
-	    NULL, NULL, tls_keymgr_ecdsa_sign);
-
+void
+kore_tls_log_version(void)
+{
 	kore_log(LOG_NOTICE, "TLS backend %s", OPENSSL_VERSION_TEXT);
+
 #if !defined(TLS1_3_VERSION)
 	if (!kore_quiet) {
 		kore_log(LOG_NOTICE,
@@ -122,7 +126,6 @@ void
 kore_tls_cleanup(void)
 {
 	RSA_meth_free(keymgr_rsa_meth);
-	EC_KEY_METHOD_free(keymgr_ec_meth);
 }
 
 void
@@ -188,6 +191,14 @@ kore_tls_keymgr_init(void)
 	if ((meth = RSA_get_default_method()) == NULL)
 		fatal("failed to obtain RSA method");
 
+	if ((keymgr_rsa_meth = RSA_meth_new("kore RSA keymgr method",
+	    RSA_METHOD_FLAG_NO_CHECK)) == NULL)
+		fatal("failed to setup RSA method");
+
+	RSA_meth_set_init(keymgr_rsa_meth, tls_keymgr_rsa_init);
+	RSA_meth_set_finish(keymgr_rsa_meth, tls_keymgr_rsa_finish);
+	RSA_meth_set_priv_enc(keymgr_rsa_meth, tls_keymgr_rsa_privenc);
+
 	RSA_meth_set_pub_enc(keymgr_rsa_meth, RSA_meth_get_pub_enc(meth));
 	RSA_meth_set_pub_dec(keymgr_rsa_meth, RSA_meth_get_pub_dec(meth));
 	RSA_meth_set_bn_mod_exp(keymgr_rsa_meth, RSA_meth_get_bn_mod_exp(meth));
@@ -200,11 +211,9 @@ kore_tls_domain_setup(struct kore_domain *dom, int type,
     const void *data, size_t datalen)
 {
 	const u_int8_t		*ptr;
-	RSA			*rsa;
-	X509			*x509;
 	EVP_PKEY		*pkey;
+	X509			*x509;
 	STACK_OF(X509_NAME)	*certs;
-	EC_KEY			*eckey;
 	const SSL_METHOD	*method;
 
 	if (dom->tls_ctx != NULL)
@@ -280,16 +289,7 @@ kore_tls_domain_setup(struct kore_domain *dom, int type,
 
 	switch (EVP_PKEY_id(pkey)) {
 	case EVP_PKEY_RSA:
-		if ((rsa = EVP_PKEY_get1_RSA(pkey)) == NULL)
-			fatalx("no RSA public key present");
-		RSA_set_app_data(rsa, dom);
-		RSA_set_method(rsa, keymgr_rsa_meth);
-		break;
-	case EVP_PKEY_EC:
-		if ((eckey = EVP_PKEY_get1_EC_KEY(pkey)) == NULL)
-			fatalx("no EC public key present");
-		EC_KEY_set_ex_data(eckey, 0, dom);
-		EC_KEY_set_method(eckey, keymgr_ec_meth);
+		pkey = tls_privsep_private_key(pkey, dom);
 		break;
 	default:
 		fatalx("unknown public key in certificate");
@@ -358,7 +358,9 @@ kore_tls_domain_crl(struct kore_domain *dom, const void *pem, size_t pemlen)
 	int			err;
 	BIO			*in;
 	X509_CRL		*crl;
+	X509_REVOKED		*rev;
 	X509_STORE		*store;
+	struct connection	*c, *next;
 
 	ERR_clear_error();
 	in = BIO_new_mem_buf(pem, pemlen);
@@ -368,6 +370,9 @@ kore_tls_domain_crl(struct kore_domain *dom, const void *pem, size_t pemlen)
 		kore_log(LOG_ERR, "SSL_CTX_get_cert_store(): %s", ssl_errno_s);
 		return;
 	}
+
+	X509_STORE_set_flags(store,
+	    X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
 
 	for (;;) {
 		crl = PEM_read_bio_X509_CRL(in, NULL, NULL, NULL);
@@ -395,12 +400,42 @@ kore_tls_domain_crl(struct kore_domain *dom, const void *pem, size_t pemlen)
 			X509_CRL_free(crl);
 			continue;
 		}
+
+		/*
+		 * Check if any accepted connection authenticated themselves
+		 * with a now revoked certificate.
+		 */
+		for (c = TAILQ_FIRST(&connections); c != NULL; c = next) {
+			next = TAILQ_NEXT(c, list);
+			if (c->proto != CONN_PROTO_HTTP)
+				continue;
+
+			/*
+			 * Prune any connection that is currently not yet done
+			 * with the TLS handshake. This is to prevent a race
+			 * where a handshake could not yet be complete but
+			 * did pass the x509 verification step and their cert
+			 * was revoked in this CRL update.
+			 */
+			if (c->state == CONN_STATE_TLS_SHAKE) {
+				kore_connection_disconnect(c);
+				continue;
+			}
+
+			if (c->tls_cert == NULL)
+				continue;
+
+			if (X509_CRL_get0_by_cert(crl, &rev, c->tls_cert) != 1)
+				continue;
+
+			kore_connection_log(c,
+			    "connection removed, its certificate is revoked");
+
+			kore_connection_disconnect(c);
+		}
 	}
 
 	BIO_free(in);
-
-	X509_STORE_set_flags(store,
-	    X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
 }
 
 void
@@ -416,13 +451,13 @@ kore_tls_connection_accept(struct connection *c)
 	int		r;
 
 	if (primary_dom == NULL) {
-		kore_log(LOG_NOTICE,
+		kore_connection_log(c,
 		    "TLS handshake but no TLS configured on server");
 		return (KORE_RESULT_ERROR);
 	}
 
 	if (primary_dom->tls_ctx == NULL) {
-		kore_log(LOG_NOTICE,
+		kore_connection_log(c,
 		    "TLS configuration for %s not yet complete",
 		    primary_dom->domain);
 		return (KORE_RESULT_ERROR);
@@ -436,8 +471,11 @@ kore_tls_connection_accept(struct connection *c)
 		SSL_set_fd(c->tls, c->fd);
 		SSL_set_accept_state(c->tls);
 
-		if (!SSL_set_ex_data(c->tls, 0, c))
+		if (!SSL_set_ex_data(c->tls, 0, c)) {
+			kore_connection_log(c,
+			    "SSL_set_ex_data: %s", ssl_errno_s);
 			return (KORE_RESULT_ERROR);
+		}
 
 		if (primary_dom->cafile != NULL)
 			c->flags |= CONN_LOG_TLS_FAILURE;
@@ -454,7 +492,7 @@ kore_tls_connection_accept(struct connection *c)
 			return (KORE_RESULT_RETRY);
 		default:
 			if (c->flags & CONN_LOG_TLS_FAILURE) {
-				kore_log(LOG_NOTICE,
+				kore_connection_log(c,
 				    "SSL_accept: %s", ssl_errno_s);
 			}
 			return (KORE_RESULT_ERROR);
@@ -463,7 +501,7 @@ kore_tls_connection_accept(struct connection *c)
 
 #if defined(KORE_USE_ACME)
 	if (c->proto == CONN_PROTO_ACME_ALPN) {
-		kore_log(LOG_INFO, "disconnecting acme client");
+		kore_connection_log(c, "disconnecting ACME client");
 		kore_connection_disconnect(c);
 		return (KORE_RESULT_ERROR);
 	}
@@ -472,7 +510,7 @@ kore_tls_connection_accept(struct connection *c)
 	if (SSL_get_verify_mode(c->tls) & SSL_VERIFY_PEER) {
 		c->tls_cert = SSL_get_peer_certificate(c->tls);
 		if (c->tls_cert == NULL) {
-			kore_log(LOG_NOTICE, "no peer certificate");
+			kore_connection_log(c, "no peer certificate returned");
 			return (KORE_RESULT_ERROR);
 		}
 	} else {
@@ -518,8 +556,8 @@ kore_tls_read(struct connection *c, size_t *bytes)
 			/* FALLTHROUGH */
 		default:
 			if (c->flags & CONN_LOG_TLS_FAILURE) {
-				kore_log(LOG_NOTICE,
-				    "SSL_read(): %s", ssl_errno_s);
+				kore_connection_log(c, "SSL_read: %s",
+				    ssl_errno_s);
 			}
 			return (KORE_RESULT_ERROR);
 		}
@@ -566,8 +604,8 @@ kore_tls_write(struct connection *c, size_t len, size_t *written)
 			/* FALLTHROUGH */
 		default:
 			if (c->flags & CONN_LOG_TLS_FAILURE) {
-				kore_log(LOG_NOTICE,
-				    "SSL_write(): %s", ssl_errno_s);
+				kore_connection_log(c,
+				    "SSL_write: %s", ssl_errno_s);
 			}
 			return (KORE_RESULT_ERROR);
 		}
@@ -652,8 +690,10 @@ kore_tls_x509_subject_name(struct connection *c)
 {
 	X509_NAME	*name;
 
-	if ((name = X509_get_subject_name(c->tls_cert)) == NULL)
-		kore_log(LOG_NOTICE, "X509_get_subject_name: %s", ssl_errno_s);
+	if ((name = X509_get_subject_name(c->tls_cert)) == NULL) {
+		kore_connection_log(c,
+		    "X509_get_subject_name: %s", ssl_errno_s);
+	}
 
 	return (name);
 }
@@ -664,7 +704,7 @@ kore_tls_x509_issuer_name(struct connection *c)
 	X509_NAME	*name;
 
 	if ((name = X509_get_issuer_name(c->tls_cert)) == NULL)
-		kore_log(LOG_NOTICE, "X509_get_issuer_name: %s", ssl_errno_s);
+		kore_connection_log(c, "X509_get_issuer_name: %s", ssl_errno_s);
 
 	return (name);
 }
@@ -737,7 +777,7 @@ kore_tls_x509_data(struct connection *c, u_int8_t **ptr, size_t *olen)
 	u_int8_t	*der, *pp;
 
 	if ((len = i2d_X509(c->tls_cert, NULL)) <= 0) {
-		kore_log(LOG_NOTICE, "i2d_X509: %s", ssl_errno_s);
+		kore_connection_log(c, "i2d_X509: %s", ssl_errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -746,7 +786,7 @@ kore_tls_x509_data(struct connection *c, u_int8_t **ptr, size_t *olen)
 
 	if (i2d_X509(c->tls_cert, &pp) <= 0) {
 		kore_free(der);
-		kore_log(LOG_NOTICE, "i2d_X509: %s", ssl_errno_s);
+		kore_connection_log(c, "i2d_X509: %s", ssl_errno_s);
 		return (KORE_RESULT_ERROR);
 	}
 
@@ -894,53 +934,6 @@ tls_keymgr_rsa_finish(RSA *rsa)
 	return (1);
 }
 
-static ECDSA_SIG *
-tls_keymgr_ecdsa_sign(const unsigned char *dgst, int dgst_len,
-    const BIGNUM *in_kinv, const BIGNUM *in_r, EC_KEY *eckey)
-{
-	size_t				len;
-	ECDSA_SIG			*sig;
-	const u_int8_t			*ptr;
-	struct kore_domain		*dom;
-	struct kore_keyreq		*req;
-
-	if (in_kinv != NULL || in_r != NULL)
-		return (NULL);
-
-	len = sizeof(*req) + dgst_len;
-	if (len > sizeof(keymgr_buf))
-		fatal("keymgr_buf too small");
-
-	if ((dom = EC_KEY_get_ex_data(eckey, 0)) == NULL)
-		fatal("EC_KEY has no domain");
-
-	memset(keymgr_buf, 0, sizeof(keymgr_buf));
-	req = (struct kore_keyreq *)keymgr_buf;
-
-	if (kore_strlcpy(req->domain, dom->domain, sizeof(req->domain)) >=
-	    sizeof(req->domain))
-		fatal("%s: domain truncated", __func__);
-
-	req->data_len = dgst_len;
-	memcpy(&req->data[0], dgst, req->data_len);
-
-	kore_msg_send(KORE_WORKER_KEYMGR, KORE_MSG_KEYMGR_REQ, keymgr_buf, len);
-	tls_keymgr_await_data();
-
-	if (keymgr_response) {
-		ptr = keymgr_buf;
-		sig = d2i_ECDSA_SIG(NULL, &ptr, keymgr_buflen);
-	} else {
-		sig = NULL;
-	}
-
-	keymgr_buflen = 0;
-	keymgr_response = 0;
-	kore_platform_event_all(worker->msg[1]->fd, worker->msg[1]);
-
-	return (sig);
-}
-
 static void
 tls_keymgr_await_data(void)
 {
@@ -1044,9 +1037,18 @@ tls_keymgr_msg_response(struct kore_msg *msg, const void *data)
 static int
 tls_domain_x509_verify(int ok, X509_STORE_CTX *ctx)
 {
-	X509		*cert;
-	const char	*text;
-	int		error, depth;
+	struct connection	*c;
+	SSL			*tls;
+	X509			*cert;
+	const char		*text;
+	int			error, depth;
+
+	if ((tls = X509_STORE_CTX_get_ex_data(ctx,
+	    SSL_get_ex_data_X509_STORE_CTX_idx())) == NULL)
+		fatal("X509_STORE_CTX_get_ex_data: no data");
+
+	if ((c = SSL_get_ex_data(tls, 0)) == NULL)
+		fatal("no connection data in %s", __func__);
 
 	error = X509_STORE_CTX_get_error(ctx);
 	cert = X509_STORE_CTX_get_current_cert(ctx);
@@ -1055,8 +1057,8 @@ tls_domain_x509_verify(int ok, X509_STORE_CTX *ctx)
 		text = X509_verify_cert_error_string(error);
 		depth = X509_STORE_CTX_get_error_depth(ctx);
 
-		kore_log(LOG_WARNING, "X509 verification error depth:%d - %s",
-		    depth, text);
+		kore_connection_log(c,
+		    "X509 verification error depth:%d - %s", depth, text);
 
 		/* Continue on CRL validity errors. */
 		switch (error) {
@@ -1111,6 +1113,41 @@ tls_domain_load_certificate_chain(SSL_CTX *ctx, const void *data, size_t len)
 	BIO_free(in);
 
 	return (x);
+}
+
+static EVP_PKEY *
+tls_privsep_private_key(EVP_PKEY *pub, struct kore_domain *dom)
+{
+	EVP_PKEY		*pkey;
+	RSA			*rsa_new;
+	const RSA		*rsa_cur;
+	const BIGNUM		*e_cur, *n_cur;
+	BIGNUM			*e_new, *n_new;
+
+	if ((pkey = EVP_PKEY_new()) == NULL)
+		fatalx("failed to create new EVP_PKEY data structure");
+
+	if ((rsa_new = RSA_new()) == NULL)
+		fatalx("failed to create new RSA data structure");
+
+	if ((rsa_cur = EVP_PKEY_get0_RSA(pub)) == NULL)
+		fatalx("no RSA public key present");
+
+	RSA_get0_key(rsa_cur, &n_cur, &e_cur, NULL);
+
+	if ((n_new = BN_dup(n_cur)) == NULL)
+		fatalx("BN_dup failed");
+
+	if ((e_new = BN_dup(e_cur)) == NULL)
+		fatalx("BN_dup failed");
+
+	RSA_set_app_data(rsa_new, dom);
+	RSA_set_method(rsa_new, keymgr_rsa_meth);
+	RSA_set0_key(rsa_new, n_new, e_new, NULL);
+
+	EVP_PKEY_set1_RSA(pkey, rsa_new);
+
+	return (pkey);
 }
 
 #if defined(KORE_USE_ACME)

@@ -39,7 +39,6 @@ static PyObject		*python_kore_app(PyObject *, PyObject *);
 static PyObject		*python_kore_log(PyObject *, PyObject *);
 static PyObject		*python_kore_time(PyObject *, PyObject *);
 static PyObject		*python_kore_lock(PyObject *, PyObject *);
-static PyObject		*python_kore_proc(PyObject *, PyObject *);
 static PyObject		*python_kore_fatal(PyObject *, PyObject *);
 static PyObject		*python_kore_queue(PyObject *, PyObject *);
 static PyObject		*python_kore_worker(PyObject *, PyObject *);
@@ -56,6 +55,7 @@ static PyObject		*python_kore_task_kill(PyObject *, PyObject *);
 static PyObject		*python_kore_prerequest(PyObject *, PyObject *);
 static PyObject		*python_kore_task_create(PyObject *, PyObject *);
 static PyObject		*python_kore_socket_wrap(PyObject *, PyObject *);
+static PyObject		*python_kore_proc(PyObject *, PyObject *, PyObject *);
 static PyObject		*python_kore_route(PyObject *, PyObject *, PyObject *);
 static PyObject		*python_kore_timer(PyObject *, PyObject *, PyObject *);
 static PyObject		*python_kore_domain(PyObject *, PyObject *, PyObject *);
@@ -92,7 +92,6 @@ static struct PyMethodDef pykore_methods[] = {
 	METHOD("log", python_kore_log, METH_VARARGS),
 	METHOD("time", python_kore_time, METH_NOARGS),
 	METHOD("lock", python_kore_lock, METH_NOARGS),
-	METHOD("proc", python_kore_proc, METH_VARARGS),
 	METHOD("queue", python_kore_queue, METH_VARARGS),
 	METHOD("worker", python_kore_worker, METH_VARARGS),
 	METHOD("tracer", python_kore_tracer, METH_VARARGS),
@@ -109,6 +108,7 @@ static struct PyMethodDef pykore_methods[] = {
 	METHOD("prerequest", python_kore_prerequest, METH_VARARGS),
 	METHOD("task_create", python_kore_task_create, METH_VARARGS),
 	METHOD("socket_wrap", python_kore_socket_wrap, METH_VARARGS),
+	METHOD("proc", python_kore_proc, METH_VARARGS | METH_KEYWORDS),
 	METHOD("route", python_kore_route, METH_VARARGS | METH_KEYWORDS),
 	METHOD("timer", python_kore_timer, METH_VARARGS | METH_KEYWORDS),
 	METHOD("domain", python_kore_domain, METH_VARARGS | METH_KEYWORDS),
@@ -231,10 +231,12 @@ struct pydomain {
 };
 
 static PyObject	*pydomain_filemaps(struct pydomain *, PyObject *);
+static PyObject	*pydomain_redirect(struct pydomain *, PyObject *);
 static PyObject	*pydomain_route(struct pydomain *, PyObject *, PyObject *);
 
 static PyMethodDef pydomain_methods[] = {
 	METHOD("filemaps", pydomain_filemaps, METH_VARARGS),
+	METHOD("redirect", pydomain_redirect, METH_VARARGS),
 	METHOD("route", pydomain_route, METH_VARARGS | METH_KEYWORDS),
 	METHOD(NULL, NULL, -1)
 };
@@ -560,6 +562,8 @@ static PyTypeObject pylock_op_type = {
 	.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
 };
 
+#define PYTHON_PROC_MAX_ENV	32
+
 struct pyproc {
 	PyObject_HEAD
 	pid_t			pid;
@@ -748,6 +752,7 @@ static void	pyhttp_dealloc(struct pyhttp_request *);
 static void	pyhttp_file_dealloc(struct pyhttp_file *);
 
 static PyObject *pyhttp_cookie(struct pyhttp_request *, PyObject *);
+static PyObject *pyhttp_headers(struct pyhttp_request *, PyObject *);
 static PyObject	*pyhttp_response(struct pyhttp_request *, PyObject *);
 static PyObject *pyhttp_argument(struct pyhttp_request *, PyObject *);
 static PyObject	*pyhttp_body_read(struct pyhttp_request *, PyObject *);
@@ -763,6 +768,7 @@ static PyObject *pyhttp_websocket_handshake(struct pyhttp_request *,
 
 static PyMethodDef pyhttp_request_methods[] = {
 	METHOD("cookie", pyhttp_cookie, METH_VARARGS),
+	METHOD("headers", pyhttp_headers, METH_NOARGS),
 	METHOD("response", pyhttp_response, METH_VARARGS),
 	METHOD("argument", pyhttp_argument, METH_VARARGS),
 	METHOD("body_read", pyhttp_body_read, METH_VARARGS),

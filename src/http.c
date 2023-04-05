@@ -799,7 +799,7 @@ http_header_recv(struct netbuf *nb)
 
 	c = nb->owner;
 
-	if (nb->b_len < 4)
+	if (nb->s_off < 4)
 		return (KORE_RESULT_OK);
 
 	if (!isalpha(nb->buf[0])) {
@@ -811,8 +811,14 @@ http_header_recv(struct netbuf *nb)
 	end_headers = kore_mem_find(nb->buf, nb->s_off, "\r\n\r\n", 4);
 	if (end_headers == NULL) {
 		end_headers = kore_mem_find(nb->buf, nb->s_off, "\n\n", 2);
-		if (end_headers == NULL)
+		if (end_headers == NULL) {
+			if (nb->s_off == http_header_max) {
+				http_error_response(c,
+				    HTTP_STATUS_REQUEST_ENTITY_TOO_LARGE);
+				return (KORE_RESULT_ERROR);
+			}
 			return (KORE_RESULT_OK);
+		}
 		skip = 2;
 	}
 
@@ -919,6 +925,7 @@ http_header_recv(struct netbuf *nb)
 		}
 
 		if (req->content_length == 0) {
+			c->http_timeout = 0;
 			req->flags |= HTTP_REQUEST_COMPLETE;
 			req->flags &= ~HTTP_REQUEST_EXPECT_BODY;
 			return (KORE_RESULT_OK);
@@ -1001,7 +1008,7 @@ http_argument_get(struct http_request *req, const char *name,
 }
 
 int
-http_argument_urldecode(char *arg)
+http_argument_urldecode(char *arg, int url)
 {
 	u_int8_t	v;
 	int		err;
@@ -1039,8 +1046,14 @@ http_argument_urldecode(char *arg)
 		if (err != KORE_RESULT_OK)
 			return (err);
 
-		if (v <= 0x1f || v == 0x7f)
-			return (KORE_RESULT_ERROR);
+		if (url) {
+			if (v <= 0x1f || v == 0x7f)
+				return (KORE_RESULT_ERROR);
+		} else {
+			if ((v <= 0x1f || v == 0x7f) &&
+			    (v != '\n' && v != '\r'))
+				return (KORE_RESULT_ERROR);
+		}
 
 		*in++ = (char)v;
 		p += 3;
@@ -1791,6 +1804,9 @@ http_validate_header(char *header)
 			break;
 		}
 
+		if (*p >= 'A' && *p <= 'Z')
+			*p += 32;
+
 		if (http_token[idx] == 0x00)
 			return (NULL);
 	}
@@ -2274,7 +2290,7 @@ http_argument_add(struct http_request *req, char *name, char *value, int qs,
 	struct kore_route_params	*p;
 
 	if (decode) {
-		if (!http_argument_urldecode(name))
+		if (!http_argument_urldecode(name, qs))
 			return;
 	}
 
@@ -2291,7 +2307,7 @@ http_argument_add(struct http_request *req, char *name, char *value, int qs,
 			continue;
 
 		if (decode) {
-			if (!http_argument_urldecode(value))
+			if (!http_argument_urldecode(value, qs))
 				return;
 		}
 
@@ -2342,6 +2358,7 @@ http_body_update(struct http_request *req, const void *data, size_t len)
 	req->content_length -= len;
 
 	if (req->content_length == 0) {
+		req->owner->http_timeout = 0;
 		req->owner->rnb->extra = NULL;
 		http_request_wakeup(req);
 		req->flags |= HTTP_REQUEST_COMPLETE;

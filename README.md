@@ -59,11 +59,10 @@ Kore only supports x64, arm and aarch64 architectures.
 
 Building Kore
 -------------
-Clone this repository or get the latest release at [https://kore.io/releases/4.2.2](https://kore.io/releases/4.2.2).
+Clone this repository or get the latest release at [https://kore.io/releases/4.2.3](https://kore.io/releases/4.2.3).
 
 Requirements
-* openssl 1.1.1 or libressl 3.x
-(note: openssl 3.0.0 is currently *not* supported)
+* openssl 1.1.1, libressl 3.x or openssl 3.
 
 Requirement for asynchronous curl (optional)
 * libcurl (7.64.0 or higher)
@@ -77,6 +76,9 @@ Requirements for pgsql (optional)
 Requirements for python (optional)
 * Python 3.6+
 
+Requirements for lua support (optional)
+* Lua 5.4+
+
 Normal compilation and installation:
 
 ```
@@ -88,6 +90,7 @@ $ make
 If you would like to build a specific flavor, you can enable
 those by setting a shell environment variable before running **_make_**.
 
+* LUA=1 (compiles in LUA support)
 * ACME=1 (compiles in ACME support)
 * CURL=1 (compiles in asynchronous curl support)
 * TASKS=1 (compiles in task support)

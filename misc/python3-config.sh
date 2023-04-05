@@ -5,10 +5,16 @@ if [ $# -ne 1 ]; then
 	exit 1
 fi
 
-python3-config $1 --embed > /dev/null 2>&1
+if [ ! -z "$PYTHON_CONFIG" ]; then
+	BIN=$PYTHON_CONFIG
+else
+	BIN=python3-config
+fi
+
+$BIN $1 --embed > /dev/null 2>&1
 
 if [ $? -eq 0 ]; then
-	python3-config $1 --embed
+	$BIN $1 --embed
 else
-	python3-config $1
+	$BIN $1
 fi

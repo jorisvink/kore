@@ -15,6 +15,7 @@
  */
 
 #include <sys/param.h>
+#include <sys/random.h>
 #include <sys/epoll.h>
 #include <sys/sendfile.h>
 #include <sys/syscall.h>
@@ -59,7 +60,7 @@ kore_platform_worker_setcpu(struct kore_worker *kw)
 	CPU_SET(kw->cpu, &cpuset);
 
 	if (sched_setaffinity(0, sizeof(cpu_set_t), &cpuset) == -1)
-		kore_log(LOG_WARNING, "kore_worker_setcpu(): %s", errno_s);
+		kore_log(LOG_NOTICE, "kore_worker_setcpu(): %s", errno_s);
 }
 
 void
@@ -261,4 +262,19 @@ void
 kore_platform_sandbox(void)
 {
 	kore_seccomp_enable();
+}
+
+u_int32_t
+kore_platform_random_uint32(void)
+{
+	ssize_t		ret;
+	u_int32_t	val;
+
+	if ((ret = getrandom(&val, sizeof(val), 0)) == -1)
+		fatalx("getrandom(): %s", errno_s);
+
+	if ((size_t)ret != sizeof(val))
+		fatalx("getrandom() %zd != %zu", ret, sizeof(val));
+
+	return (val);
 }

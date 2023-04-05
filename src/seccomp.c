@@ -68,6 +68,9 @@ static struct sock_filter filter_kore[] = {
 #if defined(SYS_fstat64)
 	KORE_SYSCALL_ALLOW(fstat64),
 #endif
+#if defined(SYS_newfstatat)
+	KORE_SYSCALL_ALLOW(newfstatat),
+#endif
 	KORE_SYSCALL_ALLOW(write),
 	KORE_SYSCALL_ALLOW(fcntl),
 #if defined(SYS_fcntl64)
@@ -102,6 +105,9 @@ static struct sock_filter filter_kore[] = {
 	KORE_SYSCALL_ALLOW(geteuid),
 	KORE_SYSCALL_ALLOW(exit_group),
 	KORE_SYSCALL_ALLOW(nanosleep),
+#if defined(SYS_clock_gettime64)
+	KORE_SYSCALL_ALLOW(clock_gettime64),
+#endif
 #if defined(SYS_clock_nanosleep)
 	KORE_SYSCALL_ALLOW(clock_nanosleep),
 #endif

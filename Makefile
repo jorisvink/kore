@@ -9,7 +9,6 @@ KODEV=kodev/kodev
 KOREPATH?=$(shell pwd)
 KORE_CRYPTO?=crypto
 INSTALL_DIR=$(PREFIX)/bin
-MAN_DIR?=$(PREFIX)/share/man
 SHARE_DIR=$(PREFIX)/share/kore
 INCLUDE_DIR=$(PREFIX)/include/kore
 TLS_BACKEND?=openssl
@@ -118,6 +117,16 @@ ifneq ("$(PYTHON)", "")
 	FEATURES_INC+=$(KORE_PYTHON_INC)
 endif
 
+ifneq ("$(LUA)", "")
+	S_SRC+=src/lua.c
+	KORE_LUA_LIB?=$(shell pkg-config --libs lua$(LUA_VERSION))
+	KORE_LUA_INC?=$(shell pkg-config --cflags lua$(LUA_VERSION))
+	LDFLAGS+=$(KORE_LUA_LIB)
+	CFLAGS+=$(KORE_LUA_INC) -DKORE_USE_LUA
+	FEATURES+=-DKORE_USE_LUA
+	FEATURES_INC+=$(KORE_LUA_INC)
+endif
+
 OSNAME=$(shell uname -s | sed -e 's/[-_].*//g' | tr A-Z a-z)
 ifeq ("$(OSNAME)", "freebsd")
 	KORE_CURL_LIB=-L/usr/local/lib -lcurl
@@ -215,8 +224,6 @@ install:
 	mkdir -p $(DESTDIR)$(SHARE_DIR)
 	mkdir -p $(DESTDIR)$(INCLUDE_DIR)
 	mkdir -p $(DESTDIR)$(INSTALL_DIR)
-	mkdir -p $(DESTDIR)$(MAN_DIR)/man1
-	install -m 644 share/man/kodev.1 $(DESTDIR)$(MAN_DIR)/man1/kodev.1
 	install -m 555 $(KORE) $(DESTDIR)$(INSTALL_DIR)/$(KORE)
 	install -m 644 kore.features $(DESTDIR)$(SHARE_DIR)/features
 	install -m 644 kore.linker $(DESTDIR)$(SHARE_DIR)/linker

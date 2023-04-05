@@ -55,6 +55,10 @@
 
 #include <frameobject.h>
 
+#if PY_VERSION_HEX >= 0x030b0000
+#include <internal/pycore_frame.h>
+#endif
+
 #if PY_VERSION_HEX < 0x030A0000
 typedef enum {
 	PYGEN_RETURN = 0,
@@ -68,11 +72,17 @@ struct reqcall {
 	TAILQ_ENTRY(reqcall)	list;
 };
 
+union deconst {
+	char		*p;
+	const char	*cp;
+};
+
 TAILQ_HEAD(reqcall_list, reqcall);
 
 PyMODINIT_FUNC		python_module_init(void);
 
 static PyObject		*python_import(const char *);
+static int		python_resolve_frame_line(void *);
 static PyObject		*pyconnection_alloc(struct connection *);
 static PyObject		*python_callable(PyObject *, const char *);
 static void		python_split_arguments(char *, char **, size_t);
@@ -157,6 +167,7 @@ static void	python_push_integer(PyObject *, const char *, long);
 static void	python_push_type(const char *, PyObject *, PyTypeObject *);
 
 static int	python_validator_check(PyObject *);
+static int	python_runtime_resolve(const char *, const struct stat *);
 static int	python_runtime_http_request(void *, struct http_request *);
 static void	python_runtime_http_request_free(void *, struct http_request *);
 static void	python_runtime_http_body_chunk(void *, struct http_request *,
@@ -190,6 +201,7 @@ struct kore_module_functions kore_python_module = {
 
 struct kore_runtime kore_python_runtime = {
 	KORE_RUNTIME_PYTHON,
+	.resolve = python_runtime_resolve,
 	.http_request = python_runtime_http_request,
 	.http_body_chunk = python_runtime_http_body_chunk,
 	.http_request_free = python_runtime_http_request_free,
@@ -320,7 +332,7 @@ static PyObject		*python_tracer = NULL;
 static struct python_coro		*coro_running = NULL;
 
 #if !defined(KORE_SINGLE_BINARY)
-const char	*kore_pymodule = NULL;
+static const char	*kore_pymodule = NULL;
 #endif
 
 void
@@ -1179,21 +1191,49 @@ python_coro_suspend(struct python_coro *coro)
 	python_coro_trace("suspended", coro);
 }
 
+static int
+python_resolve_frame_line(void *ptr)
+{
+	int			line;
+#if PY_VERSION_HEX >= 0x030b0000
+	int			addr;
+	_PyInterpreterFrame	*frame;
+
+	frame = ptr;
+	addr = _PyInterpreterFrame_LASTI(frame) * sizeof(_Py_CODEUNIT);
+	line = PyCode_Addr2Line(frame->f_code, addr);
+#else
+	line = PyFrame_GetLineNumber(ptr);
+#endif
+
+	return (line);
+}
+
 static void
 python_coro_trace(const char *label, struct python_coro *coro)
 {
 	int			line;
-	PyGenObject		*gen;
+	PyCoroObject		*obj;
 	PyCodeObject		*code;
+#if PY_VERSION_HEX >= 0x030b0000
+	_PyInterpreterFrame	*frame;
+#else
+	PyFrameObject		*frame;
+#endif
 	const char		*func, *fname, *file;
 
 	if (coro_tracing == 0)
 		return;
 
-	gen = (PyGenObject *)coro->obj;
+	obj = (PyCoroObject *)coro->obj;
 
-	if (gen->gi_frame != NULL && gen->gi_frame->f_code != NULL) {
-		code = gen->gi_frame->f_code;
+#if PY_VERSION_HEX >= 0x030b0000
+	frame = (_PyInterpreterFrame *)obj->cr_iframe;
+#else
+	frame = obj->cr_frame;
+#endif
+	if (frame != NULL && frame->f_code != NULL) {
+		code = frame->f_code;
 		func = PyUnicode_AsUTF8AndSize(code->co_name, NULL);
 		file = PyUnicode_AsUTF8AndSize(code->co_filename, NULL);
 
@@ -1206,8 +1246,8 @@ python_coro_trace(const char *label, struct python_coro *coro)
 		fname = "unknown";
 	}
 
-	if (gen->gi_frame != NULL)
-		line = PyFrame_GetLineNumber(gen->gi_frame);
+	if (frame != NULL)
+		line = python_resolve_frame_line(frame);
 	else
 		line = -1;
 
@@ -1238,6 +1278,38 @@ static void
 pyhttp_file_dealloc(struct pyhttp_file *pyfile)
 {
 	PyObject_Del((PyObject *)pyfile);
+}
+
+static int
+python_runtime_resolve(const char *module, const struct stat *st)
+{
+	const char		*ext;
+
+	if (!S_ISDIR(st->st_mode) && !S_ISREG(st->st_mode))
+		return (KORE_RESULT_ERROR);
+
+	if (S_ISDIR(st->st_mode)) {
+		kore_module_load(module, NULL, KORE_MODULE_PYTHON);
+		if (chdir(module) == -1)
+			fatal("chdir(%s): %s", module, errno_s);
+	} else {
+		if ((ext = strrchr(module, '.')) == NULL)
+			return (KORE_RESULT_ERROR);
+
+		if (strcasecmp(ext, ".py"))
+			return (KORE_RESULT_ERROR);
+
+		kore_module_load(module, NULL, KORE_MODULE_PYTHON);
+	}
+
+#if !defined(KORE_SINGLE_BINARY)
+	kore_pymodule = module;
+#endif
+
+	kore_hooks_set(KORE_PYTHON_CONFIG_HOOK,
+	    KORE_PYTHON_TEARDOWN_HOOK, KORE_PYTHON_DAEMONIZED_HOOK);
+
+	return (KORE_RESULT_OK);
 }
 
 static int
@@ -2689,12 +2761,15 @@ python_kore_timer(PyObject *self, PyObject *args, PyObject *kwargs)
 }
 
 static PyObject *
-python_kore_proc(PyObject *self, PyObject *args)
+python_kore_proc(PyObject *self, PyObject *args, PyObject *kwargs)
 {
+	union deconst		cp;
 	const char		*cmd;
 	struct pyproc		*proc;
-	char			*copy, *argv[32], *env[1];
+	Py_ssize_t		idx, len;
+	PyObject		*obj, *item;
 	int			timeo, in_pipe[2], out_pipe[2];
+	char			*copy, *argv[32], *env[PYTHON_PROC_MAX_ENV + 1];
 
 	timeo = -1;
 
@@ -2706,6 +2781,37 @@ python_kore_proc(PyObject *self, PyObject *args)
 
 	if (!PyArg_ParseTuple(args, "s|i", &cmd, &timeo))
 		return (NULL);
+
+	if (kwargs != NULL &&
+	    (obj = PyDict_GetItemString(kwargs, "env")) != NULL) {
+		if (!PyList_CheckExact(obj)) {
+			PyErr_SetString(PyExc_RuntimeError,
+			    "kore.proc: env is not of type 'list'");
+			return (NULL);
+		}
+
+		len = PyList_Size(obj);
+		if (len > PYTHON_PROC_MAX_ENV) {
+			PyErr_SetString(PyExc_RuntimeError,
+			    "kore.proc: too many entries in 'env' keyword");
+			return (NULL);
+		}
+
+		for (idx = 0; idx < len; idx++) {
+			if ((item = PyList_GetItem(obj, idx)) == NULL)
+				return (NULL);
+
+			if (!PyUnicode_CheckExact(item))
+				return (NULL);
+
+			if ((cp.cp = PyUnicode_AsUTF8(item)) == NULL)
+				return (NULL);
+
+			env[idx] = cp.p;
+		}
+
+		env[idx] = NULL;
+	}
 
 	if (pipe(in_pipe) == -1) {
 		PyErr_SetString(PyExc_RuntimeError, errno_s);
@@ -2763,7 +2869,6 @@ python_kore_proc(PyObject *self, PyObject *args)
 		    dup2(in_pipe[0], STDIN_FILENO) == -1)
 			fatal("dup2: %s", errno_s);
 
-		env[0] = NULL;
 		copy = kore_strdup(cmd);
 		python_split_arguments(copy, argv, 32);
 
@@ -5023,6 +5128,46 @@ pyhttp_cookie(struct pyhttp_request *pyreq, PyObject *args)
 }
 
 static PyObject *
+pyhttp_headers(struct pyhttp_request *pyreq, PyObject *args)
+{
+	struct http_header	*hdr;
+	struct http_request	*req;
+	PyObject		*obj, *dict, *ret;
+
+	ret = NULL;
+	obj = NULL;
+	dict = NULL;
+
+	req = pyreq->req;
+
+	if ((dict = PyDict_New()) == NULL)
+		goto cleanup;
+
+	if ((obj = PyUnicode_FromString(req->host)) == NULL)
+		goto cleanup;
+
+	if (PyDict_SetItemString(dict, "host", obj) == -1)
+		goto cleanup;
+
+	TAILQ_FOREACH(hdr, &req->req_headers, list) {
+		if ((obj = PyUnicode_FromString(hdr->value)) == NULL)
+			goto cleanup;
+		if (PyDict_SetItemString(dict, hdr->header, obj) == -1)
+			goto cleanup;
+	}
+
+	ret = dict;
+	obj = NULL;
+	dict = NULL;
+
+cleanup:
+	Py_XDECREF(obj);
+	Py_XDECREF(dict);
+
+	return (ret);
+}
+
+static PyObject *
 pyhttp_file_lookup(struct pyhttp_request *pyreq, PyObject *args)
 {
 	const char		*name;
@@ -5468,6 +5613,23 @@ pydomain_filemaps(struct pydomain *domain, PyObject *args)
 				return (KORE_RESULT_ERROR);
 			}
 		}
+	}
+
+	Py_RETURN_NONE;
+}
+
+static PyObject *
+pydomain_redirect(struct pydomain *domain, PyObject *args)
+{
+	int			status;
+	const char		*src, *dst;
+
+	if (!PyArg_ParseTuple(args, "sis", &src, &status, &dst))
+		return (NULL);
+
+	if (!http_redirect_add(domain->config, src, status, dst)) {
+		fatal("failed to add redirect '%s' on '%s'",
+		    src, domain->config->domain);
 	}
 
 	Py_RETURN_NONE;
@@ -6328,6 +6490,7 @@ static PyObject *
 pycurl_handle_setopt_string(struct pycurl_data *data, int idx, PyObject *obj)
 {
 	const char		*str;
+	CURLoption		option;
 
 	if (!PyUnicode_Check(obj)) {
 		PyErr_Format(PyExc_RuntimeError,
@@ -6339,8 +6502,8 @@ pycurl_handle_setopt_string(struct pycurl_data *data, int idx, PyObject *obj)
 	if ((str = PyUnicode_AsUTF8(obj)) == NULL)
 		return (NULL);
 
-	curl_easy_setopt(data->curl.handle,
-	    CURLOPTTYPE_OBJECTPOINT + py_curlopt[idx].value, str);
+	option = CURLOPTTYPE_OBJECTPOINT + py_curlopt[idx].value;
+	curl_easy_setopt(data->curl.handle, option, str);
 
 	Py_RETURN_TRUE;
 }
@@ -6349,6 +6512,7 @@ static PyObject *
 pycurl_handle_setopt_long(struct pycurl_data *data, int idx, PyObject *obj)
 {
 	long		val;
+	CURLoption	option;
 
 	if (!PyLong_CheckExact(obj)) {
 		PyErr_Format(PyExc_RuntimeError,
@@ -6362,8 +6526,8 @@ pycurl_handle_setopt_long(struct pycurl_data *data, int idx, PyObject *obj)
 	if (val == -1 && PyErr_Occurred())
 		return (NULL);
 
-	curl_easy_setopt(data->curl.handle,
-	    CURLOPTTYPE_LONG + py_curlopt[idx].value, val);
+	option = CURLOPTTYPE_LONG + py_curlopt[idx].value;
+	curl_easy_setopt(data->curl.handle, option, val);
 
 	Py_RETURN_TRUE;
 }
@@ -6375,6 +6539,7 @@ pycurl_handle_setopt_slist(struct pycurl_data *data, int idx, PyObject *obj)
 	PyObject		*item;
 	const char		*sval;
 	struct curl_slist	*slist;
+	CURLoption		option;
 	Py_ssize_t		list_len, i;
 
 	if (!PyList_CheckExact(obj)) {
@@ -6405,8 +6570,8 @@ pycurl_handle_setopt_slist(struct pycurl_data *data, int idx, PyObject *obj)
 	psl->slist = slist;
 	LIST_INSERT_HEAD(&data->slists, psl, list);
 
-	curl_easy_setopt(data->curl.handle,
-	    CURLOPTTYPE_OBJECTPOINT + py_curlopt[idx].value, slist);
+	option = CURLOPTTYPE_OBJECTPOINT + py_curlopt[idx].value;
+	curl_easy_setopt(data->curl.handle, option, slist);
 
 	Py_RETURN_TRUE;
 }

@@ -95,9 +95,9 @@ kore_log(int prio, const char *fmt, ...)
 		str = kore_buf_stringify(&buf, NULL);
 
 		if (kore_foreground || fp != stdout)
-			log_print(prio, "[parent]: %s\n", str);
+			log_print(prio, "proc=[parent] log=[%s]\n", str);
 		else
-			syslog(prio, "[parent]: %s", str);
+			syslog(prio, "proc=[parent] log=[%s]", str);
 	}
 
 	kore_buf_cleanup(&buf);
@@ -120,10 +120,10 @@ log_from_worker(struct kore_msg *msg, const void *data)
 	name = kore_worker_name(wlog->wid);
 
 	if (kore_foreground || fp != stdout) {
-		log_print(wlog->prio, "%s: %.*s\n",
+		log_print(wlog->prio, "proc=%s log=[%.*s]\n",
 		    name, (int)wlog->loglen, wlog->logmsg);
 	} else {
-		syslog(wlog->prio, "%s: %.*s",
+		syslog(wlog->prio, "proc=%s log=[%.*s]",
 		    name, (int)wlog->loglen, wlog->logmsg);
 	}
 }

@@ -1,0 +1,55 @@
+#!/usr/local/bin/bash
+
+set -x
+set -e
+
+URL=discord-hook
+
+while read oldrev newrev ref; do
+    if [[ $ref =~ .*/master$ ]]; then
+        logmsg=""
+        commits=$(git rev-list ${oldrev}..${newrev})
+        for commit in $commits; do
+            log=$(git log -1 --pretty=format:'[%h](https://git.kore.io/kore/commit/%H) %cn: %s' $commit)
+            logmsg="$logmsg $log\\n"
+        done
+
+        curl -i \
+            -H "Accept: application/json" \
+            -H "Content-type: application/json" \
+            -X POST \
+            -d "{\"content\": \"${logmsg}\"}" \
+            $URL
+    fi
+done
+
+git update-server-info
+
+ROOT=/var/chroot/kore-site
+TARGET=$ROOT/stagit
+STATIC=$HOME/src/stagit_static
+export TMPDIR=$ROOT/.tmp
+
+STAGING=`mktemp -d`
+
+function update_stagit {
+    mkdir -p $STAGING/$1
+    pushd $STAGING/$1
+    stagit $2
+    cp log.html index.html
+    cp -R $2 ${STAGING}/${1}.git
+    rm ${STAGING}/${1}.git/hooks/post-receive
+    chmod -R +rx ${STAGING}/${1}.git
+    popd
+
+}
+
+update_stagit kore /home/git/kore.git
+
+cp -R $STATIC/* $STAGING
+chmod -R o+rx $STAGING
+
+rm -rf $ROOT/.old
+mv $TARGET $ROOT/.old
+mv $STAGING $TARGET
+rm -rf $ROOT/.old

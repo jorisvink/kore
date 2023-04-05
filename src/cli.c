@@ -43,6 +43,24 @@
 #include <unistd.h>
 #include <utime.h>
 
+/*
+ * Turn off deprecated function warnings when building against OpenSSL 3.
+ *
+ * The OpenSSL 3 library deprecated most low-level functions in favour
+ * for their higher level APIs.
+ *
+ * I am planning a replacement, but for now we can still make it build
+ * and function by ignoring these warnings completely.
+ *
+ * The functions in question are:
+ *	- SHA256_Init, SHA256_Update, SHA256_Final
+ *	- RSA_new, RSA_generate_key_ex
+ *	- EVP_PKEY_assign
+ */
+#if defined(OPENSSL_VERSION_MAJOR) && OPENSSL_VERSION_MAJOR >= 3
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+
 #define errno_s			strerror(errno)
 #define ssl_errno_s		ERR_error_string(ERR_get_error(), NULL)
 
@@ -53,6 +71,8 @@
 #define BUILD_NOBUILD		0
 #define BUILD_C			1
 #define BUILD_CXX		2
+
+#define CLANGDB_FILE_PATH	 "compile_commands.json"
 
 struct cli_buf {
 	u_int8_t		*data;
@@ -120,6 +140,8 @@ static char		*cli_text_trim(char *, size_t);
 static char		*cli_read_line(FILE *, char *, size_t);
 static long long	cli_strtonum(const char *, long long, long long);
 static int		cli_split_string(char *, const char *, char **, size_t);
+static int		cli_generate_compiler_args(struct cfile *, char **,
+			    char **, size_t);
 
 static void		usage(void) __attribute__((noreturn));
 static void		fatal(const char *, ...) __attribute__((noreturn))
@@ -186,6 +208,7 @@ static void		cli_run(int, char **);
 static void		cli_help(int, char **);
 static void		cli_info(int, char **);
 static void		cli_build(int, char **);
+static void		cli_build_help(void);
 static void		cli_clean(int, char **);
 static void		cli_source(int, char **);
 static void		cli_reload(int, char **);
@@ -194,6 +217,7 @@ static void		cli_cflags(int, char **);
 static void		cli_ldflags(int, char **);
 static void		cli_genasset(int, char **);
 static void		cli_genasset_help(void);
+static void		cli_build_clangdb(const char *);
 
 #if !defined(KODEV_MINIMAL)
 static void		cli_create(int, char **);
@@ -427,10 +451,6 @@ main(int argc, char **argv)
 
 	for (i = 0; cmds[i].name != NULL; i++) {
 		if (!strcmp(argv[0], cmds[i].name)) {
-			if (strcmp(argv[0], "create")) {
-				argc--;
-				argv++;
-			}
 			command = &cmds[i];
 			cmds[i].cb(argc, argv);
 			break;
@@ -545,7 +565,7 @@ cli_flavor(int argc, char **argv)
 	(void)cli_buildopt_new("_default");
 	cli_buildopt_parse("conf/build.conf");
 
-	if (argc == 0) {
+	if (argc < 2) {
 		cli_flavor_load();
 		TAILQ_FOREACH(bopt, &build_options, list) {
 			if (!strcmp(bopt->name, "_default"))
@@ -557,11 +577,89 @@ cli_flavor(int argc, char **argv)
 			}
 		}
 	} else {
-		cli_flavor_change(argv[0]);
-		printf("changed build flavor to: %s\n", argv[0]);
+		cli_flavor_change(argv[1]);
+		printf("changed build flavor to: %s\n", argv[1]);
 	}
 
 	cli_buildopt_cleanup();
+}
+
+static void
+cli_build_clangdb(const char *pwd)
+{
+	struct cfile		*cf;
+	int			fd, i, nargs, genpath_len;
+	char			*args[64 + CFLAGS_MAX], *genpath, *ext;
+
+	printf("generating %s...\n", CLANGDB_FILE_PATH);
+
+	genpath_len = cli_vasprintf(&genpath, "%s/", object_dir);
+
+	cli_file_open(CLANGDB_FILE_PATH, O_CREAT | O_TRUNC | O_WRONLY, &fd);
+	cli_file_writef(fd, "[\n");
+
+	TAILQ_FOREACH(cf, &source_files, list) {
+		int tempbuild = cf->build;
+
+		/* Exclude generated source files. */
+		if (!strncmp(cf->fpath, genpath, genpath_len))
+			continue;
+
+		if (cf->build == BUILD_NOBUILD) {
+			if ((ext = strrchr(cf->fpath, '.')) == NULL)
+				continue;
+
+			/*
+			 * Temporarily rewrite build to our file type to
+			 * include unchanged files.
+			 */
+			if (!strcmp(ext, ".cpp"))
+				cf->build = BUILD_CXX;
+			else if (!strcmp(ext, ".c"))
+				cf->build = BUILD_C;
+			else
+				continue;
+		}
+
+		cli_file_writef(fd, "\t{\n");
+		cli_file_writef(fd, "\t\t\"arguments\": [\n");
+
+		nargs = cli_generate_compiler_args(cf, NULL, args,
+		    64 + CFLAGS_MAX);
+
+		for (i = 0; i < nargs; i++) {
+			cli_file_writef(fd, "\t\t\t\"%s\"%s\n",
+				args[i], i == nargs - 1 ? "" : ",");
+		}
+
+		cli_file_writef(fd, "\t\t],\n");
+		cli_file_writef(fd, "\t\t\"directory\": \"%s\",\n", pwd);
+		cli_file_writef(fd, "\t\t\"file\": \"%s\"\n", cf->fpath);
+		cli_file_writef(fd, "\t}%s\n",
+		    cf == TAILQ_LAST(&source_files, cfile_list) ? "" : ",");
+
+		cf->build = tempbuild;
+	}
+
+	cli_file_writef(fd, "]\n");
+	cli_file_close(fd);
+
+	free(genpath);
+
+	printf("%s generated successfully...\n", CLANGDB_FILE_PATH);
+}
+
+static void
+cli_build_help(void)
+{
+	printf("Usage: kodev build [-c]\n");
+	printf("Synopsis:\n");
+	printf("  Build a kore application in current working directory.\n");
+	printf("\n");
+	printf("  Optional flags:\n");
+	printf("\t-c = generate Clang compilation database after build\n");
+
+	exit(1);
 }
 
 static void
@@ -581,6 +679,23 @@ cli_build(int argc, char **argv)
 	char			*sofile, *config;
 	char			*assets_path, *p, *src_path;
 	char			pwd[PATH_MAX], *assets_header;
+	int				ch, clangdb;
+
+	clangdb = 0;
+
+	while ((ch = getopt(argc, argv, "ch")) != -1) {
+		switch (ch) {
+		case 'h':
+			cli_build_help();
+			break;
+		case 'c':
+			clangdb = 1;
+			break;
+		default:
+			cli_build_help();
+			break;
+		}
+	}
 
 	if (getcwd(pwd, sizeof(pwd)) == NULL)
 		fatal("could not get cwd: %s", errno_s);
@@ -732,6 +847,9 @@ cli_build(int argc, char **argv)
 	} else {
 		printf("nothing to be done!\n");
 	}
+
+	if (clangdb)
+		cli_build_clangdb(pwd);
 
 	if (run_after == 0)
 		cli_buildopt_cleanup();
@@ -891,7 +1009,7 @@ cli_genasset(int argc, char **argv)
 	if (getenv("KORE_OBJDIR") == NULL)
 		object_dir = out_dir;
 
-	if (argv[0] == NULL)
+	if (argv[1] == NULL)
 		cli_genasset_help();
 
 	(void)cli_vasprintf(&hdr, "%s/assets.h", out_dir);
@@ -901,20 +1019,20 @@ cli_genasset(int argc, char **argv)
 	cli_file_writef(s_fd, "#ifndef __H_KORE_ASSETS_H\n");
 	cli_file_writef(s_fd, "#define __H_KORE_ASSETS_H\n");
 
-	if (stat(argv[0], &st) == -1)
-		fatal("%s: %s", argv[0], errno_s);
+	if (stat(argv[1], &st) == -1)
+		fatal("%s: %s", argv[1], errno_s);
 
 	if (S_ISDIR(st.st_mode)) {
-		if (cli_dir_exists(argv[0]))
-			cli_find_files(argv[0], cli_build_asset);
+		if (cli_dir_exists(argv[1]))
+			cli_find_files(argv[1], cli_build_asset);
 	} else if (S_ISREG(st.st_mode)) {
 		memset(&dp, 0, sizeof(dp));
 		dp.d_type = DT_REG;
 		(void)snprintf(dp.d_name, sizeof(dp.d_name), "%s",
-		    basename(argv[0]));
-		cli_build_asset(argv[0], &dp);
+		    basename(argv[1]));
+		cli_build_asset(argv[1], &dp);
 	} else {
-		fatal("%s is not a directory or regular file", argv[0]);
+		fatal("%s is not a directory or regular file", argv[1]);
 	}
 
 	cli_file_writef(s_fd, "\n#endif\n");
@@ -1540,34 +1658,34 @@ cli_generate_certs(void)
 }
 #endif
 
-static void
-cli_compile_source_file(void *arg)
+static int
+cli_generate_compiler_args(struct cfile *cf, char **cout,
+    char **args, size_t elm)
 {
-	struct cfile		*cf;
-	int			idx, i;
-	char			**flags;
-	char			*compiler;
-	int			flags_count;
-	char			*args[34 + CFLAGS_MAX];
-
-	cf = arg;
+	char		*compiler, **flags;
+	int		idx, i, flags_count;
 
 	switch (cf->build) {
 	case BUILD_C:
-		compiler = compiler_c;
 		flags = cflags;
+		compiler = compiler_c;
 		flags_count = cflags_count;
 		break;
 	case BUILD_CXX:
-		compiler = compiler_cpp;
 		flags = cxxflags;
+		compiler = compiler_cpp;
 		flags_count = cxxflags_count;
 		break;
 	default:
-		fatal("cli_compile_file: unexpected file type: %d",
-		    cf->build);
-		break;
+		fatal("%s: unexpected file type: %d", __func__, cf->build);
+		/* NOTREACHED */
 	}
+
+	if ((size_t)flags_count + 2 >= elm)
+		fatal("%s: flags %d >= %zu", __func__, flags_count, elm);
+
+	if (cout != NULL)
+		*cout = compiler;
 
 	idx = 0;
 	args[idx++] = compiler;
@@ -1582,6 +1700,17 @@ cli_compile_source_file(void *arg)
 	args[idx++] = "-o";
 	args[idx++] = cf->opath;
 	args[idx] = NULL;
+
+	return (idx);
+}
+
+static void
+cli_compile_source_file(void *arg)
+{
+	char		*compiler;
+	char		*args[64 + CFLAGS_MAX];
+
+	cli_generate_compiler_args(arg, &compiler, args, 64 + CFLAGS_MAX);
 
 	execvp(compiler, args);
 	fatal("failed to start '%s': %s", compiler, errno_s);

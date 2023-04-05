@@ -132,7 +132,7 @@ kore_worker_init(void)
 	    sizeof(*accept_lock));
 	memset(kore_workers, 0, sizeof(struct kore_worker) * worker_count);
 
-	if (worker_count > cpu_count)
+	if ((worker_count - 2) > cpu_count)
 		kore_log(LOG_NOTICE, "more worker processes than cpu cores");
 
 	/* Setup log buffers. */
@@ -369,6 +369,9 @@ kore_worker_privsep(void)
 	if (worker == NULL)
 		fatalx("%s called with no worker", __func__);
 
+	if (worker_set_affinity == 1)
+		kore_platform_worker_setcpu(worker);
+
 	pw = NULL;
 
 	/* Must happen before chroot. */
@@ -449,9 +452,6 @@ kore_worker_entry(struct kore_worker *kw)
 #endif
 
 	kore_platform_proctitle(kore_worker_name(kw->id));
-
-	if (worker_set_affinity == 1)
-		kore_platform_worker_setcpu(kw);
 
 	kore_pid = kw->pid;
 	kore_signal_setup();
