@@ -1,7 +1,7 @@
 About
 -----
 
-Kore 4.2.3 (https://kore.io) is a web application platform for writing scalable,
+Kore 4.3.0 (https://kore.io) is a web application platform for writing scalable,
 concurrent web based processes in C or Python.
 
 It is built with a "secure by default" approach. It is fully privilege
@@ -42,7 +42,7 @@ License
 
 Documentation
 --------------
-[Read the documentation](https://docs.kore.io/4.2.0/)
+[Read the documentation](https://docs.kore.io/4.3.0/)
 
 Performance
 -----------
