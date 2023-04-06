@@ -30,6 +30,7 @@ static struct sock_filter filter_curl[] = {
 	KORE_SYSCALL_ALLOW(bind),
 	KORE_SYSCALL_ALLOW(ioctl),
 	KORE_SYSCALL_ALLOW(connect),
+	KORE_SYSCALL_ALLOW(socketpair),
 	KORE_SYSCALL_ALLOW(getsockopt),
 	KORE_SYSCALL_ALLOW(getsockname),
 	KORE_SYSCALL_ALLOW_ARG(socket, 0, AF_INET),
@@ -38,14 +39,14 @@ static struct sock_filter filter_curl[] = {
 	KORE_SYSCALL_ALLOW_ARG(socket, 0, AF_NETLINK),
 
 	/* Threading related. */
-	KORE_SYSCALL_ALLOW(clone),
-	KORE_SYSCALL_ALLOW(set_robust_list),
 #if defined(SYS_clone3)
 	KORE_SYSCALL_ALLOW(clone3),
 #endif
 #if defined(SYS_rseq)
 	KORE_SYSCALL_ALLOW(rseq),
 #endif
+	KORE_SYSCALL_ALLOW(clone),
+	KORE_SYSCALL_ALLOW(set_robust_list),
 
 	/* Other */
 	KORE_SYSCALL_ALLOW(uname),
@@ -56,6 +57,11 @@ static struct sock_filter filter_curl[] = {
 	KORE_SYSCALL_ALLOW(faccessat),
 	KORE_SYSCALL_ALLOW(newfstatat),
 	KORE_SYSCALL_ALLOW(getpeername),
+
+#if defined(SYS_getdents64)
+	KORE_SYSCALL_ALLOW(getdents64),
+#endif
+
 };
 #endif
 
