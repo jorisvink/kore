@@ -112,6 +112,12 @@ static struct sock_filter filter_acme[] = {
 	KORE_SYSCALL_ALLOW(clone),
 	KORE_SYSCALL_ALLOW(membarrier),
 	KORE_SYSCALL_ALLOW(set_robust_list),
+#if defined(SYS_clone3)
+	KORE_SYSCALL_ALLOW(clone3),
+#endif
+#if defined(SYS_rseq)
+	KORE_SYSCALL_ALLOW(rseq),
+#endif
 };
 #endif
 

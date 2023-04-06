@@ -40,6 +40,12 @@ static struct sock_filter filter_curl[] = {
 	/* Threading related. */
 	KORE_SYSCALL_ALLOW(clone),
 	KORE_SYSCALL_ALLOW(set_robust_list),
+#if defined(SYS_clone3)
+	KORE_SYSCALL_ALLOW(clone3),
+#endif
+#if defined(SYS_rseq)
+	KORE_SYSCALL_ALLOW(rseq),
+#endif
 
 	/* Other */
 	KORE_SYSCALL_ALLOW(uname),
