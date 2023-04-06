@@ -32,6 +32,19 @@
 #include <kore/http.h>
 #include <kore/curl.h>
 
+/* We need to allow some more syscalls on linux. */
+#if defined(__linux__)
+#include <kore/seccomp.h>
+
+KORE_SECCOMP_FILTER("async-curl",
+	/* Following system calls are needed by http example */
+	KORE_SYSCALL_ALLOW(socketpair),
+	KORE_SYSCALL_ALLOW(getdents64),
+	KORE_SYSCALL_ALLOW(rseq),
+	KORE_SYSCALL_ALLOW(clone3),
+);
+#endif
+
 int		http(struct http_request *);
 
 static int	state_setup(struct http_request *);
