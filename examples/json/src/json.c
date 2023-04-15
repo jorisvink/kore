@@ -17,6 +17,8 @@
 #include <kore/kore.h>
 #include <kore/http.h>
 
+#include <inttypes.h>
+
 int		page(struct http_request *);
 
 int
