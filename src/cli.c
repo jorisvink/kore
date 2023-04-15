@@ -234,7 +234,7 @@ static void		cli_file_create(const char *, const char *, size_t);
 
 static struct cmd cmds[] = {
 	{ "help",	"this help text",			cli_help },
-	{ "run",	"run an application (-fnr implied)",	cli_run },
+	{ "run",	"run an application (-nr implied)",	cli_run },
 	{ "gen",	"generate asset file for compilation",	cli_genasset },
 	{ "reload",	"reload the application (SIGHUP)",	cli_reload },
 	{ "info",	"show info on kore on this system",	cli_info },
@@ -1824,10 +1824,10 @@ cli_run_kore(void)
 
 	if (bopt->single_binary) {
 		cpath = NULL;
-		flags = "-fnr";
+		flags = "-nr";
 		(void)cli_vasprintf(&cmd, "./%s", appl);
 	} else {
-		flags = "-fnrc";
+		flags = "-nrc";
 		(void)cli_vasprintf(&cmd, "%s/bin/kore", prefix);
 		(void)cli_vasprintf(&cpath, "conf/%s.conf", appl);
 	}
