@@ -85,6 +85,14 @@ static struct sock_filter filter_keymgr[] = {
 	/* Deny these, but with EACCESS instead of dying. */
 	KORE_SYSCALL_DENY(ioctl, EACCES),
 
+	/* Entropy handling. */
+#if defined(SYS_unlink)
+	KORE_SYSCALL_ALLOW(unlink),
+#endif
+#if defined(SYS_rename)
+	KORE_SYSCALL_ALLOW(rename),
+#endif
+
 	/* Required to deal with private keys and certs. */
 #if defined(SYS_open)
 	KORE_SYSCALL_ALLOW(open),
