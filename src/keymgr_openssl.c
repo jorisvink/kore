@@ -105,6 +105,9 @@ static struct sock_filter filter_keymgr[] = {
 	KORE_SYSCALL_ALLOW(stat),
 #endif
 	KORE_SYSCALL_ALLOW(fstat),
+#if defined(SYS_stat64)
+	KORE_SYSCALL_ALLOW(stat64),
+#endif
 #if defined(SYS_fstat64)
 	KORE_SYSCALL_ALLOW(fstat64),
 #endif
