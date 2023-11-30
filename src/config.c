@@ -1255,6 +1255,8 @@ configure_route_methods(char *options)
 			current_route->methods |= HTTP_METHOD_HEAD;
 		} else if (!strcasecmp(argv[i], "patch")) {
 			current_route->methods |= HTTP_METHOD_PATCH;
+		} else if (!strcasecmp(argv[i], "options")) {
+			current_route->methods |= HTTP_METHOD_OPTIONS;
 		} else {
 			kore_log(LOG_ERR, "unknown method: %s in method for %s",
 			    argv[i], current_route->path);
