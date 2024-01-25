@@ -1215,24 +1215,24 @@ keymgr_x509_ext_alt_name_dns(STACK_OF(X509_EXTENSION) *sk,
     const char *dns_name)
 {
 	ASN1_IA5STRING		*ia5;
+	X509_EXTENSION		*ext;
 	GENERAL_NAME		*gen;
 	GENERAL_NAMES		*gens;
-	X509_EXTENSION		*ext;
 
-	ia5 = ASN1_IA5STRING_new();
-	if (ia5 == NULL)
+	if ((ia5 = ASN1_IA5STRING_new()) == NULL)
 		fatalx("ASN1_IA5STRING_new(): %s", ssl_errno_s);
+
 	if (!ASN1_STRING_set(ia5, dns_name, -1))
 		fatalx("ASN1_STRING_set(): %s", ssl_errno_s);
 
-	gen = GENERAL_NAME_new();
-	if (gen == NULL)
+	if ((gen = GENERAL_NAME_new()) == NULL)
 		fatalx("GENERAL_NAME_new(): %s", ssl_errno_s);
+
 	GENERAL_NAME_set0_value(gen, GEN_DNS, ia5);
 
-	gens = GENERAL_NAMES_new();
-	if (gens == NULL)
+	if ((gens = GENERAL_NAMES_new()) == NULL)
 		fatalx("GENERAL_NAMES_new(): %s", ssl_errno_s);
+
 	if (!sk_GENERAL_NAME_push(gens, gen))
 		fatalx("sk_GENERAL_NAME_push(): %s", ssl_errno_s);
 
@@ -1252,23 +1252,26 @@ keymgr_x509_ext_acme_id(STACK_OF(X509_EXTENSION) *sk, const void *data,
 {
 	ASN1_OCTET_STRING	*aos;
 	X509_EXTENSION		*ext;
-	unsigned char		*der = NULL;
+	unsigned char		*der;
 	int			 der_len;
 
 	if (len != SHA256_DIGEST_LENGTH)
 		fatalx("invalid digest length of %zu bytes", len);
 
-	aos = ASN1_OCTET_STRING_new();
-	if (aos == NULL)
+	if ((aos = ASN1_OCTET_STRING_new()) == NULL)
 		fatalx("ASN1_OCTET_STRING_new(): %s", ssl_errno_s);
+
 	if (!ASN1_STRING_set(aos, data, len))
 		fatalx("ASN1_STRING_set(): %s", ssl_errno_s);
 
+	der = NULL;
 	der_len = i2d_ASN1_OCTET_STRING(aos, &der);
 	if (der_len <= 0)
 		fatalx("i2d_ASN1_OCTET_STRING(): %s", ssl_errno_s);
+
 	if (!ASN1_STRING_set(aos, der, der_len))
 		fatalx("ASN1_STRING_set(): %s", ssl_errno_s);
+
 	free(der);
 
 	ext = X509_EXTENSION_create_by_NID(NULL, acme_oid, 1, aos);
