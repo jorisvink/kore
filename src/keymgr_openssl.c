@@ -218,8 +218,12 @@ static int			acmeproc_ready = 0;
 /* Renewal timer for all domains under acme control. */
 static struct kore_timer	*acme_renewal = NULL;
 
+#ifndef NID_acmeIdentifier
+#define NID_acmeIdentifier -1
+#endif
+
 /* oid for acme extension. */
-static int			acme_oid = -1;
+static int	acme_oid = NID_acmeIdentifier;
 
 struct acme_order {
 	int			state;
@@ -240,9 +244,10 @@ static void	keymgr_acme_order_create(const char *);
 static void	keymgr_acme_order_redo(void *, u_int64_t);
 static void	keymgr_acme_order_start(void *, u_int64_t);
 
-static void	keymgr_x509_ext(STACK_OF(X509_EXTENSION) *,
-		    int, const char *, ...)
-		    __attribute__((format (printf, 3, 4)));
+static void	keymgr_x509_ext_alt_name_dns(STACK_OF(X509_EXTENSION *),
+		    const char *);
+static void	keymgr_x509_ext_acme_id(STACK_OF(X509_EXTENSION) *,
+		    const void *data, size_t len);
 
 static void	keymgr_acme_csr(const struct kore_keyreq *, struct key *);
 static void	keymgr_acme_install_cert(const void *, size_t, struct key *);
@@ -341,8 +346,10 @@ kore_keymgr_run(void)
 #endif
 
 #if defined(KORE_USE_ACME)
-	acme_oid = OBJ_create(ACME_TLS_ALPN_01_OID, "acme", "acmeIdentifier");
-	X509V3_EXT_add_alias(acme_oid, NID_subject_key_identifier);
+	if (acme_oid == -1) {
+		acme_oid = OBJ_create(ACME_TLS_ALPN_01_OID, "acme",
+		    "acmeIdentifier");
+	}
 #endif
 
 	kore_worker_started();
@@ -1077,30 +1084,18 @@ static void
 keymgr_acme_challenge_cert(const void *data, size_t len, struct key *key)
 {
 	STACK_OF(X509_EXTENSION)	*sk;
-	size_t				idx;
 	time_t				now;
 	X509_EXTENSION			*ext;
 	X509_NAME			*name;
 	X509				*x509;
-	const u_int8_t			*digest;
 	int				slen, i;
 	u_int8_t			*cert, *uptr;
-	char				hex[(SHA256_DIGEST_LENGTH * 2) + 1];
 
 	kore_log(LOG_INFO, "[%s] generating tls-alpn-01 challenge cert",
 	    key->dom->domain);
 
 	if (len != SHA256_DIGEST_LENGTH)
 		fatalx("invalid digest length of %zu bytes", len);
-
-	digest = data;
-
-	for (idx = 0; idx < SHA256_DIGEST_LENGTH; idx++) {
-		slen = snprintf(hex + (idx * 2), sizeof(hex) - (idx * 2),
-		    "%02x", digest[idx]);
-		if (slen == -1 || (size_t)slen >= sizeof(hex))
-			fatalx("failed to convert digest to hex");
-	}
 
 	if ((x509 = X509_new()) == NULL)
 		fatalx("X509_new(): %s", ssl_errno_s);
@@ -1132,8 +1127,8 @@ keymgr_acme_challenge_cert(const void *data, size_t len, struct key *key)
 		fatalx("X509_set_issuer_name(): %s", ssl_errno_s);
 
 	sk = sk_X509_EXTENSION_new_null();
-	keymgr_x509_ext(sk, acme_oid, "critical,%s", hex);
-	keymgr_x509_ext(sk, NID_subject_alt_name, "DNS:%s", key->dom->domain);
+	keymgr_x509_ext_acme_id(sk, data, len);
+	keymgr_x509_ext_alt_name_dns(sk, key->dom->domain);
 
 	for (i = 0; i < sk_X509_EXTENSION_num(sk); i++) {
 		ext = sk_X509_EXTENSION_value(sk, i);
@@ -1189,7 +1184,7 @@ keymgr_acme_csr(const struct kore_keyreq *req, struct key *key)
 		fatalx("X509_NAME_add_entry_by_txt(): %s", ssl_errno_s);
 
 	sk = sk_X509_EXTENSION_new_null();
-	keymgr_x509_ext(sk, NID_subject_alt_name, "DNS:%s", key->dom->domain);
+	keymgr_x509_ext_alt_name_dns(sk, key->dom->domain);
 
 	if (!X509_REQ_add_extensions(csr, sk))
 		fatalx("X509_REQ_add_extensions(): %s", ssl_errno_s);
@@ -1216,26 +1211,74 @@ keymgr_acme_csr(const struct kore_keyreq *req, struct key *key)
 }
 
 static void
-keymgr_x509_ext(STACK_OF(X509_EXTENSION) *sk, int extnid, const char *fmt, ...)
+keymgr_x509_ext_alt_name_dns(STACK_OF(X509_EXTENSION) *sk,
+    const char *dns_name)
 {
-	int			len;
-	va_list			args;
+	ASN1_IA5STRING		*ia5;
+	GENERAL_NAME		*gen;
+	GENERAL_NAMES		*gens;
 	X509_EXTENSION		*ext;
-	char			buf[1024];
 
-	va_start(args, fmt);
-	len = vsnprintf(buf, sizeof(buf), fmt, args);
-	va_end(args);
+	ia5 = ASN1_IA5STRING_new();
+	if (ia5 == NULL)
+		fatalx("ASN1_IA5STRING_new(): %s", ssl_errno_s);
+	if (!ASN1_STRING_set(ia5, dns_name, -1))
+		fatalx("ASN1_STRING_set(): %s", ssl_errno_s);
 
-	if (len == -1 || (size_t)len >= sizeof(buf))
-		fatalx("failed to create buffer for extension %d", extnid);
+	gen = GENERAL_NAME_new();
+	if (gen == NULL)
+		fatalx("GENERAL_NAME_new(): %s", ssl_errno_s);
+	GENERAL_NAME_set0_value(gen, GEN_DNS, ia5);
 
-	if ((ext = X509V3_EXT_conf_nid(NULL, NULL, extnid, buf)) == NULL) {
-		fatalx("X509V3_EXT_conf_nid(%d, %s): %s",
-		    extnid, buf, ssl_errno_s);
-	}
+	gens = GENERAL_NAMES_new();
+	if (gens == NULL)
+		fatalx("GENERAL_NAMES_new(): %s", ssl_errno_s);
+	if (!sk_GENERAL_NAME_push(gens, gen))
+		fatalx("sk_GENERAL_NAME_push(): %s", ssl_errno_s);
 
-	sk_X509_EXTENSION_push(sk, ext);
+	ext = X509V3_EXT_i2d(NID_subject_alt_name, 0, gens);
+	if (ext == NULL)
+		fatalx("X509V3_EXT_i2d(): %s", ssl_errno_s);
+
+	GENERAL_NAMES_free(gens);
+
+	if (!sk_X509_EXTENSION_push(sk, ext))
+		fatalx("sk_X509_EXTENSION_push(): %s", ssl_errno_s);
+}
+
+static void
+keymgr_x509_ext_acme_id(STACK_OF(X509_EXTENSION) *sk, const void *data,
+    size_t len)
+{
+	ASN1_OCTET_STRING	*aos;
+	X509_EXTENSION		*ext;
+	unsigned char		*der = NULL;
+	int			 der_len;
+
+	if (len != SHA256_DIGEST_LENGTH)
+		fatalx("invalid digest length of %zu bytes", len);
+
+	aos = ASN1_OCTET_STRING_new();
+	if (aos == NULL)
+		fatalx("ASN1_OCTET_STRING_new(): %s", ssl_errno_s);
+	if (!ASN1_STRING_set(aos, data, len))
+		fatalx("ASN1_STRING_set(): %s", ssl_errno_s);
+
+	der_len = i2d_ASN1_OCTET_STRING(aos, &der);
+	if (der_len <= 0)
+		fatalx("i2d_ASN1_OCTET_STRING(): %s", ssl_errno_s);
+	if (!ASN1_STRING_set(aos, der, der_len))
+		fatalx("ASN1_STRING_set(): %s", ssl_errno_s);
+	free(der);
+
+	ext = X509_EXTENSION_create_by_NID(NULL, acme_oid, 1, aos);
+	if (ext == NULL)
+		fatalx("X509_EXTENSION_create_by_NID(): %s", ssl_errno_s);
+
+	ASN1_OCTET_STRING_free(aos);
+
+	if (!sk_X509_EXTENSION_push(sk, ext))
+		fatalx("sk_X509_EXTENSION_push(): %s", ssl_errno_s);
 }
 
 static char *
