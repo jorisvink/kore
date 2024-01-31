@@ -76,7 +76,7 @@ static struct kore_runtime *runtimes[] = {
 	NULL
 };
 
-const size_t
+size_t
 kore_runtime_count(void)
 {
 	return ((sizeof(runtimes) / sizeof(runtimes[0])) - 1);

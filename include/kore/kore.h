@@ -1028,7 +1028,7 @@ int			kore_route_lookup(struct http_request *,
 #endif
 
 /* runtime.c */
-const size_t			kore_runtime_count(void);
+size_t				kore_runtime_count(void);
 struct kore_runtime_call	*kore_runtime_getcall(const char *);
 struct kore_module		*kore_module_load(const char *,
 				    const char *, int);

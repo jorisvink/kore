@@ -1051,7 +1051,7 @@ http_argument_urldecode(char *arg, int url)
 				return (KORE_RESULT_ERROR);
 		} else {
 			if ((v <= 0x1f || v == 0x7f) &&
-			    (v != '\n' && v != '\r'))
+			    (v != '\n' && v != '\r' && v != '\t'))
 				return (KORE_RESULT_ERROR);
 		}
 
