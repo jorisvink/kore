@@ -986,7 +986,7 @@ cli_ldflags(int argc, char **argv)
 	printf("%.*s ", (int)len, p);
 
 #if defined(__MACH__)
-	printf("-dynamiclib -undefined suppress -flat_namespace ");
+	printf("-dynamiclib -undefined dynamic_lookup -flat_namespace ");
 #else
 	printf("-shared ");
 #endif
@@ -2221,7 +2221,7 @@ cli_build_ldflags(struct buildopt *bopt)
 	if (bopt->single_binary == 0) {
 #if defined(__MACH__)
 		cli_buf_appendf(bopt->ldflags,
-		    "-dynamiclib -undefined suppress -flat_namespace ");
+		    "-dynamiclib -undefined dynamic_lookup -flat_namespace ");
 #else
 		cli_buf_appendf(bopt->ldflags, "-shared ");
 #endif
