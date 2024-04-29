@@ -71,6 +71,9 @@ static struct sock_filter filter_kore[] = {
 #if defined(SYS_newfstatat)
 	KORE_SYSCALL_ALLOW(newfstatat),
 #endif
+#if defined(SYS_faccessat2)
+	KORE_SYSCALL_ALLOW(faccessat2),
+#endif
 	KORE_SYSCALL_ALLOW(write),
 	KORE_SYSCALL_ALLOW(fcntl),
 #if defined(SYS_fcntl64)
