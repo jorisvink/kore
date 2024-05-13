@@ -64,7 +64,7 @@ client_setup(struct connection *c)
 	struct connection	*backend;
 
 	/* Paranoia. */
-	name = SSL_get_servername(c->ssl, TLSEXT_NAMETYPE_host_name);
+	name = SSL_get_servername(c->tls, TLSEXT_NAMETYPE_host_name);
 	if (name == NULL) {
 		kore_connection_disconnect(c);
 		return;
