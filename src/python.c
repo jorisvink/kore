@@ -3162,41 +3162,31 @@ pyconnection_x509_cb(void *udata, int islast, int nid, const char *field,
 static void
 pytimer_run(void *arg, u_int64_t now)
 {
-	PyObject	*ret;
-	struct pytimer	*timer = arg;
+	PyObject		*ret;
+	struct pytimer		*timer = arg;
+	struct kore_timer	*run;
+
+	run = timer->run;
+	timer->run = NULL;
 
 	PyErr_Clear();
 	ret = PyObject_CallFunctionObjArgs(timer->callable, timer->udata, NULL);
 	Py_XDECREF(ret);
-	Py_XDECREF(timer->udata);
 
-	timer->udata = NULL;
 	kore_python_log_error("pytimer_run");
 
 	if (timer->flags & KORE_TIMER_ONESHOT) {
-		timer->run = NULL;
+		run->flags |= KORE_TIMER_ONESHOT;
 		Py_DECREF((PyObject *)timer);
 	}
+	else {
+		timer->run = run;
+	}
 }
+
 
 static void
 pytimer_dealloc(struct pytimer *timer)
-{
-	if (timer->run != NULL) {
-		kore_timer_remove(timer->run);
-		timer->run = NULL;
-	}
-
-	if (timer->callable != NULL) {
-		Py_DECREF(timer->callable);
-		timer->callable = NULL;
-	}
-
-	PyObject_Del((PyObject *)timer);
-}
-
-static PyObject *
-pytimer_close(struct pytimer *timer, PyObject *args)
 {
 	if (timer->run != NULL) {
 		kore_timer_remove(timer->run);
@@ -3213,7 +3203,20 @@ pytimer_close(struct pytimer *timer, PyObject *args)
 		timer->udata = NULL;
 	}
 
-	Py_INCREF((PyObject *)timer);
+	PyObject_Del((PyObject *)timer);
+}
+
+static PyObject *
+pytimer_close(struct pytimer *timer, PyObject *args)
+{
+	if (timer->run != NULL) {
+		kore_timer_remove(timer->run);
+		timer->run = NULL;
+		Py_DECREF((PyObject *)timer);
+	} else {
+		timer->flags |= KORE_TIMER_ONESHOT;
+	}
+
 	Py_RETURN_TRUE;
 }
 
