@@ -3163,9 +3163,10 @@ static void
 pytimer_run(void *arg, u_int64_t now)
 {
 	PyObject		*ret;
-	struct pytimer		*timer = arg;
 	struct kore_timer	*run;
+	struct pytimer		*timer;
 
+	timer = arg;
 	run = timer->run;
 	timer->run = NULL;
 
