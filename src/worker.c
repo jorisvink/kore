@@ -182,8 +182,8 @@ kore_worker_init(void)
 int
 kore_worker_spawn(u_int16_t idx, u_int16_t id, u_int16_t cpu)
 {
-	int			cnt;
 	struct kore_worker	*kw;
+	int			cnt, maxcnt;
 #if defined(__linux__)
 	int			status;
 #endif
@@ -204,8 +204,13 @@ kore_worker_spawn(u_int16_t idx, u_int16_t id, u_int16_t cpu)
 	    !kore_connection_nonblock(kw->pipe[1], 0))
 		fatal("could not set pipe fds to nonblocking: %s", errno_s);
 
+	maxcnt = 50;
+
 	switch (id) {
 	case KORE_WORKER_KEYMGR:
+#if defined(KORE_USE_ACME)
+		maxcnt = 600;
+#endif
 		kw->ps = &keymgr_privsep;
 		break;
 #if defined(KORE_USE_ACME)
@@ -227,7 +232,7 @@ kore_worker_spawn(u_int16_t idx, u_int16_t id, u_int16_t cpu)
 		kore_worker_entry(kw);
 		exit(1);
 	} else {
-		for (cnt = 0; cnt < 50; cnt++) {
+		for (cnt = 0; cnt < maxcnt; cnt++) {
 			if (kw->ready == 1)
 				break;
 			usleep(100000);
