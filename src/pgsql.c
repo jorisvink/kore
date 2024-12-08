@@ -789,7 +789,7 @@ pgsql_read_result(struct kore_pgsql *pgsql)
 	case PGRES_SINGLE_TUPLE:
 #endif
 #if PG_VERSION_NUM >= 170000
-	case PGRES_TUPLE_CHUNK:
+	case PGRES_TUPLES_CHUNK:
 #endif
 		pgsql->state = KORE_PGSQL_STATE_RESULT;
 		break;
