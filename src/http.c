@@ -940,7 +940,8 @@ http_header_recv(struct netbuf *nb)
 
 		req->http_body_length = req->content_length;
 
-		if (http_body_disk_offload > 0 &&
+		if (req->rt->on_body_chunk == NULL &&
+		    http_body_disk_offload > 0 &&
 		    req->content_length > http_body_disk_offload) {
 			req->http_body_path = kore_pool_get(&http_body_path);
 			l = snprintf(req->http_body_path, HTTP_BODY_PATH_MAX,
@@ -960,7 +961,7 @@ http_header_recv(struct netbuf *nb)
 				    HTTP_STATUS_INTERNAL_ERROR);
 				return (KORE_RESULT_OK);
 			}
-		} else {
+		} else if (req->rt->on_body_chunk == NULL) {
 			req->http_body_fd = -1;
 			req->http_body = kore_buf_alloc(req->content_length);
 		}
@@ -2338,7 +2339,15 @@ http_body_update(struct http_request *req, const void *data, size_t len)
 
 	SHA256Update(&req->hashctx, data, len);
 
-	if (req->http_body_fd != -1) {
+	if (req->rt->on_body_chunk != NULL) {
+		if (kore_runtime_http_body_chunk(req->rt->on_body_chunk,
+		    req, data, len) != KORE_RESULT_OK) {
+			req->flags |= HTTP_REQUEST_DELETE;
+			http_error_response(req->owner,
+			    HTTP_STATUS_INTERNAL_ERROR);
+			return (KORE_RESULT_ERROR);
+		}
+	} else if (req->http_body_fd != -1) {
 		ret = write(req->http_body_fd, data, len);
 		if (ret == -1 || (size_t)ret != len) {
 			req->flags |= HTTP_REQUEST_DELETE;
@@ -2377,11 +2386,6 @@ http_body_update(struct http_request *req, const void *data, size_t len)
 		    MIN(bytes_left, NETBUF_SEND_PAYLOAD_MAX),
 		    http_body_recv);
 		req->owner->rnb->extra = req;
-	}
-
-	if (req->rt->on_body_chunk != NULL && len > 0) {
-		kore_runtime_http_body_chunk(req->rt->on_body_chunk,
-		    req, data, len);
 	}
 
 	return (KORE_RESULT_OK);
