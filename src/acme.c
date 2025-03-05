@@ -103,6 +103,9 @@ static struct sock_filter filter_acme[] = {
 #if defined(SYS_readv)
 	KORE_SYSCALL_ALLOW(readv),
 #endif
+#if defined(SYS_eventfd2)
+	KORE_SYSCALL_ALLOW(eventfd2),
+#endif
 	KORE_SYSCALL_ALLOW(bind),
 	KORE_SYSCALL_ALLOW(ioctl),
 	KORE_SYSCALL_ALLOW(connect),
