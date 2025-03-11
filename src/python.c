@@ -193,7 +193,7 @@ static int	python_validator_check(PyObject *);
 static int	python_runtime_resolve(const char *, const struct stat *);
 static int	python_runtime_http_request(void *, struct http_request *);
 static void	python_runtime_http_request_free(void *, struct http_request *);
-static void	python_runtime_http_body_chunk(void *, struct http_request *,
+static int	python_runtime_http_body_chunk(void *, struct http_request *,
 		    const void *, size_t);
 static int	python_runtime_validator(void *, struct http_request *,
 		    const void *);
@@ -1470,10 +1470,11 @@ python_runtime_http_request_free(void *addr, struct http_request *req)
 	Py_XDECREF(ret);
 }
 
-static void
+static int
 python_runtime_http_body_chunk(void *addr, struct http_request *req,
     const void *data, size_t len)
 {
+	int		result;
 	PyObject	*args, *ret;
 
 	if (req->py_req == NULL) {
@@ -1483,7 +1484,7 @@ python_runtime_http_body_chunk(void *addr, struct http_request *req,
 
 	if ((args = Py_BuildValue("(Oy#)", req->py_req, data, len)) == NULL) {
 		kore_python_log_error("python_runtime_http_body_chunk");
-		return;
+		return (KORE_RESULT_ERROR);
 	}
 
 	PyErr_Clear();
@@ -1492,8 +1493,15 @@ python_runtime_http_body_chunk(void *addr, struct http_request *req,
 	if (ret == NULL)
 		kore_python_log_error("python_runtime_http_body_chunk");
 
+	if (ret == Py_True)
+		result = KORE_RESULT_OK;
+	else
+		result = KORE_RESULT_ERROR;
+
 	Py_XDECREF(ret);
 	Py_DECREF(args);
+
+	return (result);
 }
 
 static int
