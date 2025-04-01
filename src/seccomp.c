@@ -149,7 +149,12 @@ static struct sock_filter filter_kore[] = {
 	KORE_SYSCALL_ALLOW(send),
 #endif
 	KORE_SYSCALL_ALLOW(sendto),
+#if defined(SYS_accept)
 	KORE_SYSCALL_ALLOW(accept),
+#endif
+#if defined(SYS_accept4)
+	KORE_SYSCALL_ALLOW(accept4),
+#endif
 	KORE_SYSCALL_ALLOW(sendfile),
 #if defined(SYS_recv)
 	KORE_SYSCALL_ALLOW(recv),
@@ -494,6 +499,8 @@ seccomp_register_violation(pid_t pid)
 	sysnr = regs.regs[8];
 #elif SECCOMP_AUDIT_ARCH == AUDIT_ARCH_ARM
 	sysnr = regs.uregs[7];
+#elif SECCOMP_AUDIT_ARCH == AUDIT_ARCH_I386
+	sysnr = regs.orig_eax;
 #else
 #error "platform not supported"
 #endif
