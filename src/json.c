@@ -33,6 +33,7 @@ static int	json_consume_whitespace(struct kore_json *);
 static int	json_next_byte(struct kore_json *, u_int8_t *, int);
 
 static char	*json_get_string(struct kore_json *);
+static void json_build_string(struct kore_json_item *, const char *);
 
 static int	json_parse_array(struct kore_json *, struct kore_json_item *);
 static int	json_parse_object(struct kore_json *, struct kore_json_item *);
@@ -191,7 +192,7 @@ kore_json_create_item(struct kore_json_item *parent, const char *name,
 		break;
 	case KORE_JSON_TYPE_STRING:
 		p = va_arg(args, const char *);
-		item->data.string = kore_strdup(p);
+		json_build_string(item, p);
 		break;
 	case KORE_JSON_TYPE_NUMBER:
 		item->data.number = va_arg(args, double);
@@ -957,4 +958,57 @@ cleanup:
 		json_errno = KORE_JSON_ERR_INVALID_STRING;
 
 	return (res);
+}
+
+static void
+json_build_string(struct kore_json_item *item, const char *string)
+{
+	char		ch;
+	char 		*res;
+	struct kore_buf tmpbuf;
+
+	kore_buf_init(&tmpbuf, 512);
+
+	res = NULL;
+	while (*string) {
+		ch = *string;
+		switch (ch) {
+		case '\"':
+		case '\\':
+		case '/':
+			kore_buf_append(&tmpbuf, "\\", sizeof(u_int8_t));
+			break;
+		case '\b':
+			kore_buf_append(&tmpbuf, "\\", sizeof(u_int8_t));
+			ch = 'b';
+			break;
+		case '\f':
+			kore_buf_append(&tmpbuf, "\\", sizeof(u_int8_t));
+			ch = 'f';
+			break;
+		case '\n':
+			kore_buf_append(&tmpbuf, "\\", sizeof(u_int8_t));
+			ch = 'n';
+			break;
+		case '\r':
+			kore_buf_append(&tmpbuf, "\\", sizeof(u_int8_t));
+			ch = 'r';
+			break;
+		case '\t':
+			kore_buf_append(&tmpbuf, "\\", sizeof(u_int8_t));
+			ch = 't';
+			break;
+		default:
+			/* normal */
+			break;
+		}
+
+		kore_buf_append(&tmpbuf, &ch, sizeof(ch));
+		++string;
+	}
+
+	res = kore_buf_stringify(&tmpbuf, NULL);
+	item->data.string = kore_strdup(res);
+
+	kore_buf_cleanup(&tmpbuf);
 }
