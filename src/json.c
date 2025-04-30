@@ -16,6 +16,7 @@
 
 #include <sys/types.h>
 
+#include <ctype.h>
 #include <float.h>
 #include <inttypes.h>
 #include <string.h>
@@ -963,52 +964,53 @@ cleanup:
 static void
 json_build_string(struct kore_json_item *item, const char *string)
 {
-	char		ch;
-	char 		*res;
-	struct kore_buf tmpbuf;
-
-	kore_buf_init(&tmpbuf, 512);
+	char			ch;
+	struct kore_buf		buf;
+	char 			*res;
 
 	res = NULL;
+	kore_buf_init(&buf, 512);
+
 	while (*string) {
 		ch = *string;
 		switch (ch) {
 		case '\"':
 		case '\\':
 		case '/':
-			kore_buf_append(&tmpbuf, "\\", sizeof(u_int8_t));
+			kore_buf_append(&buf, "\\", 1);
 			break;
 		case '\b':
-			kore_buf_append(&tmpbuf, "\\", sizeof(u_int8_t));
+			kore_buf_append(&buf, "\\", 1);
 			ch = 'b';
 			break;
 		case '\f':
-			kore_buf_append(&tmpbuf, "\\", sizeof(u_int8_t));
+			kore_buf_append(&buf, "\\", 1);
 			ch = 'f';
 			break;
 		case '\n':
-			kore_buf_append(&tmpbuf, "\\", sizeof(u_int8_t));
+			kore_buf_append(&buf, "\\", 1);
 			ch = 'n';
 			break;
 		case '\r':
-			kore_buf_append(&tmpbuf, "\\", sizeof(u_int8_t));
+			kore_buf_append(&buf, "\\", 1);
 			ch = 'r';
 			break;
 		case '\t':
-			kore_buf_append(&tmpbuf, "\\", sizeof(u_int8_t));
+			kore_buf_append(&buf, "\\", 1);
 			ch = 't';
 			break;
 		default:
-			/* normal */
+			if (!isprint((unsigned char)ch))
+				ch = '?';
 			break;
 		}
 
-		kore_buf_append(&tmpbuf, &ch, sizeof(ch));
+		kore_buf_append(&buf, &ch, sizeof(ch));
 		++string;
 	}
 
-	res = kore_buf_stringify(&tmpbuf, NULL);
+	res = kore_buf_stringify(&buf, NULL);
 	item->data.string = kore_strdup(res);
 
-	kore_buf_cleanup(&tmpbuf);
+	kore_buf_cleanup(&buf);
 }
