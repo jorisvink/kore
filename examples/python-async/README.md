@@ -7,7 +7,7 @@ Requires that Kore is built with PYTHON=1 CURL=1
 
 Run:
 ```
-	$ kore app.py
+	$ kore -rn app.py
 ```
 
 Test:
