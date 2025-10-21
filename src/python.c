@@ -70,8 +70,18 @@
 #pragma GCC diagnostic ignored		"-Wpedantic"
 #endif
 
+#if PY_VERSION_HEX >= 0x030e0000
+#pragma GCC diagnostic ignored		"-Wcast-qual"
+#pragma GCC diagnostic ignored		"-Wtypedef-redefinition"
+#endif
+
 #if PY_VERSION_HEX < 0x030d0000
 #define _PyFrame_GetCode(frame)		(frame->f_code)
+#endif
+
+#if PY_VERSION_HEX >= 0x030e0000
+#include <internal/pycore_interpframe.h>
+#include <internal/pycore_interpframe_structs.h>
 #endif
 
 #if PY_VERSION_HEX >= 0x030b0000
@@ -1250,7 +1260,9 @@ python_coro_trace(const char *label, struct python_coro *coro)
 
 	obj = (PyCoroObject *)coro->obj;
 
-#if PY_VERSION_HEX >= 0x030b0000
+#if PY_VERSION_HEX >= 0x030e0000
+	frame = (_PyInterpreterFrame *)&obj->cr_iframe;
+#elif PY_VERSION_HEX >= 0x030b0000
 	frame = (_PyInterpreterFrame *)obj->cr_iframe;
 #else
 	frame = obj->cr_frame;
