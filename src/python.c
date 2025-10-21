@@ -81,7 +81,6 @@
 
 #if PY_VERSION_HEX >= 0x030e0000
 #include <internal/pycore_interpframe.h>
-#include <internal/pycore_interpframe_structs.h>
 #endif
 
 #if PY_VERSION_HEX >= 0x030b0000
