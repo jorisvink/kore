@@ -97,7 +97,12 @@ static struct sock_filter filter_acme[] = {
 	KORE_SYSCALL_ALLOW(faccessat),
 	KORE_SYSCALL_ALLOW(newfstatat),
 	KORE_SYSCALL_ALLOW(clock_gettime),
-
+#if defined(SYS_pipe2)
+	KORE_SYSCALL_ALLOW(pipe2),
+#endif
+#if defined(SYS_readv)
+	KORE_SYSCALL_ALLOW(readv),
+#endif
 	KORE_SYSCALL_ALLOW(bind),
 	KORE_SYSCALL_ALLOW(ioctl),
 	KORE_SYSCALL_ALLOW(connect),

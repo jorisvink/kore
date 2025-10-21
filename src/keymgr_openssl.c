@@ -1170,7 +1170,7 @@ keymgr_acme_csr(const struct kore_keyreq *req, struct key *key)
 	if ((csr = X509_REQ_new()) == NULL)
 		fatalx("X509_REQ_new: %s", ssl_errno_s);
 
-	if (!X509_REQ_set_version(csr, 3))
+	if (!X509_REQ_set_version(csr, 0))
 		fatalx("X509_REQ_set_version(): %s", ssl_errno_s);
 
 	if (!X509_REQ_set_pubkey(csr, key->pkey))

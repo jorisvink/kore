@@ -61,6 +61,7 @@ page(struct http_request *req)
 int
 subscribe(struct http_request *req)
 {
+	struct connection	*c;
 	struct sse_state	*state;
 	char			*hello = "event:join\ndata: client\n\n";
 
@@ -102,6 +103,10 @@ subscribe(struct http_request *req)
 	kore_log(LOG_NOTICE, "%p: connected for SSE", req->owner);
 	http_response_header(req, "content-type", "text/event-stream");
 	http_response(req, 200, NULL, 0);
+
+	/* Kill HTTP timeouts. */
+	c = req->owner;
+	c->http_timeout = 0;
 
 	return (KORE_RESULT_OK);
 }

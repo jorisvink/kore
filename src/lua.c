@@ -43,7 +43,7 @@ struct lua_module {
 static int	lua_runtime_resolve(const char *, const struct stat *);
 static int	lua_runtime_http_request(void *, struct http_request *);
 static void	lua_runtime_http_request_free(void *, struct http_request *);
-static void	lua_runtime_http_body_chunk(void *, struct http_request *,
+static int	lua_runtime_http_body_chunk(void *, struct http_request *,
 		    const void *, size_t);
 static int	lua_runtime_validator(void *, struct http_request *,
 		    const void *);
@@ -335,11 +335,13 @@ lua_runtime_http_request_free(void *addr, struct http_request *req)
 	fatal("%s: not yet implemented", __func__);
 }
 
-static void
+static int
 lua_runtime_http_body_chunk(void *addr, struct http_request *req,
     const void *data, size_t len)
 {
 	fatal("%s: not yet implemented", __func__);
+
+	return (KORE_RESULT_ERROR);
 }
 
 static int
