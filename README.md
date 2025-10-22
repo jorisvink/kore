@@ -44,10 +44,6 @@ Documentation
 --------------
 [Read the documentation](https://docs.kore.io/4.2.0/)
 
-Performance
------------
-Read the [benchmarks](https://blog.kore.io/posts/benchmarks) blog post.
-
 Platforms supported
 -------------------
 * Linux
