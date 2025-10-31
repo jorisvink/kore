@@ -26,6 +26,11 @@ ifneq ("$(MINIMAL)", "")
 	LDFLAGS=
 endif
 
+ifneq ("$(OPENSSL_PATH)", "")
+	CFLAGS+=-I$(OPENSSL_PATH)/include
+	LDFLAGS+=-L$(OPENSSL_PATH)/lib -lcrypto
+endif
+
 OSNAME=$(shell uname -s | sed -e 's/[-_].*//g' | tr A-Z a-z)
 ifeq ("$(OSNAME)", "darwin")
 	CFLAGS+=$(shell pkg-config openssl --cflags)
