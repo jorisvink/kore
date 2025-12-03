@@ -18,7 +18,7 @@ TOOLS=	kore-serve
 
 GENERATED=
 PLATFORM=platform.h
-VERSION=$(OBJDIR)/version.c
+VERSION=$(OBJDIR)/version
 PYTHON_CURLOPT=misc/curl/python_curlopt.h
 
 S_SRC=	src/kore.c src/buf.c src/config.c src/connection.c \
@@ -178,42 +178,54 @@ endif
 S_OBJS=	$(S_SRC:src/%.c=$(OBJDIR)/%.o)
 S_OBJS+=$(OBJDIR)/version.o
 
-all: $(PLATFORM) $(GENERATED) $(VERSION) $(KORE) $(KODEV)
+all:
+	$(MAKE) $(OBJDIR)
+	$(MAKE) $(PLATFORM)
+	$(MAKE) $(KORE)
+	$(MAKE) $(KODEV)
 
-$(PLATFORM): $(OBJDIR) force
+$(PLATFORM): force
 	@if [ -f misc/$(OSNAME)-platform.sh ]; then \
 		misc/$(OSNAME)-platform.sh > $(OBJDIR)/$(PLATFORM) ; \
 	fi
 
-$(PYTHON_CURLOPT): $(OBJDIR) force
+$(PYTHON_CURLOPT): force
 	@cp $(PYTHON_CURLOPT) $(OBJDIR)
 
-$(VERSION): $(OBJDIR) force
+$(VERSION).c: force
 	@if [ -d .git ]; then \
 		GIT_REVISION=`git rev-parse --short=8 HEAD`; \
 		GIT_BRANCH=`git rev-parse --abbrev-ref HEAD`; \
-		rm -f $(VERSION); \
+		rm -f $(VERSION)_gen; \
 		printf "const char *kore_version = \"%s-%s\";\n" \
-		    $$GIT_BRANCH $$GIT_REVISION > $(VERSION); \
+		    $$GIT_BRANCH $$GIT_REVISION > $(VERSION)_gen; \
 	elif [ -f RELEASE ]; then \
 		printf "const char *kore_version = \"%s\";\n" \
-		    `cat RELEASE` > $(VERSION); \
+		    `cat RELEASE` > $(VERSION)_gen; \
 	else \
 		echo "No version information found (no .git or RELEASE)"; \
 		exit 1; \
 	fi
 	@printf "const char *kore_build_date = \"%s\";\n" \
-	    `date +"%Y-%m-%d"` >> $(VERSION);
+	    `date +"%Y-%m-%d"` >> $(VERSION)_gen;
+	@if [ -f $(VERSION).c ]; then \
+		cmp -s $(VERSION)_gen $(VERSION).c; \
+		if [ $$? -ne 0 ]; then \
+			cp $(VERSION)_gen $(VERSION).c; \
+		fi \
+	else \
+		cp $(VERSION)_gen $(VERSION).c; \
+	fi
 
 $(KODEV): src/cli.c
 	$(MAKE) -C kodev
 
-$(KORE): $(OBJDIR) $(S_OBJS)
+$(KORE): $(S_OBJS) $(GENERATED)
 	$(CC) $(S_OBJS) $(LDFLAGS) -o $(KORE)
 	@echo $(LDFLAGS) > kore.linker
 	@echo $(FEATURES) $(FEATURES_INC) > kore.features
 
-objects: $(OBJDIR) $(PLATFORM) $(GENERATED) $(S_OBJS)
+objects: $(PLATFORM) $(GENERATED) $(S_OBJS)
 	@echo $(LDFLAGS) > $(OBJDIR)/ldflags
 	@echo "$(FEATURES) $(FEATURES_INC)" > $(OBJDIR)/features
 
@@ -241,7 +253,6 @@ install-sources:
 	@if [ -d .git ]; then \
 		GIT_REVISION=`git rev-parse --short=8 HEAD`; \
 		GIT_BRANCH=`git rev-parse --abbrev-ref HEAD`; \
-		rm -f $(VERSION); \
 		echo "$$GIT_BRANCH-$$GIT_REVISION" > \
 		    $(DESTDIR)$(SHARE_DIR)/RELEASE; \
 	elif [ -f RELEASE ]; then \
@@ -284,14 +295,14 @@ tools-install:
 $(OBJDIR)/%.o: src/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-src/kore.c: $(VERSION)
+src/kore.c: $(VERSION).c
 
 src/python.c: $(PYTHON_CURLOPT)
 
 src/seccomp.c: $(PLATFORM)
 
 clean:
-	rm -f $(VERSION)
+	rm -f $(VERSION).c $(VERSION)_gen
 	find . -type f -name \*.o -exec rm {} \;
 	rm -rf $(KORE) $(OBJDIR) kore.features kore.linker
 	$(MAKE) -C kodev clean
