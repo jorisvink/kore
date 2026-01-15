@@ -56,13 +56,9 @@
 #include <frameobject.h>
 
 /*
- * Python 3.13.x requires that Py_BUILD_CORE is defined before we pull
- * in the pycore_frame header file, and it loves using unnamed unions
- * so we have to turn off pendatic mode before including it.
- *
- * The f_code member was removed from _PyInterpreterFrame and is replaced
- * with a PyObject called f_executable. There is an _PyFrame_GetCode()
- * helper function now.
+ * Since 3.13.x we have to do a lot of nasty hacks to get some form
+ * of insight into the internals so we can keep providing the same
+ * functionality we've had before.
  */
 #if PY_VERSION_HEX >= 0x030d0000
 #define Py_BUILD_CORE			1
@@ -72,7 +68,9 @@
 
 #if PY_VERSION_HEX >= 0x030e0000
 #pragma GCC diagnostic ignored		"-Wcast-qual"
+#if defined(__clang__)
 #pragma GCC diagnostic ignored		"-Wtypedef-redefinition"
+#endif
 #endif
 
 #if PY_VERSION_HEX < 0x030d0000
@@ -2630,12 +2628,12 @@ python_kore_sendobj(PyObject *self, PyObject *args, PyObject *kwargs)
 	u_int16_t	dst;
 	char		*ptr;
 	Py_ssize_t	length;
-	PyObject	*object, *bytes;
+	PyObject	*obj, *bytes;
 
-	if (!PyArg_ParseTuple(args, "O", &object))
+	if (!PyArg_ParseTuple(args, "O", &obj))
 		return (NULL);
 
-	bytes = PyObject_CallFunctionObjArgs(pickle_dumps, object, NULL);
+	bytes = PyObject_CallFunctionObjArgs(pickle_dumps, obj, NULL);
 	if (bytes == NULL)
 		return (NULL);
 
@@ -4086,13 +4084,13 @@ pysocket_evt_handle(void *arg, int eof)
 static void
 pyqueue_dealloc(struct pyqueue *queue)
 {
-	struct pyqueue_object	*object;
+	struct pyqueue_object	*qobj;
 	struct pyqueue_waiting	*waiting;
 
-	while ((object = TAILQ_FIRST(&queue->objects)) != NULL) {
-		TAILQ_REMOVE(&queue->objects, object, list);
-		Py_DECREF(object->obj);
-		kore_pool_put(&queue_object_pool, object);
+	while ((qobj = TAILQ_FIRST(&queue->objects)) != NULL) {
+		TAILQ_REMOVE(&queue->objects, qobj, list);
+		Py_DECREF(qobj->obj);
+		kore_pool_put(&queue_object_pool, qobj);
 	}
 
 	while ((waiting = TAILQ_FIRST(&queue->waiting)) != NULL) {
@@ -4129,16 +4127,16 @@ static PyObject *
 pyqueue_popnow(struct pyqueue *queue, PyObject *args)
 {
 	PyObject		*obj;
-	struct pyqueue_object	*object;
+	struct pyqueue_object	*qobj;
 
-	if ((object = TAILQ_FIRST(&queue->objects)) == NULL) {
+	if ((qobj = TAILQ_FIRST(&queue->objects)) == NULL) {
 		Py_RETURN_NONE;
 	}
 
-	TAILQ_REMOVE(&queue->objects, object, list);
+	TAILQ_REMOVE(&queue->objects, qobj, list);
 
-	obj = object->obj;
-	kore_pool_put(&queue_object_pool, object);
+	obj = qobj->obj;
+	kore_pool_put(&queue_object_pool, qobj);
 
 	return (obj);
 }
@@ -4147,7 +4145,7 @@ static PyObject *
 pyqueue_push(struct pyqueue *queue, PyObject *args)
 {
 	PyObject		*obj;
-	struct pyqueue_object	*object;
+	struct pyqueue_object	*qobj;
 	struct pyqueue_waiting	*waiting;
 
 	if (!PyArg_ParseTuple(args, "O", &obj))
@@ -4155,10 +4153,10 @@ pyqueue_push(struct pyqueue *queue, PyObject *args)
 
 	Py_INCREF(obj);
 
-	object = kore_pool_get(&queue_object_pool);
-	object->obj = obj;
+	qobj = kore_pool_get(&queue_object_pool);
+	qobj ->obj = obj;
 
-	TAILQ_INSERT_TAIL(&queue->objects, object, list);
+	TAILQ_INSERT_TAIL(&queue->objects, qobj, list);
 
 	/* Wakeup first in line if any. */
 	if ((waiting = TAILQ_FIRST(&queue->waiting)) != NULL) {
@@ -4201,17 +4199,17 @@ static PyObject *
 pyqueue_op_iternext(struct pyqueue_op *op)
 {
 	PyObject		*obj;
-	struct pyqueue_object	*object;
+	struct pyqueue_object	*qobj;
 	struct pyqueue_waiting	*waiting;
 
-	if ((object = TAILQ_FIRST(&op->queue->objects)) == NULL) {
+	if ((qobj = TAILQ_FIRST(&op->queue->objects)) == NULL) {
 		Py_RETURN_NONE;
 	}
 
-	TAILQ_REMOVE(&op->queue->objects, object, list);
+	TAILQ_REMOVE(&op->queue->objects, qobj, list);
 
-	obj = object->obj;
-	kore_pool_put(&queue_object_pool, object);
+	obj = qobj->obj;
+	kore_pool_put(&queue_object_pool, qobj);
 
 	TAILQ_FOREACH(waiting, &op->queue->waiting, list) {
 		if (waiting->coro->id == coro_running->id) {
@@ -5136,18 +5134,18 @@ pyhttp_populate_cookies(struct pyhttp_request *pyreq, PyObject *args)
 static PyObject *
 pyhttp_argument(struct pyhttp_request *pyreq, PyObject *args)
 {
+	char		*arg;
 	const char	*name;
 	PyObject	*value;
-	char		*string;
 
 	if (!PyArg_ParseTuple(args, "s", &name))
 		return (NULL);
 
-	if (!http_argument_get_string(pyreq->req, name, &string)) {
+	if (!http_argument_get_string(pyreq->req, name, &arg)) {
 		Py_RETURN_NONE;
 	}
 
-	if ((value = PyUnicode_FromString(string)) == NULL)
+	if ((value = PyUnicode_FromString(arg)) == NULL)
 		return (PyErr_NoMemory());
 
 	return (value);
@@ -5156,18 +5154,18 @@ pyhttp_argument(struct pyhttp_request *pyreq, PyObject *args)
 static PyObject *
 pyhttp_cookie(struct pyhttp_request *pyreq, PyObject *args)
 {
+	char		*arg;
 	const char	*name;
 	PyObject	*value;
-	char		*string;
 
 	if (!PyArg_ParseTuple(args, "s", &name))
 		return (NULL);
 
-	if (!http_request_cookie(pyreq->req, name, &string)) {
+	if (!http_request_cookie(pyreq->req, name, &arg)) {
 		Py_RETURN_NONE;
 	}
 
-	if ((value = PyUnicode_FromString(string)) == NULL)
+	if ((value = PyUnicode_FromString(arg)) == NULL)
 		return (NULL);
 
 	return (value);
