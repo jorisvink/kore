@@ -84,6 +84,7 @@ static int		configure_privsep(char *);
 static int		configure_logfile(char *);
 static int		configure_workers(char *);
 static int		configure_pidfile(char *);
+static int		configure_no_accept(char *);
 static int		configure_rlimit_nofiles(char *);
 static int		configure_max_connections(char *);
 static int		configure_accept_threshold(char *);
@@ -235,6 +236,7 @@ static struct {
 	{ "worker_death_policy",	configure_death_policy },
 	{ "worker_set_affinity",	configure_set_affinity },
 	{ "pidfile",			configure_pidfile },
+	{ "worker_no_accept",		configure_no_accept },
 	{ "socket_backlog",		configure_socket_backlog },
 	{ "tls_version",		configure_tls_version },
 	{ "tls_cipher",			configure_tls_cipher },
@@ -1872,6 +1874,23 @@ configure_pidfile(char *path)
 	if (strcmp(kore_pidfile, KORE_PIDFILE_DEFAULT))
 		kore_free(kore_pidfile);
 	kore_pidfile = kore_strdup(path);
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_no_accept(char *option)
+{
+	int			err, idx;
+
+	idx = kore_strtonum(option, 10, 1, KORE_WORKER_MAX, &err);
+	if (err != KORE_RESULT_OK) {
+		kore_log(LOG_ERR,
+		    "bad value for worker_no_accept '%s'", option);
+		return (KORE_RESULT_ERROR);
+	}
+
+	kore_worker_no_accept(idx);
 
 	return (KORE_RESULT_OK);
 }
