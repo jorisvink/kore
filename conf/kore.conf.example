@@ -93,6 +93,9 @@ workers		4
 # You might have to tweak this number based on your hardware.
 #worker_max_connections		512
 
+# Disable accepting of normal connections on a given worker process.
+#worker_no_accept 2
+
 # Limit of maximum open files per worker.
 #worker_rlimit_nofiles		768
 

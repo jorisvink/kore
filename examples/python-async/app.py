@@ -17,9 +17,9 @@
 import kore
 
 import async_http
+import async_lock
 import async_queue
 import async_socket
-import async_process
 import async_process
 
 kore.server(ip="127.0.0.1", port="8888", tls=False)

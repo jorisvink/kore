@@ -99,6 +99,7 @@ u_int32_t			worker_accept_threshold = 16;
 u_int32_t			worker_rlimit_nofiles = 768;
 u_int32_t			worker_max_connections = 512;
 u_int32_t			worker_active_connections = 0;
+u_int8_t			worker_no_accept[KORE_WORKER_MAX];
 int				worker_policy = KORE_WORKER_POLICY_RESTART;
 
 int
@@ -188,6 +189,9 @@ kore_worker_spawn(u_int16_t idx, u_int16_t id, u_int16_t cpu)
 	int			status;
 #endif
 
+	if (idx >= KORE_WORKER_MAX)
+		fatal("%u > KORE_WORKER_MAX", idx);
+
 	kw = WORKER(idx);
 	kw->id = id;
 	kw->cpu = cpu;
@@ -196,6 +200,7 @@ kore_worker_spawn(u_int16_t idx, u_int16_t id, u_int16_t cpu)
 	kw->ready = 0;
 	kw->has_lock = 0;
 	kw->active_route = NULL;
+	kw->no_accept = worker_no_accept[id];
 
 	if (socketpair(AF_UNIX, SOCK_STREAM, 0, kw->pipe) == -1)
 		fatal("socketpair(): %s", errno_s);
@@ -440,6 +445,12 @@ kore_worker_privsep(void)
 }
 
 void
+kore_worker_no_accept(u_int8_t idx)
+{
+	worker_no_accept[idx] = 1;
+}
+
+void
 kore_worker_entry(struct kore_worker *kw)
 {
 	struct kore_runtime_call	*sigcall;
@@ -543,7 +554,8 @@ kore_worker_entry(struct kore_worker *kw)
 			last_seed = now;
 		}
 
-		if (!worker->has_lock && accept_avail) {
+		if (worker->no_accept == 0 &&
+		    !worker->has_lock && accept_avail) {
 			if (worker_acceptlock_obtain()) {
 				accept_avail = 0;
 				if (had_lock == 0) {
@@ -572,13 +584,15 @@ kore_worker_entry(struct kore_worker *kw)
 		kore_platform_event_wait(netwait);
 		now = kore_time_ms();
 
-		if (worker->has_lock)
-			worker_acceptlock_release();
+		if (worker->no_accept == 0) {
+			if (worker->has_lock)
+				worker_acceptlock_release();
 
-		if (!worker->has_lock) {
-			if (had_lock == 1) {
-				had_lock = 0;
-				kore_platform_disable_accept();
+			if (!worker->has_lock) {
+				if (had_lock == 1) {
+					had_lock = 0;
+					kore_platform_disable_accept();
+				}
 			}
 		}
 
@@ -618,7 +632,8 @@ kore_worker_entry(struct kore_worker *kw)
 		kore_curl_do_timeout();
 #endif
 #if !defined(KORE_NO_HTTP)
-		http_process();
+		if (worker->no_accept == 0)
+			http_process();
 #endif
 #if defined(KORE_USE_PYTHON)
 		kore_python_coro_run();
@@ -683,6 +698,9 @@ kore_worker_reap(void)
 void
 kore_worker_make_busy(void)
 {
+	if (worker->no_accept)
+		fatal("%s called with no_accept set", __func__);
+
 	if (worker_count == WORKER_SOLO_COUNT || worker_no_lock == 1)
 		return;
 
@@ -943,6 +961,9 @@ worker_reaper(pid_t pid, int status)
 static inline void
 worker_acceptlock_release(void)
 {
+	if (worker->no_accept)
+		fatal("%s called with no_accept set", __func__);
+
 	if (worker_count == WORKER_SOLO_COUNT || worker_no_lock == 1)
 		return;
 
@@ -972,6 +993,9 @@ static inline int
 worker_acceptlock_obtain(void)
 {
 	int		r;
+
+	if (worker->no_accept)
+		fatal("%s called with no_accept set", __func__);
 
 	if (worker->has_lock == 1)
 		return (1);
@@ -1004,6 +1028,9 @@ worker_acceptlock_obtain(void)
 static int
 worker_trylock(void)
 {
+	if (worker->no_accept)
+		fatal("%s called with no_accept set", __func__);
+
 	if (!__sync_bool_compare_and_swap(&(accept_lock->lock), 0, 1))
 		return (0);
 
@@ -1015,6 +1042,9 @@ worker_trylock(void)
 static void
 worker_unlock(void)
 {
+	if (worker->no_accept)
+		fatal("%s called with no_accept set", __func__);
+
 	accept_lock->current = 0;
 	if (!__sync_bool_compare_and_swap(&(accept_lock->lock), 1, 0))
 		kore_log(LOG_NOTICE, "worker_unlock(): wasn't locked");
@@ -1023,6 +1053,9 @@ worker_unlock(void)
 static void
 worker_accept_avail(struct kore_msg *msg, const void *data)
 {
+	if (worker->no_accept)
+		fatal("%s called with no_accept set", __func__);
+
 	accept_avail = 1;
 }
 
