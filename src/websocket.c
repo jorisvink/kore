@@ -37,7 +37,6 @@
 
 #define WEBSOCKET_SERVER_RESPONSE	"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
-
 u_int64_t	kore_websocket_timeout = 120000;
 u_int64_t	kore_websocket_maxframe = 16384;
 
