@@ -2812,6 +2812,7 @@ python_kore_proc(PyObject *self, PyObject *args, PyObject *kwargs)
 	char			*copy, *argv[32], *env[PYTHON_PROC_MAX_ENV + 1];
 
 	timeo = -1;
+	env[0] = NULL;
 
 	if (coro_running == NULL) {
 		PyErr_SetString(PyExc_RuntimeError,
