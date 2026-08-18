@@ -129,6 +129,7 @@ static int		configure_http_body_max(char *);
 static int		configure_http_body_timeout(char *);
 static int		configure_filemap_ext(char *);
 static int		configure_filemap_index(char *);
+static int		configure_http_header(char *);
 static int		configure_http_media_type(char *);
 static int		configure_http_hsts_enable(char *);
 static int		configure_http_keepalive_time(char *);
@@ -256,6 +257,7 @@ static struct {
 #if !defined(KORE_NO_HTTP)
 	{ "filemap_ext",		configure_filemap_ext },
 	{ "filemap_index",		configure_filemap_index },
+	{ "http_header",		configure_http_header },
 	{ "http_media_type",		configure_http_media_type },
 	{ "http_header_max",		configure_http_header_max },
 	{ "http_header_timeout",	configure_http_header_timeout },
@@ -1398,6 +1400,31 @@ configure_filemap_index(char *index)
 {
 	kore_free(kore_filemap_index);
 	kore_filemap_index = kore_strdup(index);
+
+	return (KORE_RESULT_OK);
+}
+
+static int
+configure_http_header(char *options)
+{
+	struct http_header	*hdr;
+	char			*argv[4];
+
+	if (current_domain == NULL) {
+		kore_log(LOG_ERR, "add_header keyword not in domain context");
+		return (KORE_RESULT_ERROR);
+	}
+
+	if (kore_split_string(options, " ", argv, 3) != 2) {
+		kore_log(LOG_ERR, "missing parameters for add_header");
+		return (KORE_RESULT_ERROR);
+	}
+
+	hdr = kore_calloc(1, sizeof(*hdr));
+	hdr->header = kore_strdup(argv[0]);
+	hdr->value = kore_strdup(argv[1]);
+
+	TAILQ_INSERT_TAIL(&(current_domain->headers), hdr, list);
 
 	return (KORE_RESULT_OK);
 }

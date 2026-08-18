@@ -64,6 +64,7 @@ kore_domain_new(const char *domain)
 
 #if !defined(KORE_NO_HTTP)
 	TAILQ_INIT(&dom->routes);
+	TAILQ_INIT(&dom->headers);
 	TAILQ_INIT(&dom->redirects);
 #endif
 

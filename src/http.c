@@ -682,10 +682,10 @@ void
 http_response_fileref(struct http_request *req, int status,
     struct kore_fileref *ref)
 {
-	struct tm	*tm;
-	time_t		mtime;
-	char		tbuf[128];
-	const char	*media_type, *modified;
+	struct tm		*tm;
+	time_t			mtime;
+	char			tbuf[128];
+	const char		*media_type, *modified;
 
 	if (req->owner == NULL)
 		return;
@@ -2495,6 +2495,11 @@ http_response_normal(struct http_request *req, struct connection *c,
 			http_write_response_cookie(ck);
 
 		TAILQ_FOREACH(hdr, &(req->resp_headers), list) {
+			kore_buf_appendf(header_buf, "%s: %s\r\n",
+			    hdr->header, hdr->value);
+		}
+
+		TAILQ_FOREACH(hdr, &(req->rt->dom->headers), list) {
 			kore_buf_appendf(header_buf, "%s: %s\r\n",
 			    hdr->header, hdr->value);
 		}
