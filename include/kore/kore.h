@@ -343,12 +343,6 @@ struct kore_route {
 
 #endif
 
-struct kore_headers {
-	char					*name;
-	char					*value;
-	TAILQ_ENTRY(kore_headers)		list;
-};
-
 struct kore_domain {
 	u_int16_t				id;
 	int					logerr;
