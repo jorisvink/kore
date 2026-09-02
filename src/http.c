@@ -930,7 +930,8 @@ http_header_recv(struct netbuf *nb)
 			return (KORE_RESULT_OK);
 		}
 
-		if (req->content_length > http_body_max) {
+		if (((nb->s_off - len) > req->content_length) ||
+		    (req->content_length > http_body_max)) {
 			req->flags |= HTTP_REQUEST_DELETE;
 			http_error_response(req->owner,
 			    HTTP_STATUS_REQUEST_ENTITY_TOO_LARGE);
