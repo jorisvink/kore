@@ -2072,7 +2072,7 @@ http_request_new(struct connection *c, const char *host,
 #endif
 
 	http_request_count++;
-	TAILQ_INSERT_HEAD(&http_requests, req, list);
+	TAILQ_INSERT_TAIL(&http_requests, req, list);
 	TAILQ_INSERT_TAIL(&(c->http_requests), req, olist);
 
 	if (http_check_redirect(req, dom)) {
