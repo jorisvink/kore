@@ -61,13 +61,13 @@ struct pgsql_job {
 
 static void	pgsql_queue_wakeup(void);
 static void	pgsql_cancel(struct kore_pgsql *);
-static void	pgsql_set_error(struct kore_pgsql *, const char *);
+static void	pgsql_schedule(struct kore_pgsql *);
 static void	pgsql_queue_add(struct kore_pgsql *);
 static void	pgsql_queue_remove(struct kore_pgsql *);
 static void	pgsql_conn_release(struct kore_pgsql *);
 static void	pgsql_conn_cleanup(struct pgsql_conn *);
 static void	pgsql_read_result(struct kore_pgsql *);
-static void	pgsql_schedule(struct kore_pgsql *);
+static void	pgsql_set_error(struct kore_pgsql *, const char *);
 
 static struct pgsql_conn	*pgsql_conn_create(struct kore_pgsql *,
 				    struct pgsql_db *);
@@ -335,7 +335,13 @@ kore_pgsql_handle(void *c, int err)
 	struct pgsql_conn	*conn = (struct pgsql_conn *)c;
 
 	if (err) {
+		pgsql = (conn->job != NULL) ? conn->job->pgsql : NULL;
 		pgsql_conn_cleanup(conn);
+
+		if (pgsql != NULL && pgsql->cb != NULL)
+			pgsql->cb(pgsql, pgsql->arg);
+
+		pgsql_queue_wakeup();
 		return;
 	}
 
@@ -343,7 +349,6 @@ kore_pgsql_handle(void *c, int err)
 		fatal("%s: read event not set", __func__);
 
 	pgsql = conn->job->pgsql;
-
 	pgsql_read_result(pgsql);
 
 	if (pgsql->state == KORE_PGSQL_STATE_WAIT) {
@@ -479,6 +484,11 @@ rescan:
 			fatal("got a pgsql connection that was not free?");
 		if (!strcmp(conn->name, db->name))
 			break;
+	}
+
+	if (conn != NULL && PQstatus(conn->db) != CONNECTION_OK) {
+		pgsql_conn_cleanup(conn);
+		goto rescan;
 	}
 
 	if (conn != NULL) {
@@ -654,33 +664,43 @@ pgsql_conn_create(struct kore_pgsql *pgsql, struct pgsql_db *db)
 static void
 pgsql_conn_release(struct kore_pgsql *pgsql)
 {
-	int		fd;
-	PGresult	*result;
+	int			fd;
+	PGresult		*result;
+	struct pgsql_conn	*conn;
 
 	if (pgsql->conn == NULL)
 		return;
 
+	conn = pgsql->conn;
+
 	/* Async query cleanup */
 	if (pgsql->flags & KORE_PGSQL_ASYNC) {
 		if (pgsql->flags & KORE_PGSQL_SCHEDULED) {
-			fd = PQsocket(pgsql->conn->db);
-			kore_platform_disable_read(fd);
+			if ((fd = PQsocket(conn->db)) != -1)
+				kore_platform_disable_read(fd);
 
-			if (pgsql->state != KORE_PGSQL_STATE_DONE)
+			if (pgsql->state != KORE_PGSQL_STATE_DONE &&
+			    PQstatus(conn->db) == CONNECTION_OK)
 				pgsql_cancel(pgsql);
 		}
-		kore_pool_put(&pgsql_job_pool, pgsql->conn->job);
+		kore_pool_put(&pgsql_job_pool, conn->job);
 	}
 
-	/* Drain just in case. */
-	while ((result = PQgetResult(pgsql->conn->db)) != NULL)
-		PQclear(result);
-
-	pgsql->conn->job = NULL;
-	pgsql->conn->flags |= PGSQL_CONN_FREE;
-	TAILQ_INSERT_TAIL(&pgsql_conn_free, pgsql->conn, list);
-
+	conn->job = NULL;
 	pgsql->conn = NULL;
+
+	if (PQstatus(conn->db) != CONNECTION_OK) {
+		/* Do not put a broken connection back for reuse. */
+		pgsql_conn_cleanup(conn);
+	} else {
+		/* Drain just in case. */
+		while ((result = PQgetResult(conn->db)) != NULL)
+			PQclear(result);
+
+		conn->flags |= PGSQL_CONN_FREE;
+		TAILQ_INSERT_TAIL(&pgsql_conn_free, conn, list);
+	}
+
 	pgsql->state = KORE_PGSQL_STATE_COMPLETE;
 
 	if (pgsql->cb != NULL)
@@ -694,6 +714,7 @@ pgsql_conn_cleanup(struct pgsql_conn *conn)
 {
 	struct kore_pgsql	*pgsql;
 	struct pgsql_db		*pgsqldb;
+	const char		*msg;
 
 	if (conn->flags & PGSQL_CONN_FREE)
 		TAILQ_REMOVE(&pgsql_conn_free, conn, list);
@@ -705,7 +726,12 @@ pgsql_conn_cleanup(struct pgsql_conn *conn)
 			http_request_wakeup(pgsql->req);
 #endif
 		pgsql->conn = NULL;
-		pgsql_set_error(pgsql, PQerrorMessage(conn->db));
+
+		msg = PQerrorMessage(conn->db);
+		if (msg == NULL || *msg == '\0')
+			msg = "connection to the database was lost";
+
+		pgsql_set_error(pgsql, msg);
 
 		kore_pool_put(&pgsql_job_pool, conn->job);
 		conn->job = NULL;
