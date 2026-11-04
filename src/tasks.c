@@ -19,6 +19,7 @@
 #include <sys/socket.h>
 
 #include <pthread.h>
+#include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -182,6 +183,31 @@ kore_task_finish(struct kore_task *t)
 	}
 
 	pthread_rwlock_unlock(&(t->lock));
+}
+
+int
+kore_task_channel_pending(struct kore_task *t)
+{
+	struct pollfd	pfd;
+
+	THREAD_FD_ASSIGN(t->thread->tid, pfd.fd, t->fds[1], t->fds[0]);
+
+	pfd.events = POLLIN;
+
+	for (;;) {
+		if (poll(&pfd, 1, 0) == -1) {
+			if (errno == EINTR)
+				continue;
+			fatal("poll: %s", errno_s);
+		}
+
+		break;
+	}
+
+	if (pfd.revents & POLLIN)
+		return (1);
+
+	return (0);
 }
 
 void

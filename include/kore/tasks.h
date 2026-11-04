@@ -80,6 +80,7 @@ void		kore_task_bind_callback(struct kore_task *,
 void		kore_task_create(struct kore_task *,
 		    int (*entry)(struct kore_task *));
 
+int		kore_task_channel_pending(struct kore_task *);
 u_int32_t	kore_task_channel_read(struct kore_task *, void *, u_int32_t);
 void		kore_task_channel_write(struct kore_task *, void *, u_int32_t);
 
