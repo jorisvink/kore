@@ -2500,9 +2500,11 @@ http_response_normal(struct http_request *req, struct connection *c,
 			    hdr->header, hdr->value);
 		}
 
-		TAILQ_FOREACH(hdr, &(req->rt->dom->headers), list) {
-			kore_buf_appendf(header_buf, "%s: %s\r\n",
-			    hdr->header, hdr->value);
+		if (req->rt != NULL) {
+			TAILQ_FOREACH(hdr, &(req->rt->dom->headers), list) {
+				kore_buf_appendf(header_buf, "%s: %s\r\n",
+				    hdr->header, hdr->value);
+			}
 		}
 
 		if (status != 204 && status >= 200 &&
