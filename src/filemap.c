@@ -224,6 +224,11 @@ lookup:
 		return;
 	}
 
+	if (strstr(fpath, "..")) {
+		http_response(req, HTTP_STATUS_NOT_FOUND, NULL, 0);
+		return;
+	}
+
 	if (strncmp(rpath, fpath, map->ondisk_len)) {
 		http_response(req, HTTP_STATUS_NOT_FOUND, NULL, 0);
 		return;
